@@ -5,6 +5,7 @@
       "**",
       "!!.claude",
       "!!.agents",
+      "!!.audit",
       "!!node_modules",
       "!!dist",
       "!!target",
