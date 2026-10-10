@@ -50,6 +50,5 @@ actual advisory ID and its specific reason only when an advisory fires.
 ```yaml
 audit:
   ignore:
-    # <dependency>: <why no fix is usable>. <advisory URL>
     - GHSA-xxxx-xxxx-xxxx
 ```
