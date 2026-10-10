@@ -1,5 +1,9 @@
 node_modules/
 dist/
+dist-mock/
+.e2e/
+playwright-report/
+test-results/
 target/
 src-tauri/gen/
 .DS_Store

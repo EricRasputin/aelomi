@@ -18,8 +18,8 @@ Zlib for foldhash, and Unlicense for isbot. Each is scoped to the packages named
 ## CI
 
 `.github/workflows/ci.yml` runs on every pull request, including stacked PRs,
-and on pushes to `main`. Its seven check IDs are `biome`, `tsc`, `vitest`,
-`nextest`, `cargo-deny`, `pnpm-audit`, and `build-app`.
+and on pushes to `main`. Its nine check IDs are `biome`, `tsc`, `vitest`,
+`nextest`, `cargo-deny`, `pnpm-audit`, `build-app`, `e2e`, and `playwright`.
 The `pnpm-audit` job also runs `pnpm check-licenses`.
 The `nextest` job includes the `bindings_are_current` test.
 Cargo steps run with `--locked`, so a `Cargo.toml` change without its `Cargo.lock` fails.
@@ -37,6 +37,33 @@ prebuilt binaries with source-install fallbacks disabled.
 `build-app` uploads `Aelomi-app` with a 7-day retention period.
 The artifact contains `Aelomi-app.zip`, made with `ditto --keepParent` to preserve
 the ad-hoc signed `Aelomi.app` bundle. The cold-start gate can download this artifact.
+
+## Browser tests
+
+Run `pnpm exec e2e-web install webkit`, then `pnpm build:mock`,
+`pnpm test:e2e`, and `pnpm test:playwright`.
+Both suites run against the production React build in `dist-mock/`.
+`pnpm preview:mock` serves that build on `127.0.0.1`.
+TesterArmy selects a free port. Playwright uses port 4173 and fails if it is occupied.
+No model or API key is needed. The e2e script and CI disable telemetry.
+
+`src/ipc/mock.ts` implements the generated command type in memory.
+Tests can use `window.__aelomiMock.reset()` and its typed `calls` log.
+Each browser test starts in a fresh context with an empty mock.
+The app imports commands through `src/ipc/index.ts`.
+Vite selects the mock only in `mock` mode.
+Run `pnpm build` and `pnpm check:no-mock` to verify the production bundle.
+CI runs that check after the Tauri build.
+
+Acceptance tests import `test` from `e2e/fixtures.ts`.
+Its automatic fixture aborts non-local requests and fails with their URLs.
+Biome rejects direct test imports that skip the fixture.
+The Playwright fixture also covers WebSockets and blocks service workers.
+Both suites allow only loopback hosts and `data:`, `blob:`, and `about:` URLs.
+CI caches their shared Playwright 1.63.0 WebKit build and uploads test reports.
+
+The license policy selects BSD-3-Clause for `json-schema`'s
+`AFL-2.1 OR BSD-3-Clause` dual license.
 
 ## Handle an unfixable npm advisory
 

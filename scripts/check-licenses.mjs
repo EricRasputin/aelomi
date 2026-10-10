@@ -9,7 +9,10 @@ const allowed = new Set([
   "ISC",
   "MPL-2.0",
 ]);
-const exceptions = new Map([["Unlicense", new Set(["isbot"])]]);
+const exceptions = new Map([
+  ["Unlicense", new Set(["isbot"])],
+  ["(AFL-2.1 OR BSD-3-Clause)", new Set(["json-schema"])],
+]);
 const tree = JSON.parse(
   execFileSync("pnpm", ["licenses", "list", "--json"], {
     encoding: "utf8",
@@ -26,9 +29,10 @@ for (const packages of Object.values(tree)) {
     const terms = license.replace(/[()]/g, "").split(/\s+(?:AND|OR)\s+/);
     if (
       name.startsWith("@blocknote/xl-") ||
-      !terms.every(
-        (term) => allowed.has(term) || exceptions.get(term)?.has(name),
-      )
+      (!exceptions.get(license)?.has(name) &&
+        !terms.every(
+          (term) => allowed.has(term) || exceptions.get(term)?.has(name),
+        ))
     ) {
       failures.push(`${name}: ${license}`);
     }
