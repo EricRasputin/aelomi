@@ -11,8 +11,7 @@
     "noUnusedParameters": true,
     "verbatimModuleSyntax": true,
     "noEmit": true,
-    "types": ["vite/client"],
-    "paths": { "@ipc-commands": ["./src/ipc/bindings.ts"] }
+    "types": ["vite/client"]
   },
   "include": [
     "src",

@@ -32,4 +32,7 @@ declare global {
   }
 }
 
-window.__aelomiMock = control;
+export function installMock(): Commands {
+  window.__aelomiMock = control;
+  return commands;
+}

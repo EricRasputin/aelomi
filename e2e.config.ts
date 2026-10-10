@@ -4,6 +4,7 @@ import type { E2EConfig } from "e2e";
 export default {
   tests: ["e2e/**/*.e2e.ts"],
   reporters: ["list", "junit"],
+  retries: 0,
   targets: [
     {
       name: "webkit",

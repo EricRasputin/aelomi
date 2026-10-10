@@ -51,12 +51,13 @@ No model or API key is needed. The e2e script and CI disable telemetry.
 Tests can use `window.__aelomiMock.reset()` and its typed `calls` log.
 Each browser test starts in a fresh context with an empty mock.
 The app imports commands through `src/ipc/index.ts`.
-Vite selects the mock only in `mock` mode.
+Vite folds the IPC module's mode switch and selects the mock only in `mock` mode.
 Run `pnpm build` and `pnpm check:no-mock` to verify the production bundle.
 CI runs that check after the Tauri build.
 
 Acceptance tests import `test` from `e2e/fixtures.ts`.
 Its automatic fixture aborts non-local requests and fails with their URLs.
+Acceptance retries are disabled so a later clean attempt cannot hide remote traffic.
 Biome rejects direct test imports that skip the fixture.
 The Playwright fixture also covers WebSockets and blocks service workers.
 Both suites allow only loopback hosts and `data:`, `blob:`, and `about:` URLs.
