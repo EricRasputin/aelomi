@@ -5,12 +5,12 @@
       "why": "CLAUDE.md budget: process launch to the index screen's first content frame, median of 10. pnpm perf:cold enforces it on Apple Silicon hardware. Hosted macos-15 runners cannot reach it, so CI enforces hostedCiMs instead and prints this verdict as information."
     },
     "hostedCiMs": {
-      "value": 2500,
-      "why": "Provisional. End-to-end budget on hosted macos-15, where WebContent startup alone takes about 930 ms. Calibrated from CI runs of this harness: about 1.5 times the worst series median, rounded up."
+      "value": 2200,
+      "why": "End-to-end budget on hosted macos-15. Two VMs of the same image measured series medians of 1449 ms and 475 ms with this harness, so the runner, not the app, sets the floor. 1.5 times the worst median, rounded up."
     },
     "hostedNavToPaintMs": {
-      "value": 500,
-      "why": "Provisional. Navigation start to first content frame on hosted macos-15. This is the part the frontend controls. Calibrated from CI runs of this harness: about 1.5 times the worst series median, rounded up."
+      "value": 400,
+      "why": "Navigation start to first content frame on hosted macos-15, the part the frontend controls. The same two VMs measured 242 ms and 84 ms. 1.5 times the worst median, rounded up."
     },
     "warmupRuns": {
       "value": 1,

@@ -5,7 +5,13 @@ import { expect, test } from "../fixtures";
 
 const budgets = readBudgets().keystroke;
 
-type Sample = { rafMc: number; doubleRaf: number; shown: boolean };
+type Sample = {
+  rafMc: number;
+  doubleRaf: number;
+  keyToInput: number;
+  inputToRaf: number;
+  shown: boolean;
+};
 type Recorder = { samples: Sample[]; missing: number };
 
 declare global {
@@ -29,11 +35,18 @@ function installRecorder() {
   );
   addEventListener("input", (event) => {
     const start = down;
+    const inputAt = performance.now();
     const target = event.target instanceof HTMLElement ? event.target : null;
     requestAnimationFrame(() => {
       const shown = (target?.lastChild?.textContent ?? "").endsWith(key);
       if (!shown) recorder.missing += 1;
-      const sample: Sample = { rafMc: 0, doubleRaf: 0, shown };
+      const sample: Sample = {
+        rafMc: 0,
+        doubleRaf: 0,
+        keyToInput: inputAt - start,
+        inputToRaf: performance.now() - inputAt,
+        shown,
+      };
       let landed = 0;
       const finish = () => {
         landed += 1;
@@ -60,6 +73,7 @@ for (const surface of keystrokeSurfaces) {
   }, testInfo) => {
     await page.addInitScript(installRecorder);
     const loads: { p95: number; kept: Sample[] }[] = [];
+    const cadences: number[] = [];
     for (let load = 1; load <= budgets.pageLoads.value; load++) {
       await page.goto(`/perf/keystroke/${surface}`);
       const surfaceEl = page.getByTestId("keystroke-surface");
@@ -76,6 +90,20 @@ for (const surface of keystrokeSurfaces) {
         return el.textContent?.length ?? 0;
       });
       await page.waitForTimeout(2_000);
+      const cadence = await page.evaluate(
+        () =>
+          new Promise<number[]>((done) => {
+            const stamps: number[] = [];
+            const tick = (now: number) => {
+              stamps.push(now);
+              if (stamps.length <= 60) requestAnimationFrame(tick);
+              else done(stamps.slice(1).map((t, i) => t - (stamps[i] ?? t)));
+            };
+            requestAnimationFrame(tick);
+          }),
+      );
+      cadences.push(median(cadence));
+      await page.waitForTimeout(500);
       for (let i = 0; i < budgets.samplesPerLoad.value; i++) {
         await page.keyboard.press("x");
         await page.waitForFunction(
