@@ -69,7 +69,8 @@ Data-safety checks end in exact assertions, never an AI judgment step. No automa
 
 - **pstack** (`github.com/backnotprop/pstack`) runs the engineering process. Use `/poteto-mode` and its playbooks: feature → PR → verify → merge. One branch and one PR per feature. Never commit directly to `main`.
 - **Emil Kowalski's skills** (`github.com/emilkowalski/skill`) are the design and motion rulebook. Not used: `animate-expo`, `mobile-native`, `write-swift`.
-- Both skill sets get vendored into this repo pinned to a commit (not done yet). Update them deliberately, never automatically.
+- Both skill sets are vendored into `.claude/skills/` (pstack's subagents into `.claude/agents/`), pinned to commits in `scripts/vendor-skills.sh`. Licenses and the pinned source live in `.claude/vendor/`. Update deliberately: bump the ref, rerun the script, review the diff. Never hand-edit vendored files. Keep `.claude/` out of Biome, tsc, and Vitest (pstack ships its own TS scripts).
+- pstack's model roles live in `~/.agents/pstack-models.md`, written by `/setup-pstack`.
 
 ## Design direction
 

@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+# Vendors third-party agent skills into .claude/ at pinned commits.
+# To update: change a *_REF below, rerun, review the diff, commit.
+set -euo pipefail
+
+PSTACK_URL=https://github.com/backnotprop/pstack
+PSTACK_REF=3a604672c46cd8187d2b19980eae0a34f9f91138
+
+EMIL_URL=https://github.com/emilkowalski/skill
+EMIL_REF=e8a175de22ae1e49370fc144c1f3bb9aeedf988d
+# Not used in Aelomi (see CLAUDE.md > Workflow).
+EMIL_EXCLUDE="animate-expo mobile-native write-swift"
+
+ROOT=$(cd "$(dirname "$0")/.." && pwd)
+SKILLS="$ROOT/.claude/skills"
+AGENTS="$ROOT/.claude/agents"
+VENDOR="$ROOT/.claude/vendor"
+TMP=$(mktemp -d)
+trap 'rm -rf "$TMP"' EXIT
+
+fetch() { # name url ref
+  git init -q "$TMP/$1"
+  git -C "$TMP/$1" fetch -q --depth 1 "$2" "$3"
+  git -C "$TMP/$1" checkout -q FETCH_HEAD
+}
+
+# install name src_skills_dir excluded_names...
+# Removes the skills this source installed last time, then copies the current set.
+install() {
+  local name=$1 src=$2
+  shift 2
+  local manifest="$VENDOR/$name/skills.txt"
+  if [ -f "$manifest" ]; then
+    while read -r skill; do rm -rf "${SKILLS:?}/$skill"; done <"$manifest"
+  fi
+  mkdir -p "$SKILLS" "$VENDOR/$name"
+  : >"$manifest"
+  for dir in "$src"/*/; do
+    local skill
+    skill=$(basename "$dir")
+    case " $* " in *" $skill "*) continue ;; esac
+    rsync -a --delete "$dir" "$SKILLS/$skill/"
+    echo "$skill" >>"$manifest"
+  done
+}
+
+fetch pstack "$PSTACK_URL" "$PSTACK_REF"
+fetch emil "$EMIL_URL" "$EMIL_REF"
+
+install pstack "$TMP/pstack/skills"
+install emil "$TMP/emil/skills" $EMIL_EXCLUDE
+
+mkdir -p "$AGENTS"
+cp "$TMP/pstack/agents/poteto-agent.md" "$AGENTS/poteto-agent.md"
+cp "$TMP/pstack/agents/comment-sicko.md" "$AGENTS/comment-sicko.md"
+
+cp "$TMP/pstack/LICENSE" "$VENDOR/pstack/LICENSE"
+cp "$TMP/emil/LICENSE" "$VENDOR/emil/LICENSE"
+printf '%s\n%s\n' "$PSTACK_URL" "$PSTACK_REF" >"$VENDOR/pstack/SOURCE"
+printf '%s\n%s\n' "$EMIL_URL" "$EMIL_REF" >"$VENDOR/emil/SOURCE"
+
+echo "Vendored pstack@${PSTACK_REF:0:7} and emil@${EMIL_REF:0:7} into .claude/"
