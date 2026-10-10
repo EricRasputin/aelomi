@@ -4,7 +4,7 @@ A lightweight, fast, local-first alternative to Notion for macOS. Open source (M
 
 Aelomi is built entirely by AI agents. The maintainer sets direction and taste and uses the app daily as QA; nobody reads the code line by line. CI, the test suites, and a separate reviewer agent are the review gate. Product and design questions go to the maintainer. Engineering choices inside the stack below are yours to make.
 
-`SPEC.md` lists MVP features, behavior IDs, and their tests. Planned, not yet written: `TASTE.md` (design rules), `ARCHITECTURE.md`. Until they exist, this file is the source of truth for those topics.
+`SPEC.md` lists MVP features, behavior IDs, and their tests. `ARCHITECTURE.md` maps the crates, modules, and test layers. Planned, not yet written: `TASTE.md` (design rules). Until it exists, this file is the source of truth for design rules.
 
 ## Hard rules
 
