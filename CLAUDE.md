@@ -8,7 +8,7 @@ Aelomi is built entirely by AI agents. The maintainer sets direction and taste a
 
 ## Hard rules
 
-- **Never lose user data.** Storage writes are append-only. Migrations are additive only; never drop or rewrite user data in place. Every migration ships with a test that opens an older database or backup.
+- **Never lose user data.** Storage writes are append-only. Migrations are additive only; never drop or rewrite user data in place. Every migration ships with a test that opens an older database or backup. The only exceptions: **Delete permanently** and trash expiry erase what the user deleted, completely, and compaction replaces stored history with a verified snapshot. See `SPEC.md` (TREE-13, TREE-14, DATA-6).
 - **No GPL code.** Never add `@blocknote/xl-*` packages (GPL-3.0 or commercial). Use BlockNote core only. Check the license of every new dependency; MIT, Apache-2.0, BSD, ISC and MPL-2.0 are fine.
 - **Local-first.** The app works fully offline. The only network calls allowed are opt-out telemetry, optional AI features, sync (later), and update checks.
 - **Telemetry never contains user content.** No note text, titles, page names, or file paths. Anonymous hashed install ID and usage metadata only.

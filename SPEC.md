@@ -40,11 +40,11 @@ These are out of scope for the MVP: the MCP server, databases and table views, N
 `CLAUDE.md` makes Yjs the source of truth and SQLite a derived index. These rules say which data goes where, so the index can always be rebuilt and nothing the user made lives only in the index.
 
 - **DATA-1.** Each page's body is one Y.Doc.
-- **DATA-2.** One workspace Y.Doc holds a record for every page: page ID, title, parent ID, sibling order, favorite flag and favorite order, trash state, and created and updated times. Trash state is one of active, trashed (with the original parent and a trash batch ID), or deleted.
-- **DATA-3.** Images are files in the data folder, named by the hash of their bytes. Image files are never deleted in the MVP.
+- **DATA-2.** One workspace Y.Doc holds a record for every page: page ID, title, parent ID, sibling order, favorite flag and favorite order, trash state, and created and updated times. Trash state is active, or trashed with the original parent, a trash batch ID, and the trash time. An erased page has no record (TREE-14).
+- **DATA-3.** Images are files in the data folder, named by the hash of their bytes. An image file is deleted only when the last page that refers to it is erased.
 - **DATA-4.** Settings and session state live in one `settings.json` file, replaced atomically on each write. It holds the theme, the export folder and schedule, export history, expanded tree rows, recent pages, and the open page with its scroll anchor. It is configuration, not user data: the append-only rule in `CLAUDE.md` covers the Y.Docs and image files. Losing it loses no page content.
 - **DATA-5.** SQLite holds only what can be rebuilt from the Y.Docs: the tree query cache, the full-text index, and backlinks. It is not user data. On an index schema change or a corrupt index, the app deletes it and rebuilds it.
-- **DATA-6.** The MVP does not compact or garbage-collect stored Yjs updates **(default)**. See Q6.
+- **DATA-6.** Each page's Y.Doc, and the workspace Y.Doc, is stored as a snapshot file plus newer update files. When a doc's update files pass 1 MB or 10,000 updates, the app compacts it: it writes a new snapshot file, checks that it loads to the same document, and only then deletes the old files **(default)**. Compaction never changes what the user sees. The page history it removes has no UI in the MVP.
 
 ## 1. App shell and data safety
 
@@ -60,7 +60,7 @@ The window, theme, keyboard model, and the guarantees about user data.
 - **SHELL-6.** ⌘\ shows and hides the sidebar. ⌘, opens **Settings** as a modal inside the main window.
 - **SHELL-7.** Keyboard shortcuts are handled in the webview. One shortcut table in TypeScript lists every command and its shortcut. The webview bindings and the native menu items are both built from it, so a shortcut is never bound twice. Native menu items show the shortcut and call the same command. **Edit → Undo** and **Edit → Redo** call the editor's undo and redo.
 - **SHELL-8.** Every edit is saved without a save action, and no UI says "saving" or "saved". This covers typing, paste, drag, rename, move, trash, restore, and settings.
-- **SHELL-9.** While writes succeed, each edit is on disk, flushed with `F_FULLFSYNC`, within 1 second **(default)**. Quitting with ⌘Q, closing the window, or logging out writes every pending edit before the app exits. A crash of the app or the Mac can lose only the edits from the last second, unless writes were already failing (SHELL-10).
+- **SHELL-9.** While writes succeed, each edit is on disk, flushed with `F_FULLFSYNC`, within 100 ms **(default)**. Quitting with ⌘Q, closing the window, or logging out writes every pending edit before the app exits. A crash of the app or the Mac can lose only the edits from the last 100 ms, unless writes were already failing (SHELL-10).
 - **SHELL-10.** If a write fails, pending edits stay in memory and the app retries them. A banner says that changes are not being saved, and why. The banner clears when every pending edit is on disk. Pending edits are never discarded while the app runs. Quitting with pending edits asks for confirmation first.
 - **SHELL-11.** Data lives in `~/Library/Application Support/Aelomi`. The app resolves symlinks on that path and on every parent folder. If the resolved path is inside `~/Library/Mobile Documents` (iCloud Drive) or `~/Library/CloudStorage` (Dropbox, Google Drive, OneDrive), the app does not open the data. It shows the resolved path, explains that cloud sync corrupts the database, and says how to move the folder back.
 - **SHELL-12.** If the index is missing, corrupt, or on an old schema, the app rebuilds it (DATA-5). The tree and pages load from the Y.Docs at once. Search shows "Indexing…" until the rebuild finishes. No error appears unless the rebuild fails.
@@ -81,14 +81,15 @@ The window, theme, keyboard model, and the guarantees about user data.
 ### Core tests
 
 - A new data folder, opened twice, contains exactly one page, "Getting started", with one page ID.
-- Writes are append-only: no stored update is ever rewritten or dropped.
+- Writes are append-only: no stored update is ever rewritten. Old update files are deleted only by compaction (DATA-6) or erasure (TREE-14).
+- Interrupt compaction at every step. On each reopen, the doc loads and equals the doc before compaction.
 - With a storage layer that drops every byte not yet flushed, edits are applied, the layer "crashes", and the store reopens. Every edit that was acknowledged as flushed is present. This repeats for 1,000 random crash points.
-- With a controllable clock, every edit is acknowledged as flushed within 1 second of being applied, for edits of every kind SHELL-8 lists.
+- With a controllable clock, every edit is acknowledged as flushed within 100 ms of being applied, for edits of every kind SHELL-8 lists.
 - With writes failing for one page and succeeding for another, the failed page's edits stay pending until its writes succeed.
 - Quitting with pending edits flushes them: after quit and reopen, the document includes every edit made before quit.
 - Inject a write error, queue edits, clear the error. Every queued edit is on disk, in order.
 - Session state round-trips: after close and reopen, the open page, top visible block, theme, expanded rows, and recent pages are the same.
-- Index rebuild: build a fixture with nesting, favorites, a trashed subtree, a deleted page, links, and text. Delete the index, reopen, and compare the tree, the backlinks of every page, and the results of a fixed list of searches with the results before. They must be equal. Repeat with a garbage index file and with an index on an old schema.
+- Index rebuild: build a fixture with nesting, favorites, a trashed subtree, an erased page, links, and text. Delete the index, reopen, and compare the tree, the backlinks of every page, and the results of a fixed list of searches with the results before. They must be equal. Repeat with a garbage index file and with an index on an old schema.
 - Migrations: `fixtures/` keeps a data folder from every released version. Each migration test opens every one and checks page content, tree position, favorites, and trash state against the expected values.
 - The data path check rejects a symlinked data folder and a symlinked parent that resolve into `~/Library/Mobile Documents` or `~/Library/CloudStorage`, and accepts the normal path.
 
@@ -99,7 +100,7 @@ The window, theme, keyboard model, and the guarantees about user data.
 ### Perf tests
 
 - A Playwright check fails if the app makes any request to a non-local origin during the full acceptance suite.
-- Type "x". The mock's persist command receives an update containing "x" within 1 second.
+- Type "x". The mock's persist command receives an update containing "x" within 100 ms.
 - Type "x" and trigger quit at once. The persist command receives "x" before the quit completes.
 
 ## 2. Page tree
@@ -120,8 +121,8 @@ The sidebar shows **Favorites**, then the page tree, then a **Trash** row.
 - **TREE-10.** The **Trash** row opens the trash view. It lists only the pages you trashed, not their descendants, newest first.
 - **TREE-11.** A trashed page opens read-only, with a **Restore** button. Page commands other than **Restore** are disabled for it.
 - **TREE-12.** **Restore** returns the page and the descendants trashed with it to their original parent, sibling position, expanded state, and favorites. If the original parent is not active, the page goes to the end of the top level.
-- **TREE-13.** Trashed pages stay in trash until you delete them **(default: no automatic expiry)**. See Q2.
-- **TREE-14.** **Delete permanently** asks for confirmation. It marks the page and the descendants trashed with it as deleted in the workspace doc. The data stays on disk **(default)**. See Q1. Deleted pages appear nowhere in the app or the export.
+- **TREE-13.** A trashed page is erased 30 days after it was trashed **(default)**. **Settings → Trash** offers **7 days**, **30 days**, **90 days**, and **Never**. The trash view shows how many days each page has left. The app checks for expired pages at launch and every hour.
+- **TREE-14.** **Delete permanently** erases the page and the descendants trashed with it, after a confirmation that says this cannot be undone. Erasing deletes the page's Y.Doc files, removes its record from the workspace doc and compacts that doc so the title is gone from disk, deletes images no other page uses, and removes the page from the index. Exports already written are not changed. They age out under EXP-9.
 - **TREE-15.** ⌘Z in the editor never undoes tree actions. Trash has its own undo, **Restore**.
 
 ### Acceptance tests
@@ -135,17 +136,18 @@ The sidebar shows **Favorites**, then the page tree, then a **Trash** row.
 7. **Trash and restore.** Setup: "Projects" with child "Aelomi", and "Aelomi" a favorite. Press ⌘K and type "Aelomi". Expect a result. Move "Projects" to trash. Expect both pages gone from the sidebar and **Favorites**, and only "Projects" listed in the trash view. Press ⌘K and type "Aelomi". Expect no result. Restore "Projects". Expect both back in place and "Aelomi" back in **Favorites**.
 8. **Trash the open page.** Setup: "Projects" with children "A" and "B", and "A" open. Move "A" to trash. Expect "B" open. Move "Projects" to trash. Expect the empty state.
 9. **Rename from the menu.** Setup: pages "Inbox draft" (open) and "Other". Choose **Rename** on the "Inbox draft" row and type "Inbox". Expect the editor title to read "Inbox".
-10. **Delete permanently.** Setup: "Old" in trash. Choose **Delete permanently** and confirm. Expect "Old" gone from the trash view.
+10. **Delete permanently.** Setup: "Old" in trash. Choose **Delete permanently**. Expect a confirmation that says it cannot be undone. Confirm. Expect "Old" gone from the trash view.
+12. **Trash expiry setting.** Setup: "Old" trashed 10 days ago. Open the trash view. Expect "20 days left". Set **Settings → Trash** to **7 days**. Expect "Old" gone from the trash view.
 11. **Undo does not restore.** Setup: "A" (open) and "B". Type "x" in "A", then move "A" to trash. Press ⌘Z. Expect "A" still in trash.
 
 ### Core tests
 
-- A property test applies random sequences of create, move, reorder, favorite, unfavorite, trash, restore, and delete. After each step, active pages form a tree with no cycles, each active page has one active parent or is at the top level, sibling and favorite orders have no duplicates, and trashed and deleted pages keep their original parent.
+- A property test applies random sequences of create, move, reorder, favorite, unfavorite, trash, restore, and erase. After each step, active pages form a tree with no cycles, each active page has one active parent or is at the top level, sibling and favorite orders have no duplicates, and trashed pages keep their original parent.
 - Trash then restore returns the workspace doc to its prior tree, sibling order, and favorites, compared field by field.
-- Trashed and deleted pages, and their descendants, never appear in search results, backlinks, or the `[[` picker list.
-- After a permanent delete and an index rebuild, the deleted pages appear nowhere.
+- Trashed pages and their descendants never appear in search results, backlinks, or the `[[` picker list.
+- Erase a page whose title and body contain a unique marker string, and which has an image no other page uses. Afterwards, no file in the data folder contains the marker, and the image file is gone. An image another page uses is kept.
+- With a controllable clock and the 30-day setting, a page trashed 31 days ago is erased at launch and one trashed 29 days ago is not. With **Never**, a page trashed 400 days ago is kept.
 - Tree structure, sibling order, favorites, and expanded state are the same after close and reopen.
-- A page trashed with a trash time 400 days in the past is still in trash after reopen.
 
 ### Perf tests
 
@@ -230,9 +232,9 @@ Pages link to each other with `[[`, and each page lists the pages that link to i
 - **LINK-3.** If no page matches, the picker offers **Create "<typed text>"**. Choosing it creates a page with that title at the end of the top level and inserts a link to it.
 - **LINK-4.** Clicking a link opens the target page. ⌘[ and ⌘] go back and forward through visited pages.
 - **LINK-5.** A link to a trashed page shows struck through and muted. Clicking it opens the page read-only in trash (TREE-11).
-- **LINK-6.** A link to a deleted page shows muted text, "Deleted page", and does nothing on click.
+- **LINK-6.** A link to an erased page shows muted text, "Deleted page", and does nothing on click.
 - **LINK-7.** Below the page body, a read-only **Backlinks** footer lists each active page that links to this page, most recently updated first. Each entry shows the page title and, for each linking block, that block's text on one line. The footer is not part of the page's Y.Doc, is not exported, and is not searched. It is not shown when no page links here.
-- **LINK-8.** Backlinks update within 1 second of the linking edit **(default)**.
+- **LINK-8.** Backlinks update within 250 ms of the linking edit **(default)**.
 
 ### Acceptance tests
 
@@ -243,12 +245,12 @@ Pages link to each other with `[[`, and each page lists the pages that link to i
 5. **No picker in code.** Setup: pages "Daily" (open, with a code block) and "Aelomi". Type `[[` inside the code block. Expect no picker.
 6. **Backlinks.** Setup: pages "Aelomi" and "Daily", where "Daily" has a block "see ", a page link to "Aelomi", and " today". Open "Aelomi". Expect **Backlinks** listing "Daily" with "see Aelomi today". Remove the link from "Daily". Expect no **Backlinks** footer on "Aelomi".
 7. **Trashed target.** Setup: "Daily" (open) linking to "Reading list". Expect a normal link. Move "Reading list" to trash. Expect the link struck through and muted. Click it. Expect "Reading list" read-only with **Restore**. Press ⌘K and type `rename`. Expect no **Rename page**.
-8. **Deleted target.** Setup: "Daily" (open) linking to "Old", and "Old" in trash. Delete "Old" permanently. Expect the link to read "Deleted page".
+8. **Erased target.** Setup: "Daily" (open) linking to "Old", and "Old" in trash. Delete "Old" permanently. Expect the link to read "Deleted page".
 
 ### Core tests
 
 - After random link inserts, deletes, renames, trashes, and restores across pages, the backlink index equals a backlink set computed from scratch from the Y.Docs.
-- A linking edit is reflected in the backlink index within 1 second.
+- A linking edit is reflected in the backlink index within 250 ms.
 
 ## 5. Command palette and search
 
@@ -264,8 +266,8 @@ Pages link to each other with `[[`, and each page lists the pages that link to i
 - **CMD-6.** Commands: **New page**, **Add subpage**, **Rename page**, **Move page to…**, **Add to favorites** or **Remove from favorites**, **Move to trash**, **Toggle theme**, **Export now**, **Open settings**, and **Open trash**. Page commands act on the open page. They are not listed when no active page is open.
 - **CMD-7.** The first result is selected when results change. ↑ and ↓ move the selection. Return runs the selected item. For a content match, the editor scrolls to the matching block and highlights it for 1 second.
 - **CMD-8.** **Toggle theme** sets the opposite of the theme on screen: **Light** when it shows dark, **Dark** when it shows light.
-- **CMD-9.** ⌘P opens the same palette limited to pages, as a quick switcher. See Q5.
-- **CMD-10.** Trashed and deleted pages never appear in results.
+- **CMD-9.** ⌘K is the only palette shortcut. There is no separate quick switcher.
+- **CMD-10.** Trashed and erased pages never appear in results.
 
 ### Acceptance tests
 
@@ -275,13 +277,12 @@ Pages link to each other with `[[`, and each page lists the pages that link to i
 4. **Content search.** Setup: "Daily" with a block "quarterly roadmap" far down the page. Press ⌘K and type `roadm`. Expect "Daily" with "roadmap" highlighted. Press Return. Expect the editor scrolled to that block.
 5. **Commands.** Setup: theme set to **Light**. Press ⌘K and type `theme`. Press Return on **Toggle theme**. Expect the dark theme.
 6. **Page commands.** Setup: "Projects" and "Aelomi" (open). Press ⌘K, run **Move page to…**, and choose "Projects". Expect "Aelomi" under "Projects".
-7. **Quick switcher.** Setup: page "Inbox". Press ⌘P and type `inbox`. Expect "Inbox" and no commands.
-8. **Escape.** Setup: one page with the cursor in its body. Press ⌘K, then Escape. Type "x". Expect "x" in the body.
+7. **Escape.** Setup: one page with the cursor in its body. Press ⌘K, then Escape. Type "x". Expect "x" in the body.
 
 ### Core tests
 
 - On the search fixture, a fixed list of content queries returns the expected page IDs. The fixture is 10,000 pages from a seeded generator, checked into `fixtures/`, with the expected IDs listed next to it.
-- A content query on the search fixture takes under 20 ms at p95 **(default)**.
+- A content query on the search fixture takes under 5 ms at p95 **(default)**.
 
 ### Logic tests
 
@@ -289,24 +290,24 @@ Pages link to each other with `[[`, and each page lists the pages that link to i
 
 ### Perf tests
 
-- With the search fixture loaded into the mock, the palette shows results within 50 ms of each keystroke at p95 **(default)**. This measures the UI. The Rust query budget above covers the core. The real IPC hop between them is covered by the maintainer's daily use.
+- With the search fixture loaded into the mock, the palette shows results within 16 ms of each keystroke at p95, one frame at 60 Hz **(default)**. This measures the UI. The Rust query budget above covers the core. The real IPC hop between them is covered by the maintainer's daily use.
 
 ## 6. Markdown export
 
-A scheduled export of every active page to a folder the user picks. It is the user's backup and their way out.
+A scheduled copy of every active page as plain markdown files, in a folder the user picks. It is the user's backup if Aelomi's own data is damaged, and their way out if they stop using Aelomi. The files open in any text editor.
 
 ### Behavior
 
-- **EXP-1.** **Settings → Export** has a folder picker, a schedule (**Off**, **Hourly**, or **Daily**), and an **Export now** button. The schedule starts as **Off**. The first time a folder is picked, it changes to **Daily** **(default)**. See Q3.
+- **EXP-1.** **Settings → Export** has a folder picker, a schedule (**Off**, **Daily**, or **Weekly**), and an **Export now** button. The schedule starts as **Off**. The first time a folder is picked, it changes to **Daily** **(default)**.
 - **EXP-2.** Scheduled exports run while the app is open. An export is due when no export to the current folder has succeeded yet, or when the time since the last successful one is longer than the schedule interval. Changing the folder starts its history over. The app checks at launch, on wake from sleep, and every minute.
 - **EXP-3.** The export reads one consistent snapshot of all pages, taken when it starts. Edits made during the export go into the next one.
-- **EXP-4.** The export writes `<folder>/Aelomi/`. Each active page is one `.md` file. A page with children also has a folder with the same name, next to its file, holding the children. Links become relative markdown links to the target page's file. A link to a page that is not exported becomes its plain title text.
-- **EXP-5.** Images are copied into `<folder>/Aelomi/_assets/`, named by hash, and referenced by relative path.
+- **EXP-4.** Each export is a new folder, `<folder>/Aelomi exports/<date> <time>/`, for example `2026-10-11 0930`. In it, each active page is one `.md` file. A page with children also has a folder with the same name, next to its file, holding the children. Links become relative markdown links to the target page's file. A link to a page that is not exported becomes its plain title text.
+- **EXP-5.** Images are copied into an `_assets` folder inside each export, named by hash, and referenced by relative path. An image unchanged since the previous export is an APFS clone of that copy, so it takes no extra disk space. On other file systems it is a plain copy.
 - **EXP-6.** Each file starts with front matter holding the page ID, created time, and updated time.
 - **EXP-7.** File and folder names come from the page title. Characters the file system does not allow become `-`. An empty title becomes "Untitled". Names are cut to 200 bytes. Names are compared after Unicode NFC normalization and ignoring case, because macOS file systems do by default. Siblings get names in order of age, by created time, then page ID. Each takes the first free name of its title, then the title plus " (2)", " (3)", and so on. Names stay the same between exports unless an older sibling with the same name is added or removed. `_assets` and names starting with `.` are reserved, so a page with such a title gets a leading `-`.
-- **EXP-8.** `<folder>/Aelomi/.aelomi-export` holds the workspace ID. If `<folder>/Aelomi`, in any letter case, exists without that marker or with another workspace's ID, the export stops and reports why. It does not touch that folder.
-- **EXP-9.** The export writes into `<folder>/.aelomi-export-staging/`. It then swaps the staging folder and `<folder>/Aelomi/` in one atomic exchange. On the first export, it renames the staging folder to `Aelomi/` instead. The previous export moves to `<folder>/.aelomi-export-previous/`, replacing the one before it. See Q7. A leftover staging folder is removed before the next export. The export removes or replaces a staging or previous folder only if it holds this workspace's marker. Otherwise it stops and reports why, as in EXP-8.
-- **EXP-10.** The export creates, changes, or deletes nothing in the folder except `Aelomi/`, `.aelomi-export-staging/`, and `.aelomi-export-previous/`.
+- **EXP-8.** `<folder>/Aelomi exports/.aelomi-export` holds the workspace ID, and so does each export folder. If `<folder>/Aelomi exports`, in any letter case, exists without that marker or with another workspace's ID, the export stops and reports why. It does not touch that folder.
+- **EXP-9.** The export writes into `<folder>/Aelomi exports/.staging/`, then renames it to its dated name in one step. The app keeps the 7 newest exports and deletes older ones **(default)**. It deletes only folders that hold this workspace's marker. A leftover `.staging` folder is removed before the next export.
+- **EXP-10.** The export creates, changes, or deletes nothing in the picked folder outside `Aelomi exports/`.
 - **EXP-11.** **Settings → Export** shows the time of the last successful export and the error from the last failed one, if any. After a failed export, a small indicator shows in the sidebar footer until an export succeeds.
 
 ### Acceptance tests
@@ -319,13 +320,14 @@ Acceptance tests cannot read exported files. The core tests below cover the outp
 
 ### Core tests
 
-- Export a fixture workspace and compare the output folder byte for byte with a checked-in expected folder. The fixture covers every block in the shared table, nested pages, images, links to active, trashed, and deleted pages, and a trashed page.
-- Interrupt the export at every step, including each step of the swap. Each time, `<folder>/Aelomi/` holds either the complete previous export or the complete new one. On a first export, it is either absent or complete.
-- An existing `<folder>/aelomi/` without a marker, containing a file, is unchanged after an export attempt, and the export reports an error. The same holds for an unmarked `.aelomi-export-staging/` and `.aelomi-export-previous/`.
-- A file placed in the export folder outside the three export paths is unchanged after export.
+- Export a fixture workspace and compare the output folder byte for byte with a checked-in expected folder. The fixture covers every block in the shared table, nested pages, images, links to active, trashed, and erased pages, and a trashed page.
+- Interrupt the export at every step. Each time, every dated export folder is complete, and the older exports are unchanged.
+- An existing `<folder>/aelomi exports/` without a marker, containing a file, is unchanged after an export attempt, and the export reports an error. A folder without the marker inside `Aelomi exports/` is never deleted by the 7-export limit.
+- After 9 exports, exactly the 7 newest remain. An unchanged image in two exports shares disk blocks on APFS.
+- A file placed in the picked folder outside `Aelomi exports/` is unchanged after export.
 - Name fixtures produce valid, distinct, stable names for: `/`, `:`, leading dots, emoji, an empty title, a 300-byte title, "Notes" and "notes" as siblings, two Unicode forms of "é", two top-level "Projects" pages that each have a child "Notes", a title "Notes (2)" next to two pages titled "Notes", and a page titled "_assets".
 - Renaming and moving pages while an export runs still produces an export whose links all resolve.
-- With the schedule **Daily** and the last success 25 hours ago, launch runs an export. With the last success 23 hours ago, it does not.
+- With the schedule **Daily** and the last success 25 hours ago, launch runs an export. With the last success 23 hours ago, it does not. With **Weekly**, the cutoff is 7 days.
 
 ## Performance budgets
 
@@ -335,16 +337,17 @@ The budgets in `CLAUDE.md` are CI gates for every feature above. This spec defin
 - **Keystroke-to-paint under 16 ms.** From the key event to the first frame that shows the typed character, at p95, in Playwright WebKit (EDIT-14).
 - **A 5,000-block page stays smooth.** Defined in the editor perf tests.
 
-This spec proposes four more budgets, all **(default)**: the sidebar at 10,000 pages (section 2), content search under 20 ms and palette results under 50 ms (section 5), and backlinks within 1 second (LINK-8). See Q4.
+This spec adds four more budgets, all **(default)**: the sidebar at 10,000 pages (section 2), content search under 5 ms and palette results under 16 ms (section 5), backlinks within 250 ms (LINK-8), and edits on disk within 100 ms (SHELL-9). A ballpark run on the maintainer's Mac on 2026-10-11 informed them: FTS5 content search over 10,000 synthetic pages took 0.2 to 0.3 ms at p50 and 0.4 to 1 ms at p95, fuzzy title matching over 10,000 titles in Node took 1.3 to 1.9 ms at p50 and 1.7 to 4.1 ms at p95, and one `F_FULLFSYNC` of a small append took about 4 ms at p50 and 4 to 6 ms at p95. Each figure is the range over 5 runs, on a machine with a load average near 8. Remeasure on the real app once it exists.
 
 ## Open questions
 
-These need the maintainer.
+None right now. The MVP scope itself still needs the maintainer's confirmation.
 
-- **Q1. Permanent delete.** Storage is append-only and "never lose user data" is a hard rule. The default keeps a deleted page's data on disk and hides it everywhere. Should **Delete permanently** ever truly erase data? Users expect "permanently" to mean erased.
-- **Q2. Trash expiry.** Should trashed pages expire after 30 days, as in Notion, or stay forever (the default)?
-- **Q3. Export default.** Is **Daily** the right default once a folder is picked?
-- **Q4. Budget numbers.** Are the proposed budgets right: 50 ms palette results, 20 ms content search, 1 second backlinks, 1 second durability (SHELL-9), and the sidebar and scroll frame targets?
-- **Q5. ⌘P.** CMD-9 binds ⌘P to the quick switcher, as Notion does. On macOS, ⌘P usually means Print. Keep it, or pick another shortcut?
-- **Q6. History and compaction.** The MVP keeps every Yjs update forever (DATA-6). That keeps full history for recovery, but storage grows and very old pages load slower. When should compaction start, and should it keep old updates in an archive?
-- **Q7. Backup copies.** The export keeps the latest export and the one before it (EXP-9). A bug that blanks pages could overwrite both within two scheduled runs. Keep more generations, such as one per day for a week?
+Decided on 2026-10-11:
+
+- **Delete permanently** truly erases (TREE-14). This is the one exception to the append-only rule, and the user asks for it.
+- Trash empties after 30 days by default, with a setting (TREE-13).
+- Export runs daily once a folder is picked and keeps the 7 newest copies (EXP-1, EXP-9).
+- Faster budgets, informed by a ballpark measurement (Performance budgets).
+- ⌘K is the only palette shortcut (CMD-9).
+- Stored history is compacted when it grows large (DATA-6).
