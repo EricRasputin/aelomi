@@ -3,6 +3,7 @@ import {
   createRootRoute,
   createRoute,
   createRouter,
+  lazyRouteComponent,
   Outlet,
 } from "@tanstack/react-router";
 import { useEffect, useLayoutEffect } from "react";
@@ -82,8 +83,26 @@ const indexRoute = createRoute({
   component: IndexScreen,
 });
 
+const keystrokeRoutes =
+  import.meta.env.MODE === "mock"
+    ? [
+        createRoute({
+          getParentRoute: () => rootRoute,
+          path: "/perf/keystroke/empty",
+          component: lazyRouteComponent(() => import("./perf/keystroke-empty")),
+        }),
+        createRoute({
+          getParentRoute: () => rootRoute,
+          path: "/perf/keystroke/page-5000-blocks",
+          component: lazyRouteComponent(
+            () => import("./perf/keystroke-page-5000"),
+          ),
+        }),
+      ]
+    : [];
+
 export const router = createRouter({
-  routeTree: rootRoute.addChildren([indexRoute]),
+  routeTree: rootRoute.addChildren([indexRoute, ...keystrokeRoutes]),
 });
 
 declare module "@tanstack/react-router" {
