@@ -42,7 +42,6 @@ If no usable fix exists, add only that advisory's GHSA ID to
 [`audit.ignore`](https://pnpm.io/cli/audit#auditignore) in `pnpm-workspace.yaml`.
 Add a comment beside the ID that names the dependency, explains why no fix is usable,
 and links the advisory. Remove the ignore when a fix becomes usable.
-This PR adds no advisory ignores.
 
 The configuration shape below is a template. Replace the placeholder with the
 actual advisory ID and its specific reason only when an advisory fires.
