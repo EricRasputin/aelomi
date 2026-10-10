@@ -1,0 +1,35 @@
+{
+  "queries": [
+    {
+      "query": "zorvak",
+      "expectedIds": [
+        "a4961de4-c3e6-434b-9838-9135f249c2f3"
+      ]
+    },
+    {
+      "query": "quillmere",
+      "expectedIds": [
+        "356eee16-ae60-4260-8b84-2f4c9780f5ed",
+        "398ad2f0-d5ec-422b-a743-1fd2b1ddd41a",
+        "753357c0-4949-4fd3-9036-a88536f2405e",
+        "8d8a638e-7079-4658-96fc-ee3f35e8eb6d",
+        "8dec50cb-b0e1-4f41-932b-138ed88fb5aa",
+        "c6be364a-fb43-47c2-b52a-1d8b3d91f3c7",
+        "d4068ff3-61bb-4d9f-98a0-47291512dd1f"
+      ]
+    },
+    {
+      "query": "kestrel",
+      "expectedIds": [
+        "07659ff5-2193-40b2-8b3c-6d7d6503a989",
+        "95156b89-135a-4e35-9419-d59e12cbc892",
+        "9ba52e85-6ea6-412d-9675-1be03a3d3372",
+        "c8152de2-13c5-4805-9535-4c0ec3d2e1c3"
+      ]
+    },
+    {
+      "query": "nonesuchword",
+      "expectedIds": []
+    }
+  ]
+}

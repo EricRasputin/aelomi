@@ -5,8 +5,9 @@ import {
   createRouter,
   Outlet,
 } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { useEffect, useLayoutEffect } from "react";
 import { formatPingReply } from "./ipc/format-ping";
+import { markIndexCommit } from "./perf/cold-start";
 import { usePingStore } from "./stores/ping";
 
 function RootLayout() {
@@ -27,6 +28,8 @@ function RootLayout() {
 function IndexScreen() {
   const status = usePingStore((state) => state.status);
   const ping = usePingStore((state) => state.ping);
+
+  useLayoutEffect(markIndexCommit, []);
 
   useEffect(() => {
     void ping();

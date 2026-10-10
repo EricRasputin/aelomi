@@ -19,7 +19,9 @@ name = "aelomi"
 version = "0.1.0"
 dependencies = [
  "aelomi-core",
+ "libc",
  "serde",
+ "serde_json",
  "specta",
  "specta-typescript",
  "tauri",

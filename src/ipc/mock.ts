@@ -15,6 +15,9 @@ export const commands = {
     calls.push({ command: "ping", args: [structuredClone(request)] });
     return { seq: request.seq, core_version: "0.1.0-mock" };
   },
+  perfReport: async (marks) => {
+    calls.push({ command: "perfReport", args: [structuredClone(marks)] });
+  },
 } satisfies Commands;
 
 const control = {

@@ -22,8 +22,23 @@ pub fn ping(request: PingRequest) -> PingReply {
     }
 }
 
+#[tauri::command]
+#[specta::specta]
+pub fn perf_report(app: tauri::AppHandle, marks: crate::perf::ColdStartMarks) {
+    let Some(path) = crate::perf::report_path() else {
+        return;
+    };
+    match crate::perf::write_report(&path, marks) {
+        Ok(()) => app.exit(0),
+        Err(error) => {
+            eprintln!("perf report: {error}");
+            app.exit(1);
+        }
+    }
+}
+
 pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
-    tauri_specta::Builder::new().commands(tauri_specta::collect_commands![ping])
+    tauri_specta::Builder::new().commands(tauri_specta::collect_commands![ping, perf_report])
 }
 
 #[cfg(test)]

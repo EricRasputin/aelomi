@@ -1,0 +1,50 @@
+{
+  "coldStart": {
+    "specMs": {
+      "value": 500,
+      "why": "CLAUDE.md budget: process launch to the index screen's first content frame, median of 10. pnpm perf:cold enforces it on Apple Silicon hardware. Hosted macos-15 runners cannot reach it, so CI enforces hostedCiMs instead and prints this verdict as information."
+    },
+    "hostedCiMs": {
+      "value": 2500,
+      "why": "Provisional. End-to-end budget on hosted macos-15, where WebContent startup alone takes about 930 ms. Calibrated from CI runs of this harness: about 1.5 times the worst series median, rounded up."
+    },
+    "hostedNavToPaintMs": {
+      "value": 500,
+      "why": "Provisional. Navigation start to first content frame on hosted macos-15. This is the part the frontend controls. Calibrated from CI runs of this harness: about 1.5 times the worst series median, rounded up."
+    },
+    "warmupRuns": {
+      "value": 1,
+      "why": "The first launch of a fresh build pays signature checks and a cold page cache. Users see it once after brew upgrade, so it is logged and discarded."
+    },
+    "timedRuns": {
+      "value": 10,
+      "why": "SPEC: median of 10 runs. With an even count the median is the mean of the 5th and 6th sorted runs."
+    }
+  },
+  "keystroke": {
+    "p95Ms": {
+      "value": 16,
+      "why": "CLAUDE.md budget: key event to the first frame that shows the typed character, p95 in Playwright WebKit (EDIT-14)."
+    },
+    "gate": {
+      "value": "empty",
+      "why": "Provisional. The surface whose p95 the keystroke job fails on. The other surface is measured and reported. Moves to the real editor when BlockNote lands."
+    },
+    "pageLoads": {
+      "value": 3,
+      "why": "Three fresh page loads so one bad load cannot decide the verdict."
+    },
+    "samplesPerLoad": {
+      "value": 300,
+      "why": "300 keys per load. With 30 discarded, 270 kept per load and 810 pooled for the p95."
+    },
+    "discardedPerLoad": {
+      "value": 30,
+      "why": "Frames right after a load are irregular. The first keys warm the page and are not counted."
+    },
+    "gapMs": {
+      "value": 100,
+      "why": "Keys 100 ms apart let the display link go idle between samples. Back-to-back keys measure vsync wait, not the app."
+    }
+  }
+}

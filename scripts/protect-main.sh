@@ -5,7 +5,7 @@
 set -euo pipefail
 
 REPO=${REPO:-aelomi/aelomi}
-CHECKS=(biome tsc vitest nextest cargo-deny pnpm-audit build-app e2e playwright)
+CHECKS=(biome tsc vitest nextest cargo-deny pnpm-audit build-app e2e playwright cold-start keystroke)
 
 contexts=$(printf '"%s",' "${CHECKS[@]}")
 gh api -X PUT "repos/$REPO/branches/main/protection" --input - <<EOF

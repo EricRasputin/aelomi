@@ -11,11 +11,14 @@
     "noUnusedParameters": true,
     "verbatimModuleSyntax": true,
     "noEmit": true,
-    "types": ["vite/client"]
+    "allowImportingTsExtensions": true,
+    "types": ["vite/client", "node"]
   },
   "include": [
     "src",
     "e2e",
+    "fixtures",
+    "perf",
     "tests",
     "e2e.config.ts",
     "playwright.config.ts",

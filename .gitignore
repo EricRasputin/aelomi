@@ -7,3 +7,4 @@ test-results/
 target/
 src-tauri/gen/
 .DS_Store
+perf-results/
