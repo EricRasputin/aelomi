@@ -4,11 +4,11 @@ A lightweight, fast, local-first alternative to Notion for macOS. Open source (M
 
 Aelomi is built entirely by AI agents. The maintainer sets direction and taste and uses the app daily as QA; nobody reads the code line by line. CI, the test suites, and a separate reviewer agent are the review gate. Product and design questions go to the maintainer. Engineering choices inside the stack below are yours to make.
 
-Planned docs, not yet written: `SPEC.md` (features + acceptance tests), `TASTE.md` (design rules), `ARCHITECTURE.md`. Until they exist, this file is the source of truth.
+`SPEC.md` lists MVP features, behavior IDs, and their tests. Planned, not yet written: `TASTE.md` (design rules), `ARCHITECTURE.md`. Until they exist, this file is the source of truth for those topics.
 
 ## Hard rules
 
-- **Never lose user data.** Storage writes are append-only. Migrations are additive only; never drop or rewrite user data in place. Every migration ships with a test that opens an older database or backup.
+- **Never lose user data.** Storage writes are append-only. Migrations are additive only; never drop or rewrite user data in place. Every migration ships with a test that opens an older database or backup. The only exceptions: **Delete permanently** and trash expiry erase what the user deleted, completely, and compaction replaces stored history with a verified snapshot. See `SPEC.md` (TREE-13, TREE-14, DATA-6).
 - **No GPL code.** Never add `@blocknote/xl-*` packages (GPL-3.0 or commercial). Use BlockNote core only. Check the license of every new dependency; MIT, Apache-2.0, BSD, ISC and MPL-2.0 are fine.
 - **Local-first.** The app works fully offline. The only network calls allowed are opt-out telemetry, optional AI features, sync (later), and update checks.
 - **Telemetry never contains user content.** No note text, titles, page names, or file paths. Anonymous hashed install ID and usage metadata only.
@@ -78,7 +78,7 @@ Linear-like: minimal, calm, dense but quiet, easy on the eyes. Keyboard-first, w
 
 ## Roadmap
 
-- **MVP (proposed, pending maintainer confirmation):** page tree (nesting, favorites, trash), BlockNote editor (slash menu, markdown shortcuts, todos, code, images, drag to reorder), `[[links]]` and backlinks, ⌘K search and quick switcher, scheduled markdown export.
+- **MVP (confirmed 2026-10-11):** page tree (nesting, favorites, trash), BlockNote editor (slash menu, markdown shortcuts, todos, code, images, drag to reorder), `[[links]]` and backlinks, ⌘K search and commands, scheduled markdown export. `SPEC.md` has the details.
 - **Right after MVP:** built-in MCP server.
 - **v2:** Notion import (markdown + CSV), databases with table, board and calendar views.
 - **v3:** multi-device sync, auth, sharing.
