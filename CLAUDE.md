@@ -4,7 +4,7 @@ A lightweight, fast, local-first alternative to Notion for macOS. Open source (M
 
 Aelomi is built entirely by AI agents. The maintainer sets direction and taste and uses the app daily as QA; nobody reads the code line by line. CI, the test suites, and a separate reviewer agent are the review gate. Product and design questions go to the maintainer. Engineering choices inside the stack below are yours to make.
 
-`SPEC.md` (draft) lists MVP features, behavior IDs, and their tests. Planned, not yet written: `TASTE.md` (design rules), `ARCHITECTURE.md`. Until they exist, this file is the source of truth for those topics.
+`SPEC.md` lists MVP features, behavior IDs, and their tests. Planned, not yet written: `TASTE.md` (design rules), `ARCHITECTURE.md`. Until they exist, this file is the source of truth for those topics.
 
 ## Hard rules
 
@@ -78,7 +78,7 @@ Linear-like: minimal, calm, dense but quiet, easy on the eyes. Keyboard-first, w
 
 ## Roadmap
 
-- **MVP (proposed, pending maintainer confirmation):** page tree (nesting, favorites, trash), BlockNote editor (slash menu, markdown shortcuts, todos, code, images, drag to reorder), `[[links]]` and backlinks, ⌘K search and quick switcher, scheduled markdown export.
+- **MVP (confirmed 2026-10-11):** page tree (nesting, favorites, trash), BlockNote editor (slash menu, markdown shortcuts, todos, code, images, drag to reorder), `[[links]]` and backlinks, ⌘K search and commands, scheduled markdown export. `SPEC.md` has the details.
 - **Right after MVP:** built-in MCP server.
 - **v2:** Notion import (markdown + CSV), databases with table, board and calendar views.
 - **v3:** multi-device sync, auth, sharing.

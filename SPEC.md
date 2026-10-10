@@ -1,6 +1,6 @@
 # Aelomi MVP specification
 
-Status: **draft**. The MVP scope in `CLAUDE.md` is still pending maintainer confirmation. Choices marked **(default)** are proposals the maintainer can override. Open questions are listed at the end.
+Status: **confirmed scope** (2026-10-11). The maintainer confirmed the MVP scope below. Choices marked **(default)** are proposals the maintainer can override. Open questions are listed at the end.
 
 This file lists what the MVP does and how each behavior is tested. Each behavior has an ID, such as `TREE-3`. Tests, PRs, and commit messages cite these IDs.
 
@@ -341,7 +341,7 @@ This spec adds four more budgets, all **(default)**: the sidebar at 10,000 pages
 
 ## Open questions
 
-None right now. The MVP scope itself still needs the maintainer's confirmation.
+None right now.
 
 Decided on 2026-10-11:
 
