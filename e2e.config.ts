@@ -8,6 +8,7 @@ export default {
   targets: [
     {
       name: "webkit",
+      // This engine blocks service workers only when headers are configured.
       engine: web({ browser: "webkit", headers: {} }),
       app: {
         url: "http://127.0.0.1:0",

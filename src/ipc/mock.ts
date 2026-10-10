@@ -28,7 +28,7 @@ const control = {
 
 declare global {
   interface Window {
-    __aelomiMock: typeof control;
+    __aelomiMock?: typeof control;
   }
 }
 

@@ -48,7 +48,7 @@ TesterArmy selects a free port. Playwright uses port 4173 and fails if it is occ
 No model or API key is needed. The e2e script and CI disable telemetry.
 
 `src/ipc/mock.ts` implements the generated command type in memory.
-Tests can use `window.__aelomiMock.reset()` and its typed `calls` log.
+Mock builds expose `window.__aelomiMock` with `reset()` and a typed `calls` log.
 Each browser test starts in a fresh context with an empty mock.
 The app imports commands through `src/ipc/index.ts`.
 Vite folds the IPC module's mode switch and selects the mock only in `mock` mode.
@@ -59,7 +59,10 @@ Acceptance tests import `test` from `e2e/fixtures.ts`.
 Its automatic fixture aborts non-local requests and fails with their URLs.
 Acceptance retries are disabled so a later clean attempt cannot hide remote traffic.
 Biome rejects direct test imports that skip the fixture.
-The Playwright fixture also covers WebSockets and blocks service workers.
+Playwright collects only `.spec.ts` files covered by the import restriction.
+Its fixture also covers WebSockets and remote redirect hops.
+TesterArmy's route guard cannot observe those two cases.
+Both browser configurations block service workers.
 Both suites allow only loopback hosts and `data:`, `blob:`, and `about:` URLs.
 CI caches their shared Playwright 1.63.0 WebKit build and uploads test reports.
 
