@@ -54,51 +54,73 @@ pub(crate) fn finish(
 }
 
 fn compact(shared: &Shared, doc: &DocId, rotated: Rotated) -> Result<(), CompactError> {
+    let snapshot = match rotated.encoded {
+        Some(snapshot) => snapshot,
+        None => match merged(shared, doc)? {
+            Some(snapshot) => snapshot,
+            None => return Ok(()),
+        },
+    };
     let tmp = shared
         .layout
         .doc_file(doc, DocFile::SnapshotTmp(rotated.generation));
-    create_durable(&*shared.fs, &tmp, &encode_snapshot(&rotated.state))?;
-    if let Err(e) = verify(shared, &tmp, &rotated.expected) {
+    create_durable(&*shared.fs, &tmp, &encode_snapshot(&snapshot.payload))?;
+    if let Err(e) = verify(shared, &tmp, &snapshot.expected) {
         let _ = shared.fs.remove(&tmp);
         return Err(e);
     }
     publish(shared, doc, &tmp, rotated.generation)?;
-    retire_older(shared, doc, &rotated.expected.ops, rotated.generation)?;
+    retire_older(shared, doc, snapshot.expected.ops(), rotated.generation)?;
     Ok(())
 }
 
 pub(crate) struct Rotated {
     generation: Generation,
-    state: Vec<u8>,
+    /// `None` for a doc with pending structs, whose snapshot `compact` merges from every update
+    /// the store holds for it.
+    encoded: Option<Snapshot>,
+}
+
+struct Snapshot {
+    payload: Vec<u8>,
     expected: Expected,
 }
 
-/// The doc's fingerprint is compared only without pending structs, since yrs integrates those
-/// differently when they're applied again.
-struct Expected {
-    ops: Ops,
-    fingerprint: Option<Fingerprint>,
+enum Expected {
+    /// yrs's encoding of a doc without pending structs must load back equal.
+    Equal { ops: Ops, fingerprint: Fingerprint },
+    /// A merge must hold exactly the operations of the updates in it and load with all of them.
+    /// Loading can integrate structs yrs had left pending, and yrs deletes any that land in a
+    /// deleted parent, so the loaded doc can hold more deletions.
+    Merged(Ops),
 }
 
 impl Expected {
     fn of(txn: &impl ReadTxn) -> Option<Self> {
-        Some(Self {
+        Some(Self::Equal {
             ops: Ops::of_doc(txn)?,
-            fingerprint: if txn.has_missing_updates() {
-                None
-            } else {
-                Fingerprint::of(txn)
-            },
+            fingerprint: Fingerprint::of(txn)?,
         })
     }
 
+    fn ops(&self) -> &Ops {
+        match self {
+            Self::Equal { ops, .. } | Self::Merged(ops) => ops,
+        }
+    }
+
     fn met_by(&self, held: &Ops, loaded: &impl ReadTxn) -> bool {
-        *held == self.ops
-            && Ops::of_doc(loaded).is_some_and(|ops| ops == self.ops)
-            && self
-                .fingerprint
-                .as_ref()
-                .is_none_or(|expected| Fingerprint::of(loaded).as_ref() == Some(expected))
+        let Some(loaded_ops) = Ops::of_doc(loaded) else {
+            return false;
+        };
+        match self {
+            Self::Equal { ops, fingerprint } => {
+                held == ops
+                    && loaded_ops == *ops
+                    && Fingerprint::of(loaded).as_ref() == Some(fingerprint)
+            }
+            Self::Merged(ops) => held == ops && loaded_ops.contains(ops),
+        }
     }
 }
 
@@ -111,14 +133,20 @@ pub(crate) fn rotate(shared: &Shared, doc: &DocId) -> Option<Rotated> {
     };
     let txn = ydoc.transact();
     state.log.unsnapshotted = LogSize::default();
-    let snapshot = txn.encode_state_as_update_v1(&StateVector::default());
-    if snapshot.len() > shared.limits.max_payload as usize {
-        eprintln!("aelomi storage: skipped compacting {doc}, as its snapshot is too large");
-        return None;
-    }
-    let Some(expected) = Expected::of(&txn) else {
-        eprintln!("aelomi storage: skipped compacting {doc}, as yrs can't decode its own encoding");
-        return None;
+    let encoded = if txn.has_missing_updates() {
+        None
+    } else {
+        let payload = txn.encode_state_as_update_v1(&StateVector::default());
+        if too_large(shared, doc, &payload) {
+            return None;
+        }
+        let Some(expected) = Expected::of(&txn) else {
+            eprintln!(
+                "aelomi storage: skipped compacting {doc}, as yrs can't decode its own encoding"
+            );
+            return None;
+        };
+        Some(Snapshot { payload, expected })
     };
     state.compaction = Compaction::Running {
         asked_after_rotate: false,
@@ -127,9 +155,28 @@ pub(crate) fn rotate(shared: &Shared, doc: &DocId) -> Option<Rotated> {
     state.log.segment = Segment::Next(generation, SegmentNo(0));
     Some(Rotated {
         generation,
-        state: snapshot,
-        expected,
+        encoded,
     })
+}
+
+/// Reads after the rotation, so it holds at least what the doc held then.
+fn merged(shared: &Shared, doc: &DocId) -> io::Result<Option<Snapshot>> {
+    let merged = shared.merge_held(doc)?;
+    if too_large(shared, doc, &merged.payload) {
+        return Ok(None);
+    }
+    Ok(Some(Snapshot {
+        payload: merged.payload,
+        expected: Expected::Merged(merged.ops),
+    }))
+}
+
+fn too_large(shared: &Shared, doc: &DocId, payload: &[u8]) -> bool {
+    let too_large = payload.len() > shared.limits.max_payload as usize;
+    if too_large {
+        eprintln!("aelomi storage: skipped compacting {doc}, as its snapshot is too large");
+    }
+    too_large
 }
 
 fn verify(shared: &Shared, tmp: &Path, expected: &Expected) -> Result<(), CompactError> {
