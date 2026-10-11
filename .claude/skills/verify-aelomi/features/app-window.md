@@ -11,7 +11,7 @@ Aelomi opens one window titled `Aelomi` with standard macOS window controls and 
 
 ## How to get to it (user POV)
 
-- Start the app with `pnpm tauri dev`.
+- Start the app with `pnpm dev:app` (any free port) or `pnpm tauri dev` (port 1420).
 - Open the built `Aelomi.app`.
 
 ## Driving it with app.sh and mock-drive

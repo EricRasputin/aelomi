@@ -21,7 +21,6 @@
     "perf",
     "scripts",
     "tests",
-    "scripts",
     "e2e.config.ts",
     "playwright.config.ts",
     "vite.config.ts",
