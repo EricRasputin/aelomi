@@ -18,7 +18,7 @@ use super::format::{FORMAT_VERSION, encode_format, parse_format};
 use super::fs::{Fs, FsLock, LockError, OsFs, create_durable};
 use super::health::{FailReason, Health};
 use super::layout::Layout;
-use super::recover::recover;
+use super::recover::{Merged, merge, recover, stored_updates};
 use super::state::{
     Compaction, DocSlot, DocState, Limits, Queued, Seq, Ydoc, lock_ignoring_poison,
 };
@@ -145,11 +145,19 @@ impl Store {
 
     /// The doc's full state as one Yjs v1 update, including updates not yet durable. A doc
     /// that was never written loads as an empty doc.
+    ///
+    /// yrs's encoding of a doc with pending structs can fail to apply or renumber them, so such a
+    /// doc loads as the merge of every update the store holds for it.
     pub fn load(&self, doc: &DocId) -> io::Result<Vec<u8>> {
-        self.shared.with_doc(doc, |ydoc, _| {
-            ydoc.transact()
-                .encode_state_as_update_v1(&StateVector::default())
-        })
+        let encoded = self.shared.with_doc(doc, |ydoc, _| {
+            let txn = ydoc.transact();
+            (!txn.has_missing_updates())
+                .then(|| txn.encode_state_as_update_v1(&StateVector::default()))
+        })?;
+        match encoded {
+            Some(state) => Ok(state),
+            None => Ok(self.shared.merge_held(doc)?.payload),
+        }
     }
 
     /// Applies `update` to the doc in memory and queues it for the writer. Never waits on a
@@ -402,6 +410,20 @@ impl Shared {
             self.queue_compaction(doc, state);
         }
         Ok(())
+    }
+
+    /// Merges every update in the doc's files, then its queue. The file lock keeps the writer
+    /// from moving a queued update into a file between the two reads.
+    pub fn merge_held(&self, doc: &DocId) -> io::Result<Merged> {
+        let slot = self.slot(doc);
+        let files = slot.files();
+        let stored = stored_updates(&*self.fs, &self.layout, doc)?;
+        let queued: Vec<Arc<[u8]>> = slot.state().as_ref().map_or_else(Vec::new, |state| {
+            state.queue.iter().map(|q| q.update.clone()).collect()
+        });
+        drop(files);
+        let updates = stored.iter().map(Vec::as_slice);
+        Ok(merge(updates.chain(queued.iter().map(|update| &**update))))
     }
 
     fn pending_through(&self, target: Seq) -> Vec<DocId> {

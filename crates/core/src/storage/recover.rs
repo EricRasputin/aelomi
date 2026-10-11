@@ -2,9 +2,11 @@ use std::collections::BTreeSet;
 use std::io;
 
 use yrs::updates::decoder::Decode;
+use yrs::updates::encoder::Encode;
 use yrs::{Doc, Transact, Update};
 
 use super::doc_id::DocId;
+use super::equality::Ops;
 use super::fs::Fs;
 use super::layout::{DocFile, Generation, Layout, SegmentNo};
 use super::log::{LogEnd, read_log};
@@ -24,26 +26,19 @@ pub(crate) fn recover(
     doc: &DocId,
     limits: Limits,
 ) -> io::Result<Recovered> {
-    let names = match fs.list(&layout.doc_dir(doc)) {
-        Ok(names) => names,
-        Err(e) if e.kind() == io::ErrorKind::NotFound => {
-            let log = LogState {
-                dir: DocDir::Missing,
-                segment: Segment::Next(Generation(0), SegmentNo(0)),
-                unsnapshotted: LogSize::default(),
-            };
-            let corrupt = BTreeSet::new();
-            return Ok(Recovered {
-                ydoc: Doc::new(),
-                log,
-                corrupt,
-                needs_compaction: false,
-            });
-        }
-        Err(e) => return Err(e),
+    let Some(files) = doc_files(fs, layout, doc)? else {
+        let log = LogState {
+            dir: DocDir::Missing,
+            segment: Segment::Next(Generation(0), SegmentNo(0)),
+            unsnapshotted: LogSize::default(),
+        };
+        return Ok(Recovered {
+            ydoc: Doc::new(),
+            log,
+            corrupt: BTreeSet::new(),
+            needs_compaction: false,
+        });
     };
-    let mut files: Vec<DocFile> = names.iter().filter_map(|n| DocFile::parse(n)).collect();
-    files.sort();
     let mut corrupt = BTreeSet::new();
 
     let ydoc = Doc::new();
@@ -110,6 +105,75 @@ pub(crate) fn recover(
         corrupt,
         needs_compaction,
     })
+}
+
+/// Every update recovery applies, in its order: each valid snapshot, newest first, then each
+/// log's records before any damage, oldest first.
+pub(crate) fn stored_updates(
+    fs: &dyn Fs,
+    layout: &Layout,
+    doc: &DocId,
+) -> io::Result<Vec<Vec<u8>>> {
+    let files = doc_files(fs, layout, doc)?.unwrap_or_default();
+    let mut updates = Vec::new();
+    for file in files.iter().rev() {
+        if let DocFile::Snapshot(_) = file
+            && let Some(payload) = read_snapshot(&fs.read(&layout.doc_file(doc, *file))?)
+        {
+            updates.push(payload.to_vec());
+        }
+    }
+    for file in &files {
+        if let DocFile::Log(..) = file {
+            let bytes = fs.read(&layout.doc_file(doc, *file))?;
+            updates.extend(read_log(&bytes).records.into_iter().map(<[u8]>::to_vec));
+        }
+    }
+    Ok(updates)
+}
+
+/// Merges `updates` into one that holds exactly their operations. Bytes that don't decode are
+/// left out, as recovery can't apply them either.
+pub(crate) fn merge<'a>(updates: impl IntoIterator<Item = &'a [u8]>) -> Merged {
+    let mut ops = Ops::default();
+    let mut level: Vec<Update> = updates
+        .into_iter()
+        .filter_map(|bytes| Update::decode_v1(bytes).ok())
+        .inspect(|update| ops.merge(Ops::of_update(update)))
+        .collect();
+    while level.len() > 1 {
+        let mut updates = level.into_iter().peekable();
+        level = std::iter::from_fn(|| {
+            updates.peek()?;
+            Some(Update::merge_updates(updates.by_ref().take(MERGE_FAN_IN)))
+        })
+        .collect();
+    }
+    Merged {
+        payload: level.pop().unwrap_or_default().encode_v1(),
+        ops,
+    }
+}
+
+/// yrs re-sorts every input at each step of a merge, so 10,000 records take about 250 ms in one
+/// merge and about 10 ms merged 32 at a time.
+const MERGE_FAN_IN: usize = 32;
+
+pub(crate) struct Merged {
+    pub payload: Vec<u8>,
+    pub ops: Ops,
+}
+
+/// The doc's files, sorted, or `None` if it has no folder.
+fn doc_files(fs: &dyn Fs, layout: &Layout, doc: &DocId) -> io::Result<Option<Vec<DocFile>>> {
+    let names = match fs.list(&layout.doc_dir(doc)) {
+        Ok(names) => names,
+        Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(e),
+    };
+    let mut files: Vec<DocFile> = names.iter().filter_map(|n| DocFile::parse(n)).collect();
+    files.sort();
+    Ok(Some(files))
 }
 
 fn apply_records(ydoc: &Doc, records: &[&[u8]]) -> bool {
