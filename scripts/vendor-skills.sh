@@ -6,7 +6,7 @@ set -euo pipefail
 PSTACK_URL=https://github.com/backnotprop/pstack
 PSTACK_REF=3a604672c46cd8187d2b19980eae0a34f9f91138
 # Skills whose disable-model-invocation line is removed, so agents can call them.
-PSTACK_UNHIDE="how why"
+PSTACK_UNHIDE="how why architect"
 
 EMIL_URL=https://github.com/emilkowalski/skill
 EMIL_REF=e8a175de22ae1e49370fc144c1f3bb9aeedf988d
@@ -58,7 +58,7 @@ install pstack "$TMP/pstack/skills"
 install emil "$TMP/emil/skills" $EMIL_EXCLUDE
 
 # pstack hides every skill from the model, but its own skills tell agents to run
-# how and why. Unhide those two. install copies fresh files, so the line is always there.
+# how, why, and architect. Unhide those. install copies fresh files, so the line is always there.
 UNHIDE_LINE='disable-model-invocation: true'
 for skill in $PSTACK_UNHIDE; do
   file="$SKILLS/$skill/SKILL.md"
