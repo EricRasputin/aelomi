@@ -171,10 +171,9 @@ pub(crate) fn with_a_loner_sixth(mut updates: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
 }
 
 pub(crate) fn without(updates: &[Vec<u8>], lost: &[usize]) -> Vec<Vec<u8>> {
-    let kept = updates.iter().enumerate();
-    kept.filter(|(i, _)| !lost.contains(i))
-        .map(|(_, update)| update.clone())
-        .collect()
+    let numbered = updates.iter().enumerate();
+    let kept = numbered.filter(|(i, _)| !lost.contains(i));
+    kept.map(|(_, update)| update.clone()).collect()
 }
 
 pub(crate) fn record_at(updates: &[Vec<u8>], n: usize) -> usize {

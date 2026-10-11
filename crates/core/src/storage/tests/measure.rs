@@ -256,20 +256,20 @@ fn measure_resync() {
 
     let (log, starts, big) = realistic_log();
     let (last, others) = starts.split_last().unwrap();
-    for (name, offset) in [("a length bit", 2), ("a payload bit", usize::MAX)] {
+    for (name, in_payload) in [("a length bit", false), ("a payload bit", true)] {
         let (mut worst, mut salvaged) = (Duration::ZERO, 0);
         for (i, &start) in others.iter().enumerate() {
             let payload = starts[i + 1] - start - 8;
-            let at = start + offset.min(8 + payload / 2);
+            let at = if in_payload {
+                start + 8 + payload / 2
+            } else {
+                start + 2
+            };
             let mut damaged = log.clone();
             damaged[at] ^= 0x10;
             let (took, end, records) = timed(&damaged, read_log);
             worst = worst.max(took);
-            if end == LogEnd::Corrupt && records == starts.len() - 1 {
-                salvaged += 1;
-            } else {
-                eprintln!("  record {i} of {payload} B: {end:?}, {records} records");
-            }
+            salvaged += usize::from(end == LogEnd::Corrupt && records == others.len());
         }
         eprintln!(
             "{} B log of {} records up to {big} B, {name} flipped in each but the last: \
@@ -278,9 +278,10 @@ fn measure_resync() {
             starts.len(),
             others.len()
         );
+        assert_eq!(salvaged, others.len(), "{name}");
     }
     let mut damaged = log.clone();
     damaged[last + 2] ^= 0x10;
     let (_, end, records) = timed(&damaged, read_log);
-    eprintln!("  in the last: {end:?}, {records} records");
+    assert_eq!((end, records), (LogEnd::Torn, others.len()), "in the last");
 }
