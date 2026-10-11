@@ -107,11 +107,12 @@ pub(crate) fn recover(
     })
 }
 
-pub(crate) fn stored_updates(
-    fs: &dyn Fs,
-    layout: &Layout,
-    doc: &DocId,
-) -> io::Result<Vec<Vec<u8>>> {
+pub(crate) struct Stored {
+    pub updates: Vec<Vec<u8>>,
+    pub unclean_logs: BTreeSet<DocFile>,
+}
+
+pub(crate) fn stored_updates(fs: &dyn Fs, layout: &Layout, doc: &DocId) -> io::Result<Stored> {
     let files = sorted_doc_files(fs, layout, doc)?.unwrap_or_default();
     let mut updates = Vec::new();
     for file in files.iter().rev() {
@@ -121,13 +122,21 @@ pub(crate) fn stored_updates(
             updates.push(payload.to_vec());
         }
     }
+    let mut unclean_logs = BTreeSet::new();
     for file in &files {
         if let DocFile::Log(..) = file {
             let bytes = fs.read(&layout.doc_file(doc, *file))?;
-            updates.extend(read_log(&bytes).records.into_iter().map(<[u8]>::to_vec));
+            let contents = read_log(&bytes);
+            if contents.end != LogEnd::Clean {
+                unclean_logs.insert(*file);
+            }
+            updates.extend(contents.records.into_iter().map(<[u8]>::to_vec));
         }
     }
-    Ok(updates)
+    Ok(Stored {
+        updates,
+        unclean_logs,
+    })
 }
 
 pub(crate) fn merge<'a>(updates: impl IntoIterator<Item = &'a [u8]>) -> Merged {
