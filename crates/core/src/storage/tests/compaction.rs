@@ -1,9 +1,9 @@
-use yrs::{Doc, GetString, ReadTxn, StateVector, Text, Transact};
+use yrs::updates::decoder::Decode;
+use yrs::{Doc, GetString, ReadTxn, StateVector, Text, Transact, Update};
 
-use super::{Delivery, Env, assert_doc, doc, out_of_order, soon};
+use super::{Delivery, Env, assert_doc, doc, in_order, ops_of_updates, out_of_order, soon};
 use crate::storage::compact::CompactError;
 use crate::storage::equality::Ops;
-use crate::storage::health::Health;
 use crate::storage::log::read_log;
 use crate::storage::sim_fs::{Crash, OpKind};
 use crate::storage::snapshot::{encode_snapshot, read_snapshot};
@@ -265,68 +265,40 @@ fn pending_structs_still_let_compaction_delete_the_old_generation() {
     }
 }
 
-fn ops(doc: &Doc) -> Ops {
-    Ops::of_doc(&doc.transact()).expect("yrs decodes its own encoding")
-}
-
+/// yrs 0.28's full-state encoding of seed 35 can't be applied, loads with different operations
+/// for seed 2, and renumbers pending structs for seed 7.
 #[test]
-fn a_doc_with_pending_structs_compacts_to_exactly_its_operations() {
-    for seed in [0, 5, 8, 47] {
-        let sent = out_of_order(seed, 80, Delivery::Shuffled);
-        let reference = doc_from(sent.iter().map(Vec::as_slice));
-        assert!(reference.transact().has_missing_updates(), "seed {seed}");
+fn a_doc_with_pending_structs_compacts_to_a_snapshot_of_exactly_its_operations() {
+    for seed in [35, 2, 7, 0, 5, 8, 47] {
+        let mut sent = out_of_order(seed, 80, Delivery::Shuffled);
         let env = Env::manual();
         let store = env.open();
-        let a = doc("a");
+        let (a, b) = (doc("a"), doc("b"));
         for update in &sent {
             store.append(&a, update).unwrap();
         }
+        assert!(store.has_pending_structs(&a), "seed {seed}");
         assert_eq!(store.flush(soon()), []);
         store
             .compact(&a)
             .unwrap_or_else(|e| panic!("seed {seed}: {e}"));
-        assert_eq!(
-            env.doc_files(&a),
-            ["snapshot-0000000001.ysnap"],
-            "seed {seed}"
-        );
-        drop(store);
-        assert_eq!(env.open().ops(&a), ops(&reference), "seed {seed}");
-    }
-}
-
-/// yrs 0.28's full-state encoding of these docs can't be applied (35), loads with different
-/// operations (2), or renumbers pending structs (7).
-#[test]
-fn a_snapshot_that_would_change_the_operations_is_refused_and_leaves_no_tmp() {
-    for seed in [35, 2, 7] {
-        let env = Env::manual();
-        let store = env.open();
-        let (a, b) = (doc("a"), doc("b"));
-        let mut sent = out_of_order(seed, 80, Delivery::Shuffled);
-        for update in &sent {
-            store.append(&a, update).unwrap();
-        }
-        assert_eq!(store.flush(soon()), []);
-        let log = "log-0000000000-0000000000.ylog";
-
-        assert!(
-            matches!(store.compact(&a), Err(CompactError::Mismatch)),
-            "seed {seed}"
-        );
-        assert_eq!(env.doc_files(&a), [log], "seed {seed}");
+        let snapshot = "snapshot-0000000001.ysnap";
+        assert_eq!(env.doc_files(&a), [snapshot], "seed {seed}");
+        let stored = &env.fs.files()[&env.path("docs/a").join(snapshot)];
+        let held = Update::decode_v1(read_snapshot(stored).unwrap()).unwrap();
+        assert_eq!(Ops::of_update(&held), ops_of_updates(&sent), "seed {seed}");
 
         let more = UpdateGen::new(seed + 1_000, 2).updates(2);
-        let seq_a = store.append(&a, &more[0]).unwrap();
-        let seq_b = store.append(&b, &more[1]).unwrap();
-        store.run_writer_once();
-        assert!(store.is_durable(&a, seq_a) && store.is_durable(&b, seq_b));
-        assert_eq!(store.health(), Health::Healthy);
+        store.append(&a, &more[0]).unwrap();
+        store.append(&b, &more[1]).unwrap();
+        assert_eq!(store.flush(soon()), []);
         sent.push(more[0].clone());
         drop(store);
         let store = env.open();
-        let reference = doc_from(sent.iter().map(Vec::as_slice));
-        assert_eq!(store.ops(&a), ops(&reference), "seed {seed}");
+        let loaded = doc_from([store.load(&a).unwrap().as_slice()]);
+        let expected = in_order(seed, 80);
+        apply(&expected, &more[0]);
+        assert_eq!(fingerprint(&loaded), fingerprint(&expected), "seed {seed}");
         assert_doc(&store, &b, &more[1..]);
     }
 }

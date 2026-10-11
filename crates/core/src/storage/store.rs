@@ -306,16 +306,6 @@ impl Store {
     }
 
     #[cfg(test)]
-    pub(crate) fn ops(&self, doc: &DocId) -> super::equality::Ops {
-        self.shared
-            .with_doc(doc, |ydoc, _| {
-                super::equality::Ops::of_doc(&ydoc.transact())
-            })
-            .expect("doc loads")
-            .expect("yrs decodes its own encoding")
-    }
-
-    #[cfg(test)]
     pub(crate) fn has_pending_structs(&self, doc: &DocId) -> bool {
         self.shared
             .with_doc(doc, |ydoc, _| ydoc.transact().has_missing_updates())
