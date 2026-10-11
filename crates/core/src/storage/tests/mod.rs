@@ -5,6 +5,7 @@ mod ack;
 mod compaction;
 mod crash;
 mod failures;
+mod fixture;
 mod real_disk;
 mod refusals;
 mod store;

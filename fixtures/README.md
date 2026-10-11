@@ -45,3 +45,21 @@ Block types are the EDIT-2 set: `paragraph`, `heading` (levels 1 to 3),
 `divider`, and `image`. `divider` and `image` have no `content` key.
 Image URLs use an `asset://` placeholder because the app's image URL scheme is
 not decided yet (DATA-3 names image files by content hash).
+
+## data-folders/
+
+One data folder per storage format, so every migration test can open each one
+(SPEC section 1, "Migrations"). Never edit these by hand. Once a release ships
+a format, its folder stays exactly as that release wrote it.
+
+`format-1/` is written by `crates/core/src/storage/tests/fixture.rs` when
+`AELOMI_WRITE_FIXTURES=1` is set:
+
+```sh
+AELOMI_WRITE_FIXTURES=1 cargo test -p aelomi-core fixture
+```
+
+Doc `page-1` has a snapshot, logs from two generations (a compaction rotated,
+then failed), and a torn tail in its newest log. Doc `workspace` has one log.
+The test opens a copy of the folder and checks each doc's exact contents. No
+`.lock` is committed.
