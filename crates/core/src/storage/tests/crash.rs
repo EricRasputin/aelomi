@@ -286,16 +286,21 @@ fn run(scenario: &Scenario) -> Result<(), TestCaseError> {
             prop_assert_eq!(fingerprint(&reloaded), fingerprint(expected), "{}", case);
         }
     }
+    let quarantined_before = env.quarantine();
     while let Some((_, result)) = store.run_compactor_once() {
         prop_assert!(result.is_ok(), "compaction after the crash: {:?}", result);
     }
     for (path, bytes) in env.quarantine() {
+        let end = read_log(&bytes).end;
         prop_assert_ne!(
-            read_log(&bytes).end,
+            end,
             LogEnd::Corrupt,
             "{:?}: a torn write is never corruption",
             path
         );
+        if !quarantined_before.contains_key(&path) {
+            prop_assert_eq!(end, LogEnd::Torn, "{:?}: a clean file is deleted", path);
+        }
     }
     Ok(())
 }
