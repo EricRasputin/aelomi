@@ -781,6 +781,7 @@ mod tests {
                 log(&UpdateGen::new(2, 1).next_update()),
             ),
             ("corrupt bytes", b"x".to_vec()),
+            ("a torn tail", [&log(&held)[..], &[9, 0, 0]].concat()),
         ] {
             let msgs = caught(&|fs| {
                 fs.put_durable(&p("/d/log-0000000001-0000000000.ylog"), &log);

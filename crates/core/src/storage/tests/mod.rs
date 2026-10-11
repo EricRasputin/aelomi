@@ -9,6 +9,7 @@ mod real_disk;
 mod refusals;
 mod store;
 
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -91,6 +92,12 @@ impl Env {
             .filter(|p| p.parent() == Some(&dir))
             .map(|p| name(p))
             .collect()
+    }
+
+    pub fn quarantine(&self) -> BTreeMap<PathBuf, Vec<u8>> {
+        let root = self.path("quarantine");
+        let files = self.fs.files().into_iter();
+        files.filter(|(path, _)| path.starts_with(&root)).collect()
     }
 }
 

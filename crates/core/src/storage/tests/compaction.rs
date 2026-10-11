@@ -7,7 +7,7 @@ use super::{
 };
 use crate::storage::compact::CompactError;
 use crate::storage::equality::Ops;
-use crate::storage::log::{LOG_MAGIC, encode_record, read_log};
+use crate::storage::log::{LOG_MAGIC, LogEnd, encode_record, read_log};
 use crate::storage::sim_fs::{Crash, OpKind};
 use crate::storage::snapshot::{encode_snapshot, read_snapshot};
 use crate::storage::state::Limits;
@@ -637,6 +637,95 @@ fn a_damaged_log_loads_every_record_around_the_damage_and_is_quarantined_not_del
         drop(store);
         assert_doc(&env.open(), &a, &expected);
     }
+}
+
+#[test]
+fn a_torn_log_is_quarantined_at_compaction_not_deleted() {
+    let a = doc("a");
+    let sent = UpdateGen::new(31, 2).updates(10);
+    let last = record_at(&sent, 9);
+    let logged = "log-0000000000-0000000000.ylog";
+    let planted = "log-0000000000-0000000001.ylog";
+    for (damage, name, flip, lost) in [
+        ("a bit in the last payload", logged, Some(last + 9), vec![9]),
+        (
+            "a high bit in the last length",
+            logged,
+            Some(last + 2),
+            vec![9],
+        ),
+        ("garbage right after the log header", planted, None, vec![]),
+    ] {
+        let env = Env::manual();
+        let store = env.open();
+        for update in &sent {
+            store.append(&a, update).unwrap();
+        }
+        assert_eq!(store.flush(soon()), []);
+        drop(store);
+
+        let path = env.path("docs/a").join(name);
+        let damaged = match flip {
+            Some(at) => {
+                let mut bytes = env.fs.files()[&path].clone();
+                bytes[at] ^= 0x10;
+                bytes
+            }
+            None => [&LOG_MAGIC[..], b"not a record"].concat(),
+        };
+        assert_eq!(read_log(&damaged).end, LogEnd::Torn, "{damage}");
+        env.fs.put_durable(&path, &damaged);
+
+        let store = env.open();
+        let expected = without(&sent, &lost);
+        assert_doc(&store, &a, &expected);
+        store.compact(&a).unwrap();
+        assert_eq!(env.doc_files(&a), ["snapshot-0000000001.ysnap"], "{damage}");
+        assert_eq!(
+            env.quarantine(),
+            [(env.path("quarantine/a").join(name), damaged)].into(),
+            "{damage}: only the torn file moved, byte for byte"
+        );
+        drop(store);
+        assert_doc(&env.open(), &a, &expected);
+    }
+}
+
+#[test]
+fn a_torn_tail_left_by_a_crash_is_quarantined_at_compaction() {
+    let a = doc("a");
+    let sent = UpdateGen::new(41, 2).updates(4);
+    let name = "log-0000000000-0000000000.ylog";
+    let (env, torn) = (0..64)
+        .find_map(|seed| {
+            let env = Env::manual();
+            let store = env.open();
+            for update in &sent[..3] {
+                store.append(&a, update).unwrap();
+            }
+            assert_eq!(store.flush(soon()), []);
+            store.append(&a, &sent[3]).unwrap();
+            env.fs.die_after(1);
+            store.run_writer_once();
+            drop(store);
+            env.fs.crash(Crash::KeepTornPrefix(seed));
+            let bytes = env.fs.files()[&env.path("docs/a").join(name)].clone();
+            (read_log(&bytes).end == LogEnd::Torn).then_some((env, bytes))
+        })
+        .expect("a seed that keeps part of the fourth record");
+    assert_eq!(read_log(&torn).records.len(), 3);
+
+    let store = env.open();
+    assert_doc(&store, &a, &sent[..3]);
+    store.compact(&a).unwrap();
+    assert_eq!(env.doc_files(&a), ["snapshot-0000000001.ysnap"]);
+    assert_eq!(
+        env.quarantine(),
+        [(env.path("quarantine/a").join(name), torn)].into(),
+        "moved byte for byte"
+    );
+    drop(store);
+    assert_doc(&env.open(), &a, &sent[..3]);
 }
 
 #[test]
