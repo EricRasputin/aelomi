@@ -321,3 +321,42 @@ fn a_rebuild_keeps_damage_it_finds_for_quarantine() {
     assert_doc(&env.open(), &a, &sent[..5]);
 }
 
+#[test]
+fn a_rebuild_queues_the_compaction_a_stale_doc_skipped() {
+    let later = UpdateGen::new(41, 1).next_update();
+    for rebuild_by_appending in [false, true] {
+        let mut env = Env::manual();
+        env.limits = Limits {
+            bytes: u64::MAX,
+            records: 0,
+        };
+        let store = env.open();
+        let a = doc("a");
+        let PartlyApplying { good, bad } = partly_applying_update();
+        store.append(&a, &good).unwrap();
+        assert_eq!(store.flush(soon()), []);
+        assert!(store.append(&a, &bad).is_err());
+        let (_, skipped) = store.run_compactor_once().expect("a was queued");
+        assert!(skipped.is_ok());
+        assert_eq!(store.queued_compactions(), []);
+
+        let mut sent = vec![good];
+        if rebuild_by_appending {
+            store.append(&a, &later).unwrap();
+            sent.push(later.clone());
+        } else {
+            assert_doc(&store, &a, &sent);
+        }
+        assert_eq!(
+            store.queued_compactions(),
+            std::slice::from_ref(&a),
+            "rebuilt by appending: {rebuild_by_appending}"
+        );
+        let (_, compacted) = store.run_compactor_once().expect("a was queued");
+        assert!(compacted.is_ok());
+        assert_eq!(env.doc_files(&a), ["snapshot-0000000001.ysnap"]);
+        assert_eq!(store.flush(soon()), []);
+        drop(store);
+        assert_doc(&env.open(), &a, &sent);
+    }
+}
