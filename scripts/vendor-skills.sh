@@ -5,6 +5,8 @@ set -euo pipefail
 
 PSTACK_URL=https://github.com/backnotprop/pstack
 PSTACK_REF=3a604672c46cd8187d2b19980eae0a34f9f91138
+# Comment Sicko (.claude/agents/comment-sicko.md) invokes these two; every other pstack skill keeps pstack's flag.
+PSTACK_UNHIDE="how why"
 
 EMIL_URL=https://github.com/emilkowalski/skill
 EMIL_REF=e8a175de22ae1e49370fc144c1f3bb9aeedf988d
@@ -55,6 +57,25 @@ fetch emil "$EMIL_URL" "$EMIL_REF"
 install pstack "$TMP/pstack/skills"
 install emil "$TMP/emil/skills" $EMIL_EXCLUDE
 
+# pstack hides every skill from the model. Unhide PSTACK_UNHIDE by dropping the
+# flag from the frontmatter only (between the first two --- lines).
+# install copies fresh files, so the line is always there.
+UNHIDE_LINE='disable-model-invocation: true'
+for skill in $PSTACK_UNHIDE; do
+  file="$SKILLS/$skill/SKILL.md"
+  if ! awk -v line="$UNHIDE_LINE" '
+    $0 == "---" && fences < 2 { fences++ }
+    fences == 1 && $0 == line { found = 1; next }
+    { print }
+    END { exit !found }
+  ' "$file" >"$file.tmp"; then
+    rm -f "$file.tmp"
+    echo "error: $file frontmatter lacks '$UNHIDE_LINE'; pstack changed upstream, recheck the unhide step" >&2
+    exit 1
+  fi
+  mv "$file.tmp" "$file"
+done
+
 mkdir -p "$AGENTS"
 cp "$TMP/pstack/agents/poteto-agent.md" "$AGENTS/poteto-agent.md"
 cp "$TMP/pstack/agents/comment-sicko.md" "$AGENTS/comment-sicko.md"
@@ -68,5 +89,8 @@ cp "$TMP/pstack/LICENSE" "$VENDOR/pstack/LICENSE"
 cp "$TMP/emil/LICENSE" "$VENDOR/emil/LICENSE"
 printf '%s\n%s\n' "$PSTACK_URL" "$PSTACK_REF" >"$VENDOR/pstack/SOURCE"
 printf '%s\n%s\n' "$EMIL_URL" "$EMIL_REF" >"$VENDOR/emil/SOURCE"
+for skill in $PSTACK_UNHIDE; do
+  echo "skills/$skill/SKILL.md: removed '$UNHIDE_LINE' (scripts/vendor-skills.sh)"
+done >"$VENDOR/pstack/PATCHES"
 
 echo "Vendored pstack@${PSTACK_REF:0:7}, emil@${EMIL_REF:0:7} and pen-design@$PEN_VERSION into .claude/"

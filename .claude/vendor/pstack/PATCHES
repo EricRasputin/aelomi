@@ -1,0 +1,2 @@
+skills/how/SKILL.md: removed 'disable-model-invocation: true' (scripts/vendor-skills.sh)
+skills/why/SKILL.md: removed 'disable-model-invocation: true' (scripts/vendor-skills.sh)
