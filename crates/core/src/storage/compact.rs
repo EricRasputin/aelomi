@@ -4,12 +4,14 @@ use std::io;
 use std::path::Path;
 use std::sync::atomic::Ordering;
 
-use yrs::{ReadTxn, StateVector, Transact};
+use yrs::updates::decoder::Decode;
+use yrs::{IdSet, ReadTxn, StateVector, Transact, Update};
 
 use super::doc_id::DocId;
 use super::equality::Fingerprint;
 use super::fs::create_durable;
 use super::layout::{DocFile, Generation, SegmentNo};
+use super::log::{LogEnd, read_log};
 use super::recover::snapshot_doc;
 use super::snapshot::{encode_snapshot, read_snapshot};
 use super::state::{Compaction, LogSize, Segment, Ydoc};
@@ -51,7 +53,7 @@ fn compact(shared: &Shared, doc: &DocId, rotated: Rotated) -> Result<(), Compact
     create_durable(&*shared.fs, &tmp, &encode_snapshot(&rotated.state))?;
     verify(shared, &tmp, &rotated.expected)?;
     publish(shared, doc, &tmp, rotated.generation)?;
-    retire_older(shared, doc, rotated.generation)?;
+    retire_older(shared, doc, &rotated)?;
     Ok(())
 }
 
@@ -98,9 +100,39 @@ fn publish(shared: &Shared, doc: &DocId, tmp: &Path, generation: Generation) -> 
     fs.full_sync(&layout.doc_dir(doc))
 }
 
-fn retire_older(shared: &Shared, doc: &DocId, generation: Generation) -> io::Result<()> {
+/// Deletes an older file only when the new snapshot holds everything in it, and quarantines
+/// corrupt ones. A file the snapshot lacks stays, so the next load merges it back.
+fn retire_older(shared: &Shared, doc: &DocId, rotated: &Rotated) -> io::Result<()> {
     let (fs, layout) = (&*shared.fs, &shared.layout);
     let slot = shared.slot(doc);
+    let dir = layout.doc_dir(doc);
+    let older = {
+        let _files = slot.files.lock().unwrap();
+        let mut older = Vec::new();
+        for name in fs.list(&dir)? {
+            let Some(file) = DocFile::parse(&name).filter(|f| f.generation() < rotated.generation)
+            else {
+                continue;
+            };
+            let bytes = match file {
+                DocFile::SnapshotTmp(_) => Vec::new(),
+                _ => fs.read(&dir.join(&name))?,
+            };
+            older.push((name, file, bytes));
+        }
+        older
+    };
+    // Checked without the file lock, so the writer isn't held up. Nothing writes below the new
+    // generation any more.
+    let held = SnapshotIds::of(&rotated.state).expect("the snapshot was verified");
+    let covered: Vec<(String, bool)> = older
+        .into_iter()
+        .map(|(name, file, bytes)| {
+            let covered = matches!(file, DocFile::SnapshotTmp(_)) || held.cover(file, &bytes);
+            (name, covered)
+        })
+        .collect();
+
     let _files = slot.files.lock().unwrap();
     let corrupt = slot
         .state
@@ -110,17 +142,15 @@ fn retire_older(shared: &Shared, doc: &DocId, generation: Generation) -> io::Res
         .expect("still loaded")
         .corrupt
         .clone();
-    let dir = layout.doc_dir(doc);
     let mut moved = BTreeSet::new();
-    for name in fs.list(&dir)? {
-        if DocFile::parse(&name).is_none_or(|f| f.generation() >= generation) {
-            continue;
-        }
+    for (name, covered) in covered {
         if corrupt.contains(&name) {
             move_to_quarantine_unsynced(shared, doc, &name)?;
             moved.insert(name);
-        } else {
+        } else if covered {
             fs.remove(&dir.join(&name))?;
+        } else {
+            eprintln!("aelomi storage: kept {doc}/{name}, which has changes the snapshot lacks");
         }
     }
     shared.sync_quarantine_then_doc_dir(doc)?;
@@ -129,6 +159,44 @@ fn retire_older(shared: &Shared, doc: &DocId, generation: Generation) -> io::Res
     let state = state.as_mut().expect("still loaded");
     state.corrupt.retain(|name| !moved.contains(name));
     Ok(())
+}
+
+/// The block IDs and deletions a snapshot holds, pending structs included.
+pub(crate) struct SnapshotIds {
+    inserted: IdSet,
+    deleted: IdSet,
+}
+
+impl SnapshotIds {
+    pub fn of(payload: &[u8]) -> Option<Self> {
+        let update = Update::decode_v1(payload).ok()?;
+        Some(Self {
+            inserted: update.insertions(true),
+            deleted: update.delete_set().clone(),
+        })
+    }
+
+    /// Whether every record in `file` adds no block or deletion the snapshot lacks. It compares
+    /// IDs, not docs: yrs integrates pending structs differently when they arrive again, so a
+    /// doc can change without gaining anything.
+    pub fn cover(&self, file: DocFile, bytes: &[u8]) -> bool {
+        let records = match file {
+            DocFile::Snapshot(_) => read_snapshot(bytes).map(|payload| vec![payload]),
+            DocFile::Log(..) => {
+                let contents = read_log(bytes);
+                (contents.end != LogEnd::Corrupt).then_some(contents.records)
+            }
+            DocFile::SnapshotTmp(_) => None,
+        };
+        records.is_some_and(|records| {
+            records.iter().all(|record| {
+                Update::decode_v1(record).is_ok_and(|update| {
+                    update.insertions(true).diff(&self.inserted).is_empty()
+                        && update.delete_set().diff(&self.deleted).is_empty()
+                })
+            })
+        })
+    }
 }
 
 fn move_to_quarantine_unsynced(shared: &Shared, doc: &DocId, name: &str) -> io::Result<()> {

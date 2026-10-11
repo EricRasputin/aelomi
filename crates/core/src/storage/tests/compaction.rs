@@ -56,8 +56,8 @@ fn compaction_interrupted_at_every_step_loses_nothing() {
         env.fs.ops().len() - before
     };
     assert_eq!(
-        steps, 13,
-        "create, write, fsync, full sync, read, rename, fsync, full sync, list, 2 removes, fsync, full sync"
+        steps, 15,
+        "create, write, fsync, full sync, read, rename, fsync, full sync, list, 2 reads, 2 removes, fsync, full sync"
     );
 
     for k in 0..=steps {
