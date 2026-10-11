@@ -1,7 +1,12 @@
+use std::path::Path;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use super::{assert_doc, doc};
-use crate::storage::store::Store;
+use super::{assert_doc, doc, soon};
+use crate::storage::clock::SystemClock;
+use crate::storage::fs::OsFs;
+use crate::storage::state::Limits;
+use crate::storage::store::{Driver, Store};
 use crate::storage::testkit::UpdateGen;
 
 #[test]
@@ -39,4 +44,63 @@ fn every_append_is_acknowledged_on_a_real_disk() {
         .close(Instant::now() + Duration::from_secs(5))
         .unwrap();
     assert_doc(&Store::open(dir.path()).unwrap(), &a, &sent);
+}
+
+#[test]
+fn compaction_and_quarantine_work_on_a_real_disk() {
+    let dir = tempfile::tempdir().unwrap();
+    let open = || {
+        let limits = Limits {
+            bytes: u64::MAX,
+            records: 20,
+        };
+        let clock = Arc::new(SystemClock::new());
+        Store::open_with(dir.path(), Arc::new(OsFs), clock, Driver::Manual, limits).unwrap()
+    };
+    let files = |dir: &Path| {
+        let mut names: Vec<String> = std::fs::read_dir(dir)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+            .collect();
+        names.sort();
+        names
+    };
+    let a = doc("a");
+    let docs_a = dir.path().join("docs/a");
+    let mut updates = UpdateGen::new(61, 2);
+    let compacted = updates.updates(21);
+    let store = open();
+    for update in &compacted {
+        store.append(&a, update).unwrap();
+    }
+    assert_eq!(store.flush(soon()), []);
+    let (queued, result) = store.run_compactor_once().expect("over the limit");
+    assert_eq!((queued, result.is_ok()), (a.clone(), true));
+    assert_eq!(files(&docs_a), ["snapshot-0000000001.ysnap"]);
+    assert_doc(&store, &a, &compacted);
+
+    let logged = updates.updates(10);
+    for update in &logged {
+        store.append(&a, update).unwrap();
+    }
+    store.close(soon()).unwrap();
+    let name = "log-0000000001-0000000000.ylog";
+    let path = docs_a.join(name);
+    let mut damaged = std::fs::read(&path).unwrap();
+    let sixth_record = 8 + logged[..5].iter().map(|u| 8 + u.len()).sum::<usize>();
+    damaged[sixth_record + 9] ^= 0x10;
+    std::fs::write(&path, &damaged).unwrap();
+
+    let intact = [&compacted[..], &logged[..5]].concat();
+    let store = open();
+    assert_doc(&store, &a, &intact);
+    store.compact(&a).unwrap();
+    assert_eq!(files(&docs_a), ["snapshot-0000000002.ysnap"]);
+    assert_eq!(
+        std::fs::read(dir.path().join("quarantine/a").join(name)).unwrap(),
+        damaged,
+        "moved byte for byte"
+    );
+    store.close(soon()).unwrap();
+    assert_doc(&open(), &a, &intact);
 }
