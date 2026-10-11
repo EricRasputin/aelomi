@@ -18,8 +18,9 @@ Zlib for foldhash, and Unlicense for isbot. Each is scoped to the packages named
 ## CI
 
 `.github/workflows/ci.yml` runs on every pull request, including stacked PRs,
-and on pushes to `main`. Its nine check IDs are `biome`, `tsc`, `vitest`,
-`nextest`, `cargo-deny`, `pnpm-audit`, `build-app`, `e2e`, and `playwright`.
+and on pushes to `main`. Its eleven check IDs are `biome`, `tsc`, `vitest`,
+`nextest`, `cargo-deny`, `pnpm-audit`, `build-app`, `e2e`, `playwright`,
+`cold-start`, and `keystroke`.
 The `pnpm-audit` job also runs `pnpm check-licenses`.
 The `nextest` job includes the `bindings_are_current` test.
 Cargo steps run with `--locked`, so a `Cargo.toml` change without its `Cargo.lock` fails.
@@ -36,7 +37,7 @@ prebuilt binaries with source-install fallbacks disabled.
 
 `build-app` uploads `Aelomi-app` with a 7-day retention period.
 The artifact contains `Aelomi-app.zip`, made with `ditto --keepParent` to preserve
-the ad-hoc signed `Aelomi.app` bundle. The cold-start gate can download this artifact.
+the ad-hoc signed `Aelomi.app` bundle. The `cold-start` job downloads this artifact.
 
 ## Browser tests
 
@@ -44,6 +45,8 @@ Run `pnpm exec e2e-web install webkit`, then `pnpm build:mock`,
 `pnpm test:e2e`, and `pnpm test:playwright`.
 Both suites run against the production React build in `dist-mock/`.
 `pnpm preview:mock` serves that build on `127.0.0.1`.
+`pnpm test:playwright` runs the `webkit` project. The `perf` project is separate
+(see Performance gates).
 TesterArmy selects a free port. Playwright uses port 4173 and fails if it is occupied.
 No model or API key is needed. The e2e script and CI disable telemetry.
 
@@ -68,6 +71,55 @@ CI caches their shared Playwright 1.63.0 WebKit build and uploads test reports.
 
 The license policy selects BSD-3-Clause for `json-schema`'s
 `AFL-2.1 OR BSD-3-Clause` dual license.
+
+## Performance gates
+
+`perf/budgets.json` holds every number the gates use, each with a `why`.
+The CLAUDE.md budgets are the `specMs` and `p95Ms` entries. Do not edit the
+budgets in CLAUDE.md or SPEC.md to make a gate pass.
+
+**Cold start.** `pnpm perf:cold` launches `target/release/bundle/macos/Aelomi.app`
+directly (build it with `pnpm tauri build --bundles app`), discards one warm-up,
+times 10 runs, and gates the median against the 500 ms budget. The median of an
+even count is the mean of the 5th and 6th sorted runs. With
+`AELOMI_PERF_REPORT=<path>` set, the app arms a probe that records the index
+screen's first content frame (the earlier of rAF plus MessageChannel and double
+rAF), writes JS marks, Rust stamps, and the kernel process start to the path,
+and exits. Without the env var the probe is never armed.
+Hosted `macos-15` runners cannot meet 500 ms: WebContent startup alone takes
+about 930 ms there against about 96 ms on an M1. The `cold-start` CI job
+therefore runs the harness with `--ci`, which gates `hostedCiMs` (end to end)
+and `hostedNavToPaintMs` (navigation start to first content frame, the part the
+frontend controls) and prints the 500 ms verdict as information. Exit code 2
+means the harness could not measure (for example "no paint marker in 10 s"),
+exit code 1 means a budget miss.
+
+**Keystroke-to-paint.** `pnpm perf:keystroke` runs the Playwright `perf` project
+against `dist-mock/`. The mock build adds `/perf/keystroke/empty` and
+`/perf/keystroke/page-5000-blocks`, plain `contenteditable` surfaces that stand
+in for the editor until BlockNote lands. The test presses a key and records five
+stamps on the page clock: the key event, the end of the `input` handler, the
+frame timestamp (the argument WebKit passes to every rAF callback of a rendering
+update, read from `performance.now()` before the first callback runs), the start
+of the recorder's own rAF callback, and the MessageChannel task after that rAF,
+which is the first frame. Each sample splits into app-owned time (key to input,
+plus frame timestamp to MessageChannel) and the tick wait between the input
+handler and the frame timestamp. Work the app queues in its own rAF runs before
+the recorder's callback and counts as app-owned. The two parts must add up to
+the full key-to-paint, and the test prints that check. It repeats 300 times per
+page load with 100 ms between keys, over 3 loads, and keeps 270 samples per load.
+Local mode gates the full key-to-paint p95 of the surface named by
+`keystroke.gate` against `p95Ms`, the CLAUDE.md budget. With `AELOMI_PERF_CI=1`,
+which the `keystroke` CI job sets, the test gates the app-owned p95 against
+`hostedAppOwnedP95Ms` instead and prints the full key-to-paint verdict as
+information, because on hosted `macos-15` the first rendering update after
+input waits for the runner's next 17 ms display tick. The other surface is
+reported in both modes.
+Did-it-happen guards fail the test when samples are missing or the text did not
+grow by one character per key.
+
+**Fixtures.** `pnpm fixtures` regenerates `fixtures/generated/` from the seeded
+generator. See `fixtures/README.md`.
 
 ## Handle an unfixable npm advisory
 

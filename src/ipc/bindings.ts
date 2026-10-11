@@ -5,9 +5,22 @@ import { invoke as __TAURI_INVOKE } from "@tauri-apps/api/core";
 /** Commands */
 export const commands = {
 	ping: (request: PingRequest) => __TAURI_INVOKE<PingReply>("ping", { request }),
+	perfReport: (marks: ColdStartMarks) => __TAURI_INVOKE<void>("perf_report", { marks }),
 };
 
 /* Types */
+export type ColdStartMarks = {
+	variant: string,
+	time_origin: number | null,
+	module_eval: number | null,
+	commit: number | null,
+	raf1: number | null,
+	mc_after_raf1: number | null,
+	raf2: number | null,
+	mc_after_raf2: number | null,
+	fcp: number | null,
+};
+
 export type PingReply = {
 	seq: number,
 	core_version: string,

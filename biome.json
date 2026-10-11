@@ -11,9 +11,11 @@
       "!!dist-mock",
       "!!.e2e",
       "!!playwright-report",
+      "!!perf-results",
       "!!test-results",
       "!!target",
       "!!src-tauri/gen",
+      "!!fixtures/generated",
       "!!src/ipc/bindings.ts"
     ]
   },

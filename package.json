@@ -17,8 +17,11 @@
     "build:mock": "pnpm typecheck && vite build --mode mock",
     "preview:mock": "vite preview --mode mock --host 127.0.0.1",
     "test:e2e": "E2E_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 e2e run",
-    "test:playwright": "playwright test",
-    "check:no-mock": "node scripts/check-no-mock.mjs"
+    "test:playwright": "playwright test --project webkit",
+    "check:no-mock": "node scripts/check-no-mock.mjs",
+    "perf:cold": "node perf/cold-start.ts",
+    "fixtures": "node fixtures/generate.ts",
+    "perf:keystroke": "playwright test --project perf --workers 1"
   },
   "dependencies": {
     "@radix-ui/react-tooltip": "1.3.0",
