@@ -4,7 +4,7 @@ A lightweight, fast, local-first alternative to Notion for macOS. Open source (M
 
 Aelomi is built entirely by AI agents. The maintainer sets direction and taste and uses the app daily as QA; nobody reads the code line by line. CI, the test suites, and a separate reviewer agent are the review gate. Product and design questions go to the maintainer. Engineering choices inside the stack below are yours to make.
 
-`SPEC.md` lists MVP features, behavior IDs, and their tests. Planned, not yet written: `TASTE.md` (design rules), `ARCHITECTURE.md`. Until they exist, this file is the source of truth for those topics.
+`SPEC.md` lists MVP features, behavior IDs, and their tests. `ARCHITECTURE.md` maps the crates, modules, and test layers. Planned, not yet written: `TASTE.md` (design rules). Until it exists, this file is the source of truth for design rules.
 
 ## Hard rules
 
@@ -61,7 +61,7 @@ A change that breaks a budget doesn't merge.
 | Pure TS logic | Vitest | View filtering/sorting, markdown conversion, keyboard handling |
 | React components | none | Covered by `e2e`. Don't write component unit tests. |
 
-Data-safety checks end in exact assertions, never an AI judgment step. No automated tool can drive the real macOS app, so the Rust tests and the maintainer's daily use cover that gap.
+Data-safety checks end in exact assertions, never an AI judgment step. The `verify-aelomi` skill drives the real app window through the macOS accessibility tree to prove a change works. It is evidence for a PR, not a CI gate, so the Rust tests and the maintainer's daily use still cover the real app.
 
 **Definition of done:** the feature's `e2e` tests pass in CI, logic has unit tests, budgets are green, dependency checks (`cargo-deny`, `pnpm audit`) pass, and the reviewer agent approves.
 
@@ -71,6 +71,7 @@ Data-safety checks end in exact assertions, never an AI judgment step. No automa
 - **Emil Kowalski's skills** (`github.com/emilkowalski/skill`) are the design and motion rulebook. Not used: `animate-expo`, `mobile-native`, `write-swift`.
 - Both skill sets are vendored into `.claude/skills/` (pstack's subagents into `.claude/agents/`), pinned to commits in `scripts/vendor-skills.sh`. Licenses and the pinned source live in `.claude/vendor/`. Update deliberately: bump the ref, rerun the script, review the diff. Never hand-edit vendored files. Keep `.claude/` out of Biome, tsc, and Vitest (pstack ships its own TS scripts).
 - pstack's model roles live in `~/.agents/pstack-models.md`, written by `/setup-pstack`.
+- **Review gate.** After CI is green on a PR, the agent that opened or updated it runs a fresh `reviewer` subagent (`.claude/agents/reviewer.md`), preferably on a different model family from the one that wrote the code. Findings go back to the builder, and the loop repeats on each new head until the verdict is APPROVE for the current head SHA. The maintainer merges only PRs whose latest reviewer verdict is APPROVE for the head SHA.
 
 ## Design direction
 

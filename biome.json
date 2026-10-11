@@ -77,6 +77,26 @@
           }
         }
       }
+    },
+    {
+      "includes": ["src/**", "!src/ipc/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["**/bindings", "**/bindings.ts"],
+                    "message": "Import from src/ipc so mock builds can swap the commands."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
     }
   ]
 }
