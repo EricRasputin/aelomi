@@ -43,13 +43,15 @@ function installRecorder() {
     const stamps: Stamps = {
       down,
       input: performance.now(),
+      frame: 0,
       raf: 0,
       rafMc: 0,
       doubleRaf: 0,
       shown: false,
     };
     const target = event.target instanceof HTMLElement ? event.target : null;
-    requestAnimationFrame(() => {
+    requestAnimationFrame((frame) => {
+      stamps.frame = frame;
       stamps.raf = performance.now();
       stamps.shown = (target?.lastChild?.textContent ?? "").endsWith(key);
       if (!stamps.shown) recorder.missing += 1;
@@ -149,6 +151,9 @@ for (const surface of keystrokeSurfaces) {
     const fullP95 = percentile95(column("full"));
     const appOwnedP95 = percentile95(column("appOwned"));
     const residual = Math.max(...kept.map(splitResidual));
+    const unordered = kept.filter(
+      (s) => s.tickWait < 0 || s.frameToRaf < 0,
+    ).length;
     const verdict = (value: number, budget: number) =>
       `${value} ms ${value <= budget ? "<=" : ">"} ${budget} ms ${value <= budget ? "PASS" : "FAIL"}`;
     const role = (metric: keyof Split) =>
@@ -156,7 +161,7 @@ for (const surface of keystrokeSurfaces) {
     const summary = [
       `${surface}: full key-to-paint p95 ${verdict(fullP95, budgets.p95Ms.value)} (spec, ${role("full")})`,
       `app-owned p95 ${verdict(appOwnedP95, budgets.hostedAppOwnedP95Ms.value)} (hosted, ${role("appOwned")})`,
-      `tick wait ${p50p95(column("tickWait"))}, key-to-input ${p50p95(column("keyToInput"))}, render ${p50p95(column("render"))}`,
+      `tick wait ${p50p95(column("tickWait"))}, key-to-input ${p50p95(column("keyToInput"))}, render ${p50p95(column("render"))}, frame start to the recorder's rAF ${p50p95(column("frameToRaf"))}`,
       `full key-to-paint p50 ${median(column("full"))} ms, range ${range(column("full"))} ms, per-load ${gate.metric} p95 ${loads.map((load) => load.p95).join(", ")}, double rAF p95 ${percentile95(column("doubleRaf"))} ms`,
       `split check: max |app-owned + tick wait - full| ${residual.toFixed(3)} ms over ${kept.length} samples from ${loads.length} loads`,
       `idle rAF cadence per load ${cadences.map((c) => c.toFixed(1)).join(", ")} ms, load average ${loadavg()
@@ -186,6 +191,10 @@ for (const surface of keystrokeSurfaces) {
       residual,
       `${surface}: split check, app-owned plus tick wait must equal full key-to-paint`,
     ).toBeLessThanOrEqual(1);
+    expect(
+      unordered,
+      `${surface}: the frame timestamp must sit between the input handler's end and the recorder's rAF callback`,
+    ).toBe(0);
     if (gated)
       expect(
         percentile95(column(gate.metric)),

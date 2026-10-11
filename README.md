@@ -97,14 +97,17 @@ exit code 1 means a budget miss.
 **Keystroke-to-paint.** `pnpm perf:keystroke` runs the Playwright `perf` project
 against `dist-mock/`. The mock build adds `/perf/keystroke/empty` and
 `/perf/keystroke/page-5000-blocks`, plain `contenteditable` surfaces that stand
-in for the editor until BlockNote lands. The test presses a key and records four
+in for the editor until BlockNote lands. The test presses a key and records five
 stamps on the page clock: the key event, the end of the `input` handler, the
-start of the rAF callback requested there, and the MessageChannel task after
-that rAF, which is the first frame. Each sample splits into app-owned time (key
-to input, plus rAF to MessageChannel) and the tick wait between the input
-handler and the rAF callback. The two must add up to the full key-to-paint, and
-the test prints that check. It repeats 300 times per page load with 100 ms
-between keys, over 3 loads, and keeps 270 samples per load.
+frame timestamp (the argument WebKit passes to every rAF callback of a rendering
+update, read from `performance.now()` before the first callback runs), the start
+of the recorder's own rAF callback, and the MessageChannel task after that rAF,
+which is the first frame. Each sample splits into app-owned time (key to input,
+plus frame timestamp to MessageChannel) and the tick wait between the input
+handler and the frame timestamp. Work the app queues in its own rAF runs before
+the recorder's callback and counts as app-owned. The two parts must add up to
+the full key-to-paint, and the test prints that check. It repeats 300 times per
+page load with 100 ms between keys, over 3 loads, and keeps 270 samples per load.
 Local mode gates the full key-to-paint p95 of the surface named by
 `keystroke.gate` against `p95Ms`, the CLAUDE.md budget. With `AELOMI_PERF_CI=1`,
 which the `keystroke` CI job sets, the test gates the app-owned p95 against
