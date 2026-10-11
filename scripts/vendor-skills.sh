@@ -5,8 +5,8 @@ set -euo pipefail
 
 PSTACK_URL=https://github.com/backnotprop/pstack
 PSTACK_REF=3a604672c46cd8187d2b19980eae0a34f9f91138
-# Comment Sicko invokes these three; every other pstack skill keeps pstack's flag.
-PSTACK_UNHIDE="how why architect"
+# Comment Sicko (.claude/agents/comment-sicko.md) invokes these two; every other pstack skill keeps pstack's flag.
+PSTACK_UNHIDE="how why"
 
 EMIL_URL=https://github.com/emilkowalski/skill
 EMIL_REF=e8a175de22ae1e49370fc144c1f3bb9aeedf988d
@@ -57,16 +57,22 @@ fetch emil "$EMIL_URL" "$EMIL_REF"
 install pstack "$TMP/pstack/skills"
 install emil "$TMP/emil/skills" $EMIL_EXCLUDE
 
-# pstack hides every skill from the model. Unhide PSTACK_UNHIDE.
+# pstack hides every skill from the model. Unhide PSTACK_UNHIDE by dropping the
+# flag from the frontmatter only (between the first two --- lines).
 # install copies fresh files, so the line is always there.
 UNHIDE_LINE='disable-model-invocation: true'
 for skill in $PSTACK_UNHIDE; do
   file="$SKILLS/$skill/SKILL.md"
-  if ! grep -qxF "$UNHIDE_LINE" "$file"; then
-    echo "error: $file lacks '$UNHIDE_LINE'; pstack changed upstream, recheck the unhide step" >&2
+  if ! awk -v line="$UNHIDE_LINE" '
+    $0 == "---" && fences < 2 { fences++ }
+    fences == 1 && $0 == line { found = 1; next }
+    { print }
+    END { exit !found }
+  ' "$file" >"$file.tmp"; then
+    rm -f "$file.tmp"
+    echo "error: $file frontmatter lacks '$UNHIDE_LINE'; pstack changed upstream, recheck the unhide step" >&2
     exit 1
   fi
-  grep -vxF "$UNHIDE_LINE" "$file" >"$file.tmp"
   mv "$file.tmp" "$file"
 done
 
