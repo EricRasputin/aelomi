@@ -73,8 +73,7 @@ pub(crate) fn read_log_hashing(bytes: &[u8], mut budget: usize) -> LogContents<'
             contents.end = LogEnd::Torn;
             break;
         }
-        let scan = past_own_length(bytes, at, &mut budget)
-            .map_or_else(|| resync(bytes, at + 1, &mut budget), Scan::ResumeAt);
+        let scan = resync(bytes, at + 1, &mut budget);
         contents.end = match (damage, scan) {
             (Damage::TornUnlessARecordFollows, Scan::NoRecord) => LogEnd::Torn,
             _ => LogEnd::Corrupt,
@@ -114,15 +113,6 @@ enum Scan {
     NoRecord,
     /// Records follow but none decodes as an update, or some were too long to hash.
     NoUpdate,
-}
-
-/// Damage inside a payload leaves its length intact, so the next record starts right after it.
-fn past_own_length(bytes: &[u8], at: usize, budget: &mut usize) -> Option<usize> {
-    let (_, damaged) = candidate_at(bytes, at)?;
-    let next = at + RECORD_HEADER + damaged.len();
-    let (crc, payload) = candidate_at(bytes, next)?;
-    *budget = budget.checked_sub(payload.len())?;
-    (crc32fast::hash(payload) == crc && Update::decode_v1(payload).is_ok()).then_some(next)
 }
 
 fn resync(bytes: &[u8], from: usize, budget: &mut usize) -> Scan {
