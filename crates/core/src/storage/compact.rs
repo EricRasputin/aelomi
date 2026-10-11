@@ -230,7 +230,7 @@ fn retire_older(
         .filter(|(_, (_, coverage))| *coverage == Coverage::Lacking)
         .flat_map(|((_, file, bytes), _)| records(*file, bytes).0)
         .collect();
-    let merge_back = !lacking.is_empty() && merging_back_adds(&snapshot.payload, lacking);
+    let kept_files_add = !lacking.is_empty() && adds_to(&snapshot.payload, lacking);
 
     let _files = slot.files();
     let corrupt = slot.state().as_ref().expect("still loaded").corrupt.clone();
@@ -241,7 +241,7 @@ fn retire_older(
                 eprintln!(
                     "aelomi storage: kept {doc}/{name}, which has changes the snapshot lacks"
                 );
-                if merge_back {
+                if kept_files_add {
                     slot.state().as_mut().expect("still loaded").ydoc = Ydoc::Stale;
                 }
             }
@@ -321,9 +321,7 @@ fn records(file: DocFile, bytes: &[u8]) -> (Vec<&[u8]>, bool) {
     }
 }
 
-/// A kept file's records that can't apply would make every rebuild and compaction keep it
-/// again, so the doc goes stale only when merging the files back changes what it holds.
-fn merging_back_adds<'a>(snapshot: &[u8], records: impl IntoIterator<Item = &'a [u8]>) -> bool {
+fn adds_to<'a>(snapshot: &[u8], records: impl IntoIterator<Item = &'a [u8]>) -> bool {
     let doc = Doc::new();
     let mut txn = doc.transact_mut();
     if let Ok(update) = Update::decode_v1(snapshot) {

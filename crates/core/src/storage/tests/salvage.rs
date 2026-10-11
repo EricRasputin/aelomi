@@ -33,15 +33,23 @@ fn flip_length(bytes: &mut [u8], record: usize, mask: usize) {
     }
 }
 
-/// The last record is sized so that flipping one bit of record `i`'s length makes it end
-/// exactly at EOF. Returns the five records and the mask that flips that bit.
-fn five_where_a_length_flip_reaches_eof(i: usize) -> (Vec<Vec<u8>>, usize) {
+struct LengthFlip {
+    records: Vec<Vec<u8>>,
+    mask: usize,
+}
+
+fn five_where_one_length_bit_reaches_eof(damaged: usize) -> LengthFlip {
     let four: Vec<Vec<u8>> = (1..=4).map(|client| typed(client, 4)).collect();
     (1..400)
         .map(|n| [&four[..], &[typed(5, n)]].concat())
-        .find_map(|five| {
-            let after: usize = five[i + 1..].iter().map(|u| 8 + u.len()).sum();
-            (after.is_power_of_two() && five[i].len() & after == 0).then_some((five, after))
+        .find_map(|records| {
+            let bytes_after: usize = records[damaged + 1..].iter().map(|u| 8 + u.len()).sum();
+            let flipping_reaches_eof =
+                bytes_after.is_power_of_two() && records[damaged].len() & bytes_after == 0;
+            flipping_reaches_eof.then_some(LengthFlip {
+                records,
+                mask: bytes_after,
+            })
         })
         .unwrap()
 }
@@ -63,32 +71,41 @@ fn a_length_flip_that_reaches_eof_loses_only_its_own_record() {
 
 #[test]
 fn a_length_flip_loses_only_its_own_record_wherever_the_new_length_ends() {
-    let (middle, to_eof_from_middle) = five_where_a_length_flip_reaches_eof(2);
-    let (first, to_eof_from_first) = five_where_a_length_flip_reaches_eof(0);
-    let past_eof: Vec<Vec<u8>> = (1..=5).map(|client| typed(client, 4)).collect();
-    for (case, five, damaged, mask) in [
-        ("the middle of five, to EOF", middle, 2, to_eof_from_middle),
-        ("the first of five, to EOF", first, 0, to_eof_from_first),
-        ("the second of five, far past EOF", past_eof, 1, 1 << 30),
+    let past_eof = LengthFlip {
+        records: (1..=5).map(|client| typed(client, 4)).collect(),
+        mask: 1 << 30,
+    };
+    for (case, damaged, flip) in [
+        (
+            "the middle of five, to EOF",
+            2,
+            five_where_one_length_bit_reaches_eof(2),
+        ),
+        (
+            "the first of five, to EOF",
+            0,
+            five_where_one_length_bit_reaches_eof(0),
+        ),
+        ("the second of five, far past EOF", 1, past_eof),
     ] {
-        let held = load_after(&five, |bytes| {
-            flip_length(bytes, record_at(&five, damaged), mask);
+        let held = load_after(&flip.records, |bytes| {
+            flip_length(bytes, record_at(&flip.records, damaged), flip.mask);
         });
-        assert_eq!(held, ops_of_updates(&without(&five, &[damaged])), "{case}");
+        let intact = without(&flip.records, &[damaged]);
+        assert_eq!(held, ops_of_updates(&intact), "{case}");
     }
 }
 
-/// The framing a record had before segments were salted.
 fn unsalted_frame(payload: &[u8]) -> Vec<u8> {
     let len = u32::try_from(payload.len()).unwrap().to_le_bytes();
     [&len[..], &crc32fast::hash(payload).to_le_bytes(), payload].concat()
 }
 
-/// A note whose text is a whole record holding an update from a client that never wrote to
-/// the doc.
+const NEVER_WROTE: u64 = 7;
+
 fn note_holding_a_frame(writer: u64) -> Vec<u8> {
     let frame = (1..200)
-        .map(|n| unsalted_frame(&typed(7, n)))
+        .map(|n| unsalted_frame(&typed(NEVER_WROTE, n)))
         .find(|frame| frame.is_ascii())
         .unwrap();
     let client = Doc::with_client_id(writer);

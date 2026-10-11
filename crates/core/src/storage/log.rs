@@ -7,8 +7,6 @@ pub(crate) const LOG_MAGIC: [u8; 8] = *b"AELOG\0\0\x02";
 pub(crate) const SEGMENT_HEADER: usize = LOG_MAGIC.len() + 8;
 const RECORD_HEADER: usize = 8;
 
-/// Every record's CRC covers its segment's random salt, so a resync never takes a record framed
-/// inside a payload, which can't know the salt, for a real one.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct Salt([u8; 8]);
 
@@ -111,7 +109,6 @@ pub(crate) fn read_log_hashing(bytes: &[u8], mut budget: usize) -> LogContents<'
     contents
 }
 
-/// A torn write leaves a last record that runs to or past EOF, or zeros.
 fn a_torn_write_explains(bytes: &[u8], at: usize) -> bool {
     let rest = &bytes[at..];
     let Some(header) = rest.get(..RECORD_HEADER) else {
