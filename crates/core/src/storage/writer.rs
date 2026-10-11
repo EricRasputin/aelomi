@@ -134,6 +134,7 @@ fn write(shared: &Shared, queued: Vec<Queued>) -> Option<FailReason> {
 struct Job {
     queued: Queued,
     segment: Segment,
+    acknowledged: u64,
     dir: DocDir,
     created_segment: bool,
     written: u64,
@@ -151,9 +152,14 @@ impl Job {
             .log;
         let (segment, dir) = (log.segment, log.dir);
         drop(state);
+        let acknowledged = match segment {
+            Segment::Open(.., written) => written,
+            Segment::Next(..) => 0,
+        };
         Self {
             queued,
             segment,
+            acknowledged,
             dir,
             created_segment: false,
             written: 0,
@@ -182,21 +188,23 @@ impl Job {
             }
         }
         let path = self.path(shared);
-        let (salt, mut bytes) = match self.segment {
-            Segment::Open(.., salt) => (salt, Vec::new()),
+        let (generation, n, salt, mut bytes) = match self.segment {
+            Segment::Open(generation, n, salt, _) => (generation, n, salt, Vec::new()),
             Segment::Next(generation, n) => {
                 let salt = Salt::random()?;
                 fs.create_new(&path)?;
-                self.segment = Segment::Open(generation, n, salt);
+                self.segment = Segment::Open(generation, n, salt, 0);
                 self.created_segment = true;
-                (salt, segment_header(salt))
+                (generation, n, salt, segment_header(salt))
             }
         };
         for update in &self.queued.updates {
             encode_record(salt, update, &mut bytes);
         }
         self.written = bytes.len() as u64;
-        fs.append(&path, &bytes)
+        fs.append(&path, &bytes)?;
+        self.segment = Segment::Open(generation, n, salt, self.acknowledged + self.written);
+        Ok(())
     }
 
     fn sync(&self, shared: &Shared) -> io::Result<()> {
@@ -244,6 +252,10 @@ fn commit(shared: &Shared, jobs: Vec<Job>) -> Option<FailReason> {
                 }
             }
             Some(reason) => {
+                if let Segment::Open(..) = job.segment {
+                    let file = job.segment.file().name();
+                    state.failed_writes.insert(file, job.acknowledged);
+                }
                 if state.log.dir == DocDir::Missing {
                     state.log.dir = job.dir;
                 }

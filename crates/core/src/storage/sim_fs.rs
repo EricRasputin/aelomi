@@ -5,7 +5,7 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::Duration;
 
 use super::clock::Clock;
-use super::compact::{Coverage, coverage};
+use super::compact::{Coverage, coverage, torn_after};
 use super::equality::Ops;
 use super::fs::{Fs, FsLock, LockError};
 use super::layout::DocFile;
@@ -118,7 +118,8 @@ struct Sim {
     ops_until_death: Option<usize>,
     session: u64,
     created_this_session: HashSet<usize>,
-    failed: HashSet<usize>,
+    /// Nodes an operation failed on this session, with the bytes durable before the failure.
+    failed: HashMap<usize, usize>,
     violations: Vec<String>,
 }
 
@@ -458,11 +459,17 @@ impl Sim {
 
     fn fail_op(&mut self, kind: OpKind, path: &Path, bytes: &[u8]) {
         let Some(id) = self.lookup(path) else { return };
-        if let (OpKind::Append, Node::File(file)) = (kind, &mut self.nodes[id]) {
-            file.data.extend_from_slice(&bytes[..bytes.len() / 2]);
-        }
+        let durable = match &mut self.nodes[id] {
+            Node::File(file) => {
+                if kind == OpKind::Append {
+                    file.data.extend_from_slice(&bytes[..bytes.len() / 2]);
+                }
+                file.durable
+            }
+            Node::Dir(_) => 0,
+        };
         if matches!(kind, OpKind::Append | OpKind::Fsync | OpKind::FullSync) {
-            self.failed.insert(id);
+            self.failed.entry(id).or_insert(durable);
         }
     }
 
@@ -473,7 +480,7 @@ impl Sim {
                 if !self.created_this_session.contains(&id) {
                     self.violation(format!("append to {path:?}, created before this session"));
                 }
-                if self.failed.contains(&id) {
+                if self.failed.contains_key(&id) {
                     self.violation(format!("append to {path:?} after a failed write or sync"));
                 }
             }
@@ -491,7 +498,13 @@ impl Sim {
             }
             OpKind::Remove => {
                 let clean = |coverage| coverage == Coverage::Full { damaged: false };
-                if !self.may_leave(id, path, clean) {
+                let held = |coverage| matches!(coverage, Coverage::Full { .. });
+                let torn_by_a_failed_write = match (&self.nodes[id], self.failed.get(&id)) {
+                    (Node::File(file), Some(&durable)) => torn_after(durable as u64, &file.data),
+                    _ => false,
+                };
+                let held_and_torn = torn_by_a_failed_write && self.may_leave(id, path, held);
+                if !self.may_leave(id, path, clean) && !held_and_torn {
                     self.violation(format!(
                         "remove {path:?}, not a .tmp or covered by a durable snapshot"
                     ));

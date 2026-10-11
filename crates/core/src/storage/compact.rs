@@ -214,28 +214,34 @@ fn retire_older(
     let slot = shared.slot(doc);
     let dir = layout.doc_dir(doc);
     let older = read_older(shared, &slot, &dir, generation)?;
-    let coverage: Vec<(String, Coverage)> = older
+    let coverage: Vec<Coverage> = older
         .iter()
-        .map(|(name, file, bytes)| {
-            let coverage = match file {
-                DocFile::SnapshotTmp(_) => Coverage::Full { damaged: false },
-                _ => coverage(snapshot.expected.ops(), *file, bytes),
-            };
-            (name.clone(), coverage)
+        .map(|(_, file, bytes)| match file {
+            DocFile::SnapshotTmp(_) => Coverage::Full { damaged: false },
+            _ => coverage(snapshot.expected.ops(), *file, bytes),
         })
         .collect();
     let lacking: Vec<&[u8]> = older
         .iter()
         .zip(&coverage)
-        .filter(|(_, (_, coverage))| *coverage == Coverage::Lacking)
+        .filter(|(_, coverage)| **coverage == Coverage::Lacking)
         .flat_map(|((_, file, bytes), _)| records(*file, bytes).0)
         .collect();
     let kept_files_add = !lacking.is_empty() && adds_to(&snapshot.payload, lacking);
 
     let _files = slot.files();
-    let corrupt = slot.state().as_ref().expect("still loaded").corrupt.clone();
-    let mut moved = BTreeSet::new();
-    for (name, coverage) in coverage {
+    let (corrupt, failed_writes) = {
+        let state = slot.state();
+        let state = state.as_ref().expect("still loaded");
+        (state.corrupt.clone(), state.failed_writes.clone())
+    };
+    let mut retired = BTreeSet::new();
+    for ((name, _, bytes), coverage) in older.iter().zip(coverage) {
+        let torn_by_a_failed_write = || {
+            failed_writes
+                .get(name)
+                .is_some_and(|&acknowledged| torn_after(acknowledged, bytes))
+        };
         match coverage {
             Coverage::Lacking => {
                 eprintln!(
@@ -244,21 +250,25 @@ fn retire_older(
                 if kept_files_add {
                     slot.state().as_mut().expect("still loaded").ydoc = Ydoc::Stale;
                 }
+                continue;
             }
-            Coverage::Full { damaged: false } if !corrupt.contains(&name) => {
-                fs.remove(&dir.join(&name))?;
+            Coverage::Full { damaged }
+                if !corrupt.contains(name) && (!damaged || torn_by_a_failed_write()) =>
+            {
+                fs.remove(&dir.join(name))?;
             }
-            Coverage::Full { .. } => {
-                move_to_quarantine_unsynced(shared, doc, &name)?;
-                moved.insert(name);
-            }
+            Coverage::Full { .. } => move_to_quarantine_unsynced(shared, doc, name)?,
         }
+        retired.insert(name.clone());
     }
     shared.sync_quarantine_then_doc_dir(doc)?;
     fs.full_sync(&dir)?;
     let mut state = slot.state();
     let state = state.as_mut().expect("still loaded");
-    state.corrupt.retain(|name| !moved.contains(name));
+    state.corrupt.retain(|name| !retired.contains(name));
+    state
+        .failed_writes
+        .retain(|name, _| !retired.contains(name));
     Ok(())
 }
 
@@ -305,6 +315,15 @@ pub(crate) fn coverage(held: &Ops, file: DocFile, bytes: &[u8]) -> Coverage {
     } else {
         Coverage::Lacking
     }
+}
+
+/// A failed write leaves a torn tail after the bytes acknowledged before it. If those bytes
+/// read clean, the damage is all in bytes nobody was told were saved.
+pub(crate) fn torn_after(acknowledged: u64, bytes: &[u8]) -> bool {
+    let acknowledged = acknowledged as usize;
+    let before = bytes.get(..acknowledged).map(read_log);
+    read_log(bytes).end == LogEnd::Torn
+        && (acknowledged == 0 || before.is_some_and(|before| before.end == LogEnd::Clean))
 }
 
 fn records(file: DocFile, bytes: &[u8]) -> (Vec<&[u8]>, bool) {

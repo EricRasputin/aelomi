@@ -384,6 +384,7 @@ impl Shared {
                 log: recovered.log,
                 failure: None,
                 corrupt: recovered.corrupt,
+                failed_writes: BTreeMap::new(),
                 compaction: Compaction::Idle,
             }),
             Some(state) => {

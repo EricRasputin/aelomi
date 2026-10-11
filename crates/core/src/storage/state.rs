@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
@@ -52,6 +52,8 @@ pub(crate) struct DocState {
     pub log: LogState,
     pub failure: Option<Failure>,
     pub corrupt: BTreeSet<String>,
+    /// Logs a failed write tore this session, with the bytes acknowledged before it.
+    pub failed_writes: BTreeMap<String, u64>,
     pub compaction: Compaction,
 }
 
@@ -119,13 +121,14 @@ pub(crate) enum DocDir {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Segment {
     Next(Generation, SegmentNo),
-    Open(Generation, SegmentNo, Salt),
+    /// Created this session, with the bytes written to it.
+    Open(Generation, SegmentNo, Salt, u64),
 }
 
 impl Segment {
     pub fn file(self) -> DocFile {
         match self {
-            Self::Next(g, n) | Self::Open(g, n, _) => DocFile::Log(g, n),
+            Self::Next(g, n) | Self::Open(g, n, ..) => DocFile::Log(g, n),
         }
     }
 
@@ -135,7 +138,7 @@ impl Segment {
 
     pub fn abandon(self) -> Self {
         match self {
-            Self::Next(g, n) | Self::Open(g, n, _) => Self::Next(g, n.next()),
+            Self::Next(g, n) | Self::Open(g, n, ..) => Self::Next(g, n.next()),
         }
     }
 }
