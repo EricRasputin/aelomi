@@ -308,6 +308,13 @@ impl Store {
     }
 
     #[cfg(test)]
+    pub(crate) fn has_pending_structs(&self, doc: &DocId) -> bool {
+        self.shared
+            .with_doc(doc, |ydoc, _| ydoc.transact().has_missing_updates())
+            .expect("doc loads")
+    }
+
+    #[cfg(test)]
     pub(crate) fn is_durable(&self, doc: &DocId, seq: Seq) -> bool {
         self.shared.pending_through(seq).binary_search(doc).is_err()
     }

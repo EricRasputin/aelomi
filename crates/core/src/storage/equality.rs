@@ -97,7 +97,7 @@ fn branch(root: &Out) -> Option<BranchPtr> {
 
 const INCLUDE_DELETED: bool = true;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(crate) struct Ops {
     inserted: IdSet,
     deleted: IdSet,
@@ -127,6 +127,11 @@ impl Ops {
             ops.deleted.merge_with(pending.clone());
         }
         Some(ops)
+    }
+
+    pub fn merge(&mut self, other: Self) {
+        self.inserted.merge_with(other.inserted);
+        self.deleted.merge_with(other.deleted);
     }
 
     pub fn contains(&self, other: &Self) -> bool {

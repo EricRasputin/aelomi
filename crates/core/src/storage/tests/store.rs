@@ -2,14 +2,16 @@ use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use yrs::{Doc, Map, ReadTxn, StateVector, Text, TextPrelim, TextRef, Transact};
+use yrs::updates::decoder::Decode;
+use yrs::{Doc, Map, ReadTxn, StateVector, Text, TextPrelim, TextRef, Transact, Update};
 
-use super::{Env, assert_doc, doc, soon};
+use super::{Delivery, Env, assert_doc, doc, in_order, ops_of_updates, out_of_order, soon};
 use crate::storage::compact::CompactError;
+use crate::storage::equality::Ops;
 use crate::storage::sim_fs::OpKind;
 use crate::storage::state::Limits;
 use crate::storage::store::{AppendError, Store};
-use crate::storage::testkit::{UpdateGen, apply};
+use crate::storage::testkit::{SplitMix64, UpdateGen, apply, fingerprint};
 use crate::storage::writer::Step;
 
 #[test]
@@ -265,6 +267,94 @@ fn loading_writes_nothing_and_the_first_append_starts_a_new_segment() {
     );
     drop(store);
     assert_doc(&env.open(), &doc("a"), &[first, second]);
+}
+
+fn applied(bytes: &[u8], case: &str) -> (Ops, Doc) {
+    let update = Update::decode_v1(bytes).unwrap_or_else(|e| panic!("{case}: {e}"));
+    let held = Ops::of_update(&update);
+    let doc = Doc::new();
+    doc.transact_mut()
+        .apply_update(update)
+        .unwrap_or_else(|e| panic!("{case}: {e}"));
+    (held, doc)
+}
+
+/// yrs 0.28's full-state encoding of these docs can't be applied (35), loads with different
+/// operations (2), or renumbers pending structs (7).
+#[test]
+fn a_doc_with_pending_structs_loads_as_bytes_that_apply_and_hold_exactly_its_operations() {
+    for seed in [35, 2, 7, 0, 5, 8, 47] {
+        let sent = out_of_order(seed, 80, Delivery::Shuffled);
+        let env = Env::manual();
+        let store = env.open();
+        let a = doc("a");
+        for update in &sent {
+            store.append(&a, update).unwrap();
+        }
+        assert!(store.has_pending_structs(&a), "seed {seed}");
+        let queued = store.load(&a).unwrap();
+        assert_eq!(store.flush(soon()), []);
+        drop(store);
+        let stored = env.open().load(&a).unwrap();
+
+        for (from, bytes) in [("queue", queued), ("files", stored)] {
+            let case = format!("seed {seed}, loaded from its {from}");
+            let (held, loaded) = applied(&bytes, &case);
+            assert_eq!(held, ops_of_updates(&sent), "{case}");
+            assert_eq!(
+                fingerprint(&loaded),
+                fingerprint(&in_order(seed, 80)),
+                "{case}"
+            );
+        }
+    }
+}
+
+#[test]
+fn a_doc_missing_an_update_loads_every_operation_and_settles_once_it_arrives() {
+    for seed in [83, 87, 100] {
+        let mut sent = out_of_order(seed, 40, Delivery::Shuffled);
+        let withheld = sent.remove(SplitMix64::new(seed).below(40) as usize);
+        let env = Env::manual();
+        let store = env.open();
+        let a = doc("a");
+        for update in &sent {
+            store.append(&a, update).unwrap();
+        }
+        assert!(store.has_pending_structs(&a), "seed {seed}");
+        let (held, _) = applied(&store.load(&a).unwrap(), &format!("seed {seed}"));
+        assert_eq!(held, ops_of_updates(&sent), "seed {seed}");
+
+        store.append(&a, &withheld).unwrap();
+        let (_, loaded) = applied(&store.load(&a).unwrap(), &format!("seed {seed}"));
+        assert_eq!(
+            fingerprint(&loaded),
+            fingerprint(&in_order(seed, 40)),
+            "seed {seed}"
+        );
+    }
+}
+
+#[test]
+fn a_doc_without_pending_structs_loads_from_memory_without_reading_its_files() {
+    let sent = UpdateGen::new(4, 3).updates(80);
+    let env = Env::manual();
+    let store = env.open();
+    let a = doc("a");
+    for update in &sent {
+        store.append(&a, update).unwrap();
+    }
+    assert_eq!(store.flush(soon()), []);
+    drop(store);
+    let store = env.open();
+    store.load(&a).unwrap();
+    assert!(!store.has_pending_structs(&a));
+
+    let before = env.fs.ops().len();
+    let (held, loaded) = applied(&store.load(&a).unwrap(), "in order");
+    assert_eq!(env.fs.ops().len(), before, "a second load reads nothing");
+    assert_eq!(fingerprint(&loaded), fingerprint(&in_order(4, 80)));
+    assert!(held.contains(&ops_of_updates(&sent)));
 }
 
 #[test]

@@ -1,6 +1,6 @@
 use yrs::{Doc, GetString, ReadTxn, StateVector, Text, Transact};
 
-use super::{Env, assert_doc, doc, soon};
+use super::{Delivery, Env, assert_doc, doc, out_of_order, soon};
 use crate::storage::compact::CompactError;
 use crate::storage::equality::Ops;
 use crate::storage::health::Health;
@@ -9,7 +9,7 @@ use crate::storage::sim_fs::{Crash, OpKind};
 use crate::storage::snapshot::{encode_snapshot, read_snapshot};
 use crate::storage::state::Limits;
 use crate::storage::store::Store;
-use crate::storage::testkit::{SplitMix64, UpdateGen, apply, doc_from, fingerprint};
+use crate::storage::testkit::{UpdateGen, apply, doc_from, fingerprint};
 
 fn two_generations(env: &Env) -> (Store, Vec<Vec<u8>>) {
     let store = env.open();
@@ -211,28 +211,6 @@ fn pending_structs_survive_compaction() {
     let loaded = crate::storage::testkit::doc_from([store.load(&a).unwrap().as_slice()]);
     let text = loaded.get_or_insert_text("text");
     assert_eq!(text.get_string(&loaded.transact()), "bc");
-}
-
-#[derive(Clone, Copy, Debug)]
-enum Delivery {
-    Shuffled,
-    OneWithheld,
-}
-
-fn out_of_order(seed: u64, n: usize, delivery: Delivery) -> Vec<Vec<u8>> {
-    let mut rng = SplitMix64::new(seed);
-    let mut updates = UpdateGen::new(seed, 3).updates(n);
-    match delivery {
-        Delivery::Shuffled => {
-            for i in (1..n).rev() {
-                updates.swap(i, rng.below(i as u64 + 1) as usize);
-            }
-        }
-        Delivery::OneWithheld => {
-            updates.remove(rng.below(n as u64 / 2) as usize);
-        }
-    }
-    updates
 }
 
 #[test]

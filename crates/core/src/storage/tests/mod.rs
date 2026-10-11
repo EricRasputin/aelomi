@@ -12,12 +12,15 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use yrs::updates::decoder::Decode;
+
 use super::clock::{Clock, ManualClock, SystemClock};
 use super::doc_id::DocId;
+use super::equality::Ops;
 use super::sim_fs::SimFs;
 use super::state::Limits;
 use super::store::{Driver, OpenError, Store};
-use super::testkit::{doc_from, fingerprint};
+use super::testkit::{SplitMix64, UpdateGen, doc_from, fingerprint};
 
 pub(crate) struct Env {
     pub fs: Arc<SimFs>,
@@ -117,4 +120,42 @@ pub(crate) fn assert_doc(store: &Store, id: &DocId, updates: &[Vec<u8>]) {
     let loaded = doc_from([store.load(id).expect("doc loads").as_slice()]);
     let expected = doc_from(updates.iter().map(Vec::as_slice));
     assert_eq!(fingerprint(&loaded), fingerprint(&expected), "doc {id}");
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum Delivery {
+    Shuffled,
+    OneWithheld,
+}
+
+pub(crate) fn out_of_order(seed: u64, n: usize, delivery: Delivery) -> Vec<Vec<u8>> {
+    let mut rng = SplitMix64::new(seed);
+    let mut updates = UpdateGen::new(seed, 3).updates(n);
+    match delivery {
+        Delivery::Shuffled => {
+            for i in (1..n).rev() {
+                updates.swap(i, rng.below(i as u64 + 1) as usize);
+            }
+        }
+        Delivery::OneWithheld => {
+            updates.remove(rng.below(n as u64 / 2) as usize);
+        }
+    }
+    updates
+}
+
+/// The doc the shuffled updates of `seed` make when applied in the order they were made.
+pub(crate) fn in_order(seed: u64, n: usize) -> yrs::Doc {
+    doc_from(UpdateGen::new(seed, 3).updates(n).iter().map(Vec::as_slice))
+}
+
+/// Every insert and deletion the updates carry. A doc can hold more deletions: yrs deletes what
+/// it integrates into a deleted parent.
+pub(crate) fn ops_of_updates(updates: &[Vec<u8>]) -> Ops {
+    let mut ops = Ops::default();
+    for update in updates {
+        let update = yrs::Update::decode_v1(update).expect("a valid update");
+        ops.merge(Ops::of_update(&update));
+    }
+    ops
 }
