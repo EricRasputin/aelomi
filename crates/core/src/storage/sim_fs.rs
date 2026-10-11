@@ -7,6 +7,8 @@ use std::time::Duration;
 use super::clock::Clock;
 use super::fs::{Fs, FsLock, LockError};
 use super::layout::DocFile;
+use super::recover::snapshot_doc;
+use super::snapshot::read_snapshot;
 use super::testkit::SplitMix64;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -370,9 +372,11 @@ impl Sim {
 
     fn has_durable_snapshot_above(&self, dir: usize, generation: u64) -> bool {
         self.dir(dir).durable.iter().any(|(name, &id)| {
-            let newer = matches!(DocFile::parse(name), Some(DocFile::Snapshot(g)) if g.0 > generation);
+            let newer =
+                matches!(DocFile::parse(name), Some(DocFile::Snapshot(g)) if g.0 > generation);
             newer
-                && matches!(&self.nodes[id], Node::File(f) if f.durable == f.data.len() && f.durable > 0)
+                && matches!(&self.nodes[id], Node::File(f) if f.durable == f.data.len()
+                    && read_snapshot(&f.data).and_then(snapshot_doc).is_some())
         })
     }
 }
@@ -512,8 +516,11 @@ fn not_found() -> io::Error {
 
 #[cfg(test)]
 mod tests {
+    use yrs::{Doc, ReadTxn, StateVector, Transact};
+
     use super::*;
     use crate::storage::clock::ManualClock;
+    use crate::storage::snapshot::encode_snapshot;
 
     fn sim() -> Arc<SimFs> {
         SimFs::new(Arc::new(ManualClock::default()))
@@ -640,9 +647,30 @@ mod tests {
             ]
         );
 
+        for (name, snapshot) in [
+            ("fails its CRC", b"y".to_vec()),
+            ("is not a Yjs update", encode_snapshot(b"not yjs")),
+        ] {
+            let msgs = caught(&|fs| {
+                fs.put_durable(&p("/d/log-0000000001-0000000000.ylog"), b"x");
+                fs.put_durable(&p("/d/snapshot-0000000002.ysnap"), &snapshot);
+                fs.remove(&p("/d/log-0000000001-0000000000.ylog")).unwrap();
+            });
+            assert_eq!(
+                msgs,
+                [
+                    r#"remove "/d/log-0000000001-0000000000.ylog", not a .tmp or covered by a durable snapshot"#
+                ],
+                "a newer snapshot that {name} covers nothing"
+            );
+        }
+
         let fs = sim();
+        let state = Doc::new()
+            .transact()
+            .encode_state_as_update_v1(&StateVector::default());
         fs.put_durable(&p("/d/log-0000000001-0000000000.ylog"), b"x");
-        fs.put_durable(&p("/d/snapshot-0000000002.ysnap"), b"y");
+        fs.put_durable(&p("/d/snapshot-0000000002.ysnap"), &encode_snapshot(&state));
         fs.put_durable(&p("/d/snapshot-0000000003.ysnap.tmp"), b"z");
         fs.remove(&p("/d/log-0000000001-0000000000.ylog")).unwrap();
         fs.remove(&p("/d/snapshot-0000000003.ysnap.tmp")).unwrap();
