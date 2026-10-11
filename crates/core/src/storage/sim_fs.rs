@@ -81,8 +81,8 @@ struct HoldState {
 
 impl Hold {
     pub fn wait_until_reached(&self) {
-        let state = self.state.lock().unwrap();
-        drop(self.changed.wait_while(state, |s| !s.reached).unwrap());
+        let reached = self.wait_for(|s| s.reached);
+        assert!(reached, "the held operation was never reached");
     }
 
     pub fn release(&self) {
@@ -91,10 +91,20 @@ impl Hold {
     }
 
     fn pass(&self) {
-        let mut state = self.state.lock().unwrap();
-        state.reached = true;
+        self.state.lock().unwrap().reached = true;
         self.changed.notify_all();
-        drop(self.changed.wait_while(state, |s| !s.released).unwrap());
+        let released = self.wait_for(|s| s.released);
+        assert!(released, "the held operation was never released");
+    }
+
+    /// Returns before a caller can panic, so a failed wait never poisons the state.
+    fn wait_for(&self, done: impl Fn(&HoldState) -> bool) -> bool {
+        let state = self.state.lock().unwrap();
+        let (state, _) = self
+            .changed
+            .wait_timeout_while(state, self.limit, |s| !done(s))
+            .unwrap();
+        done(&state)
     }
 }
 
