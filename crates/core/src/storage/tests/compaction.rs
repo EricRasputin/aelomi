@@ -366,6 +366,63 @@ fn a_doc_whose_snapshot_passes_the_payload_limit_skips_compaction_and_keeps_writ
 }
 
 #[test]
+fn a_panic_compacting_one_doc_leaves_its_files_and_the_next_doc_still_compacts() {
+    let mut env = Env::manual();
+    env.limits = Limits {
+        bytes: u64::MAX,
+        records: 3,
+        ..Limits::DATA_6
+    };
+    let store = env.open();
+    let (a, b) = (doc("a"), doc("b"));
+    let mut sent_a = UpdateGen::new(110, 2).updates(4);
+    let sent_b = UpdateGen::new(111, 2).updates(4);
+    for update in &sent_a {
+        store.append(&a, update).unwrap();
+    }
+    for update in &sent_b {
+        store.append(&b, update).unwrap();
+    }
+    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.queued_compactions(), [a.clone(), b.clone()]);
+    env.fs
+        .panic_once(OpKind::Read, "/docs/a/snapshot-0000000001.ysnap.tmp");
+
+    let (compacted, result) = store.run_compactor_once().unwrap();
+    assert_eq!(compacted, a);
+    assert!(result.is_err());
+    assert_eq!(
+        env.doc_files(&a),
+        [
+            "log-0000000000-0000000000.ylog",
+            "snapshot-0000000001.ysnap.tmp"
+        ]
+    );
+    let (compacted, result) = store.run_compactor_once().unwrap();
+    assert_eq!(compacted, b);
+    result.unwrap();
+    assert_eq!(env.doc_files(&b), ["snapshot-0000000001.ysnap"]);
+
+    let more = UpdateGen::new(112, 1).updates(4);
+    for update in &more {
+        store.append(&a, update).unwrap();
+    }
+    assert_eq!(store.flush(soon()), []);
+    assert_eq!(
+        store.queued_compactions(),
+        std::slice::from_ref(&a),
+        "the abandoned compaction left a idle"
+    );
+    store.run_compactor_once().unwrap().1.unwrap();
+    assert_eq!(env.doc_files(&a), ["snapshot-0000000002.ysnap"]);
+    sent_a.extend(more);
+    drop(store);
+    let store = env.open();
+    assert_doc(&store, &a, &sent_a);
+    assert_doc(&store, &b, &sent_b);
+}
+
+#[test]
 fn a_corrupt_log_loads_up_to_the_damage_and_is_quarantined_not_deleted() {
     let a = doc("a");
     let sent = UpdateGen::new(31, 2).updates(10);
