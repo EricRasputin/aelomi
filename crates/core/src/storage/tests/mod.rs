@@ -13,6 +13,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use yrs::Transact;
 use yrs::updates::decoder::Decode;
 
 use super::clock::{Clock, ManualClock, SystemClock};
@@ -147,6 +148,16 @@ pub(crate) fn out_of_order(seed: u64, n: usize, delivery: Delivery) -> Vec<Vec<u
 
 pub(crate) fn in_order(seed: u64, n: usize) -> yrs::Doc {
     doc_from(UpdateGen::new(seed, 3).updates(n).iter().map(Vec::as_slice))
+}
+
+pub(crate) fn applied(bytes: &[u8], case: &str) -> (Ops, yrs::Doc) {
+    let update = yrs::Update::decode_v1(bytes).unwrap_or_else(|e| panic!("{case}: {e}"));
+    let held = Ops::of_update(&update);
+    let doc = yrs::Doc::new();
+    doc.transact_mut()
+        .apply_update(update)
+        .unwrap_or_else(|e| panic!("{case}: {e}"));
+    (held, doc)
 }
 
 /// A doc can hold more deletions: yrs deletes what it integrates into a deleted parent.

@@ -138,6 +138,15 @@ impl Ops {
         other.inserted.diff(&self.inserted).is_empty()
             && other.deleted.diff(&self.deleted).is_empty()
     }
+
+    /// A doc can delete more than its updates do, since yrs deletes what it integrates into a
+    /// deleted parent, but only blocks they insert or delete.
+    #[cfg(test)]
+    pub fn only_from(&self, updates: &Self) -> bool {
+        let mut touched = updates.inserted.clone();
+        touched.merge_with(updates.deleted.clone());
+        self.inserted.diff(&updates.inserted).is_empty() && self.deleted.diff(&touched).is_empty()
+    }
 }
 
 impl PartialEq for Ops {

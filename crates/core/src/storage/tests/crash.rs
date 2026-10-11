@@ -1,16 +1,19 @@
+use std::collections::VecDeque;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use proptest::prelude::*;
 use proptest::test_runner::{Config, TestRunner};
+use yrs::{Doc, Transact};
 
-use super::{Env, doc, soon};
+use super::{Delivery, Env, applied, doc, ops_of_updates, out_of_order, soon};
 use crate::storage::doc_id::DocId;
+use crate::storage::equality::Ops;
 use crate::storage::log::encode_record;
 use crate::storage::sim_fs::{Crash, OpKind};
 use crate::storage::state::{Limits, Seq};
-use crate::storage::testkit::{UpdateGen, apply, doc_from, fingerprint};
+use crate::storage::testkit::{SplitMix64, UpdateGen, apply, doc_from, fingerprint};
 
 const DOCS: usize = 3;
 
@@ -25,9 +28,18 @@ enum Action {
     Wait,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Arrival {
+    InOrder,
+    Shuffled,
+    /// One early update arrives only after the crash, so the updates that need it stay pending.
+    Withheld,
+}
+
 #[derive(Clone, Debug)]
 struct Scenario {
     seed: u64,
+    arrivals: Vec<Arrival>,
     actions: Vec<Action>,
     crash_fraction: u16,
     torn: Option<u64>,
@@ -45,15 +57,25 @@ fn action() -> impl Strategy<Value = Action> {
     ]
 }
 
+fn arrival() -> impl Strategy<Value = Arrival> {
+    prop_oneof![
+        2 => Just(Arrival::InOrder),
+        1 => Just(Arrival::Shuffled),
+        1 => Just(Arrival::Withheld),
+    ]
+}
+
 fn scenario() -> impl Strategy<Value = Scenario> {
     (
         any::<u64>(),
+        prop::collection::vec(arrival(), DOCS),
         prop::collection::vec(action(), 1..40),
         any::<u16>(),
         any::<Option<u64>>(),
     )
-        .prop_map(|(seed, actions, crash_fraction, torn)| Scenario {
+        .prop_map(|(seed, arrivals, actions, crash_fraction, torn)| Scenario {
             seed,
+            arrivals,
             actions,
             crash_fraction,
             torn,
@@ -61,6 +83,8 @@ fn scenario() -> impl Strategy<Value = Scenario> {
 }
 
 struct Sent {
+    planned: VecDeque<Vec<u8>>,
+    withheld: Option<Vec<u8>>,
     updates: Vec<Vec<u8>>,
     seqs: Vec<Seq>,
     acked: usize,
@@ -71,6 +95,40 @@ fn ids() -> Vec<DocId> {
     (0..DOCS).map(|i| doc(&format!("doc-{i}"))).collect()
 }
 
+fn seed_of(scenario: &Scenario, doc: usize) -> u64 {
+    scenario.seed.wrapping_add(doc as u64)
+}
+
+fn plan(scenario: &Scenario, doc: usize) -> Sent {
+    let n = scenario
+        .actions
+        .iter()
+        .map(|action| match *action {
+            Action::Append { doc: d, count } if d == doc => count,
+            _ => 0,
+        })
+        .sum();
+    let seed = seed_of(scenario, doc);
+    let (planned, withheld) = match scenario.arrivals[doc] {
+        Arrival::InOrder => (UpdateGen::new(seed, 2).updates(n), None),
+        Arrival::Shuffled => (out_of_order(seed, n, Delivery::Shuffled), None),
+        Arrival::Withheld => {
+            let mut updates = UpdateGen::new(seed, 3).updates(n + 1);
+            let at = SplitMix64::new(seed).below(n as u64 / 2 + 1) as usize;
+            let withheld = updates.remove(at);
+            (updates, Some(withheld))
+        }
+    };
+    Sent {
+        planned: planned.into(),
+        withheld,
+        updates: Vec::new(),
+        seqs: Vec::new(),
+        acked: 0,
+        refused: None,
+    }
+}
+
 fn play(scenario: &Scenario, die_after: usize) -> (Env, Vec<Sent>, usize) {
     let mut env = Env::manual();
     env.limits = Limits {
@@ -79,17 +137,7 @@ fn play(scenario: &Scenario, die_after: usize) -> (Env, Vec<Sent>, usize) {
         ..Limits::DATA_6
     };
     let ids = ids();
-    let mut gens: Vec<UpdateGen> = (0..DOCS as u64)
-        .map(|i| UpdateGen::new(scenario.seed.wrapping_add(i), 2))
-        .collect();
-    let mut sent: Vec<Sent> = (0..DOCS)
-        .map(|_| Sent {
-            updates: Vec::new(),
-            seqs: Vec::new(),
-            acked: 0,
-            refused: None,
-        })
-        .collect();
+    let mut sent: Vec<Sent> = (0..DOCS).map(|doc| plan(scenario, doc)).collect();
 
     let store = env.open();
     let opened = env.fs.ops().len();
@@ -99,7 +147,8 @@ fn play(scenario: &Scenario, die_after: usize) -> (Env, Vec<Sent>, usize) {
             Action::Append { doc, count } => {
                 for _ in 0..count {
                     let s = &mut sent[doc];
-                    let update = s.refused.take().unwrap_or_else(|| gens[doc].next_update());
+                    let update = s.refused.take().or_else(|| s.planned.pop_front());
+                    let update = update.expect("one update is planned for each append");
                     match store.append(&ids[doc], &update) {
                         Ok(seq) => {
                             s.updates.push(update);
@@ -138,6 +187,12 @@ fn play(scenario: &Scenario, die_after: usize) -> (Env, Vec<Sent>, usize) {
     (env, sent, ops)
 }
 
+/// Compared as docs, since a load encoded from memory holds deletions yrs derived, and a load
+/// merged from stored updates leaves them for the doc to derive again.
+fn ops_of_doc(doc: &Doc) -> Ops {
+    Ops::of_doc(&doc.transact()).expect("yrs decodes its own encoding")
+}
+
 fn run(scenario: &Scenario) -> Result<(), TestCaseError> {
     let (_, _, ops) = play(scenario, usize::MAX);
     let crash_after = scenario.crash_fraction as usize * ops / u16::MAX as usize;
@@ -153,41 +208,55 @@ fn run(scenario: &Scenario) -> Result<(), TestCaseError> {
     let store = env.open();
     let mut after_crash = Vec::new();
     for (i, s) in sent.iter().enumerate() {
-        let loaded = doc_from([store.load(&ids[i]).unwrap().as_slice()]);
-        let with_acked = doc_from([store.load(&ids[i]).unwrap().as_slice()]);
-        for update in &s.updates[..s.acked] {
-            apply(&with_acked, update);
-        }
-        prop_assert_eq!(
-            fingerprint(&with_acked),
-            fingerprint(&loaded),
-            "doc {} lost an acknowledged update ({} of {} acked)",
-            i,
+        let case = format!(
+            "doc {i} ({:?}, {} of {} acked)",
+            scenario.arrivals[i],
             s.acked,
             s.updates.len()
         );
-        let everything = doc_from(s.updates.iter().map(Vec::as_slice));
-        let with_loaded = doc_from(s.updates.iter().map(Vec::as_slice));
-        apply(&with_loaded, &store.load(&ids[i]).unwrap());
-        prop_assert_eq!(
-            fingerprint(&with_loaded),
-            fingerprint(&everything),
-            "doc {} holds something never appended",
-            i
+        let (held, loaded) = applied(&store.load(&ids[i]).unwrap(), &case);
+        prop_assert!(
+            held.contains(&ops_of_updates(&s.updates[..s.acked])),
+            "{} lost an acknowledged update",
+            case
         );
-        after_crash.push(loaded);
+        prop_assert!(
+            held.only_from(&ops_of_updates(&s.updates)),
+            "{} holds something never appended",
+            case
+        );
+        if scenario.arrivals[i] == Arrival::InOrder {
+            let with_acked = doc_from([store.load(&ids[i]).unwrap().as_slice()]);
+            for update in &s.updates[..s.acked] {
+                apply(&with_acked, update);
+            }
+            prop_assert_eq!(fingerprint(&with_acked), fingerprint(&loaded), "{}", case);
+            let everything = doc_from(s.updates.iter().map(Vec::as_slice));
+            let with_loaded = doc_from(s.updates.iter().map(Vec::as_slice));
+            apply(&with_loaded, &store.load(&ids[i]).unwrap());
+            prop_assert_eq!(
+                fingerprint(&with_loaded),
+                fingerprint(&everything),
+                "{}",
+                case
+            );
+        }
+        after_crash.push((ops_of_doc(&loaded), loaded));
     }
 
     let more: Vec<Vec<Vec<u8>>> = (0..DOCS)
         .map(|i| {
             let state = store.load(&ids[i]).unwrap();
-            UpdateGen::resume(scenario.seed.wrapping_add(i as u64), 2, &state).updates(3)
+            let resumed = UpdateGen::resume(seed_of(scenario, i), 2, &state).updates(3);
+            sent[i].withheld.iter().cloned().chain(resumed).collect()
         })
         .collect();
     for (i, updates) in more.iter().enumerate() {
         for update in updates {
             store.append(&ids[i], update).unwrap();
-            apply(&after_crash[i], update);
+            if scenario.arrivals[i] == Arrival::InOrder {
+                apply(&after_crash[i].1, update);
+            }
         }
     }
     prop_assert_eq!(
@@ -197,14 +266,28 @@ fn run(scenario: &Scenario) -> Result<(), TestCaseError> {
     );
     drop(store);
     let store = env.open();
-    for (i, expected) in after_crash.iter().enumerate() {
-        let reloaded = doc_from([store.load(&ids[i]).unwrap().as_slice()]);
-        prop_assert_eq!(
-            fingerprint(&reloaded),
-            fingerprint(expected),
-            "doc {} after reopening",
-            i
+    for (i, (ops, expected)) in after_crash.iter().enumerate() {
+        let case = format!("doc {i} ({:?}) after reopening", scenario.arrivals[i]);
+        let (held, reloaded) = applied(&store.load(&ids[i]).unwrap(), &case);
+        prop_assert!(
+            ops_of_doc(&reloaded).contains(ops),
+            "{} lost an update it held after the crash",
+            case
         );
+        prop_assert!(
+            held.contains(&ops_of_updates(&more[i])),
+            "{} lost an update appended after the crash",
+            case
+        );
+        let appended = [&sent[i].updates[..], &more[i]].concat();
+        prop_assert!(
+            held.only_from(&ops_of_updates(&appended)),
+            "{} holds something never appended",
+            case
+        );
+        if scenario.arrivals[i] == Arrival::InOrder {
+            prop_assert_eq!(fingerprint(&reloaded), fingerprint(expected), "{}", case);
+        }
     }
     while let Some((_, result)) = store.run_compactor_once() {
         prop_assert!(result.is_ok(), "compaction after the crash: {:?}", result);

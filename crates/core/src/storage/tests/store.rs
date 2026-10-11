@@ -2,12 +2,12 @@ use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::time::Duration;
 
-use yrs::updates::decoder::Decode;
-use yrs::{Doc, Map, ReadTxn, StateVector, Text, TextPrelim, TextRef, Transact, Update};
+use yrs::{Doc, Map, ReadTxn, StateVector, Text, TextPrelim, TextRef, Transact};
 
-use super::{Delivery, Env, assert_doc, doc, in_order, ops_of_updates, out_of_order, soon};
+use super::{
+    Delivery, Env, applied, assert_doc, doc, in_order, ops_of_updates, out_of_order, soon,
+};
 use crate::storage::compact::CompactError;
-use crate::storage::equality::Ops;
 use crate::storage::sim_fs::{Crash, OpKind};
 use crate::storage::state::Limits;
 use crate::storage::store::{AppendError, Store};
@@ -267,16 +267,6 @@ fn loading_writes_nothing_and_the_first_append_starts_a_new_segment() {
     );
     drop(store);
     assert_doc(&env.open(), &doc("a"), &[first, second]);
-}
-
-fn applied(bytes: &[u8], case: &str) -> (Ops, Doc) {
-    let update = Update::decode_v1(bytes).unwrap_or_else(|e| panic!("{case}: {e}"));
-    let held = Ops::of_update(&update);
-    let doc = Doc::new();
-    doc.transact_mut()
-        .apply_update(update)
-        .unwrap_or_else(|e| panic!("{case}: {e}"));
-    (held, doc)
 }
 
 #[test]
