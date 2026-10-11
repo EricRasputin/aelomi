@@ -7,6 +7,7 @@
   "packageManager": "pnpm@12.11.2",
   "scripts": {
     "dev": "vite",
+    "dev:app": "node scripts/tauri-dev.ts",
     "build": "pnpm typecheck && vite build",
     "tauri": "tauri",
     "typecheck": "tsc --noEmit",

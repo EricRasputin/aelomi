@@ -3,6 +3,7 @@
 Use Node 24 from `.node-version`, pnpm from `package.json`'s `packageManager`,
 and Rust 1.98.1 from `rust-toolchain.toml`.
 Run the macOS app with `pnpm install --frozen-lockfile` and `pnpm tauri dev`.
+`pnpm dev:app` serves the UI on `AELOMI_DEV_PORT` or a free port instead of 1420, so several dev instances can run at once.
 Build the ad-hoc signed app with `pnpm tauri build --bundles app`.
 
 After changing a Rust command, run `pnpm bindings` and `pnpm typecheck`.
