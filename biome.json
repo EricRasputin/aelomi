@@ -8,18 +8,73 @@
       "!!.audit",
       "!!node_modules",
       "!!dist",
+      "!!dist-mock",
+      "!!.e2e",
+      "!!playwright-report",
+      "!!test-results",
       "!!target",
       "!!src-tauri/gen",
       "!!src/ipc/bindings.ts"
     ]
   },
-  "formatter": { "indentStyle": "space", "indentWidth": 2 },
+  "formatter": {
+    "indentStyle": "space",
+    "indentWidth": 2
+  },
   "linter": {
     "enabled": true,
     "rules": {
       "preset": "recommended",
-      "suspicious": { "noExplicitAny": "error" }
+      "suspicious": {
+        "noExplicitAny": "error"
+      }
     }
   },
-  "assist": { "actions": { "source": { "organizeImports": "on" } } }
+  "assist": {
+    "actions": {
+      "source": {
+        "organizeImports": "on"
+      }
+    }
+  },
+  "overrides": [
+    {
+      "includes": ["e2e/**/*.e2e.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "@e2e-dev/web": "Import test from the guarded e2e fixtures.",
+                  "e2e": {
+                    "importNames": ["test"],
+                    "message": "Import test from the guarded e2e fixtures."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["tests/playwright/**/*.spec.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "@playwright/test": "Import test and expect from the guarded Playwright fixtures."
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
 }

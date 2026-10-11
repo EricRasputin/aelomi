@@ -13,6 +13,21 @@
     "noEmit": true,
     "types": ["vite/client"]
   },
-  "include": ["src", "vite.config.ts", "vitest.config.ts"],
-  "exclude": [".claude", ".agents", "node_modules", "dist", "target"]
+  "include": [
+    "src",
+    "e2e",
+    "tests",
+    "e2e.config.ts",
+    "playwright.config.ts",
+    "vite.config.ts",
+    "vitest.config.ts"
+  ],
+  "exclude": [
+    ".claude",
+    ".agents",
+    "node_modules",
+    "dist",
+    "dist-mock",
+    "target"
+  ]
 }

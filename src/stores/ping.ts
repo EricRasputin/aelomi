@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { commands, type PingReply } from "../ipc/bindings";
+import { commands, type PingReply } from "../ipc";
 
 type PingStatus =
   | { kind: "idle" }

@@ -31,6 +31,13 @@ mod tests {
     use std::{fs, path::Path};
 
     #[test]
+    fn ping_echoes_sequence_and_core_version() {
+        let reply = super::ping(super::PingRequest { seq: 42 });
+        assert_eq!(reply.seq, 42);
+        assert_eq!(reply.core_version, aelomi_core::VERSION);
+    }
+
+    #[test]
     fn bindings_are_current() {
         let scratch =
             std::env::temp_dir().join(format!("aelomi-bindings-{}.ts", std::process::id()));
