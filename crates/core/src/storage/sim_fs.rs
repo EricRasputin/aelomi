@@ -9,11 +9,10 @@ use super::compact::covers;
 use super::equality::Ops;
 use super::fs::{Fs, FsLock, LockError};
 use super::layout::DocFile;
-use super::recover::snapshot_doc;
 use super::snapshot::read_snapshot;
 use super::testkit::SplitMix64;
-use yrs::Update;
 use yrs::updates::decoder::Decode;
+use yrs::{Doc, Transact, Update};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum OpKind {
@@ -458,7 +457,7 @@ impl Sim {
             newer
                 && matches!(&self.nodes[id], Node::File(f) if f.durable == f.data.len()
                     && read_snapshot(&f.data)
-                        .filter(|payload| snapshot_doc(payload).is_some())
+                        .filter(|payload| applies(payload))
                         .and_then(|payload| Update::decode_v1(payload).ok())
                         .is_some_and(|update| covers(&Ops::of_update(&update), file, bytes)))
         })
@@ -596,6 +595,11 @@ fn file_name(path: &Path) -> String {
 
 fn not_found() -> io::Error {
     io::Error::from(io::ErrorKind::NotFound)
+}
+
+fn applies(payload: &[u8]) -> bool {
+    Update::decode_v1(payload)
+        .is_ok_and(|update| Doc::new().transact_mut().apply_update(update).is_ok())
 }
 
 #[cfg(test)]

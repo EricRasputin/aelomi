@@ -121,10 +121,3 @@ fn apply_records(ydoc: &Doc, records: &[&[u8]]) -> bool {
     }
     applied
 }
-
-pub(crate) fn snapshot_doc(payload: &[u8]) -> Option<Doc> {
-    let update = Update::decode_v1(payload).ok()?;
-    let doc = Doc::new();
-    doc.transact_mut().apply_update(update).ok()?;
-    Some(doc)
-}

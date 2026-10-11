@@ -6,14 +6,13 @@ use std::path::Path;
 use std::sync::atomic::Ordering;
 
 use yrs::updates::decoder::Decode;
-use yrs::{ReadTxn, StateVector, Transact, Update};
+use yrs::{Doc, ReadTxn, StateVector, Transact, Update};
 
 use super::doc_id::DocId;
 use super::equality::{Fingerprint, Ops};
 use super::fs::create_durable;
 use super::layout::{DocFile, Generation, SegmentNo};
 use super::log::{LogEnd, read_log};
-use super::recover::snapshot_doc;
 use super::snapshot::{encode_snapshot, read_snapshot};
 use super::state::{Compaction, DocSlot, LogSize, Segment, Ydoc};
 use super::store::Shared;
@@ -60,16 +59,51 @@ fn compact(shared: &Shared, doc: &DocId, rotated: Rotated) -> Result<(), Compact
         .layout
         .doc_file(doc, DocFile::SnapshotTmp(rotated.generation));
     create_durable(&*shared.fs, &tmp, &encode_snapshot(&rotated.state))?;
-    verify(shared, &tmp, &rotated.expected)?;
+    if let Err(e) = verify(shared, &tmp, &rotated.expected) {
+        let _ = shared.fs.remove(&tmp);
+        return Err(e);
+    }
     publish(shared, doc, &tmp, rotated.generation)?;
-    retire_older(shared, doc, &rotated)?;
+    retire_older(shared, doc, &rotated.expected.ops, rotated.generation)?;
     Ok(())
 }
 
 pub(crate) struct Rotated {
     generation: Generation,
     state: Vec<u8>,
-    expected: Fingerprint,
+    expected: Expected,
+}
+
+/// What a snapshot must hold to replace the files before it. The doc's fingerprint is compared
+/// only without pending structs, since yrs integrates those differently when they're applied
+/// again.
+struct Expected {
+    ops: Ops,
+    fingerprint: Option<Fingerprint>,
+}
+
+impl Expected {
+    fn of(txn: &impl ReadTxn) -> Option<Self> {
+        Some(Self {
+            ops: Ops::of_doc(txn)?,
+            fingerprint: if txn.has_missing_updates() {
+                None
+            } else {
+                Fingerprint::of(txn)
+            },
+        })
+    }
+
+    /// The snapshot holds exactly the doc's operations, and loads into a doc that holds
+    /// exactly those too.
+    fn met_by(&self, held: &Ops, loaded: &impl ReadTxn) -> bool {
+        *held == self.ops
+            && Ops::of_doc(loaded).is_some_and(|ops| ops == self.ops)
+            && self
+                .fingerprint
+                .as_ref()
+                .is_none_or(|expected| Fingerprint::of(loaded).as_ref() == Some(expected))
+    }
 }
 
 pub(crate) fn rotate(shared: &Shared, doc: &DocId) -> Option<Rotated> {
@@ -86,10 +120,8 @@ pub(crate) fn rotate(shared: &Shared, doc: &DocId) -> Option<Rotated> {
         eprintln!("aelomi storage: skipped compacting {doc}, as its snapshot is too large");
         return None;
     }
-    let Some(expected) = Fingerprint::of(&txn) else {
-        eprintln!(
-            "aelomi storage: skipped compacting {doc}, as yrs can't apply its own encoding of it"
-        );
+    let Some(expected) = Expected::of(&txn) else {
+        eprintln!("aelomi storage: skipped compacting {doc}, as yrs can't decode its own encoding");
         return None;
     };
     state.compaction = Compaction::Running {
@@ -104,12 +136,20 @@ pub(crate) fn rotate(shared: &Shared, doc: &DocId) -> Option<Rotated> {
     })
 }
 
-fn verify(shared: &Shared, tmp: &Path, expected: &Fingerprint) -> Result<(), CompactError> {
+fn verify(shared: &Shared, tmp: &Path, expected: &Expected) -> Result<(), CompactError> {
     let written = shared.fs.read(tmp)?;
-    let read_back = read_snapshot(&written).and_then(snapshot_doc);
-    match read_back {
-        Some(doc) if Fingerprint::of(&doc.transact()).as_ref() == Some(expected) => Ok(()),
-        _ => Err(CompactError::Mismatch),
+    let verified = read_snapshot(&written)
+        .and_then(|payload| Update::decode_v1(payload).ok())
+        .is_some_and(|update| {
+            let held = Ops::of_update(&update);
+            let loaded = Doc::new();
+            let applied = loaded.transact_mut().apply_update(update).is_ok();
+            applied && expected.met_by(&held, &loaded.transact())
+        });
+    if verified {
+        Ok(())
+    } else {
+        Err(CompactError::Mismatch)
     }
 }
 
@@ -120,23 +160,19 @@ fn publish(shared: &Shared, doc: &DocId, tmp: &Path, generation: Generation) -> 
     fs.full_sync(&layout.doc_dir(doc))
 }
 
-fn retire_older(shared: &Shared, doc: &DocId, rotated: &Rotated) -> io::Result<()> {
+fn retire_older(
+    shared: &Shared,
+    doc: &DocId,
+    held: &Ops,
+    generation: Generation,
+) -> io::Result<()> {
     let (fs, layout) = (&*shared.fs, &shared.layout);
     let slot = shared.slot(doc);
     let dir = layout.doc_dir(doc);
-    let Some(held) = Update::decode_v1(&rotated.state)
-        .ok()
-        .map(|update| Ops::of_update(&update))
-    else {
-        eprintln!(
-            "aelomi storage: kept every older file of {doc}, as yrs can't decode its snapshot"
-        );
-        return Ok(());
-    };
-    let covered: Vec<(String, bool)> = read_older(shared, &slot, &dir, rotated.generation)?
+    let covered: Vec<(String, bool)> = read_older(shared, &slot, &dir, generation)?
         .into_iter()
         .map(|(name, file, bytes)| {
-            let covered = matches!(file, DocFile::SnapshotTmp(_)) || covers(&held, file, &bytes);
+            let covered = matches!(file, DocFile::SnapshotTmp(_)) || covers(held, file, &bytes);
             (name, covered)
         })
         .collect();
