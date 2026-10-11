@@ -83,7 +83,7 @@ fn verify(shared: &Shared, tmp: &Path, expected: &Fingerprint) -> Result<(), Com
 fn publish(shared: &Shared, doc: &DocId, tmp: &Path, generation: Generation) -> io::Result<()> {
     let (fs, layout) = (&*shared.fs, &shared.layout);
     fs.rename(tmp, &layout.doc_file(doc, DocFile::Snapshot(generation)))?;
-    fs.fsync(&layout.doc_dir(doc))?;
+    shared.sync_doc_dir(doc)?;
     fs.full_sync(&layout.doc_dir(doc))
 }
 
@@ -109,7 +109,7 @@ fn retire_older(
             fs.remove(&dir.join(&name))?;
         }
     }
-    fs.fsync(&dir)?;
+    shared.sync_doc_dir(doc)?;
     fs.full_sync(&dir)?;
     let mut state = slot.state.lock().unwrap();
     let state = state.as_mut().expect("still loaded");
@@ -117,17 +117,16 @@ fn retire_older(
     Ok(())
 }
 
+/// Moves the file without syncing: the caller's [`Shared::sync_doc_dir`] syncs where it went
+/// before where it was.
 fn quarantine(shared: &Shared, doc: &DocId, name: &str) -> io::Result<()> {
     let (fs, layout) = (&*shared.fs, &shared.layout);
     let target_dir = layout.quarantine_dir(doc);
-    for (dir, parent) in [
-        (layout.quarantine(), layout.root().to_path_buf()),
-        (target_dir.clone(), layout.quarantine()),
-    ] {
+    shared.quarantine_created();
+    for dir in [layout.quarantine(), target_dir.clone()] {
         match fs.create_dir(&dir) {
-            Ok(()) => fs.fsync(&parent)?,
-            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
-            Err(e) => return Err(e),
+            Err(e) if e.kind() != io::ErrorKind::AlreadyExists => return Err(e),
+            _ => {}
         }
     }
     let taken = fs.list(&target_dir)?;
@@ -135,8 +134,7 @@ fn quarantine(shared: &Shared, doc: &DocId, name: &str) -> io::Result<()> {
         .chain((1..).map(|n| format!("{name}.{n}")))
         .find(|candidate| !taken.contains(candidate))
         .expect("an unused name");
-    fs.rename(&layout.doc_dir(doc).join(name), &target_dir.join(target))?;
-    fs.fsync(&target_dir)
+    fs.rename(&layout.doc_dir(doc).join(name), &target_dir.join(target))
 }
 
 impl From<io::Error> for CompactError {

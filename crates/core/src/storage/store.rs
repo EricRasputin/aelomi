@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, VecDeque};
 use std::fmt;
 use std::io;
 use std::path::Path;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
@@ -63,6 +63,8 @@ pub(crate) struct Shared {
     pub limits: Limits,
     driver: Driver,
     next_seq: AtomicU64,
+    /// Whether `quarantine/` exists. It is never removed.
+    quarantine: AtomicBool,
     docs: Mutex<BTreeMap<DocId, Arc<DocSlot>>>,
     signal: Mutex<Signal>,
     wake_writer: Condvar,
@@ -97,7 +99,7 @@ impl Store {
         limits: Limits,
     ) -> Result<Self, OpenError> {
         let layout = Layout::new(root);
-        let lock = prepare_folder(&*fs, &layout)?;
+        let (lock, quarantine) = prepare_folder(&*fs, &layout)?;
         let shared = Arc::new(Shared {
             fs,
             clock,
@@ -105,6 +107,7 @@ impl Store {
             limits,
             driver,
             next_seq: AtomicU64::new(1),
+            quarantine: AtomicBool::new(quarantine),
             docs: Mutex::default(),
             signal: Mutex::default(),
             wake_writer: Condvar::new(),
@@ -381,6 +384,26 @@ impl Shared {
         }
     }
 
+    /// Syncs the doc's folder, after the folders a quarantine moved a file into. A sync of the
+    /// doc's folder alone could make the file's removal durable but not its new entry.
+    pub fn sync_doc_dir(&self, doc: &DocId) -> io::Result<()> {
+        if self.quarantine.load(Ordering::SeqCst) {
+            match self.fs.fsync(&self.layout.quarantine_dir(doc)) {
+                Ok(()) => {
+                    self.fs.fsync(&self.layout.quarantine())?;
+                    self.fs.fsync(self.layout.root())?;
+                }
+                Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+                Err(e) => return Err(e),
+            }
+        }
+        self.fs.fsync(&self.layout.doc_dir(doc))
+    }
+
+    pub fn quarantine_created(&self) {
+        self.quarantine.store(true, Ordering::SeqCst);
+    }
+
     pub fn queue_compaction(&self, doc: &DocId, state: &mut DocState) {
         if !std::mem::replace(&mut state.compacting, true) {
             self.signal
@@ -439,7 +462,7 @@ impl Shared {
 
 /// Syncs the folder entries at every open, not only the ones this open created: an earlier open
 /// may have created one and failed to sync it.
-fn prepare_folder(fs: &dyn Fs, layout: &Layout) -> Result<FsLock, OpenError> {
+fn prepare_folder(fs: &dyn Fs, layout: &Layout) -> Result<(FsLock, bool), OpenError> {
     let root = layout.root();
     refuse_before_writing(fs, layout)?;
     create_dir_all(fs, root)?;
@@ -467,7 +490,7 @@ fn prepare_folder(fs: &dyn Fs, layout: &Layout) -> Result<FsLock, OpenError> {
     if created {
         fs.full_sync(root)?;
     }
-    Ok(lock)
+    Ok((lock, has("quarantine")))
 }
 
 /// Refuses a folder this build can't handle before anything, even `.lock`, is written to it.

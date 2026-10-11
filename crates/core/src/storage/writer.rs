@@ -171,10 +171,9 @@ impl Job {
     }
 
     fn sync(&self, shared: &Shared) -> io::Result<()> {
-        let fs = &*shared.fs;
-        fs.fsync(&self.path(shared))?;
+        shared.fs.fsync(&self.path(shared))?;
         if self.created_segment {
-            fs.fsync(&shared.layout.doc_dir(&self.queued.doc))?;
+            shared.sync_doc_dir(&self.queued.doc)?;
         }
         Ok(())
     }

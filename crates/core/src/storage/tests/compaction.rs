@@ -1,7 +1,7 @@
 use yrs::{Doc, GetString, Text, Transact};
 
 use super::{Env, assert_doc, doc, soon};
-use crate::storage::sim_fs::Crash;
+use crate::storage::sim_fs::{Crash, OpKind};
 use crate::storage::state::Limits;
 use crate::storage::store::Store;
 use crate::storage::testkit::UpdateGen;
@@ -296,5 +296,55 @@ fn compaction_runs_beside_the_writer_without_losing_updates() {
             .filter(|n| n.starts_with("snapshot-"))
             .count();
         assert!(snapshots >= 1, "{d} was compacted");
+    }
+}
+
+#[test]
+fn a_quarantined_file_survives_a_failed_sync_of_any_folder_it_moved_into() {
+    let a = doc("a");
+    let sent = UpdateGen::new(33, 2).updates(10);
+    let name = "log-0000000000-0000000000.ylog";
+    for failing in ["quarantine/a", "quarantine", ""] {
+        for then in ["compact again", "append"] {
+            let env = Env::manual();
+            let store = env.open();
+            for update in &sent {
+                store.append(&a, update).unwrap();
+            }
+            assert_eq!(store.flush(soon()), []);
+            drop(store);
+            let path = env.path("docs/a").join(name);
+            env.fs.flip_bit(&path, 8 + 8 + 2);
+            let damaged = env.fs.files()[&path].clone();
+
+            let store = env.open();
+            env.fs.fail_at(OpKind::Fsync, &env.path(failing), libc::EIO);
+            assert!(store.compact(&a).is_err(), "syncing /data/{failing} fails");
+            env.fs.clear_faults();
+            match then {
+                "compact again" => store.compact(&a).unwrap(),
+                _ => {
+                    store
+                        .append(&a, &UpdateGen::new(34, 2).next_update())
+                        .unwrap();
+                    assert_eq!(store.flush(soon()), []);
+                }
+            }
+            drop(store);
+            env.fs.crash(Crash::DropUnsynced);
+
+            let holding: Vec<_> = env
+                .fs
+                .files()
+                .into_iter()
+                .filter(|(_, bytes)| *bytes == damaged)
+                .map(|(path, _)| path)
+                .collect();
+            assert_eq!(
+                holding,
+                [env.path("quarantine/a").join(name)],
+                "syncing /data/{failing} failed, then {then}"
+            );
+        }
     }
 }
