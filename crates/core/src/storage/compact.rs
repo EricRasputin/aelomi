@@ -12,7 +12,7 @@ use super::doc_id::DocId;
 use super::equality::{Fingerprint, Ops};
 use super::fs::create_durable;
 use super::layout::{DocFile, Generation, SegmentNo};
-use super::log::{LogEnd, read_log};
+use super::log::{LogEnd, SEGMENT_HEADER, read_log};
 use super::snapshot::{encode_snapshot, read_snapshot};
 use super::state::{Compaction, DocSlot, LogSize, Segment, Ydoc};
 use super::store::Shared;
@@ -315,7 +315,13 @@ fn records(file: DocFile, bytes: &[u8]) -> (Vec<&[u8]>, bool) {
         },
         DocFile::Log(..) => {
             let contents = read_log(bytes);
-            (contents.records, contents.end != LogEnd::Clean)
+            let holds_record_bytes = bytes.len() > SEGMENT_HEADER;
+            let damaged = match contents.end {
+                LogEnd::Clean => false,
+                LogEnd::Torn => holds_record_bytes,
+                LogEnd::Corrupt => true,
+            };
+            (contents.records, damaged)
         }
         DocFile::SnapshotTmp(_) => (Vec::new(), false),
     }
