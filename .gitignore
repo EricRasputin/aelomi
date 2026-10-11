@@ -10,3 +10,5 @@ src-tauri/gen/
 perf-results/
 # Proprietary; fetched by scripts/vendor-skills.sh.
 .claude/skills/pen-design/
+# A store opened on a fixture folder in place takes this lock.
+fixtures/data-folders/**/.lock

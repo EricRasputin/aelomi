@@ -8,6 +8,15 @@ This file maps the code. `CLAUDE.md` has the rules and the stack, `SPEC.md` has 
 |---|---|
 | `Cargo.toml` | Cargo workspace with members `crates/core` and `src-tauri`, edition 2024 |
 | `crates/core/` | `aelomi-core`, the Rust core |
+| `crates/core/src/storage/` | The append-only Y.Doc store. `mod.rs` lists the public API |
+| `crates/core/src/storage/store.rs` | `Store`: open the data folder, `load`, `append`, `flush`, `health`, `close` |
+| `crates/core/src/storage/writer.rs` | The writer thread and its group commit |
+| `crates/core/src/storage/compact.rs` | Compaction into a verified snapshot (DATA-6) |
+| `crates/core/src/storage/recover.rs` | Loading a doc from its files, noticing an interrupted compaction, and merging every update a doc holds |
+| `crates/core/src/storage/fs.rs` | The `Fs` seam and `OsFs`, with the `F_FULLFSYNC` sources |
+| `crates/core/src/storage/sim_fs.rs` | `SimFs`, the crash-simulating filesystem that checks the append-only rules |
+| `crates/core/src/storage/data_path.rs` | `check_data_path`, the cloud folder check (SHELL-11) |
+| `crates/core/src/storage/tests/` | Store tests: crash points, compaction, failures, acknowledgement time, refusals, the fixture. `measure.rs` holds ignored measurements: `cargo nextest run -p aelomi-core --cargo-profile release --run-ignored only measure --no-capture` |
 | `src-tauri/` | `aelomi`, the Tauri 2 shell (library name `aelomi_lib`) |
 | `src-tauri/src/lib.rs` | `run()` builds the Tauri app and registers the commands |
 | `src-tauri/src/commands.rs` | Tauri commands, the tauri-specta `builder()`, and the `bindings_are_current` test |
@@ -24,6 +33,7 @@ This file maps the code. `CLAUDE.md` has the rules and the stack, `SPEC.md` has 
 | `tests/playwright/` | Playwright WebKit tests and their guarded fixture |
 | `perf/` | Perf harnesses and `budgets.json`, the numbers every perf gate reads |
 | `fixtures/` | The seeded fixture generator and its output in `fixtures/generated/` |
+| `fixtures/data-folders/` | A data folder per storage format, for migration tests |
 | `tests/is-local-url.ts` | The loopback allow list both browser suites share |
 | `.github/workflows/ci.yml` | Every CI job |
 | `scripts/check-licenses.mjs` | Fails on an npm license outside the allow list |
@@ -42,7 +52,7 @@ This file maps the code. `CLAUDE.md` has the rules and the stack, `SPEC.md` has 
 
 The workspace has two crates. Both use the version, edition, and license from `[workspace.package]` in `Cargo.toml`.
 
-`crates/core` is the package `aelomi-core`. `CLAUDE.md` assigns storage, indexing, search, markdown export, the MCP server, and later the sync client to it. Today it holds one constant, `VERSION`. It depends on no Tauri crate, so its tests need no window.
+`crates/core` is the package `aelomi-core`. `CLAUDE.md` assigns storage, indexing, search, markdown export, the MCP server, and later the sync client to it. Today it holds the storage engine, `aelomi_core::storage`, and the constant `VERSION`. It depends on no Tauri crate, so its tests need no window.
 
 `src-tauri` is the package `aelomi`, the desktop shell. `src-tauri/src/main.rs` calls `aelomi_lib::run()`. `run()` in `src-tauri/src/lib.rs` passes the command list from `commands::builder()` to Tauri's `invoke_handler` and calls `macos::setup` from Tauri's `setup` hook.
 
@@ -140,12 +150,40 @@ To add a job, add its ID to `CHECKS` in `scripts/protect-main.sh` and rerun the 
 - **Fixtures.** `fixtures/generator.ts` (`pnpm fixtures`) writes `fixtures/generated/`: 10,000 pages for search, their expected query results, and a 5,000-block BlockNote page. `fixtures/generator.test.ts` regenerates them and compares hashes, so a hand edit fails Vitest.
 - **CI.** The `cold-start` job downloads the `build-app` artifact. The `keystroke` job runs the `perf` project. Both are in `CHECKS` in `scripts/protect-main.sh`.
 
-## Data model (planned, not built)
+## Data model and storage
 
-None of this section exists in code yet. It records the direction from `CLAUDE.md` and `SPEC.md` ("Where data lives") so new code fits it.
+Yjs is the source of truth (DATA-1, DATA-2). Each page body is one Y.Doc, and one workspace Y.Doc, `DocId::workspace()`, holds every page's record. Each database in v2 will be one Y.Doc with a Y.Map per row. `aelomi_core::storage::Store` keeps them.
 
-- Yjs is the source of truth. Each page body is one Y.Doc, and one workspace Y.Doc holds every page's record (DATA-1, DATA-2). Each database in v2 is one Y.Doc with a Y.Map per row.
-- Each Y.Doc is stored as a snapshot file plus newer update files. Writes only append, and compaction replaces old files with a verified snapshot (DATA-6).
-- SQLite (rusqlite with FTS5) is a derived index for search, backlinks, and the page tree. The app can always delete it and rebuild it from the Y.Docs (DATA-5).
-- The Rust core updates SQLite and emits change events over Tauri IPC. Zustand stores subscribe to them. Page content skips this path, because BlockNote edits Yjs directly.
-- The data folder is `~/Library/Application Support/Aelomi`. No data path may resolve into iCloud Drive.
+Not built yet: the Tauri wiring that opens the store at launch, and the SQLite index. SQLite (rusqlite with FTS5) will be a derived index for search, backlinks, and the page tree, always rebuildable from the Y.Docs (DATA-5). The Rust core will update it and emit change events over Tauri IPC for Zustand stores. Page content skips that path, because BlockNote edits Yjs directly.
+
+**Data folder.** `~/Library/Application Support/Aelomi`, checked by `check_data_path` before opening: it resolves every symlink and refuses a path inside `~/Library/Mobile Documents` or `~/Library/CloudStorage` (SHELL-11).
+
+```text
+Aelomi/
+  format.json                       {"format": 1}, written once through a .tmp rename
+  .lock                             exclusive lock while a Store has the folder open
+  docs/<doc-id>/
+    snapshot-<gen>.ysnap            the doc's full state when generation <gen> began
+    log-<gen>-<seg>.ylog            updates appended during generation <gen>
+  quarantine/<doc-id>/              files that failed validation, never deleted
+```
+
+`<gen>` and `<seg>` are 10-digit zero-padded numbers. A log is the 8-byte magic `AELOG\0\0\x02`, a random 8-byte salt, then records of a `u32` length, a `u32` CRC-32 of the salt and the payload, and the payload, one Yjs v1 update. Payloads can't know the salt, so a record framed inside one, in note text say, never passes for a real record. A snapshot is a magic header, length, CRC-32 of the payload, and the doc's state as one update.
+
+**Refusals.** `Store::open` returns `Locked` if another process holds `.lock`, `NewerFormat` if the `format` in `format.json` is newer than this build, whatever other keys it has (checked before anything is written), and `UnknownFormat` if there is data but no readable `format.json`. Opening does no per-doc work.
+
+**Write path.** `append` checks that the bytes decode, applies them to the doc in memory, queues them, and returns a `Seq` without waiting. One writer thread takes every queued update, appends each doc's records to its current segment with one write per file, plain-`fsync`s each touched file and each directory with a new entry, then calls `F_FULLFSYNC` once for the whole batch. Only then are the updates acknowledged. Each session, each write error, and each rebuild starts a new segment. So does a merged load that reads the open segment back torn or corrupt. The writer never appends after a torn tail or damage. `flush(deadline)` waits for everything appended before it, and first lets every failing doc retry at once, whatever its backoff. `close(deadline)` flushes, then releases the folder, or hands the store back with the docs still pending. Dropping a store is for process exit.
+
+**Directory syncs.** A directory is synced whenever an entry in it may not be durable yet, not only right after this process created the entry, because an earlier attempt may have created it and failed to sync it. Every open syncs the data folder and its parent. A doc's first successful batch each session syncs `docs/`. Any sync of a doc's folder first syncs its quarantine folders, so a quarantined file's removal never becomes durable before its new entry.
+
+**Failures.** A doc whose write or sync fails is left out of the batch's full sync, so other docs still acknowledge. Its updates stay queued and retry into a new segment after 100 ms, doubling to 5 s. `health()` and `subscribe_health` report `Failing { reason, since, pending_docs }` until they land. The writer remembers each segment a failed write tore this session, and how many of its bytes were acknowledged before the failure. A panic during a writer step fails every doc with queued updates for the reason `Internal`, and they retry the same way. Each subscriber call is isolated, so a panicking subscriber stops neither the writer nor the other subscribers.
+
+**Compaction.** When a doc's unsnapshotted logs pass 1 MB or 10,000 records, the compactor thread rotates new appends to generation N + 1, writes `snapshot-(N+1).ysnap.tmp`, reads it back and verifies it, and renames it into place. Only then does it retire older files. No file leaves the doc's folder unless the new snapshot holds every block ID and deletion in every record the file yields. A file with changes the snapshot lacks stays, whether it reads clean, torn, or corrupt. If merging it back would change the doc, the doc goes stale at once, so the next `load` or `append` rebuilds it with that file. A held file that reads torn or corrupt, or that a load or rebuild found corrupt, moves to `quarantine/`, with two exceptions that hold no acknowledged bytes and are deleted. One is a log cut off inside its 16-byte header. The other is a log this session's failed write tore, when the bytes acknowledged before the failure read clean. So a disk that fails for hours adds nothing to `quarantine/` per retry, while a log torn in an earlier session still moves there. Otherwise only a clean held file, or a leftover `.tmp`, is deleted. A doc rebuilt while the compaction ran goes stale when it ends, since the rebuild can lack what the new snapshot holds. A compaction asked for after the running one rotated queues the doc once more when it ends. A snapshot over the payload limit skips compaction: before rotating for a doc without pending structs, and after it for a merge. A panic abandons that doc's compaction, leaves its files, and returns it to idle.
+
+**Pending structs.** yrs keeps an update whose dependencies are missing as pending structs. Its full-state encoding of such a doc can fail to apply, renumber them, or load with different operations, and it can leave them pending even after every dependency arrives. So `load` of a doc with pending structs, and its snapshot, merge every update the store holds for it instead: each valid snapshot, each log's records, then the queue, read under the doc's file lock so none moves between the two. yrs's merge re-sorts every input at each step, so it merges 32 at a time: about 7 ms for a 10,000-record, 1 MB doc, against about 1.5 ms to encode one from memory. A doc without pending structs keeps that faster path.
+
+**Verification.** A doc's operations are the ID of every block, deleted or not, and every deletion, pending structs included. They come from yrs's plain encoding of the integrated blocks plus its pending update, because a client's blocks can start past its state vector. A doc can hold more deletions than its updates carry, since yrs deletes what it integrates into a deleted parent. yrs's encoding of a doc without pending structs verifies when it holds exactly the doc's operations at rotation, loads into a doc that holds exactly those too, and matches its fingerprint: state vector, delete set, and root contents. A merge verifies when it holds exactly the operations of the updates in it and loads into a doc that holds all of them, and perhaps more deletions as structs left pending integrate. Compaction reads the merge after rotating, so it holds at least what the doc held then. A snapshot that fails verification is removed, and the doc tries again after another limit's worth of logs. Nothing compares encoded bytes.
+
+**Loading.** A doc's first `load` or `append` applies every valid snapshot and every log. It reads them under the doc's file lock alone, not its state lock, which each batch takes for every loaded doc, so a slow read holds up no other doc's acknowledgement. A rebuild reads the same way. Later loads encode the doc in memory, unless it has pending structs. Yjs updates are idempotent and commutative, so applying more is safe. A log ends cleanly, with a torn tail, or with corruption. After any bad record, even one whose length runs past the end of the file, reading resumes at the next offset whose record passes its salted CRC and decodes as an update, so every valid record loads, before and after the damage. A tail is torn only when no valid record follows the first bad one, and that record runs to or past the end of the file or only zeros follow it. Anything else is corruption. Neither file is appended to again. Neither is deleted outside the two exceptions under "Compaction", since a flipped bit in an acknowledged last record also reads as torn. The scan hashes at most 1,024 bytes per byte of the file. A file it can't afford to read past counts as corrupt, never torn. Files below the newest valid snapshot, or a leftover `.tmp`, make that load compact again. An update that decodes but fails to apply leaves the doc stale: compaction skips it, and the next `load` or `append` rebuilds it from its files and queue. A panic doesn't stop storage: every lock recovers from poisoning, and a doc whose state lock was poisoned goes stale too, since yrs may have half-applied an update. A rebuild or a merged load keeps any corruption it finds for quarantine. A rebuild queues the compaction again if the logs are over the limit or a compaction was interrupted.
+
+**Testing seams.** `Store` runs over the `Fs` and `Clock` traits. `OsFs` and the system clock are production. `SimFs` models written, drive-cache, and durable layers, crashes with torn prefixes, injects errors, panics, damaged writes, and latency, holds an operation until the test releases it, and checks the append-only rules on every operation. It allows a delete only of a `.tmp`, or of a file a durable newer snapshot holds that is clean, cut off inside a log header, or torn by a write that failed this session after bytes that read clean. It allows a move out of a doc's folder only of a file a durable newer snapshot holds. With `Driver::Manual` a test steps the writer and compactor itself.

@@ -1,0 +1,30 @@
+//! The durable, append-only store of Y.Docs. See `ARCHITECTURE.md`, "Data model and storage".
+
+mod clock;
+mod compact;
+mod data_path;
+mod doc_id;
+mod equality;
+mod format;
+mod fs;
+mod health;
+mod layout;
+mod log;
+mod recover;
+mod snapshot;
+mod state;
+mod store;
+mod writer;
+
+#[cfg(test)]
+mod sim_fs;
+#[cfg(test)]
+mod testkit;
+#[cfg(test)]
+mod tests;
+
+pub use data_path::{DataPathError, check_data_path};
+pub use doc_id::{DocId, InvalidDocId};
+pub use health::{FailReason, Health};
+pub use state::Seq;
+pub use store::{AppendError, OpenError, Store};
