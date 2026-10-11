@@ -32,8 +32,7 @@ enum Action {
 enum Arrival {
     InOrder,
     Shuffled,
-    /// One early update arrives only after the crash, so the updates that need it stay pending.
-    Withheld,
+    OneAfterCrash,
 }
 
 #[derive(Clone, Debug)]
@@ -61,7 +60,7 @@ fn arrival() -> impl Strategy<Value = Arrival> {
     prop_oneof![
         2 => Just(Arrival::InOrder),
         1 => Just(Arrival::Shuffled),
-        1 => Just(Arrival::Withheld),
+        1 => Just(Arrival::OneAfterCrash),
     ]
 }
 
@@ -112,7 +111,7 @@ fn plan(scenario: &Scenario, doc: usize) -> Sent {
     let (planned, withheld) = match scenario.arrivals[doc] {
         Arrival::InOrder => (UpdateGen::new(seed, 2).updates(n), None),
         Arrival::Shuffled => (out_of_order(seed, n, Delivery::Shuffled), None),
-        Arrival::Withheld => {
+        Arrival::OneAfterCrash => {
             let mut updates = UpdateGen::new(seed, 3).updates(n + 1);
             let at = SplitMix64::new(seed).below(n as u64 / 2 + 1) as usize;
             let withheld = updates.remove(at);
@@ -187,9 +186,7 @@ fn play(scenario: &Scenario, die_after: usize) -> (Env, Vec<Sent>, usize) {
     (env, sent, ops)
 }
 
-/// Compared as docs, since a load encoded from memory holds deletions yrs derived, and a load
-/// merged from stored updates leaves them for the doc to derive again.
-fn ops_of_doc(doc: &Doc) -> Ops {
+fn integrated_ops(doc: &Doc) -> Ops {
     Ops::of_doc(&doc.transact()).expect("yrs decodes its own encoding")
 }
 
@@ -241,7 +238,7 @@ fn run(scenario: &Scenario) -> Result<(), TestCaseError> {
                 case
             );
         }
-        after_crash.push((ops_of_doc(&loaded), loaded));
+        after_crash.push((integrated_ops(&loaded), loaded));
     }
 
     let more: Vec<Vec<Vec<u8>>> = (0..DOCS)
@@ -270,7 +267,7 @@ fn run(scenario: &Scenario) -> Result<(), TestCaseError> {
         let case = format!("doc {i} ({:?}) after reopening", scenario.arrivals[i]);
         let (held, reloaded) = applied(&store.load(&ids[i]).unwrap(), &case);
         prop_assert!(
-            ops_of_doc(&reloaded).contains(ops),
+            integrated_ops(&reloaded).contains(ops),
             "{} lost an update it held after the crash",
             case
         );

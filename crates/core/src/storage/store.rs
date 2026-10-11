@@ -20,7 +20,7 @@ use super::health::{FailReason, Health};
 use super::layout::Layout;
 use super::recover::{Merged, merge, recover, stored_updates};
 use super::state::{
-    Compaction, DocSlot, DocState, Limits, Queued, Segment, Seq, Ydoc, lock_ignoring_poison,
+    Compaction, DocSlot, DocState, Limits, Queued, Seq, Ydoc, lock_ignoring_poison,
 };
 use super::writer;
 
@@ -389,11 +389,7 @@ impl Shared {
         if let Ydoc::Fresh(_) = state.ydoc {
             return Ok(());
         }
-        // The doc is about to trust its files over memory. Its open segment may be damaged, or
-        // unreadable, so nothing more is appended behind bytes the store can't account for.
-        if let Segment::Open(..) = state.log.segment {
-            state.log.segment = state.log.segment.abandon();
-        }
+        state.log.leave_open_segment();
         let recovered = recover(&*self.fs, &self.layout, doc, self.limits)?;
         for queued in &state.queue {
             let update = Update::decode_v1(&queued.update).expect("queued updates decode");
@@ -411,14 +407,15 @@ impl Shared {
         let slot = self.slot(doc);
         let writer_waits = slot.files();
         let stored = stored_updates(&*self.fs, &self.layout, doc)?;
-        let queued: Vec<Arc<[u8]>> = slot.state().as_mut().map_or_else(Vec::new, |state| {
-            // The open segment reads clean unless something damaged it, and the next append
-            // would land behind the damage, where recovery stops reading.
-            if stored.unclean_logs.contains(&state.log.segment.file()) {
-                state.log.segment = state.log.segment.abandon();
+        let queued: Vec<Arc<[u8]>> = match slot.state().as_mut() {
+            Some(state) => {
+                if stored.unclean_logs.contains(&state.log.segment.file()) {
+                    state.log.leave_open_segment();
+                }
+                state.queue.iter().map(|q| q.update.clone()).collect()
             }
-            state.queue.iter().map(|q| q.update.clone()).collect()
-        });
+            None => Vec::new(),
+        };
         drop(writer_waits);
         let updates = stored.updates.iter().map(Vec::as_slice);
         Ok(merge(updates.chain(queued.iter().map(|update| &**update))))

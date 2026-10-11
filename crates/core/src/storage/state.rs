@@ -97,6 +97,14 @@ pub(crate) struct LogState {
     pub unsnapshotted: LogSize,
 }
 
+impl LogState {
+    pub fn leave_open_segment(&mut self) {
+        if let Segment::Open(..) = self.segment {
+            self.segment = self.segment.abandon();
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum DocDir {
     Missing,
