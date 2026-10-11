@@ -19,6 +19,9 @@ export type Budgets = {
     discardedPerLoad: Budget;
     gapMs: Budget;
   };
+  noise: {
+    maxLoadPerCore: Budget;
+  };
 };
 
 export const keystrokeSurfaces: readonly KeystrokeSurface[] = [
@@ -57,6 +60,7 @@ export function readBudgets(): Budgets {
   );
   const coldStart = section(raw.coldStart, "coldStart");
   const keystroke = section(raw.keystroke, "keystroke");
+  const noise = section(raw.noise, "noise");
   return {
     coldStart: {
       specMs: budget(coldStart, "coldStart.specMs", isNumber),
@@ -85,6 +89,9 @@ export function readBudgets(): Budgets {
         isNumber,
       ),
       gapMs: budget(keystroke, "keystroke.gapMs", isNumber),
+    },
+    noise: {
+      maxLoadPerCore: budget(noise, "noise.maxLoadPerCore", isNumber),
     },
   };
 }

@@ -10,6 +10,7 @@ import { cpus, loadavg } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { readBudgets } from "./budgets.ts";
+import { machineNoise, withNoise } from "./noise.ts";
 import { median, range } from "./stats.ts";
 
 const HARNESS_FAILURE = 2;
@@ -195,6 +196,9 @@ log(
   `plan: ${warmupRuns} discarded warm-up, then ${timedRuns} timed runs. T0 is the wall clock (Date.now, 1 ms resolution) read just before spawn, the same clock as the kernel's process start stamp. Marks are ms after T0. First content frame = min(rAF+MessageChannel, double rAF). ${TIMEOUT_MS / 1000} s timeout per run.`,
 );
 
+const startNoise = machineNoise(args.ci ? "ci" : "local");
+if (startNoise) log(startNoise);
+
 for (let i = 1; i <= warmupRuns; i++) await launch(`warmup-${i}`);
 await sleep(GAP_MS);
 const runs: Run[] = [];
@@ -228,6 +232,8 @@ log(
   `spec verdict${args.ci ? " (information)" : " (gate)"}: end-to-end ${verdict(endToEndMedian, budgets.specMs.value)}`,
 );
 log(`load at end ${load()}`);
+const endNoise = machineNoise(args.ci ? "ci" : "local");
+if (endNoise) log(endNoise);
 writeFileSync(
   join(outDir, "results.json"),
   JSON.stringify(
@@ -247,5 +253,10 @@ writeFileSync(
   ),
 );
 const gated = args.ci ? hostedPass : specPass;
-log(gated ? "cold start: PASS" : "cold start: FAIL (budget miss)");
+log(
+  withNoise(
+    gated ? "cold start: PASS" : "cold start: FAIL (budget miss)",
+    startNoise ?? endNoise,
+  ),
+);
 process.exit(gated ? 0 : BUDGET_MISS);

@@ -40,6 +40,7 @@ test("budgets.json holds every gate with a value and a why", () => {
     "keystroke.samplesPerLoad",
     "keystroke.discardedPerLoad",
     "keystroke.gapMs",
+    "noise.maxLoadPerCore",
   ]);
   for (const entry of entries) {
     expect(entry.why, `${entry.key} why`).toMatch(/\S/);

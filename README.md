@@ -119,6 +119,12 @@ reported in both modes.
 Did-it-happen guards fail the test when samples are missing or the text did not
 grow by one character per key.
 
+**Busy machine.** When the 1-minute load average per core is above
+`noise.maxLoadPerCore`, both harnesses print a `NOISY: load ...` line at the
+start and at the end, and append it to the verdict line. The label is
+information only. It never changes a verdict or an exit code, and the harness
+never waits for the load to fall.
+
 **Fixtures.** `pnpm fixtures` regenerates `fixtures/generated/` from the seeded
 generator. See `fixtures/README.md`.
 

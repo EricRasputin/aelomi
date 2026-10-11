@@ -7,6 +7,7 @@ import {
   splitResidual,
   splitSample,
 } from "../../../perf/keystroke.ts";
+import { machineNoise, withNoise } from "../../../perf/noise.ts";
 import { median, percentile95, range } from "../../../perf/stats.ts";
 import { expect, test } from "../fixtures";
 
@@ -82,6 +83,8 @@ for (const surface of keystrokeSurfaces) {
   test(`EDIT-14 keystroke-to-paint on the ${surface} surface`, async ({
     page,
   }, testInfo) => {
+    const startNoise = machineNoise(mode);
+    if (startNoise) console.log(`${surface}: ${startNoise}`);
     await page.addInitScript(installRecorder);
     const loads: { p95: number; kept: Split[] }[] = [];
     const cadences: number[] = [];
@@ -158,8 +161,13 @@ for (const surface of keystrokeSurfaces) {
       `${value} ms ${value <= budget ? "<=" : ">"} ${budget} ms ${value <= budget ? "PASS" : "FAIL"}`;
     const role = (metric: keyof Split) =>
       gated && metric === gate.metric ? "gate" : "information";
+    const endNoise = machineNoise(mode);
+    const noise = startNoise ?? endNoise;
     const summary = [
-      `${surface}: full key-to-paint p95 ${verdict(fullP95, budgets.p95Ms.value)} (spec, ${role("full")})`,
+      withNoise(
+        `${surface}: full key-to-paint p95 ${verdict(fullP95, budgets.p95Ms.value)} (spec, ${role("full")})`,
+        noise,
+      ),
       `app-owned p95 ${verdict(appOwnedP95, budgets.hostedAppOwnedP95Ms.value)} (hosted, ${role("appOwned")})`,
       `tick wait ${p50p95(column("tickWait"))}, key-to-input ${p50p95(column("keyToInput"))}, render ${p50p95(column("render"))}, frame start to the recorder's rAF ${p50p95(column("frameToRaf"))}`,
       `full key-to-paint p50 ${median(column("full"))} ms, range ${range(column("full"))} ms, per-load ${gate.metric} p95 ${loads.map((load) => load.p95).join(", ")}, double rAF p95 ${percentile95(column("doubleRaf"))} ms`,
@@ -167,6 +175,7 @@ for (const surface of keystrokeSurfaces) {
       `idle rAF cadence per load ${cadences.map((c) => c.toFixed(1)).join(", ")} ms, load average ${loadavg()
         .map((x) => x.toFixed(2))
         .join(" ")}`,
+      ...(endNoise ? [`${surface}: ${endNoise}`] : []),
     ].join("\n  ");
     console.log(summary);
     testInfo.annotations.push({ type: "keystroke", description: summary });
@@ -198,7 +207,10 @@ for (const surface of keystrokeSurfaces) {
     if (gated)
       expect(
         percentile95(column(gate.metric)),
-        `EDIT-14 ${surface} ${gate.metric} p95 (${mode} mode)`,
+        withNoise(
+          `EDIT-14 ${surface} ${gate.metric} p95 (${mode} mode)`,
+          noise,
+        ),
       ).toBeLessThanOrEqual(gate.budget);
   });
 }
