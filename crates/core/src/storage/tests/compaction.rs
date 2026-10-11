@@ -1,6 +1,7 @@
 use yrs::{Doc, GetString, ReadTxn, StateVector, Text, Transact};
 
 use super::{Env, assert_doc, doc, soon};
+use crate::storage::compact::CompactError;
 use crate::storage::health::Health;
 use crate::storage::log::read_log;
 use crate::storage::sim_fs::{Crash, OpKind};
@@ -390,7 +391,7 @@ fn a_panic_compacting_one_doc_leaves_its_files_and_the_next_doc_still_compacts()
 
     let (compacted, result) = store.run_compactor_once().unwrap();
     assert_eq!(compacted, a);
-    assert!(result.is_err());
+    assert!(matches!(result, Err(CompactError::Panicked)), "{result:?}");
     assert_eq!(
         env.doc_files(&a),
         [

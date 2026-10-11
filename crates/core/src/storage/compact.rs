@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 use std::fmt;
 use std::io;
+use std::panic::{self, AssertUnwindSafe};
 use std::path::Path;
 use std::sync::atomic::Ordering;
 
@@ -21,6 +22,7 @@ use super::store::Shared;
 pub(crate) enum CompactError {
     Io(io::Error),
     Mismatch,
+    Panicked,
 }
 
 pub(crate) fn run(shared: &Shared) {
@@ -31,9 +33,16 @@ pub(crate) fn run(shared: &Shared) {
     }
 }
 
+/// A panic abandons this doc's compaction and leaves its files as they are.
 pub(crate) fn compact_queued(shared: &Shared, doc: &DocId) -> Result<(), CompactError> {
-    let rotated = rotate(shared, doc);
-    finish(shared, doc, rotated)
+    panic::catch_unwind(AssertUnwindSafe(|| {
+        let rotated = rotate(shared, doc);
+        finish(shared, doc, rotated)
+    }))
+    .unwrap_or_else(|_| {
+        shared.compaction_ended(doc);
+        Err(CompactError::Panicked)
+    })
 }
 
 pub(crate) fn finish(
@@ -243,6 +252,7 @@ impl fmt::Display for CompactError {
         match self {
             Self::Io(e) => write!(f, "{e}"),
             Self::Mismatch => f.write_str("the snapshot read back differs from the doc"),
+            Self::Panicked => f.write_str("it panicked, so its files stay as they were"),
         }
     }
 }
