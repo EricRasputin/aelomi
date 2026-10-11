@@ -285,3 +285,39 @@ fn a_doc_that_fails_to_rebuild_stays_stale_until_a_rebuild_succeeds() {
     drop(store);
     assert_doc(&env.open(), &a, &[good, later]);
 }
+
+#[test]
+fn a_rebuild_keeps_damage_it_finds_for_quarantine() {
+    let env = Env::manual();
+    let store = env.open();
+    let a = doc("a");
+    let PartlyApplying { good, bad } = partly_applying_update();
+    let mut sent = vec![good];
+    sent.extend(UpdateGen::new(31, 2).updates(9));
+    for update in &sent {
+        store.append(&a, update).unwrap();
+    }
+    assert_eq!(store.flush(soon()), []);
+
+    let name = "log-0000000000-0000000000.ylog";
+    let path = env.path("docs/a").join(name);
+    let sixth_record = 8 + sent[..5].iter().map(|u| 8 + u.len()).sum::<usize>();
+    env.fs.flip_bit(&path, sixth_record + 9);
+    let damaged = env.fs.files()[&path].clone();
+
+    assert!(matches!(
+        store.append(&a, &bad),
+        Err(AppendError::InvalidUpdate)
+    ));
+    assert_doc(&store, &a, &sent[..5]);
+    store.compact(&a).unwrap();
+    assert_eq!(env.doc_files(&a), ["snapshot-0000000001.ysnap"]);
+    assert_eq!(
+        env.fs.files().get(&env.path("quarantine/a").join(name)),
+        Some(&damaged),
+        "moved byte for byte"
+    );
+    drop(store);
+    assert_doc(&env.open(), &a, &sent[..5]);
+}
+
