@@ -1,5 +1,13 @@
+use aelomi_core::storage::DocId;
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use serde::{Deserialize, Serialize};
 use specta::Type;
+use tauri::State;
+
+use crate::storage::{
+    Health, QuitBlocked, Storage, StorageError, StorageHealthChanged, StorageStatus,
+};
 
 #[derive(Deserialize, Type)]
 pub struct PingRequest {
@@ -37,8 +45,64 @@ pub fn perf_report(app: tauri::AppHandle, marks: crate::perf::ColdStartMarks) {
     }
 }
 
+#[tauri::command]
+#[specta::specta]
+pub fn storage_status(storage: State<'_, Storage>) -> StorageStatus {
+    storage.status()
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn storage_health(storage: State<'_, Storage>) -> Health {
+    storage.health()
+}
+
+/// Returns the doc's full state as base64.
+#[tauri::command]
+#[specta::specta]
+pub fn doc_load(storage: State<'_, Storage>, doc_id: String) -> Result<String, StorageError> {
+    let state = storage.store()?.load(&DocId::new(doc_id)?)?;
+    Ok(BASE64.encode(state))
+}
+
+/// Takes the update as base64. Returns its sequence number once it is queued, before it is
+/// durable. That is an `f64` because specta refuses `u64`, and a JS number holds every value
+/// below 2^53 exactly.
+#[tauri::command]
+#[specta::specta]
+pub fn doc_append(
+    storage: State<'_, Storage>,
+    doc_id: String,
+    update: String,
+) -> Result<f64, StorageError> {
+    let update = BASE64
+        .decode(update)
+        .map_err(|_| StorageError::InvalidUpdate)?;
+    let seq = storage.store()?.append(&DocId::new(doc_id)?, &update)?;
+    Ok(seq.0 as f64)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn dev_probe_log(line: String) {
+    println!("{line}");
+}
+
 pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
-    tauri_specta::Builder::new().commands(tauri_specta::collect_commands![ping, perf_report])
+    tauri_specta::Builder::new()
+        .commands(tauri_specta::collect_commands![
+            ping,
+            perf_report,
+            storage_status,
+            storage_health,
+            doc_load,
+            doc_append,
+            dev_probe_log,
+        ])
+        .events(tauri_specta::collect_events![
+            StorageHealthChanged,
+            QuitBlocked
+        ])
 }
 
 #[cfg(test)]
