@@ -61,7 +61,7 @@ A change that breaks a budget doesn't merge.
 | Pure TS logic | Vitest | View filtering/sorting, markdown conversion, keyboard handling |
 | React components | none | Covered by `e2e`. Don't write component unit tests. |
 
-Data-safety checks end in exact assertions, never an AI judgment step. No automated tool can drive the real macOS app, so the Rust tests and the maintainer's daily use cover that gap.
+Data-safety checks end in exact assertions, never an AI judgment step. The `verify-aelomi` skill drives the real app window through the macOS accessibility tree to prove a change works. It is evidence for a PR, not a CI gate, so the Rust tests and the maintainer's daily use still cover the real app.
 
 **Definition of done:** the feature's `e2e` tests pass in CI, logic has unit tests, budgets are green, dependency checks (`cargo-deny`, `pnpm audit`) pass, and the reviewer agent approves.
 

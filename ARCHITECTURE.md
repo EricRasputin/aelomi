@@ -12,14 +12,18 @@ This file maps the code. `CLAUDE.md` has the rules and the stack, `SPEC.md` has 
 | `src-tauri/src/lib.rs` | `run()` builds the Tauri app and registers the commands |
 | `src-tauri/src/commands.rs` | Tauri commands, the tauri-specta `builder()`, and the `bindings_are_current` test |
 | `src-tauri/src/macos.rs` | All macOS-specific code |
+| `src-tauri/src/perf.rs` | The cold-start probe, armed only by `AELOMI_PERF_REPORT` |
 | `src-tauri/tauri.conf.json` | Window, content security policy, and the ad-hoc signed `.app` bundle |
 | `src/main.tsx` | UI entry point, loaded by `index.html` |
 | `src/router.tsx` | Routes and the screens they render |
 | `src/stores/` | Zustand stores |
 | `src/ipc/` | Generated bindings, the IPC mock, and the switch between them |
+| `src/perf/` | The cold-start mark and the mock-only keystroke surfaces |
 | `src/styles.css` | Tailwind v4 import and the light and dark color variables |
 | `e2e/` | TesterArmy acceptance tests and their guarded fixture |
 | `tests/playwright/` | Playwright WebKit tests and their guarded fixture |
+| `perf/` | Perf harnesses and `budgets.json`, the numbers every perf gate reads |
+| `fixtures/` | The seeded fixture generator and its output in `fixtures/generated/` |
 | `tests/is-local-url.ts` | The loopback allow list both browser suites share |
 | `.github/workflows/ci.yml` | Every CI job |
 | `scripts/check-licenses.mjs` | Fails on an npm license outside the allow list |
@@ -43,7 +47,7 @@ The workspace has two crates. Both use the version, edition, and license from `[
 
 ## macOS-specific code lives in one module
 
-`src-tauri/src/macos.rs` holds all code that works only on macOS. `src-tauri/src/lib.rs` declares it with `#[cfg(target_os = "macos")] mod macos;` and calls `macos::setup(app)` under the same `cfg`. Today `setup` installs the default native menu. A port to another platform replaces this one module. The `bundle.macOS` block in `src-tauri/tauri.conf.json` sets the macOS 14 minimum and ad-hoc signing.
+`src-tauri/src/macos.rs` holds all code that works only on macOS. `src-tauri/src/lib.rs` declares it with `#[cfg(target_os = "macos")] mod macos;` and calls `macos::setup(app)` under the same `cfg`. Today `setup` installs the default native menu, and `process_start_us` reads the kernel's process start time for the cold-start probe. A port to another platform replaces this one module. The `bundle.macOS` block in `src-tauri/tauri.conf.json` sets the macOS 14 minimum and ad-hoc signing.
 
 ## A command call goes from a store to the shell and back
 
@@ -56,7 +60,7 @@ The `ping` command is the working example.
 5. Tauri runs `ping` in `src-tauri/src/commands.rs`, which reads `aelomi_core::VERSION` and returns a `PingReply`.
 6. The store sets `status` to `ready`. Only components that select `status` re-render.
 
-Import `commands` from `src/ipc/index.ts`. A direct import of `commands` from `bindings.ts` skips the mock swap. Type imports from `bindings.ts` are fine.
+Import `commands` from `src/ipc/index.ts`. A direct import of `commands` from `bindings.ts` skips the mock swap, so Biome rejects it outside `src/ipc/`. Type imports from `bindings.ts` are fine.
 
 ## Bindings are generated and checked in CI
 
@@ -79,7 +83,7 @@ To add a command:
 
 `src/main.tsx` renders `RouterProvider` with the router from `src/router.tsx`, inside `StrictMode`.
 
-`src/router.tsx` builds the route tree in code with `createRootRoute` and `createRoute`. There is no file-based route generation. The root layout wraps every screen in Radix `Tooltip.Provider`. The one route is `/`, which renders `IndexScreen`.
+`src/router.tsx` builds the route tree in code with `createRootRoute` and `createRoute`. There is no file-based route generation. The root layout wraps every screen in Radix `Tooltip.Provider`. The app route is `/`, which renders `IndexScreen`. Mock builds add `/perf/keystroke/empty` and `/perf/keystroke/page-5000-blocks` for the keystroke gate.
 
 `src/stores/` holds the Zustand stores. Components read stores through selectors, such as `usePingStore((state) => state.status)`.
 
@@ -96,10 +100,12 @@ To add a command:
 
 | Layer | Tool | Location | CI job |
 |---|---|---|---|
-| Pure TypeScript logic | Vitest | `src/**/*.test.ts`, configured in `vitest.config.ts` | `vitest` |
+| Pure TypeScript logic | Vitest | `src/`, `perf/`, and `fixtures/` `*.test.ts`, configured in `vitest.config.ts` | `vitest` |
 | Rust core and shell | cargo-nextest | `#[cfg(test)]` modules in each crate | `nextest` |
 | Acceptance | TesterArmy `e2e` | `e2e/*.e2e.ts`, configured in `e2e.config.ts` | `e2e` |
-| WebKit flows and the network check | Playwright | `tests/playwright/*.spec.ts`, configured in `playwright.config.ts` | `playwright` |
+| WebKit flows and the network check | Playwright, `webkit` project | `tests/playwright/*.spec.ts`, configured in `playwright.config.ts` | `playwright` |
+| Keystroke-to-paint | Playwright, `perf` project | `tests/playwright/perf/` | `keystroke` |
+| Cold start | Node harness on the built `.app` | `perf/cold-start.ts` | `cold-start` |
 
 Acceptance tests import `test` from `e2e/fixtures.ts`, and Playwright tests import `test` and `expect` from `tests/playwright/fixtures.ts`. Both fixtures fail a test that makes a non-local request (SHELL-13). Biome rejects a test file that imports `test` from the library directly. There are no React component unit tests. `e2e` covers components.
 
@@ -118,21 +124,19 @@ Acceptance tests import `test` from `e2e/fixtures.ts`, and Playwright tests impo
 | `build-app` | `pnpm tauri build --bundles app` and `pnpm check:no-mock`, then uploads the zipped `.app` as the `Aelomi-app` artifact |
 | `e2e` | `pnpm build:mock` and `pnpm test:e2e` |
 | `playwright` | `pnpm build:mock` and `pnpm test:playwright` |
+| `cold-start` | Downloads `Aelomi-app` and runs `perf/cold-start.ts --ci` |
+| `keystroke` | `pnpm build:mock` and the `perf` Playwright project in CI mode |
 
 To add a job, add its ID to `CHECKS` in `scripts/protect-main.sh` and rerun the script, so `main` requires it.
 
 ## Performance gates
 
-> **Unverified.** PR 4 (`issue-3/4-perf-gates`) adds everything in this section and had no commits when this section was written. After rebasing onto PR 4, check each path and job name below against the tree, fix what differs, and delete this note.
+`CLAUDE.md` sets the budgets, and `SPEC.md` ("Performance budgets") defines how each is measured. Every number the gates read lives in `perf/budgets.json`, each with a `why`. Hosted macOS runners cannot reach the `CLAUDE.md` numbers, so each gate has two modes. Local mode enforces the `CLAUDE.md` budget on Apple Silicon. CI mode (`--ci` or `AELOMI_PERF_CI=1`) enforces what a hosted runner can measure and prints the local verdict as information.
 
-`CLAUDE.md` sets the budgets, and `SPEC.md` ("Performance budgets") defines how each is measured.
-
-- `perf/` holds the cold-start harness. It launches the built `.app` 10 times and fails if the median exceeds 500 ms.
-- `perf/budgets.json` holds the budget numbers the gates read.
-- A perf route, registered only in mock builds, hosts the keystroke measurement.
-- The `perf` project in `playwright.config.ts` measures keystroke-to-paint in WebKit and fails above 16 ms at p95.
-- `fixtures/generated/` holds the seeded fixtures: 10,000 pages and a 5,000-block page.
-- The `cold-start` and `keystroke` CI jobs run the two gates. Both belong in `CHECKS` in `scripts/protect-main.sh`.
+- **Cold start.** `perf/cold-start.ts` (`pnpm perf:cold`) launches the built `.app` directly, discards one warm-up, and takes the median of 10 runs. The app reports its first content frame only when `AELOMI_PERF_REPORT=<path>` is set: `src/perf/cold-start.ts` marks the index commit and calls the `perf_report` command, and `src-tauri/src/perf.rs` writes the report and exits. CI mode gates end-to-end time and navigation-to-paint time against the hosted budgets.
+- **Keystroke-to-paint.** The `perf` project in `playwright.config.ts` runs `tests/playwright/perf/keystroke.spec.ts` (`pnpm perf:keystroke`) against mock-only routes under `/perf/keystroke/` (`src/perf/`). `perf/keystroke.ts` splits each sample into the app's own time and the wait for the next frame. Local mode gates full key-to-paint p95. CI mode gates the app's own time. The gated surface moves to the real editor when BlockNote lands.
+- **Fixtures.** `fixtures/generator.ts` (`pnpm fixtures`) writes `fixtures/generated/`: 10,000 pages for search, their expected query results, and a 5,000-block BlockNote page. `fixtures/generator.test.ts` regenerates them and compares hashes, so a hand edit fails Vitest.
+- **CI.** The `cold-start` job downloads the `build-app` artifact. The `keystroke` job runs the `perf` project. Both are in `CHECKS` in `scripts/protect-main.sh`.
 
 ## Data model (planned, not built)
 
