@@ -46,26 +46,20 @@ pub(crate) fn recover(
     files.sort();
     let mut corrupt = BTreeSet::new();
 
-    let mut ydoc = None;
+    let ydoc = Doc::new();
     let mut base = None;
     for file in files.iter().rev() {
         let DocFile::Snapshot(generation) = *file else {
             continue;
         };
         let bytes = fs.read(&layout.doc_file(doc, *file))?;
-        match read_snapshot(&bytes).and_then(snapshot_doc) {
-            Some(snapshot) if ydoc.is_none() => {
-                ydoc = Some(snapshot);
-                base = Some(generation);
-            }
-            Some(_) => {}
-            None => {
-                eprintln!("aelomi storage: {doc}/{} is corrupt", file.name());
-                corrupt.insert(file.name());
-            }
+        if read_snapshot(&bytes).is_some_and(|payload| apply_records(&ydoc, &[payload])) {
+            base.get_or_insert(generation);
+        } else {
+            eprintln!("aelomi storage: {doc}/{} is corrupt", file.name());
+            corrupt.insert(file.name());
         }
     }
-    let ydoc = ydoc.unwrap_or_default();
 
     let mut unsnapshotted = LogSize::default();
     for file in &files {
@@ -74,12 +68,7 @@ pub(crate) fn recover(
         };
         let bytes = fs.read(&layout.doc_file(doc, *file))?;
         let contents = read_log(&bytes);
-        let mut txn = ydoc.transact_mut();
-        let mut applied = true;
-        for record in &contents.records {
-            let update = Update::decode_v1(record);
-            applied &= update.is_ok_and(|u| txn.apply_update(u).is_ok());
-        }
+        let applied = apply_records(&ydoc, &contents.records);
         if contents.end == LogEnd::Corrupt || !applied {
             eprintln!("aelomi storage: {doc}/{} is corrupt", file.name());
             corrupt.insert(file.name());
@@ -120,6 +109,15 @@ pub(crate) fn recover(
         log,
         corrupt,
         needs_compaction,
+    })
+}
+
+/// Applies every record it can, and returns whether all of them applied.
+fn apply_records(ydoc: &Doc, records: &[&[u8]]) -> bool {
+    let mut txn = ydoc.transact_mut();
+    records.iter().fold(true, |applied, record| {
+        let update = Update::decode_v1(record);
+        applied & update.is_ok_and(|u| txn.apply_update(u).is_ok())
     })
 }
 
