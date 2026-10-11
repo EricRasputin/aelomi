@@ -41,7 +41,10 @@ fn a_second_open_of_the_same_folder_is_locked() {
 #[test]
 fn a_newer_format_is_refused_and_the_folder_is_left_byte_for_byte_unchanged() {
     let dir = folder(&[
-        ("format.json", b"{\"format\": 2}"),
+        (
+            "format.json",
+            b"{\"format\": 2, \"migrated\": {\"from\": [1]}}",
+        ),
         (
             "docs/a/log-0000000000-0000000000.ylog",
             b"AELOG\0\0\x02 future bytes",
