@@ -8,7 +8,7 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use yrs::updates::decoder::Decode;
-use yrs::{ReadTxn, StateVector, Transact, Update};
+use yrs::{Doc, ReadTxn, StateVector, Transact, Update};
 
 use super::clock::{Clock, SystemClock};
 use super::compact;
@@ -142,20 +142,22 @@ impl Store {
     /// The doc's full state as one Yjs v1 update, including updates not yet durable. A doc
     /// that was never written loads as an empty doc.
     pub fn load(&self, doc: &DocId) -> io::Result<Vec<u8>> {
-        self.shared.with_doc(doc, |state| {
-            state
-                .ydoc
-                .transact()
+        self.shared.with_doc(doc, |ydoc, _| {
+            ydoc.transact()
                 .encode_state_as_update_v1(&StateVector::default())
         })
     }
 
     /// Applies `update` to the doc in memory and queues it for the writer. Never waits on a
     /// write: the update is durable once a later batch's full sync covers it.
+    ///
+    /// An update that decodes but fails to apply is rejected. yrs may have applied part of it,
+    /// so the doc is rebuilt from its files and queue before it is used again.
     pub fn append(&self, doc: &DocId, update: &[u8]) -> Result<Seq, AppendError> {
         let decoded = Update::decode_v1(update).map_err(|_| AppendError::InvalidUpdate)?;
-        let applied = self.shared.with_doc(doc, |state| {
-            if state.ydoc.transact_mut().apply_update(decoded).is_err() {
+        let seq = self.shared.with_doc(doc, |ydoc, state| {
+            if ydoc.transact_mut().apply_update(decoded).is_err() {
+                state.ydoc = None;
                 return None;
             }
             let seq = Seq(self.shared.next_seq.fetch_add(1, Ordering::SeqCst));
@@ -165,16 +167,9 @@ impl Store {
             });
             Some(seq)
         })?;
-        match applied {
-            Some(seq) => {
-                self.shared.notify_writer();
-                Ok(seq)
-            }
-            None => {
-                self.shared.rebuild(doc)?;
-                Err(AppendError::InvalidUpdate)
-            }
-        }
+        let seq = seq.ok_or(AppendError::InvalidUpdate)?;
+        self.shared.notify_writer();
+        Ok(seq)
     }
 
     /// Waits until every update appended before the call is durable, or `deadline` passes.
@@ -256,9 +251,9 @@ impl Store {
 
     #[cfg(test)]
     pub(crate) fn compact(&self, doc: &DocId) -> Result<(), compact::CompactError> {
-        let queued = self
-            .shared
-            .with_doc(doc, |state| std::mem::replace(&mut state.compacting, true))?;
+        let queued = self.shared.with_doc(doc, |_, state| {
+            std::mem::replace(&mut state.compacting, true)
+        })?;
         if queued {
             self.shared
                 .signal
@@ -299,39 +294,49 @@ impl Shared {
             .clone()
     }
 
-    fn with_doc<R>(&self, doc: &DocId, f: impl FnOnce(&mut DocState) -> R) -> io::Result<R> {
+    fn with_doc<R>(&self, doc: &DocId, f: impl FnOnce(&Doc, &mut DocState) -> R) -> io::Result<R> {
         let slot = self.slot(doc);
-        let mut state = slot.state.lock().unwrap();
-        if state.is_none() {
-            let recovered = recover(&*self.fs, &self.layout, doc, self.limits)?;
-            *state = Some(DocState {
-                ydoc: recovered.ydoc,
-                queue: VecDeque::new(),
-                log: recovered.log,
-                failure: None,
-                corrupt: recovered.corrupt,
-                compacting: false,
-            });
-            if recovered.needs_compaction {
-                self.queue_compaction(doc, state.as_mut().expect("loaded above"));
+        loop {
+            {
+                let mut state = slot.state.lock().unwrap();
+                if state.is_none() {
+                    let recovered = recover(&*self.fs, &self.layout, doc, self.limits)?;
+                    *state = Some(DocState {
+                        ydoc: Some(recovered.ydoc),
+                        queue: VecDeque::new(),
+                        log: recovered.log,
+                        failure: None,
+                        corrupt: recovered.corrupt,
+                        compacting: false,
+                    });
+                    if recovered.needs_compaction {
+                        self.queue_compaction(doc, state.as_mut().expect("loaded above"));
+                    }
+                }
+                let state = state.as_mut().expect("loaded above");
+                if let Some(ydoc) = state.ydoc.clone() {
+                    return Ok(f(&ydoc, state));
+                }
             }
+            self.rebuild(&slot, doc)?;
         }
-        Ok(f(state.as_mut().expect("loaded above")))
     }
 
-    /// Rebuilds the doc in memory from its files plus its queue, after an update that decoded
-    /// but failed to apply may have left part of itself in memory only.
-    fn rebuild(&self, doc: &DocId) -> io::Result<()> {
-        let slot = self.slot(doc);
+    /// Takes the file lock before the state lock, as the writer does, so compaction can't
+    /// retire a file while it is read.
+    fn rebuild(&self, slot: &DocSlot, doc: &DocId) -> io::Result<()> {
         let _io = slot.files.lock().unwrap();
         let mut state = slot.state.lock().unwrap();
-        let state = state.as_mut().expect("append loaded the doc");
+        let state = state.as_mut().expect("only a loaded doc goes stale");
+        if state.ydoc.is_some() {
+            return Ok(());
+        }
         let ydoc = recover(&*self.fs, &self.layout, doc, self.limits)?.ydoc;
         for queued in &state.queue {
             let update = Update::decode_v1(&queued.update).expect("queued updates decode");
             let _ = ydoc.transact_mut().apply_update(update);
         }
-        state.ydoc = ydoc;
+        state.ydoc = Some(ydoc);
         Ok(())
     }
 

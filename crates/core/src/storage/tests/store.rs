@@ -6,6 +6,7 @@ use yrs::{Doc, Map, ReadTxn, StateVector, Text, TextPrelim, TextRef, Transact};
 
 use super::{Env, assert_doc, doc, soon};
 use crate::storage::sim_fs::OpKind;
+use crate::storage::state::Limits;
 use crate::storage::store::AppendError;
 use crate::storage::testkit::{UpdateGen, apply};
 use crate::storage::writer::Step;
@@ -139,14 +140,11 @@ fn bytes_that_do_not_decode_are_rejected_and_write_nothing() {
     assert_doc(&store, &doc("a"), &[]);
 }
 
-#[test]
-fn an_update_that_fails_to_apply_is_rejected_and_leaves_no_trace_in_memory() {
-    let env = Env::manual();
-    let store = env.open();
-
-    // Client 2 edits a text nested at item (1, 0). In the store, (1, 0) is plain text instead,
-    // so client 2's update decodes but can't apply. Its first block, a root text insert,
-    // applies before the failure.
+/// Returns `good` and `bad`. After `good`, `bad` decodes but fails to apply, part way through.
+fn partly_applying_update() -> (Vec<u8>, Vec<u8>) {
+    // Client 2 edits a text nested at item (1, 0). After `good`, (1, 0) is plain text instead,
+    // so client 2's update can't apply. Its first block, a root text insert, applies before the
+    // failure.
     let parent = Doc::with_client_id(1);
     let map = parent.get_or_insert_map("m");
     map.insert(&mut parent.transact_mut(), "k", TextPrelim::new(""));
@@ -177,7 +175,14 @@ fn an_update_that_fails_to_apply_is_rejected_and_leaves_no_trace_in_memory() {
         text.insert(&mut txn, 0, "kept");
         txn.encode_update_v1()
     };
+    (good, bad)
+}
 
+#[test]
+fn an_update_that_fails_to_apply_is_rejected_and_leaves_no_trace_in_memory() {
+    let env = Env::manual();
+    let store = env.open();
+    let (good, bad) = partly_applying_update();
     store.append(&doc("a"), &good).unwrap();
     assert!(matches!(
         store.append(&doc("a"), &bad),
@@ -226,4 +231,53 @@ fn loading_writes_nothing_and_the_first_append_starts_a_new_segment() {
     );
     drop(store);
     assert_doc(&env.open(), &doc("a"), &[first, second]);
+}
+
+#[test]
+fn a_doc_that_fails_to_rebuild_stays_stale_until_a_rebuild_succeeds() {
+    let mut env = Env::manual();
+    env.limits = Limits {
+        bytes: u64::MAX,
+        records: 0,
+    };
+    let store = env.open();
+    let a = doc("a");
+    let (good, bad) = partly_applying_update();
+    let later = {
+        let client = Doc::with_client_id(3);
+        let text = client.get_or_insert_text("u");
+        let mut txn = client.transact_mut();
+        text.insert(&mut txn, 0, "later");
+        txn.encode_update_v1()
+    };
+    store.append(&a, &good).unwrap();
+    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.queued_compactions(), std::slice::from_ref(&a));
+    store.append(&a, &later).unwrap();
+
+    env.fs.fail(OpKind::Read, "/docs/a/", libc::EIO);
+    assert!(store.append(&a, &bad).is_err());
+    assert!(
+        matches!(store.load(&a), Err(e) if e.raw_os_error() == Some(libc::EIO)),
+        "a load retries the rebuild first"
+    );
+    assert!(matches!(
+        store.append(&a, &later),
+        Err(AppendError::Io(e)) if e.raw_os_error() == Some(libc::EIO)
+    ));
+    let (_, compacted) = store.run_compactor_once().expect("a was queued");
+    assert!(compacted.is_ok());
+    assert_eq!(
+        env.doc_files(&a),
+        ["log-0000000000-0000000000.ylog"],
+        "compaction skips a stale doc"
+    );
+    assert_eq!(store.flush(soon()), [], "its queue is still written");
+
+    env.fs.clear_faults();
+    assert_doc(&store, &a, &[good.clone(), later.clone()]);
+    store.compact(&a).unwrap();
+    assert_eq!(env.doc_files(&a), ["snapshot-0000000001.ysnap"]);
+    drop(store);
+    assert_doc(&env.open(), &a, &[good, later]);
 }

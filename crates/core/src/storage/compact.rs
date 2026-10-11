@@ -37,7 +37,9 @@ pub(crate) fn compact_queued(shared: &Shared, doc: &DocId) -> Result<(), Compact
 }
 
 fn compact(shared: &Shared, doc: &DocId) -> Result<(), CompactError> {
-    let rotated = rotate(shared, doc);
+    let Some(rotated) = rotate(shared, doc) else {
+        return Ok(());
+    };
     let tmp = shared
         .layout
         .doc_file(doc, DocFile::SnapshotTmp(rotated.generation));
@@ -55,20 +57,21 @@ struct Rotated {
     corrupt: BTreeSet<String>,
 }
 
-fn rotate(shared: &Shared, doc: &DocId) -> Rotated {
+fn rotate(shared: &Shared, doc: &DocId) -> Option<Rotated> {
     let slot = shared.slot(doc);
     let mut guard = slot.state.lock().unwrap();
     let state = guard.as_mut().expect("compaction runs on loaded docs");
+    let ydoc = state.ydoc.clone()?;
     let generation = state.log.segment.generation().next();
     state.log.segment = Segment::Next(generation, SegmentNo(0));
     state.log.unsnapshotted = LogSize::default();
-    let txn = state.ydoc.transact();
-    Rotated {
+    let txn = ydoc.transact();
+    Some(Rotated {
         generation,
         state: txn.encode_state_as_update_v1(&StateVector::default()),
         expected: Fingerprint::of(&txn),
         corrupt: state.corrupt.clone(),
-    }
+    })
 }
 
 fn verify(shared: &Shared, tmp: &Path, expected: &Fingerprint) -> Result<(), CompactError> {

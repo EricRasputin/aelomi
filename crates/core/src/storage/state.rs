@@ -18,7 +18,9 @@ pub(crate) struct DocSlot {
 }
 
 pub(crate) struct DocState {
-    pub ydoc: Doc,
+    /// `None` while stale: an update applied in part and the doc must be rebuilt from its
+    /// files and queue. Compaction skips a stale doc.
+    pub ydoc: Option<Doc>,
     pub queue: VecDeque<Queued>,
     pub log: LogState,
     pub failure: Option<Failure>,
