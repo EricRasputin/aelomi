@@ -110,16 +110,21 @@ pub(crate) fn recover(
 pub(crate) struct Stored {
     pub updates: Vec<Vec<u8>>,
     pub unclean_logs: BTreeSet<DocFile>,
+    pub corrupt: BTreeSet<String>,
 }
 
 pub(crate) fn stored_updates(fs: &dyn Fs, layout: &Layout, doc: &DocId) -> io::Result<Stored> {
     let files = sorted_doc_files(fs, layout, doc)?.unwrap_or_default();
     let mut updates = Vec::new();
+    let mut corrupt = BTreeSet::new();
     for file in files.iter().rev() {
-        if let DocFile::Snapshot(_) = file
-            && let Some(payload) = read_snapshot(&fs.read(&layout.doc_file(doc, *file))?)
-        {
-            updates.push(payload.to_vec());
+        if let DocFile::Snapshot(_) = file {
+            match read_snapshot(&fs.read(&layout.doc_file(doc, *file))?) {
+                Some(payload) => updates.push(payload.to_vec()),
+                None => {
+                    corrupt.insert(file.name());
+                }
+            }
         }
     }
     let mut unclean_logs = BTreeSet::new();
@@ -130,12 +135,16 @@ pub(crate) fn stored_updates(fs: &dyn Fs, layout: &Layout, doc: &DocId) -> io::R
             if contents.end != LogEnd::Clean {
                 unclean_logs.insert(*file);
             }
+            if contents.end == LogEnd::Corrupt {
+                corrupt.insert(file.name());
+            }
             updates.extend(contents.records.into_iter().map(<[u8]>::to_vec));
         }
     }
     Ok(Stored {
         updates,
         unclean_logs,
+        corrupt,
     })
 }
 

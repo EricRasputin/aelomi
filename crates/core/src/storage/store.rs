@@ -415,6 +415,7 @@ impl Shared {
                 if stored.unclean_logs.contains(&state.log.segment.file()) {
                     state.log.leave_open_segment();
                 }
+                state.corrupt.extend(stored.corrupt);
                 state.queue.iter().map(|q| q.update.clone()).collect()
             }
             None => Vec::new(),
