@@ -137,11 +137,13 @@ for (const surface of keystrokeSurfaces) {
     const rafMc = kept.map((s) => s.rafMc);
     const p95 = percentile95(rafMc);
     const doubleRafP95 = percentile95(kept.map((s) => s.doubleRaf));
+    const inputToRaf = kept.map((s) => s.inputToRaf);
     const verdict = p95 <= budgets.p95Ms.value ? "PASS" : "FAIL";
     const summary = [
       `${surface}: p95 ${p95} ms ${p95 <= budgets.p95Ms.value ? "<=" : ">"} ${budgets.p95Ms.value} ms ${verdict} (${gated ? "gate" : "information"})`,
       `${kept.length} samples from ${loads.length} loads, per-load p95 ${loads.map((load) => load.p95).join(", ")}, p50 ${median(rafMc)} ms, range ${range(rafMc)} ms`,
-      `double rAF p95 ${doubleRafP95} ms, load average ${loadavg()
+      `double rAF p95 ${doubleRafP95} ms, key-to-input p50 ${median(kept.map((s) => s.keyToInput))} ms, input-to-rAF p50 ${median(inputToRaf)} ms p95 ${percentile95(inputToRaf)} ms`,
+      `idle rAF cadence per load ${cadences.map((c) => c.toFixed(1)).join(", ")} ms, load average ${loadavg()
         .map((x) => x.toFixed(2))
         .join(" ")}`,
     ].join("\n  ");

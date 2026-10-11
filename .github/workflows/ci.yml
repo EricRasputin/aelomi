@@ -260,7 +260,7 @@ jobs:
             if [ "$elapsed" -ge 120 ]; then echo "load stayed above 2.5 for 120 s; measuring anyway"; break; fi
             sleep 10
           done
-      - run: pnpm exec playwright test --project perf --project perf-headed --workers 1
+      - run: pnpm perf:keystroke
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() }}
         with:

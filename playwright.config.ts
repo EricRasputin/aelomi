@@ -23,13 +23,6 @@ export default defineConfig({
       retries: 0,
       timeout: 20 * 60 * 1000,
     },
-    {
-      name: "perf-headed",
-      use: { browserName: "webkit", headless: false },
-      testMatch: "**/perf/**/*.spec.ts",
-      retries: 0,
-      timeout: 20 * 60 * 1000,
-    },
   ],
   webServer: {
     command: "pnpm preview:mock --port 4173 --strictPort",
