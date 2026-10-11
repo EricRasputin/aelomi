@@ -110,7 +110,7 @@ pub(crate) fn recover(
         .iter()
         .any(|f| matches!(f, DocFile::SnapshotTmp(_)) || base.is_some_and(|b| f.generation() < b));
     let log = LogState {
-        dir: DocDir::Unsynced,
+        dir: DocDir::UnsyncedThisSession,
         segment: Segment::Next(newest, next),
         unsnapshotted,
     };

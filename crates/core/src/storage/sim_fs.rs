@@ -171,7 +171,6 @@ impl SimFs {
         self.tree(|dir| &dir.live, |file| &file.data)
     }
 
-    /// What a crash would leave, short of a torn write.
     pub fn durable_files(&self) -> BTreeMap<PathBuf, Vec<u8>> {
         self.tree(|dir| &dir.durable, |file| &file.data[..file.durable])
     }

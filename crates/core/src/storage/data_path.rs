@@ -55,8 +55,6 @@ fn canonicalize_allowing_missing(path: &Path) -> io::Result<PathBuf> {
                     let mut parts = missing.iter().rev();
                     while let Some(part) = parts.next() {
                         match part {
-                            // Going up out of a missing folder lands in one that exists, so
-                            // what follows may be a symlink and is resolved again.
                             Component::ParentDir => {
                                 resolved.pop();
                                 resolved.extend(parts);

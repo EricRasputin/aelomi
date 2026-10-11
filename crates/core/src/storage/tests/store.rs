@@ -140,8 +140,12 @@ fn bytes_that_do_not_decode_are_rejected_and_write_nothing() {
     assert_doc(&store, &doc("a"), &[]);
 }
 
-/// Returns `good` and `bad`. After `good`, `bad` decodes but fails to apply, part way through.
-fn partly_applying_update() -> (Vec<u8>, Vec<u8>) {
+struct PartlyApplying {
+    good: Vec<u8>,
+    bad: Vec<u8>,
+}
+
+fn partly_applying_update() -> PartlyApplying {
     // Client 2 edits a text nested at item (1, 0). After `good`, (1, 0) is plain text instead,
     // so client 2's update can't apply. Its first block, a root text insert, applies before the
     // failure.
@@ -175,14 +179,14 @@ fn partly_applying_update() -> (Vec<u8>, Vec<u8>) {
         text.insert(&mut txn, 0, "kept");
         txn.encode_update_v1()
     };
-    (good, bad)
+    PartlyApplying { good, bad }
 }
 
 #[test]
 fn an_update_that_fails_to_apply_is_rejected_and_leaves_no_trace_in_memory() {
     let env = Env::manual();
     let store = env.open();
-    let (good, bad) = partly_applying_update();
+    let PartlyApplying { good, bad } = partly_applying_update();
     store.append(&doc("a"), &good).unwrap();
     assert!(matches!(
         store.append(&doc("a"), &bad),
@@ -242,7 +246,7 @@ fn a_doc_that_fails_to_rebuild_stays_stale_until_a_rebuild_succeeds() {
     };
     let store = env.open();
     let a = doc("a");
-    let (good, bad) = partly_applying_update();
+    let PartlyApplying { good, bad } = partly_applying_update();
     let later = {
         let client = Doc::with_client_id(3);
         let text = client.get_or_insert_text("u");

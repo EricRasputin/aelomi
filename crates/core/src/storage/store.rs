@@ -18,7 +18,7 @@ use super::fs::{Fs, FsLock, LockError, OsFs, create_durable};
 use super::health::{FailReason, Health};
 use super::layout::Layout;
 use super::recover::recover;
-use super::state::{DocSlot, DocState, Limits, Queued, Seq};
+use super::state::{DocSlot, DocState, Limits, Queued, Seq, Ydoc};
 use super::writer;
 
 /// The durable store of Y.Docs in one data folder. See `ARCHITECTURE.md`, "Data model and storage".
@@ -63,8 +63,7 @@ pub(crate) struct Shared {
     pub limits: Limits,
     driver: Driver,
     next_seq: AtomicU64,
-    /// Whether `quarantine/` exists. It is never removed.
-    pub quarantine: AtomicBool,
+    pub quarantine_exists: AtomicBool,
     docs: Mutex<BTreeMap<DocId, Arc<DocSlot>>>,
     signal: Mutex<Signal>,
     wake_writer: Condvar,
@@ -99,7 +98,7 @@ impl Store {
         limits: Limits,
     ) -> Result<Self, OpenError> {
         let layout = Layout::new(root);
-        let (lock, quarantine) = prepare_folder(&*fs, &layout)?;
+        let (lock, quarantine_exists) = prepare_folder(&*fs, &layout)?;
         let shared = Arc::new(Shared {
             fs,
             clock,
@@ -107,7 +106,7 @@ impl Store {
             limits,
             driver,
             next_seq: AtomicU64::new(1),
-            quarantine: AtomicBool::new(quarantine),
+            quarantine_exists: AtomicBool::new(quarantine_exists),
             docs: Mutex::default(),
             signal: Mutex::default(),
             wake_writer: Condvar::new(),
@@ -157,7 +156,7 @@ impl Store {
         let decoded = Update::decode_v1(update).map_err(|_| AppendError::InvalidUpdate)?;
         let seq = self.shared.with_doc(doc, |ydoc, state| {
             if ydoc.transact_mut().apply_update(decoded).is_err() {
-                state.ydoc = None;
+                state.ydoc = Ydoc::Stale;
                 return None;
             }
             let seq = Seq(self.shared.next_seq.fetch_add(1, Ordering::SeqCst));
@@ -312,7 +311,7 @@ impl Shared {
                 if state.is_none() {
                     let recovered = recover(&*self.fs, &self.layout, doc, self.limits)?;
                     *state = Some(DocState {
-                        ydoc: Some(recovered.ydoc),
+                        ydoc: Ydoc::Fresh(recovered.ydoc),
                         queue: VecDeque::new(),
                         log: recovered.log,
                         failure: None,
@@ -324,7 +323,7 @@ impl Shared {
                     }
                 }
                 let state = state.as_mut().expect("loaded above");
-                if let Some(ydoc) = state.ydoc.clone() {
+                if let Ydoc::Fresh(ydoc) = state.ydoc.clone() {
                     return Ok(f(&ydoc, state));
                 }
             }
@@ -332,13 +331,11 @@ impl Shared {
         }
     }
 
-    /// Takes the file lock before the state lock, as the writer does, so compaction can't
-    /// retire a file while it is read.
     fn rebuild(&self, slot: &DocSlot, doc: &DocId) -> io::Result<()> {
         let _io = slot.files.lock().unwrap();
         let mut state = slot.state.lock().unwrap();
         let state = state.as_mut().expect("only a loaded doc goes stale");
-        if state.ydoc.is_some() {
+        if let Ydoc::Fresh(_) = state.ydoc {
             return Ok(());
         }
         let ydoc = recover(&*self.fs, &self.layout, doc, self.limits)?.ydoc;
@@ -346,7 +343,7 @@ impl Shared {
             let update = Update::decode_v1(&queued.update).expect("queued updates decode");
             let _ = ydoc.transact_mut().apply_update(update);
         }
-        state.ydoc = Some(ydoc);
+        state.ydoc = Ydoc::Fresh(ydoc);
         Ok(())
     }
 
@@ -399,10 +396,8 @@ impl Shared {
         }
     }
 
-    /// Syncs the doc's folder, after the folders a quarantine moved a file into. A sync of the
-    /// doc's folder alone could make the file's removal durable but not its new entry.
-    pub fn sync_doc_dir(&self, doc: &DocId) -> io::Result<()> {
-        if self.quarantine.load(Ordering::SeqCst) {
+    pub fn sync_quarantine_then_doc_dir(&self, doc: &DocId) -> io::Result<()> {
+        if self.quarantine_exists.load(Ordering::SeqCst) {
             match self.fs.fsync(&self.layout.quarantine_dir(doc)) {
                 Ok(()) => {
                     self.fs.fsync(&self.layout.quarantine())?;
@@ -471,12 +466,10 @@ impl Shared {
     }
 }
 
-/// Syncs the folder entries at every open, not only the ones this open created: an earlier open
-/// may have created one and failed to sync it.
 fn prepare_folder(fs: &dyn Fs, layout: &Layout) -> Result<(FsLock, bool), OpenError> {
     let root = layout.root();
     refuse_before_writing(fs, layout)?;
-    create_dir_all(fs, root)?;
+    create_dir_all_synced(fs, root)?;
     let lock = fs.lock(&layout.lock()).map_err(|e| match e {
         LockError::Held => OpenError::Locked,
         LockError::Io(e) => OpenError::Io(e),
@@ -538,12 +531,10 @@ fn check_format(fs: &dyn Fs, layout: &Layout, names: &[String]) -> Result<Format
     }
 }
 
-/// Creates `dir` and its missing parents, then syncs the entry of each one and of the deepest
-/// folder that already existed. A failed open leaves at most that folder unsynced.
-fn create_dir_all(fs: &dyn Fs, dir: &Path) -> io::Result<()> {
+fn create_dir_all_synced(fs: &dyn Fs, dir: &Path) -> io::Result<()> {
     match fs.create_dir(dir) {
         Err(e) if e.kind() == io::ErrorKind::NotFound => {
-            create_dir_all(fs, dir.parent().ok_or(e)?)?;
+            create_dir_all_synced(fs, dir.parent().ok_or(e)?)?;
             fs.create_dir(dir)?;
         }
         Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}

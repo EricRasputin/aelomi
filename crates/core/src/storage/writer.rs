@@ -92,7 +92,7 @@ fn write(shared: &Shared, queued: Vec<Queued>) -> Option<FailReason> {
         let result = job.sync(shared);
         job.fail_on(result);
     }
-    let new_doc_dir = |job: &Job| job.error.is_none() && job.dir == DocDir::Unsynced;
+    let new_doc_dir = |job: &Job| job.error.is_none() && job.dir == DocDir::UnsyncedThisSession;
     if jobs.iter().any(new_doc_dir)
         && let Err(e) = shared.fs.fsync(&shared.layout.docs())
     {
@@ -156,7 +156,7 @@ impl Job {
         if self.dir == DocDir::Missing {
             match fs.create_dir(&shared.layout.doc_dir(&self.queued.doc)) {
                 Err(e) if e.kind() != io::ErrorKind::AlreadyExists => return Err(e),
-                _ => self.dir = DocDir::Unsynced,
+                _ => self.dir = DocDir::UnsyncedThisSession,
             }
         }
         let path = self.path(shared);
@@ -173,7 +173,7 @@ impl Job {
     fn sync(&self, shared: &Shared) -> io::Result<()> {
         shared.fs.fsync(&self.path(shared))?;
         if self.created_segment {
-            shared.sync_doc_dir(&self.queued.doc)?;
+            shared.sync_quarantine_then_doc_dir(&self.queued.doc)?;
         }
         Ok(())
     }

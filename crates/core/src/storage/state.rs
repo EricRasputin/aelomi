@@ -18,14 +18,18 @@ pub(crate) struct DocSlot {
 }
 
 pub(crate) struct DocState {
-    /// `None` while stale: an update applied in part and the doc must be rebuilt from its
-    /// files and queue. Compaction skips a stale doc.
-    pub ydoc: Option<Doc>,
+    pub ydoc: Ydoc,
     pub queue: VecDeque<Queued>,
     pub log: LogState,
     pub failure: Option<Failure>,
     pub corrupt: BTreeSet<String>,
     pub compacting: bool,
+}
+
+#[derive(Clone)]
+pub(crate) enum Ydoc {
+    Fresh(Doc),
+    Stale,
 }
 
 pub(crate) struct Failure {
@@ -48,8 +52,7 @@ pub(crate) struct LogState {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum DocDir {
     Missing,
-    /// The folder exists, but no batch this session has made its entry in `docs/` durable.
-    Unsynced,
+    UnsyncedThisSession,
     Durable,
 }
 

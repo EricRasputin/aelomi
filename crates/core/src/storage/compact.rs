@@ -12,7 +12,7 @@ use super::fs::create_durable;
 use super::layout::{DocFile, Generation, SegmentNo};
 use super::recover::snapshot_doc;
 use super::snapshot::{encode_snapshot, read_snapshot};
-use super::state::{LogSize, Segment};
+use super::state::{LogSize, Segment, Ydoc};
 use super::store::Shared;
 
 #[derive(Debug)]
@@ -62,7 +62,9 @@ fn rotate(shared: &Shared, doc: &DocId) -> Option<Rotated> {
     let slot = shared.slot(doc);
     let mut guard = slot.state.lock().unwrap();
     let state = guard.as_mut().expect("compaction runs on loaded docs");
-    let ydoc = state.ydoc.clone()?;
+    let Ydoc::Fresh(ydoc) = state.ydoc.clone() else {
+        return None;
+    };
     let generation = state.log.segment.generation().next();
     state.log.segment = Segment::Next(generation, SegmentNo(0));
     state.log.unsnapshotted = LogSize::default();
@@ -87,7 +89,7 @@ fn verify(shared: &Shared, tmp: &Path, expected: &Fingerprint) -> Result<(), Com
 fn publish(shared: &Shared, doc: &DocId, tmp: &Path, generation: Generation) -> io::Result<()> {
     let (fs, layout) = (&*shared.fs, &shared.layout);
     fs.rename(tmp, &layout.doc_file(doc, DocFile::Snapshot(generation)))?;
-    shared.sync_doc_dir(doc)?;
+    shared.sync_quarantine_then_doc_dir(doc)?;
     fs.full_sync(&layout.doc_dir(doc))
 }
 
@@ -107,13 +109,13 @@ fn retire_older(
             continue;
         }
         if corrupt.contains(&name) {
-            quarantine(shared, doc, &name)?;
+            move_to_quarantine_unsynced(shared, doc, &name)?;
             moved.insert(name);
         } else {
             fs.remove(&dir.join(&name))?;
         }
     }
-    shared.sync_doc_dir(doc)?;
+    shared.sync_quarantine_then_doc_dir(doc)?;
     fs.full_sync(&dir)?;
     let mut state = slot.state.lock().unwrap();
     let state = state.as_mut().expect("still loaded");
@@ -121,12 +123,10 @@ fn retire_older(
     Ok(())
 }
 
-/// Moves the file without syncing: the caller's [`Shared::sync_doc_dir`] syncs where it went
-/// before where it was.
-fn quarantine(shared: &Shared, doc: &DocId, name: &str) -> io::Result<()> {
+fn move_to_quarantine_unsynced(shared: &Shared, doc: &DocId, name: &str) -> io::Result<()> {
     let (fs, layout) = (&*shared.fs, &shared.layout);
     let target_dir = layout.quarantine_dir(doc);
-    shared.quarantine.store(true, Ordering::SeqCst);
+    shared.quarantine_exists.store(true, Ordering::SeqCst);
     for dir in [layout.quarantine(), target_dir.clone()] {
         match fs.create_dir(&dir) {
             Err(e) if e.kind() != io::ErrorKind::AlreadyExists => return Err(e),

@@ -45,7 +45,7 @@ pub(crate) fn read_log(bytes: &[u8]) -> LogContents<'_> {
     let mut at = LOG_MAGIC.len();
     while at < bytes.len() {
         let Some(payload) = record_at(bytes, at) else {
-            let end = if torn_at(bytes, at) {
+            let end = if explained_by_torn_write(bytes, at) {
                 LogEnd::Torn
             } else {
                 LogEnd::Corrupt
@@ -61,9 +61,7 @@ pub(crate) fn read_log(bytes: &[u8]) -> LogContents<'_> {
     }
 }
 
-/// A torn write leaves only its last record incomplete, or zeros where the file grew. Anything
-/// else is corruption, which is quarantined rather than deleted, so doubt counts as corrupt.
-fn torn_at(bytes: &[u8], at: usize) -> bool {
+fn explained_by_torn_write(bytes: &[u8], at: usize) -> bool {
     let rest = &bytes[at..];
     let Some(header) = rest.get(..RECORD_HEADER) else {
         return true;
