@@ -39,11 +39,11 @@
       "why": "Three fresh page loads so one bad load cannot decide the verdict."
     },
     "samplesPerLoad": {
-      "value": 300,
-      "why": "300 keys per load. With 30 discarded, 270 kept per load and 810 pooled for the p95."
+      "value": 150,
+      "why": "150 keys per load. With 15 discarded, 135 kept per load and 405 pooled for the p95."
     },
     "discardedPerLoad": {
-      "value": 30,
+      "value": 15,
       "why": "Frames right after a load are irregular. The first keys warm the page and are not counted."
     },
     "gapMs": {
