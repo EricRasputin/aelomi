@@ -210,34 +210,45 @@ fn pending_structs_survive_compaction() {
 
 #[test]
 fn a_corrupt_log_loads_up_to_the_damage_and_is_quarantined_not_deleted() {
-    let env = Env::manual();
     let a = doc("a");
     let sent = UpdateGen::new(31, 2).updates(10);
-    let store = env.open();
-    for update in &sent {
-        store.append(&a, update).unwrap();
+    let record = |n: usize| 8 + sent[..n].iter().map(|u| 8 + u.len()).sum::<usize>();
+    for (damage, flips, intact) in [
+        ("a bit in the sixth record", vec![record(5) + 9], 5),
+        (
+            "a bit in each of the last two records",
+            vec![record(8) + 9, record(9) + 9],
+            8,
+        ),
+    ] {
+        let env = Env::manual();
+        let store = env.open();
+        for update in &sent {
+            store.append(&a, update).unwrap();
+        }
+        assert_eq!(store.flush(soon()), []);
+        drop(store);
+
+        let name = "log-0000000000-0000000000.ylog";
+        let path = env.path("docs/a").join(name);
+        for at in flips {
+            env.fs.flip_bit(&path, at);
+        }
+        let damaged = env.fs.files()[&path].clone();
+
+        let store = env.open();
+        assert_doc(&store, &a, &sent[..intact]);
+        store.compact(&a).unwrap();
+        assert_eq!(env.doc_files(&a), ["snapshot-0000000001.ysnap"], "{damage}");
+        let quarantined = env.path("quarantine/a").join(name);
+        assert_eq!(
+            env.fs.files().get(&quarantined),
+            Some(&damaged),
+            "{damage}: moved byte for byte"
+        );
+        drop(store);
+        assert_doc(&env.open(), &a, &sent[..intact]);
     }
-    assert_eq!(store.flush(soon()), []);
-    drop(store);
-
-    let name = "log-0000000000-0000000000.ylog";
-    let path = env.path("docs/a").join(name);
-    let sixth = 8 + sent[..5].iter().map(|u| 8 + u.len()).sum::<usize>();
-    env.fs.flip_bit(&path, sixth + 9);
-    let damaged = env.fs.files()[&path].clone();
-
-    let store = env.open();
-    assert_doc(&store, &a, &sent[..5]);
-    store.compact(&a).unwrap();
-    assert_eq!(env.doc_files(&a), ["snapshot-0000000001.ysnap"]);
-    let quarantined = env.path("quarantine/a").join(name);
-    assert_eq!(
-        env.fs.files().get(&quarantined),
-        Some(&damaged),
-        "moved byte for byte"
-    );
-    drop(store);
-    assert_doc(&env.open(), &a, &sent[..5]);
 }
 
 #[test]

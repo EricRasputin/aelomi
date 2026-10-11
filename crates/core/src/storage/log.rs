@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 pub(crate) const LOG_MAGIC: [u8; 8] = *b"AELOG\0\0\x01";
 const RECORD_HEADER: usize = 8;
 
@@ -43,10 +45,10 @@ pub(crate) fn read_log(bytes: &[u8]) -> LogContents<'_> {
     let mut at = LOG_MAGIC.len();
     while at < bytes.len() {
         let Some(payload) = record_at(bytes, at) else {
-            let end = if (at + 1..bytes.len()).any(|q| record_at(bytes, q).is_some()) {
-                LogEnd::Corrupt
-            } else {
+            let end = if torn_at(bytes, at) {
                 LogEnd::Torn
+            } else {
+                LogEnd::Corrupt
             };
             return LogContents { records, end };
         };
@@ -56,6 +58,21 @@ pub(crate) fn read_log(bytes: &[u8]) -> LogContents<'_> {
     LogContents {
         records,
         end: LogEnd::Clean,
+    }
+}
+
+/// A torn write leaves only its last record incomplete, or zeros where the file grew. Anything
+/// else is corruption, which is quarantined rather than deleted, so doubt counts as corrupt.
+fn torn_at(bytes: &[u8], at: usize) -> bool {
+    let rest = &bytes[at..];
+    let Some(header) = rest.get(..RECORD_HEADER) else {
+        return true;
+    };
+    let len = u32::from_le_bytes(header[..4].try_into().unwrap()) as usize;
+    match (RECORD_HEADER + len).cmp(&rest.len()) {
+        Ordering::Equal => true,
+        Ordering::Greater => !(at + 1..bytes.len()).any(|q| record_at(bytes, q).is_some()),
+        Ordering::Less => rest.iter().all(|&b| b == 0),
     }
 }
 
@@ -152,6 +169,24 @@ mod tests {
                 flip(good.clone(), two + 3),
                 a,
                 LogEnd::Torn,
+            ),
+            (
+                "bad CRC in the last two records",
+                flip(flip(with(&third), two + 9), good.len() + 9),
+                a,
+                LogEnd::Corrupt,
+            ),
+            (
+                "bad CRC, then bytes that are not zero",
+                flip(with(&[0xab; 20]), two + 9),
+                a,
+                LogEnd::Corrupt,
+            ),
+            (
+                "bad CRC, then zeros",
+                flip(with(&[0; 20]), two + 9),
+                a,
+                LogEnd::Corrupt,
             ),
         ];
         for (name, bytes, records, end) in cases {
