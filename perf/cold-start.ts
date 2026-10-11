@@ -69,7 +69,7 @@ type Run = {
   navToPaint: number;
 };
 
-const epochMs = () => performance.timeOrigin + performance.now();
+const epochMs = () => Date.now();
 const sleep = (ms: number) => new Promise((done) => setTimeout(done, ms));
 const fmt = (value: number | undefined) =>
   value === undefined ? "-" : value.toFixed(1);
@@ -192,7 +192,7 @@ log(
 );
 log(`app ${binary}`);
 log(
-  `plan: ${warmupRuns} discarded warm-up, then ${timedRuns} timed runs. T0 is taken just before spawn. Marks are ms after T0. First content frame = min(rAF+MessageChannel, double rAF). ${TIMEOUT_MS / 1000} s timeout per run.`,
+  `plan: ${warmupRuns} discarded warm-up, then ${timedRuns} timed runs. T0 is the wall clock (Date.now, 1 ms resolution) read just before spawn, the same clock as the kernel's process start stamp. Marks are ms after T0. First content frame = min(rAF+MessageChannel, double rAF). ${TIMEOUT_MS / 1000} s timeout per run.`,
 );
 
 for (let i = 1; i <= warmupRuns; i++) await launch(`warmup-${i}`);
