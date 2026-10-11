@@ -78,6 +78,7 @@ type Subscriber = Arc<dyn Fn(&Health) + Send + Sync>;
 #[derive(Default)]
 struct Signal {
     work: bool,
+    retry_failing: bool,
     shutdown: bool,
     batches: u64,
     compactions: VecDeque<DocId>,
@@ -172,9 +173,12 @@ impl Store {
     }
 
     /// Waits until every update appended before the call is durable, or `deadline` passes.
-    /// Returns the docs that still have such updates pending.
+    /// Returns the docs that still have such updates pending. A doc whose writes are failing
+    /// retries once at the start, whatever its backoff.
     pub fn flush(&self, deadline: Instant) -> Vec<DocId> {
         let target = Seq(self.shared.next_seq.load(Ordering::SeqCst) - 1);
+        self.shared.signal.lock().unwrap().retry_failing = true;
+        self.shared.notify_writer();
         loop {
             let batches = self.shared.signal.lock().unwrap().batches;
             let pending = self.shared.pending_through(target);
@@ -445,6 +449,10 @@ impl Shared {
     fn notify_writer(&self) {
         self.signal.lock().unwrap().work = true;
         self.wake_writer.notify_one();
+    }
+
+    pub fn take_retry_failing(&self) -> bool {
+        std::mem::take(&mut self.signal.lock().unwrap().retry_failing)
     }
 
     pub fn batch_finished(&self) {

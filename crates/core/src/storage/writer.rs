@@ -29,7 +29,8 @@ pub(crate) fn run(shared: &Shared) {
 }
 
 pub(crate) fn run_once(shared: &Shared) -> Step {
-    let (queued, retry_at) = collect(shared, shared.clock.now());
+    let retry_failing = shared.take_retry_failing();
+    let (queued, retry_at) = collect(shared, shared.clock.now(), retry_failing);
     if queued.is_empty() {
         return Step::Idle { retry_at };
     }
@@ -47,7 +48,7 @@ struct Queued {
     through: Seq,
 }
 
-fn collect(shared: &Shared, now: Duration) -> (Vec<Queued>, Option<Duration>) {
+fn collect(shared: &Shared, now: Duration, retry_failing: bool) -> (Vec<Queued>, Option<Duration>) {
     let mut queued = Vec::new();
     let mut retry_at: Option<Duration> = None;
     for (doc, slot) in shared.slots() {
@@ -58,7 +59,8 @@ fn collect(shared: &Shared, now: Duration) -> (Vec<Queued>, Option<Duration>) {
         let Some(last) = state.queue.back() else {
             continue;
         };
-        if let Some(failure) = &state.failure
+        if !retry_failing
+            && let Some(failure) = &state.failure
             && failure.retry_at > now
         {
             retry_at = Some(retry_at.map_or(failure.retry_at, |at| at.min(failure.retry_at)));
