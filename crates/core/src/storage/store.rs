@@ -357,52 +357,51 @@ impl Shared {
     fn with_doc<R>(&self, doc: &DocId, f: impl FnOnce(&Doc, &mut DocState) -> R) -> io::Result<R> {
         let slot = self.slot(doc);
         loop {
+            if let Some(state) = slot.state().as_mut()
+                && let Ydoc::Fresh(ydoc) = state.ydoc.clone()
             {
-                let mut state = slot.state();
-                if state.is_none() {
-                    let recovered = recover(&*self.fs, &self.layout, doc, self.limits)?;
-                    *state = Some(DocState {
-                        ydoc: Ydoc::Fresh(recovered.ydoc),
-                        queue: VecDeque::new(),
-                        log: recovered.log,
-                        failure: None,
-                        corrupt: recovered.corrupt,
-                        compaction: Compaction::Idle,
-                    });
-                    if recovered.needs_compaction {
-                        self.queue_compaction(doc, state.as_mut().expect("loaded above"));
-                    }
-                }
-                let state = state.as_mut().expect("loaded above");
-                if let Ydoc::Fresh(ydoc) = state.ydoc.clone() {
-                    return Ok(f(&ydoc, state));
-                }
+                return Ok(f(&ydoc, state));
             }
-            self.rebuild(&slot, doc)?;
+            self.read_files(&slot, doc)?;
         }
     }
 
-    fn rebuild(&self, slot: &DocSlot, doc: &DocId) -> io::Result<()> {
+    /// Loads the doc, or rebuilds it if stale, from its files and queue. The files are read
+    /// under the doc's file lock alone: each batch takes every loaded doc's state lock.
+    fn read_files(&self, slot: &DocSlot, doc: &DocId) -> io::Result<()> {
         let _io = slot.files();
-        let mut state = slot.state();
-        let state = state.as_mut().expect("only a loaded doc goes stale");
-        if let Ydoc::Fresh(_) = state.ydoc {
-            return Ok(());
+        match slot.state().as_mut() {
+            Some(state) if matches!(state.ydoc, Ydoc::Fresh(_)) => return Ok(()),
+            Some(state) => state.log.leave_open_segment(),
+            None => {}
         }
-        state.log.leave_open_segment();
         let recovered = recover(&*self.fs, &self.layout, doc, self.limits)?;
-        for queued in &state.queue {
-            let update = Update::decode_v1(&queued.update).expect("queued updates decode");
-            let _ = recovered.ydoc.transact_mut().apply_update(update);
-        }
-        state.ydoc = Ydoc::Fresh(recovered.ydoc);
-        state.corrupt.extend(recovered.corrupt);
-        if let Compaction::Running {
-            stale_when_done, ..
-        } = &mut state.compaction
-        {
-            *stale_when_done = true;
-        }
+        let mut state = slot.state();
+        let state = match state.as_mut() {
+            None => state.insert(DocState {
+                ydoc: Ydoc::Fresh(recovered.ydoc),
+                queue: VecDeque::new(),
+                log: recovered.log,
+                failure: None,
+                corrupt: recovered.corrupt,
+                compaction: Compaction::Idle,
+            }),
+            Some(state) => {
+                for queued in &state.queue {
+                    let update = Update::decode_v1(&queued.update).expect("queued updates decode");
+                    let _ = recovered.ydoc.transact_mut().apply_update(update);
+                }
+                state.ydoc = Ydoc::Fresh(recovered.ydoc);
+                state.corrupt.extend(recovered.corrupt);
+                if let Compaction::Running {
+                    stale_when_done, ..
+                } = &mut state.compaction
+                {
+                    *stale_when_done = true;
+                }
+                state
+            }
+        };
         if recovered.needs_compaction {
             self.queue_compaction(doc, state);
         }
