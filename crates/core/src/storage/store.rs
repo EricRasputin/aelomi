@@ -338,12 +338,13 @@ impl Shared {
         if let Ydoc::Fresh(_) = state.ydoc {
             return Ok(());
         }
-        let ydoc = recover(&*self.fs, &self.layout, doc, self.limits)?.ydoc;
+        let recovered = recover(&*self.fs, &self.layout, doc, self.limits)?;
         for queued in &state.queue {
             let update = Update::decode_v1(&queued.update).expect("queued updates decode");
-            let _ = ydoc.transact_mut().apply_update(update);
+            let _ = recovered.ydoc.transact_mut().apply_update(update);
         }
-        state.ydoc = Ydoc::Fresh(ydoc);
+        state.ydoc = Ydoc::Fresh(recovered.ydoc);
+        state.corrupt.extend(recovered.corrupt);
         Ok(())
     }
 
