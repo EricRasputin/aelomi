@@ -1,5 +1,3 @@
-use std::cmp::Ordering;
-
 use yrs::Update;
 use yrs::updates::decoder::Decode;
 
@@ -61,19 +59,11 @@ pub(crate) fn read_log_hashing(bytes: &[u8], mut budget: usize) -> LogContents<'
             at += RECORD_HEADER + payload.len();
             continue;
         }
-        let damage = match contents.end {
-            LogEnd::Clean => first_damage(bytes, at),
-            LogEnd::Torn | LogEnd::Corrupt => Damage::Corrupt,
-        };
-        if damage == Damage::Torn {
-            contents.end = LogEnd::Torn;
-            break;
-        }
         let scan = resync(bytes, at + 1, &mut budget);
-        contents.end = match (damage, scan) {
-            (Damage::TornUnlessARecordFollows, Scan::NoRecord) => LogEnd::Torn,
-            _ => LogEnd::Corrupt,
-        };
+        let torn = contents.end == LogEnd::Clean
+            && a_torn_write_explains(bytes, at)
+            && matches!(scan, Scan::NoRecord);
+        contents.end = if torn { LogEnd::Torn } else { LogEnd::Corrupt };
         let Scan::ResumeAt(next) = scan else {
             break;
         };
@@ -82,25 +72,14 @@ pub(crate) fn read_log_hashing(bytes: &[u8], mut budget: usize) -> LogContents<'
     contents
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Damage {
-    Torn,
-    TornUnlessARecordFollows,
-    Corrupt,
-}
-
-fn first_damage(bytes: &[u8], at: usize) -> Damage {
+/// A torn write leaves a last record that runs to or past EOF, or zeros.
+fn a_torn_write_explains(bytes: &[u8], at: usize) -> bool {
     let rest = &bytes[at..];
     let Some(header) = rest.get(..RECORD_HEADER) else {
-        return Damage::Torn;
+        return true;
     };
     let len = u32::from_le_bytes(header[..4].try_into().unwrap()) as usize;
-    match (RECORD_HEADER + len).cmp(&rest.len()) {
-        Ordering::Equal => Damage::Torn,
-        Ordering::Greater => Damage::TornUnlessARecordFollows,
-        Ordering::Less if rest.iter().all(|&b| b == 0) => Damage::Torn,
-        Ordering::Less => Damage::Corrupt,
-    }
+    RECORD_HEADER + len >= rest.len() || rest.iter().all(|&b| b == 0)
 }
 
 #[derive(Clone, Copy)]
