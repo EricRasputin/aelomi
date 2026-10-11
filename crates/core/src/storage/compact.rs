@@ -53,7 +53,7 @@ fn compact(shared: &Shared, doc: &DocId, rotated: Rotated) -> Result<(), Compact
     create_durable(&*shared.fs, &tmp, &encode_snapshot(&rotated.state))?;
     verify(shared, &tmp, &rotated.expected)?;
     publish(shared, doc, &tmp, rotated.generation)?;
-    retire_older(shared, doc, rotated.generation, &rotated.corrupt)?;
+    retire_older(shared, doc, rotated.generation)?;
     Ok(())
 }
 
@@ -61,7 +61,6 @@ pub(crate) struct Rotated {
     generation: Generation,
     state: Vec<u8>,
     expected: Fingerprint,
-    corrupt: BTreeSet<String>,
 }
 
 pub(crate) fn rotate(shared: &Shared, doc: &DocId) -> Option<Rotated> {
@@ -79,7 +78,6 @@ pub(crate) fn rotate(shared: &Shared, doc: &DocId) -> Option<Rotated> {
         generation,
         state: txn.encode_state_as_update_v1(&StateVector::default()),
         expected: Fingerprint::of(&txn),
-        corrupt: state.corrupt.clone(),
     })
 }
 
@@ -99,15 +97,20 @@ fn publish(shared: &Shared, doc: &DocId, tmp: &Path, generation: Generation) -> 
     fs.full_sync(&layout.doc_dir(doc))
 }
 
-fn retire_older(
-    shared: &Shared,
-    doc: &DocId,
-    generation: Generation,
-    corrupt: &BTreeSet<String>,
-) -> io::Result<()> {
+/// Reads the corrupt set once the file lock is held. A rebuild adds to it under the same lock,
+/// so the set can't grow while the old files go.
+fn retire_older(shared: &Shared, doc: &DocId, generation: Generation) -> io::Result<()> {
     let (fs, layout) = (&*shared.fs, &shared.layout);
     let slot = shared.slot(doc);
     let _files = slot.files.lock().unwrap();
+    let corrupt = slot
+        .state
+        .lock()
+        .unwrap()
+        .as_ref()
+        .expect("still loaded")
+        .corrupt
+        .clone();
     let dir = layout.doc_dir(doc);
     let mut moved = BTreeSet::new();
     for name in fs.list(&dir)? {
