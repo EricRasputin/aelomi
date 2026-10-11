@@ -287,7 +287,11 @@ fn pending_structs_still_let_compaction_delete_the_old_generation() {
 
 #[test]
 fn a_doc_yrs_cannot_settle_skips_compaction_and_keeps_writing() {
-    let env = Env::manual();
+    let mut env = Env::manual();
+    env.limits = Limits {
+        bytes: u64::MAX,
+        records: 50,
+    };
     let store = env.open();
     let (a, b) = (doc("a"), doc("b"));
     let mut sent = out_of_order(35, 80, Delivery::Shuffled);
@@ -297,7 +301,9 @@ fn a_doc_yrs_cannot_settle_skips_compaction_and_keeps_writing() {
     assert_eq!(store.flush(soon()), []);
     let log = "log-0000000000-0000000000.ylog";
 
-    store.compact(&a).expect("compaction skips the doc");
+    let (compacted, result) = store.run_compactor_once().expect("80 records queue it");
+    assert_eq!(compacted, a);
+    result.expect("compaction skips the doc");
     assert_eq!(env.doc_files(&a), [log]);
 
     let more = UpdateGen::new(36, 2).updates(2);
@@ -307,6 +313,11 @@ fn a_doc_yrs_cannot_settle_skips_compaction_and_keeps_writing() {
     assert!(store.is_durable(&a, seq_a) && store.is_durable(&b, seq_b));
     assert_eq!(store.health(), Health::Healthy);
     assert_eq!(env.doc_files(&a), [log], "the segment was not rotated");
+    assert_eq!(
+        store.queued_compactions(),
+        [],
+        "a skipped doc waits for another 50 records"
+    );
     sent.push(more[0].clone());
     let bytes = &env.fs.durable_files()[&env.path("docs/a").join(log)];
     assert_eq!(read_log(bytes).records, sent);
