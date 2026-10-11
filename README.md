@@ -107,8 +107,8 @@ which is the first frame. Each sample splits into app-owned time (key to input,
 plus frame timestamp to MessageChannel) and the tick wait between the input
 handler and the frame timestamp. Work the app queues in its own rAF runs before
 the recorder's callback and counts as app-owned. The two parts must add up to
-the full key-to-paint, and the test prints that check. It repeats 300 times per
-page load with 100 ms between keys, over 3 loads, and keeps 270 samples per load.
+the full key-to-paint, and the test prints that check. It repeats 150 times per
+page load with 100 ms between keys, over 3 loads, and keeps 135 samples per load.
 Local mode gates the full key-to-paint p95 of the surface named by
 `keystroke.gate` against `p95Ms`, the CLAUDE.md budget. With `AELOMI_PERF_CI=1`,
 which the `keystroke` CI job sets, the test gates the app-owned p95 against
