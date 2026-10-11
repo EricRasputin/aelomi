@@ -44,7 +44,13 @@ struct Fault {
     kind: OpKind,
     at: FaultPath,
     skip: usize,
-    errno: i32,
+    effect: Effect,
+}
+
+#[derive(Clone, Copy)]
+enum Effect {
+    Fail(i32),
+    PanicOnce,
 }
 
 enum FaultPath {
@@ -130,7 +136,7 @@ impl SimFs {
             kind,
             at,
             skip: 0,
-            errno,
+            effect: Effect::Fail(errno),
         });
     }
 
@@ -145,7 +151,18 @@ impl SimFs {
             kind,
             at,
             skip,
-            errno,
+            effect: Effect::Fail(errno),
+        });
+    }
+
+    /// Panics the next matching operation, as a bug in the code calling it would.
+    pub fn panic_once(&self, kind: OpKind, path_contains: &str) {
+        let at = FaultPath::Containing(path_contains.to_owned());
+        self.sim().faults.push(Fault {
+            kind,
+            at,
+            skip: 0,
+            effect: Effect::PanicOnce,
         });
     }
 
@@ -272,11 +289,14 @@ impl SimFs {
             Some(left) => *left -= 1,
             None => {}
         }
-        let fault = sim.take_fault(kind, path);
-        let result = match fault {
-            Some(error) => {
+        let result = match sim.take_fault(kind, path) {
+            Some(Effect::Fail(errno)) => {
                 sim.fail_op(kind, path, bytes);
-                Err(error)
+                Err(io::Error::from_raw_os_error(errno))
+            }
+            Some(Effect::PanicOnce) => {
+                drop(sim);
+                panic!("simulated panic during {kind:?} on {path:?}");
             }
             None => f(&mut sim),
         };
@@ -288,16 +308,21 @@ impl SimFs {
 }
 
 impl Sim {
-    fn take_fault(&mut self, kind: OpKind, path: &Path) -> Option<io::Error> {
-        let fault = self
+    fn take_fault(&mut self, kind: OpKind, path: &Path) -> Option<Effect> {
+        let at = self
             .faults
-            .iter_mut()
-            .find(|f| f.kind == kind && f.at.matches(path))?;
+            .iter()
+            .position(|f| f.kind == kind && f.at.matches(path))?;
+        let fault = &mut self.faults[at];
         if fault.skip > 0 {
             fault.skip -= 1;
             return None;
         }
-        Some(io::Error::from_raw_os_error(fault.errno))
+        let effect = fault.effect;
+        if let Effect::PanicOnce = effect {
+            self.faults.remove(at);
+        }
+        Some(effect)
     }
 
     fn dir(&self, id: usize) -> &DirNode {

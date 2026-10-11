@@ -10,6 +10,8 @@ pub enum FailReason {
     PermissionDenied,
     ReadOnlyVolume,
     Io(String),
+    /// A bug in the store stopped a write. It is retried like any other failure.
+    Internal,
 }
 
 impl From<&io::Error> for FailReason {

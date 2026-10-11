@@ -1,3 +1,4 @@
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -318,4 +319,115 @@ fn a_panic_holding_a_docs_state_stops_neither_its_writes_nor_any_others() {
     let store = env.open();
     assert_doc(&store, &a, &sent_a);
     assert_doc(&store, &b, &sent_b);
+}
+
+#[test]
+fn a_panicking_health_subscriber_stops_neither_writes_nor_other_subscribers() {
+    let env = Env::manual();
+    let store = env.open();
+    let calls = Arc::new(AtomicUsize::new(0));
+    let counted = calls.clone();
+    store.subscribe_health(move |_| {
+        counted.fetch_add(1, Ordering::SeqCst);
+        panic!("a subscriber bug");
+    });
+    let seen = record_health(&store);
+    let docs = [doc("a"), doc("b"), doc("c")];
+    let sent: Vec<Vec<u8>> = (0..3)
+        .map(|i| UpdateGen::new(97 + i, 1).next_update())
+        .collect();
+    env.fs.fail(OpKind::Append, "/docs/a/", libc::ENOSPC);
+    env.clock.advance(ms(1000));
+    let seqs: Vec<_> = docs
+        .iter()
+        .zip(&sent)
+        .map(|(id, update)| store.append(id, update).unwrap())
+        .collect();
+
+    write_batch(&store);
+    let durable = |store: &Store| -> Vec<bool> {
+        docs.iter()
+            .zip(&seqs)
+            .map(|(id, seq)| store.is_durable(id, *seq))
+            .collect()
+    };
+    assert_eq!(durable(&store), [false, true, true]);
+    env.fs.clear_faults();
+    env.clock.advance(ms(100));
+    write_batch(&store);
+    assert_eq!(durable(&store), [true, true, true]);
+
+    let failing = Health::Failing {
+        reason: FailReason::DiskFull,
+        since: ms(1000),
+        pending_docs: vec![doc("a")],
+    };
+    assert_eq!(*seen.lock().unwrap(), [failing, Health::Healthy]);
+    assert_eq!(calls.load(Ordering::SeqCst), 2);
+    drop(store);
+    let store = env.open();
+    for (id, update) in docs.iter().zip(&sent) {
+        assert_doc(&store, id, std::slice::from_ref(update));
+    }
+}
+
+#[test]
+fn a_panic_in_a_writer_step_leaves_every_update_queued_for_the_retry() {
+    let env = Env::manual();
+    let store = env.open();
+    let seen = record_health(&store);
+    let (a, b) = (doc("a"), doc("b"));
+    let sent: Vec<Vec<u8>> = (0..2)
+        .map(|i| UpdateGen::new(98 + i, 1).next_update())
+        .collect();
+    env.clock.advance(ms(1000));
+    env.fs.panic_once(OpKind::Append, "/docs/a/");
+    let seq_a = store.append(&a, &sent[0]).unwrap();
+    let seq_b = store.append(&b, &sent[1]).unwrap();
+
+    let step = store.run_writer_once();
+    assert!(
+        matches!(step, Step::Idle { retry_at: Some(at) } if at == ms(1100)),
+        "{step:?}"
+    );
+    assert!(!store.is_durable(&a, seq_a) && !store.is_durable(&b, seq_b));
+    let failing = Health::Failing {
+        reason: FailReason::Internal,
+        since: ms(1000),
+        pending_docs: vec![a.clone(), b.clone()],
+    };
+    assert_eq!(store.health(), failing);
+
+    env.clock.advance(ms(100));
+    write_batch(&store);
+    assert!(store.is_durable(&a, seq_a) && store.is_durable(&b, seq_b));
+    assert_eq!(*seen.lock().unwrap(), [failing, Health::Healthy]);
+    assert_eq!(
+        env.doc_files(&a),
+        [
+            "log-0000000000-0000000000.ylog",
+            "log-0000000000-0000000001.ylog"
+        ],
+        "the retry writes to a new segment"
+    );
+    drop(store);
+    let store = env.open();
+    assert_doc(&store, &a, &sent[..1]);
+    assert_doc(&store, &b, &sent[1..]);
+}
+
+#[test]
+fn the_writer_thread_survives_a_panic() {
+    let env = Env::threaded();
+    let store = env.open();
+    let a = doc("a");
+    let sent = UpdateGen::new(100, 1).updates(2);
+    env.fs.panic_once(OpKind::Append, "/docs/a/");
+    store.append(&a, &sent[0]).unwrap();
+    assert_eq!(store.flush(Instant::now() + Duration::from_secs(5)), []);
+    store.append(&a, &sent[1]).unwrap();
+    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.health(), Health::Healthy);
+    drop(store);
+    assert_doc(&env.open(), &a, &sent);
 }
