@@ -81,6 +81,21 @@ fn a_newer_format_is_refused_and_the_folder_is_left_byte_for_byte_unchanged() {
 }
 
 #[test]
+fn a_format_above_u32_max_is_refused_as_newer_and_the_folder_is_left_byte_for_byte_unchanged() {
+    let dir = folder(&[
+        ("format.json", b"{\"format\": 4294967296}"),
+        ("docs/a/log-0000000000-0000000000.ylog", b"future bytes"),
+    ]);
+    let before = tree(dir.path());
+    let refused = Store::open(dir.path()).map(drop).map_err(|e| e.to_string());
+    assert_eq!(
+        refused,
+        Err("the data folder has format 4294967296, newer than this build's format 1".into())
+    );
+    assert_eq!(tree(dir.path()), before, "not even a .lock");
+}
+
+#[test]
 fn a_folder_with_data_but_no_readable_format_is_refused() {
     for files in [
         &[("docs/a/log-0000000000-0000000000.ylog", &b"x"[..])][..],
