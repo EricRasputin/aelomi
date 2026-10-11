@@ -5,7 +5,8 @@ use std::time::Duration;
 use yrs::{Doc, Map, ReadTxn, StateVector, Text, TextPrelim, TextRef, Transact};
 
 use super::{
-    Delivery, Env, applied, assert_doc, doc, in_order, ops_of_updates, out_of_order, soon,
+    Delivery, Env, applied, assert_doc, doc, in_order, ops_of_updates, out_of_order, record_at,
+    soon, with_a_loner_sixth, without,
 };
 use crate::storage::compact::CompactError;
 use crate::storage::sim_fs::{Crash, OpKind};
@@ -402,8 +403,7 @@ fn a_rebuild_keeps_damage_it_finds_for_quarantine() {
     let store = env.open();
     let a = doc("a");
     let PartlyApplying { good, bad } = partly_applying_update();
-    let mut sent = vec![good];
-    sent.extend(UpdateGen::new(31, 2).updates(9));
+    let sent = with_a_loner_sixth([vec![good], UpdateGen::new(31, 2).updates(9)].concat());
     for update in &sent {
         store.append(&a, update).unwrap();
     }
@@ -411,15 +411,14 @@ fn a_rebuild_keeps_damage_it_finds_for_quarantine() {
 
     let name = "log-0000000000-0000000000.ylog";
     let path = env.path("docs/a").join(name);
-    let sixth_record = 8 + sent[..5].iter().map(|u| 8 + u.len()).sum::<usize>();
-    env.fs.flip_bit(&path, sixth_record + 9);
+    env.fs.flip_bit(&path, record_at(&sent, 5) + 9);
     let damaged = env.fs.files()[&path].clone();
 
     assert!(matches!(
         store.append(&a, &bad),
         Err(AppendError::InvalidUpdate)
     ));
-    assert_doc(&store, &a, &sent[..5]);
+    assert_doc(&store, &a, &without(&sent, &[5]));
     store.compact(&a).unwrap();
     assert_eq!(env.doc_files(&a), ["snapshot-0000000001.ysnap"]);
     assert_eq!(
@@ -428,11 +427,7 @@ fn a_rebuild_keeps_damage_it_finds_for_quarantine() {
         "moved byte for byte"
     );
     drop(store);
-    assert_doc(&env.open(), &a, &sent[..5]);
-}
-
-fn record_at(updates: &[Vec<u8>], n: usize) -> usize {
-    8 + updates[..n].iter().map(|u| 8 + u.len()).sum::<usize>()
+    assert_doc(&env.open(), &a, &without(&sent, &[5]));
 }
 
 #[test]
@@ -443,8 +438,7 @@ fn an_update_after_a_rebuild_survives_damage_the_rebuild_read_in_the_open_segmen
         let store = env.open();
         let a = doc("a");
         let PartlyApplying { good, bad } = partly_applying_update();
-        let mut sent = vec![good];
-        sent.extend(UpdateGen::new(31, 2).updates(9));
+        let sent = with_a_loner_sixth([vec![good], UpdateGen::new(31, 2).updates(9)].concat());
         for update in &sent {
             store.append(&a, update).unwrap();
         }
@@ -457,13 +451,13 @@ fn an_update_after_a_rebuild_survives_damage_the_rebuild_read_in_the_open_segmen
         } else {
             assert!(store.append(&a, &bad).is_err());
         }
-        assert_doc(&store, &a, &sent[..5]);
+        assert_doc(&store, &a, &without(&sent, &[5]));
         store.append(&a, &later).unwrap();
         assert_eq!(store.flush(soon()), []);
         drop(store);
         env.fs.crash(Crash::DropUnsynced);
 
-        let expected = [&sent[..5], std::slice::from_ref(&later)].concat();
+        let expected = [without(&sent, &[5]), vec![later.clone()]].concat();
         assert_doc(&env.open(), &a, &expected);
     }
 }
@@ -474,8 +468,7 @@ fn a_queue_written_while_a_rebuild_fails_survives_damage_in_the_open_segment() {
     let store = env.open();
     let a = doc("a");
     let PartlyApplying { good, bad } = partly_applying_update();
-    let mut sent = vec![good];
-    sent.extend(UpdateGen::new(31, 2).updates(9));
+    let sent = with_a_loner_sixth([vec![good], UpdateGen::new(31, 2).updates(9)].concat());
     for update in &sent {
         store.append(&a, update).unwrap();
     }
@@ -493,7 +486,35 @@ fn a_queue_written_while_a_rebuild_fails_survives_damage_in_the_open_segment() {
     env.fs.clear_faults();
     env.fs.crash(Crash::DropUnsynced);
 
-    let expected = [&sent[..5], std::slice::from_ref(&later)].concat();
+    let expected = [without(&sent, &[5]), vec![later.clone()]].concat();
+    assert_doc(&env.open(), &a, &expected);
+}
+
+#[test]
+fn an_update_written_behind_damage_in_the_open_segment_survives_a_crash() {
+    let env = Env::manual();
+    let store = env.open();
+    let a = doc("a");
+    let sent = with_a_loner_sixth(UpdateGen::new(31, 2).updates(10));
+    for update in &sent {
+        store.append(&a, update).unwrap();
+    }
+    assert_eq!(store.flush(soon()), []);
+    let open = env.path("docs/a/log-0000000000-0000000000.ylog");
+    env.fs.flip_bit(&open, record_at(&sent, 5) + 9);
+
+    let later = UpdateGen::new(41, 1).next_update();
+    store.append(&a, &later).unwrap();
+    assert_eq!(store.flush(soon()), []);
+    assert_eq!(
+        env.doc_files(&a),
+        ["log-0000000000-0000000000.ylog"],
+        "written behind the damage"
+    );
+    drop(store);
+    env.fs.crash(Crash::DropUnsynced);
+
+    let expected = [without(&sent, &[5]), vec![later]].concat();
     assert_doc(&env.open(), &a, &expected);
 }
 
@@ -572,8 +593,7 @@ fn compaction_quarantines_damage_a_rebuild_finds_while_it_runs() {
     let store = env.open();
     let a = doc("a");
     let PartlyApplying { good, bad } = partly_applying_update();
-    let mut sent = vec![good];
-    sent.extend(UpdateGen::new(31, 2).updates(9));
+    let sent = with_a_loner_sixth([vec![good], UpdateGen::new(31, 2).updates(9)].concat());
     for update in &sent {
         store.append(&a, update).unwrap();
     }
@@ -582,14 +602,13 @@ fn compaction_quarantines_damage_a_rebuild_finds_while_it_runs() {
 
     let name = "log-0000000000-0000000000.ylog";
     let path = env.path("docs/a").join(name);
-    let sixth_record = 8 + sent[..5].iter().map(|u| 8 + u.len()).sum::<usize>();
-    env.fs.flip_bit(&path, sixth_record + 9);
+    env.fs.flip_bit(&path, record_at(&sent, 5) + 9);
     let damaged = env.fs.files()[&path].clone();
     assert!(matches!(
         store.append(&a, &bad),
         Err(AppendError::InvalidUpdate)
     ));
-    assert_doc(&store, &a, &sent[..5]);
+    assert_doc(&store, &a, &without(&sent, &[5]));
 
     store.finish_compaction(&a, rotated).unwrap();
     assert_doc(&store, &a, &sent);

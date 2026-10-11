@@ -13,8 +13,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use yrs::Transact;
 use yrs::updates::decoder::Decode;
+use yrs::{Text, Transact};
 
 use super::clock::{Clock, ManualClock, SystemClock};
 use super::doc_id::DocId;
@@ -158,6 +158,27 @@ pub(crate) fn applied(bytes: &[u8], case: &str) -> (Ops, yrs::Doc) {
         .apply_update(update)
         .unwrap_or_else(|e| panic!("{case}: {e}"));
     (held, doc)
+}
+
+/// An update from its own client into its own root, so a log can lose it and nothing else.
+pub(crate) fn with_a_loner_sixth(mut updates: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
+    let client = yrs::Doc::with_client_id(999_999_999);
+    let text = client.get_or_insert_text("loner");
+    let mut txn = client.transact_mut();
+    text.insert(&mut txn, 0, "alone");
+    updates.insert(5, txn.encode_update_v1());
+    updates
+}
+
+pub(crate) fn without(updates: &[Vec<u8>], lost: &[usize]) -> Vec<Vec<u8>> {
+    let kept = updates.iter().enumerate();
+    kept.filter(|(i, _)| !lost.contains(i))
+        .map(|(_, update)| update.clone())
+        .collect()
+}
+
+pub(crate) fn record_at(updates: &[Vec<u8>], n: usize) -> usize {
+    8 + updates[..n].iter().map(|u| 8 + u.len()).sum::<usize>()
 }
 
 /// A doc can hold more deletions: yrs deletes what it integrates into a deleted parent.

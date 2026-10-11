@@ -88,6 +88,7 @@ fn record_at(bytes: &[u8], at: usize) -> Option<&[u8]> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::storage::testkit::UpdateGen;
 
     fn segment(payloads: &[&[u8]]) -> Vec<u8> {
         let mut out = LOG_MAGIC.to_vec();
@@ -112,17 +113,21 @@ mod tests {
     }
 
     #[test]
-    fn classifies_damaged_segments() {
-        let good = segment(&[b"alpha", b"beta"]);
-        let two = segment(&[b"alpha"]).len();
-        let third = segment(&[b"gamma"])[8..].to_vec();
+    fn classifies_damaged_segments_and_reads_every_update_around_the_damage() {
+        let updates = UpdateGen::new(5, 1).updates(3);
+        let (alpha, beta, gamma) = (&updates[0][..], &updates[1][..], &updates[2][..]);
+        let good = segment(&[alpha, beta]);
+        let two = segment(&[alpha]).len();
+        let third = segment(&[gamma])[8..].to_vec();
+        let not_an_update = segment(&[b"not an update"])[8..].to_vec();
         let with = |tail: &[u8]| [good.as_slice(), tail].concat();
         let flip = |mut bytes: Vec<u8>, at: usize| {
             bytes[at] ^= 0x40;
             bytes
         };
-        let a: &[&[u8]] = &[b"alpha"];
-        let ab: &[&[u8]] = &[b"alpha", b"beta"];
+        let a: &[&[u8]] = &[alpha];
+        let ab: &[&[u8]] = &[alpha, beta];
+        let ac: &[&[u8]] = &[alpha, gamma];
         let none: &[&[u8]] = &[];
         type Case<'a> = (&'a str, Vec<u8>, &'a [&'a [u8]], LogEnd);
         let cases: Vec<Case> = vec![
@@ -153,13 +158,19 @@ mod tests {
             (
                 "bad CRC, then a good record",
                 flip(with(&third), two + 9),
-                a,
+                ac,
                 LogEnd::Corrupt,
             ),
             (
                 "absurd length, then a good record",
                 flip(with(&third), two + 3),
-                a,
+                ac,
+                LogEnd::Corrupt,
+            ),
+            (
+                "bad CRC, then a record that is not an update, then a good record",
+                flip([good.as_slice(), &not_an_update, &third].concat(), two + 9),
+                ac,
                 LogEnd::Corrupt,
             ),
             (

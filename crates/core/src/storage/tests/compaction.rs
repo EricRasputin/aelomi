@@ -2,7 +2,8 @@ use yrs::updates::decoder::Decode;
 use yrs::{Doc, GetString, ReadTxn, StateVector, Text, Transact, Update};
 
 use super::{
-    Delivery, Env, applied, assert_doc, doc, in_order, ops_of_updates, out_of_order, soon,
+    Delivery, Env, applied, assert_doc, doc, in_order, ops_of_updates, out_of_order, record_at,
+    soon, with_a_loner_sixth, without,
 };
 use crate::storage::compact::CompactError;
 use crate::storage::equality::Ops;
@@ -572,16 +573,29 @@ fn a_panic_compacting_one_doc_leaves_its_files_and_the_next_doc_still_compacts()
 }
 
 #[test]
-fn a_corrupt_log_loads_up_to_the_damage_and_is_quarantined_not_deleted() {
+fn a_damaged_log_loads_every_record_around_the_damage_and_is_quarantined_not_deleted() {
     let a = doc("a");
-    let sent = UpdateGen::new(31, 2).updates(10);
-    let record = |n: usize| 8 + sent[..n].iter().map(|u| 8 + u.len()).sum::<usize>();
-    for (damage, flips, intact) in [
-        ("a bit in the sixth record", vec![record(5) + 9], 5),
+    let sent = with_a_loner_sixth(UpdateGen::new(31, 2).updates(10));
+    let sixth = record_at(&sent, 5);
+    for (damage, flips, torn_tail, lost) in [
+        (
+            "a bit in the sixth payload",
+            vec![sixth + 9],
+            false,
+            vec![5],
+        ),
+        ("a bit in the sixth length", vec![sixth + 2], false, vec![5]),
         (
             "a bit in each of the last two records",
-            vec![record(8) + 9, record(9) + 9],
-            8,
+            vec![record_at(&sent, 9) + 9, record_at(&sent, 10) + 9],
+            false,
+            vec![9, 10],
+        ),
+        (
+            "a bit in the sixth payload, then a torn tail",
+            vec![sixth + 9],
+            true,
+            vec![5, 10],
         ),
     ] {
         let env = Env::manual();
@@ -594,13 +608,18 @@ fn a_corrupt_log_loads_up_to_the_damage_and_is_quarantined_not_deleted() {
 
         let name = "log-0000000000-0000000000.ylog";
         let path = env.path("docs/a").join(name);
+        let mut damaged = env.fs.files()[&path].clone();
         for at in flips {
-            env.fs.flip_bit(&path, at);
+            damaged[at] ^= 0x10;
         }
-        let damaged = env.fs.files()[&path].clone();
+        if torn_tail {
+            damaged.truncate(record_at(&sent, 10) + 8 + 3);
+        }
+        env.fs.put_durable(&path, &damaged);
 
         let store = env.open();
-        assert_doc(&store, &a, &sent[..intact]);
+        let expected = without(&sent, &lost);
+        assert_doc(&store, &a, &expected);
         store.compact(&a).unwrap();
         assert_eq!(env.doc_files(&a), ["snapshot-0000000001.ysnap"], "{damage}");
         let quarantined = env.path("quarantine/a").join(name);
@@ -610,7 +629,7 @@ fn a_corrupt_log_loads_up_to_the_damage_and_is_quarantined_not_deleted() {
             "{damage}: moved byte for byte"
         );
         drop(store);
-        assert_doc(&env.open(), &a, &sent[..intact]);
+        assert_doc(&env.open(), &a, &expected);
     }
 }
 

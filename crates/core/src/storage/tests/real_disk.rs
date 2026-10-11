@@ -2,7 +2,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use super::{assert_doc, doc, soon};
+use super::{assert_doc, doc, record_at, soon, with_a_loner_sixth, without};
 use crate::storage::clock::SystemClock;
 use crate::storage::fs::OsFs;
 use crate::storage::state::Limits;
@@ -80,7 +80,7 @@ fn compaction_and_quarantine_work_on_a_real_disk() {
     assert_eq!(files(&docs_a), ["snapshot-0000000001.ysnap"]);
     assert_doc(&store, &a, &compacted);
 
-    let logged = updates.updates(10);
+    let logged = with_a_loner_sixth(updates.updates(10));
     for update in &logged {
         store.append(&a, update).unwrap();
     }
@@ -88,11 +88,10 @@ fn compaction_and_quarantine_work_on_a_real_disk() {
     let name = "log-0000000001-0000000000.ylog";
     let path = docs_a.join(name);
     let mut damaged = std::fs::read(&path).unwrap();
-    let sixth_record = 8 + logged[..5].iter().map(|u| 8 + u.len()).sum::<usize>();
-    damaged[sixth_record + 9] ^= 0x10;
+    damaged[record_at(&logged, 5) + 9] ^= 0x10;
     std::fs::write(&path, &damaged).unwrap();
 
-    let intact = [&compacted[..], &logged[..5]].concat();
+    let intact = [compacted, without(&logged, &[5])].concat();
     let store = open();
     assert_doc(&store, &a, &intact);
     store.compact(&a).unwrap();
