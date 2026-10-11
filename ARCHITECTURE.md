@@ -126,6 +126,7 @@ Acceptance tests import `test` from `e2e/fixtures.ts`, and Playwright tests impo
 | `playwright` | `pnpm build:mock` and `pnpm test:playwright` |
 | `cold-start` | Downloads `Aelomi-app` and runs `perf/cold-start.ts --ci` |
 | `keystroke` | `pnpm build:mock` and the `perf` Playwright project in CI mode |
+| `reviewer-approved` | `.github/workflows/review-gate.yml` on Ubuntu checks that the latest reviewer verdict is APPROVE for the PR head |
 
 To add a job, add its ID to `CHECKS` in `scripts/protect-main.sh` and rerun the script, so `main` requires it.
 

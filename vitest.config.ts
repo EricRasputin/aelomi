@@ -8,6 +8,7 @@ export default defineConfig({
       "tests/*.test.ts",
       "fixtures/**/*.test.ts",
       "perf/**/*.test.ts",
+      "scripts/*.test.ts",
     ],
     exclude: [
       ".claude/**",

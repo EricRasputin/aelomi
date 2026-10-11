@@ -23,6 +23,7 @@ and on pushes to `main`. Its eleven check IDs are `biome`, `tsc`, `vitest`,
 `cold-start`, and `keystroke`.
 The `pnpm-audit` job also runs `pnpm check-licenses`.
 The `nextest` job includes the `bindings_are_current` test.
+`.github/workflows/review-gate.yml` runs `reviewer-approved` on Ubuntu and requires the latest reviewer verdict to be APPROVE for the PR head.
 Cargo steps run with `--locked`, so a `Cargo.toml` change without its `Cargo.lock` fails.
 
 A repository admin runs `./scripts/protect-main.sh` to make every job a required check on `main`.
