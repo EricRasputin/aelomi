@@ -698,6 +698,41 @@ fn a_torn_log_is_quarantined_at_compaction_not_deleted() {
 }
 
 #[test]
+fn compaction_deletes_a_log_holding_no_record_bytes_but_quarantines_a_short_corrupt_one() {
+    let env = Env::manual();
+    let a = doc("a");
+    let sent = UpdateGen::new(23, 2).updates(3);
+    let store = env.open();
+    for update in &sent {
+        store.append(&a, update).unwrap();
+    }
+    assert_eq!(store.flush(soon()), []);
+    drop(store);
+    let header = encode_segment::<Vec<u8>>(&[]);
+    let corrupt = ("log-0000000000-0000000005.ylog", b"AEX".to_vec());
+    for (name, bytes) in [
+        ("log-0000000000-0000000001.ylog", Vec::new()),
+        ("log-0000000000-0000000002.ylog", LOG_MAGIC[..5].to_vec()),
+        ("log-0000000000-0000000003.ylog", header[..12].to_vec()),
+        ("log-0000000000-0000000004.ylog", header),
+        corrupt.clone(),
+    ] {
+        env.fs.put_durable(&env.path("docs/a").join(name), &bytes);
+    }
+
+    let store = env.open();
+    store.compact(&a).unwrap();
+    assert_eq!(env.doc_files(&a), ["snapshot-0000000001.ysnap"]);
+    assert_eq!(
+        env.quarantine(),
+        [(env.path("quarantine/a").join(corrupt.0), corrupt.1)].into(),
+        "only the file that isn't part of a log header"
+    );
+    drop(store);
+    assert_doc(&env.open(), &a, &sent);
+}
+
+#[test]
 fn a_torn_tail_left_by_a_crash_is_quarantined_at_compaction() {
     let a = doc("a");
     let sent = UpdateGen::new(41, 2).updates(4);

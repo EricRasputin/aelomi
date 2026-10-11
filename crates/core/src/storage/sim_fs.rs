@@ -690,7 +690,7 @@ fn applies(payload: &[u8]) -> bool {
 mod tests {
     use super::*;
     use crate::storage::clock::ManualClock;
-    use crate::storage::log::encode_segment;
+    use crate::storage::log::{LOG_MAGIC, encode_segment};
     use crate::storage::snapshot::encode_snapshot;
     use crate::storage::testkit::UpdateGen;
 
@@ -894,6 +894,24 @@ mod tests {
         .unwrap();
         fs.remove(&p("/d/log-0000000001-0000000000.ylog")).unwrap();
         fs.remove(&p("/d/snapshot-0000000003.ysnap.tmp")).unwrap();
+        assert_eq!(fs.list(&p("/d")).unwrap(), ["snapshot-0000000002.ysnap"]);
+        assert_eq!(fs.violations(), Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_log_holding_no_record_bytes_may_be_removed_once_a_durable_snapshot_is_newer() {
+        let fs = sim();
+        let held = UpdateGen::new(1, 1).next_update();
+        fs.put_durable(&p("/d/snapshot-0000000002.ysnap"), &encode_snapshot(&held));
+        let header = encode_segment::<Vec<u8>>(&[]);
+        for (n, bytes) in [&[][..], &LOG_MAGIC[..5], &header[..12], &header]
+            .iter()
+            .enumerate()
+        {
+            let log = p(&format!("/d/log-0000000001-{n:010}.ylog"));
+            fs.put_durable(&log, bytes);
+            fs.remove(&log).unwrap();
+        }
         assert_eq!(fs.list(&p("/d")).unwrap(), ["snapshot-0000000002.ysnap"]);
         assert_eq!(fs.violations(), Vec::<String>::new());
     }
