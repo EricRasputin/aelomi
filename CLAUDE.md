@@ -42,13 +42,13 @@ Aelomi is built entirely by AI agents. The maintainer sets direction and taste a
 - **Location:** `~/Library/Application Support/Aelomi`.
 - **Backup:** scheduled markdown export to a folder the user picks.
 
-## Performance budgets (CI gates)
+## Performance budgets
 
 - Cold start under 500 ms.
 - Keystroke-to-paint under 16 ms.
 - A 5,000-block page stays smooth to scroll and edit.
 
-A change that breaks a budget doesn't merge.
+GitHub's hosted Mac runners are too slow and too noisy to time these numbers, and the project uses no paid or self-hosted runners (decided 2026-10-11). CI gates runner-calibrated budgets from `perf/budgets.json`, which catch regressions. `pnpm perf:cold` and `pnpm perf:keystroke` check the numbers above on Apple Silicon. A change that fails a CI perf gate doesn't merge.
 
 ## Testing
 

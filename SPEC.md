@@ -331,9 +331,9 @@ Acceptance tests cannot read exported files. The core tests below cover the outp
 
 ## Performance budgets
 
-The budgets in `CLAUDE.md` are CI gates for every feature above. This spec defines how each is measured:
+The budgets in `CLAUDE.md` apply to every feature above. CI gates runner-calibrated versions of them, and local commands check the exact numbers on Apple Silicon (see `CLAUDE.md`). This spec defines how each is measured:
 
-- **Cold start under 500 ms.** From process launch to the open page's first content paint, measured by launching the built `.app` on the macOS CI runner, median of 10 runs.
+- **Cold start under 500 ms.** From process launch to the open page's first content paint, measured by launching the built `.app`, median of 10 runs.
 - **Keystroke-to-paint under 16 ms.** From the key event to the first frame that shows the typed character, at p95, in Playwright WebKit (EDIT-14).
 - **A 5,000-block page stays smooth.** Defined in the editor perf tests.
 
