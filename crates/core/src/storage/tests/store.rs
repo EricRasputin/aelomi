@@ -6,9 +6,10 @@ use yrs::{Doc, Map, ReadTxn, StateVector, Text, TextPrelim, TextRef, Transact};
 
 use super::{
     Delivery, Env, applied, assert_doc, doc, in_order, ops_of_updates, out_of_order, record_at,
-    soon, with_a_loner_sixth, without,
+    soon, typed, with_a_loner_sixth, without,
 };
 use crate::storage::compact::CompactError;
+use crate::storage::log::encode_segment;
 use crate::storage::sim_fs::{Crash, OpKind};
 use crate::storage::snapshot::encode_snapshot;
 use crate::storage::state::Limits;
@@ -798,4 +799,39 @@ fn a_compaction_asked_for_while_one_runs_is_queued_once_when_it_ends() {
         drop(store);
         assert_doc(&env.open(), &a, &sent);
     }
+}
+
+#[test]
+fn a_kept_record_that_never_applies_costs_no_compaction_per_edit() {
+    let env = Env::manual();
+    let store = env.open();
+    let a = doc("a");
+    let PartlyApplying { good, bad } = partly_applying_update();
+    store.append(&a, &good).unwrap();
+    assert_eq!(store.flush(soon()), []);
+    let name = "log-0000000000-0000000005.ylog";
+    env.fs
+        .put_durable(&env.path("docs/a").join(name), &encode_segment(&[&bad]));
+    drop(store);
+    let store = env.open();
+    store.load(&a).unwrap();
+    store.compact(&a).unwrap();
+    assert_eq!(env.doc_files(&a), [name, "snapshot-0000000001.ysnap"]);
+    let mut sent = vec![good];
+    for client in 50..54 {
+        sent.push(typed(client, 1));
+        store.append(&a, sent.last().unwrap()).unwrap();
+        assert_eq!(store.flush(soon()), []);
+        assert!(store.run_compactor_once().is_none(), "client {client}");
+    }
+    let (held, _) = applied(&store.load(&a).unwrap(), "loaded");
+    assert!(held.contains(&ops_of_updates(&sent)));
+    assert_eq!(
+        env.doc_files(&a),
+        [
+            name,
+            "log-0000000001-0000000000.ylog",
+            "snapshot-0000000001.ysnap"
+        ]
+    );
 }
