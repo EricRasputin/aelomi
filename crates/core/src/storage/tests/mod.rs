@@ -4,6 +4,7 @@ mod crash;
 mod dirs;
 mod failures;
 mod fixture;
+mod measure;
 mod real_disk;
 mod refusals;
 mod store;
