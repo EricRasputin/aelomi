@@ -101,8 +101,12 @@ fn collect(shared: &Shared, now: Duration, retry_failing: bool) -> (Vec<Queued>,
 
 fn write(shared: &Shared, queued: Vec<Queued>) -> Option<FailReason> {
     let slots: Vec<Arc<DocSlot>> = queued.iter().map(|q| q.slot.clone()).collect();
-    let _files: Vec<MutexGuard<'_, ()>> = slots.iter().map(|s| s.files()).collect();
-    let mut jobs: Vec<Job> = queued.into_iter().map(Job::new).collect();
+    let files: Vec<MutexGuard<'_, ()>> = slots.iter().map(|s| s.files()).collect();
+    let mut jobs: Vec<Job> = queued
+        .into_iter()
+        .zip(&files)
+        .map(|(queued, held)| Job::new(queued, held))
+        .collect();
 
     for job in &mut jobs {
         let result = job.write(shared);
@@ -142,10 +146,7 @@ struct Job {
 }
 
 impl Job {
-    /// Reads the doc's segment once its file lock is held. Compaction can still rotate the doc
-    /// mid-batch, which `commit` checks, but it retires old files only under that lock, so this
-    /// segment stays until the batch ends.
-    fn new(queued: Queued) -> Self {
+    fn new(queued: Queued, _file_lock: &MutexGuard<'_, ()>) -> Self {
         let state = queued.slot.state();
         let log = &state
             .as_ref()
@@ -154,7 +155,7 @@ impl Job {
         let (segment, dir) = (log.segment, log.dir);
         drop(state);
         let acknowledged = match segment {
-            Segment::Open(.., written) => written,
+            Segment::Open { written, .. } => written,
             Segment::Next(..) => 0,
         };
         Self {
@@ -189,14 +190,19 @@ impl Job {
             }
         }
         let path = self.path(shared);
-        let (generation, n, salt, mut bytes) = match self.segment {
-            Segment::Open(generation, n, salt, _) => (generation, n, salt, Vec::new()),
+        let (salt, mut bytes) = match self.segment {
+            Segment::Open { salt, .. } => (salt, Vec::new()),
             Segment::Next(generation, n) => {
                 let salt = Salt::random()?;
                 fs.create_new(&path)?;
-                self.segment = Segment::Open(generation, n, salt, 0);
+                self.segment = Segment::Open {
+                    generation,
+                    n,
+                    salt,
+                    written: 0,
+                };
                 self.created_segment = true;
-                (generation, n, salt, segment_header(salt))
+                (salt, segment_header(salt))
             }
         };
         for update in &self.queued.updates {
@@ -204,7 +210,9 @@ impl Job {
         }
         self.written = bytes.len() as u64;
         fs.append(&path, &bytes)?;
-        self.segment = Segment::Open(generation, n, salt, self.acknowledged + self.written);
+        if let Segment::Open { written, .. } = &mut self.segment {
+            *written += self.written;
+        }
         Ok(())
     }
 
@@ -253,9 +261,11 @@ fn commit(shared: &Shared, jobs: Vec<Job>) -> Option<FailReason> {
                 }
             }
             Some(reason) => {
-                if let Segment::Open(..) = job.segment {
+                if let Segment::Open { .. } = job.segment {
                     let file = job.segment.file().name();
-                    state.failed_writes.insert(file, job.acknowledged);
+                    state
+                        .acknowledged_before_failure
+                        .insert(file, job.acknowledged);
                 }
                 if state.log.dir == DocDir::Missing {
                     state.log.dir = job.dir;

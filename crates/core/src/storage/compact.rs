@@ -230,15 +230,18 @@ fn retire_older(
     let kept_files_add = !lacking.is_empty() && adds_to(&snapshot.payload, lacking);
 
     let _files = slot.files();
-    let (corrupt, failed_writes) = {
+    let (corrupt, acknowledged_before_failure) = {
         let state = slot.state();
         let state = state.as_ref().expect("still loaded");
-        (state.corrupt.clone(), state.failed_writes.clone())
+        (
+            state.corrupt.clone(),
+            state.acknowledged_before_failure.clone(),
+        )
     };
     let mut retired = BTreeSet::new();
     for ((name, _, bytes), coverage) in older.iter().zip(coverage) {
         let torn_by_a_failed_write = || {
-            failed_writes
+            acknowledged_before_failure
                 .get(name)
                 .is_some_and(|&acknowledged| torn_after(acknowledged, bytes))
         };
@@ -267,7 +270,7 @@ fn retire_older(
     let state = state.as_mut().expect("still loaded");
     state.corrupt.retain(|name| !retired.contains(name));
     state
-        .failed_writes
+        .acknowledged_before_failure
         .retain(|name, _| !retired.contains(name));
     Ok(())
 }
@@ -317,8 +320,6 @@ pub(crate) fn coverage(held: &Ops, file: DocFile, bytes: &[u8]) -> Coverage {
     }
 }
 
-/// A failed write leaves a torn tail after the bytes acknowledged before it. If those bytes
-/// read clean, the damage is all in bytes nobody was told were saved.
 pub(crate) fn torn_after(acknowledged: u64, bytes: &[u8]) -> bool {
     let acknowledged = acknowledged as usize;
     let before = bytes.get(..acknowledged).map(read_log);

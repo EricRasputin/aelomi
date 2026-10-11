@@ -434,8 +434,6 @@ fn the_writer_thread_survives_a_panic() {
     assert_doc(&env.open(), &a, &sent);
 }
 
-/// Acknowledges three updates, then fails every write of the next ten `attempts` times, each
-/// in a new segment, before the disk recovers.
 fn fail_then_recover(env: &Env, store: &Store, a: &DocId, sent: &[Vec<u8>], attempts: usize) {
     for update in &sent[..3] {
         store.append(a, update).unwrap();

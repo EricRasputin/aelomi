@@ -52,8 +52,7 @@ pub(crate) struct DocState {
     pub log: LogState,
     pub failure: Option<Failure>,
     pub corrupt: BTreeSet<String>,
-    /// Logs a failed write tore this session, with the bytes acknowledged before it.
-    pub failed_writes: BTreeMap<String, u64>,
+    pub acknowledged_before_failure: BTreeMap<String, u64>,
     pub compaction: Compaction,
 }
 
@@ -105,7 +104,7 @@ pub(crate) struct LogState {
 
 impl LogState {
     pub fn leave_open_segment(&mut self) {
-        if let Segment::Open(..) = self.segment {
+        if let Segment::Open { .. } = self.segment {
             self.segment = self.segment.abandon();
         }
     }
@@ -121,14 +120,20 @@ pub(crate) enum DocDir {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Segment {
     Next(Generation, SegmentNo),
-    /// Created this session, with the bytes written to it.
-    Open(Generation, SegmentNo, Salt, u64),
+    Open {
+        generation: Generation,
+        n: SegmentNo,
+        salt: Salt,
+        written: u64,
+    },
 }
 
 impl Segment {
     pub fn file(self) -> DocFile {
         match self {
-            Self::Next(g, n) | Self::Open(g, n, ..) => DocFile::Log(g, n),
+            Self::Next(generation, n) | Self::Open { generation, n, .. } => {
+                DocFile::Log(generation, n)
+            }
         }
     }
 
@@ -138,7 +143,9 @@ impl Segment {
 
     pub fn abandon(self) -> Self {
         match self {
-            Self::Next(g, n) | Self::Open(g, n, ..) => Self::Next(g, n.next()),
+            Self::Next(generation, n) | Self::Open { generation, n, .. } => {
+                Self::Next(generation, n.next())
+            }
         }
     }
 }

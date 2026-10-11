@@ -366,8 +366,6 @@ impl Shared {
         }
     }
 
-    /// Loads the doc, or rebuilds it if stale, from its files and queue. The files are read
-    /// under the doc's file lock alone: each batch takes every loaded doc's state lock.
     fn read_files(&self, slot: &DocSlot, doc: &DocId) -> io::Result<()> {
         let _io = slot.files();
         match slot.state().as_mut() {
@@ -384,7 +382,7 @@ impl Shared {
                 log: recovered.log,
                 failure: None,
                 corrupt: recovered.corrupt,
-                failed_writes: BTreeMap::new(),
+                acknowledged_before_failure: BTreeMap::new(),
                 compaction: Compaction::Idle,
             }),
             Some(state) => {

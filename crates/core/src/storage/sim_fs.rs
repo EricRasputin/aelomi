@@ -57,7 +57,6 @@ enum Effect {
     HoldOnce(Arc<Hold>, Duration),
 }
 
-/// Stops one operation until the test releases it, so a test can act while it is in flight.
 #[derive(Default)]
 pub(crate) struct Hold {
     state: Mutex<HoldState>,
@@ -118,8 +117,7 @@ struct Sim {
     ops_until_death: Option<usize>,
     session: u64,
     created_this_session: HashSet<usize>,
-    /// Nodes an operation failed on this session, with the bytes durable before the failure.
-    failed: HashMap<usize, usize>,
+    durable_at_failure: HashMap<usize, usize>,
     violations: Vec<String>,
 }
 
@@ -201,7 +199,6 @@ impl SimFs {
         });
     }
 
-    /// Holds the next matching operation until released, then charges it `latency`.
     pub fn hold_once(&self, kind: OpKind, path_contains: &str, latency: Duration) -> Arc<Hold> {
         let hold = Arc::new(Hold::default());
         let at = FaultPath::Containing(path_contains.to_owned());
@@ -256,7 +253,7 @@ impl SimFs {
         sim.ops_until_death = None;
         sim.session += 1;
         sim.created_this_session.clear();
-        sim.failed.clear();
+        sim.durable_at_failure.clear();
         self.locks.lock().unwrap().clear();
     }
 
@@ -469,7 +466,7 @@ impl Sim {
             Node::Dir(_) => 0,
         };
         if matches!(kind, OpKind::Append | OpKind::Fsync | OpKind::FullSync) {
-            self.failed.entry(id).or_insert(durable);
+            self.durable_at_failure.entry(id).or_insert(durable);
         }
     }
 
@@ -480,7 +477,7 @@ impl Sim {
                 if !self.created_this_session.contains(&id) {
                     self.violation(format!("append to {path:?}, created before this session"));
                 }
-                if self.failed.contains_key(&id) {
+                if self.durable_at_failure.contains_key(&id) {
                     self.violation(format!("append to {path:?} after a failed write or sync"));
                 }
             }
@@ -499,10 +496,13 @@ impl Sim {
             OpKind::Remove => {
                 let clean = |coverage| coverage == Coverage::Full { damaged: false };
                 let held = |coverage| matches!(coverage, Coverage::Full { .. });
-                let torn_by_a_failed_write = match (&self.nodes[id], self.failed.get(&id)) {
-                    (Node::File(file), Some(&durable)) => torn_after(durable as u64, &file.data),
-                    _ => false,
-                };
+                let torn_by_a_failed_write =
+                    match (&self.nodes[id], self.durable_at_failure.get(&id)) {
+                        (Node::File(file), Some(&durable)) => {
+                            torn_after(durable as u64, &file.data)
+                        }
+                        _ => false,
+                    };
                 let held_and_torn = torn_by_a_failed_write && self.may_leave(id, path, held);
                 if !self.may_leave(id, path, clean) && !held_and_torn {
                     self.violation(format!(
