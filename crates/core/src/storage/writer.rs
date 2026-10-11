@@ -1,12 +1,13 @@
 use std::io;
+use std::panic::{self, AssertUnwindSafe};
 use std::path::PathBuf;
 use std::sync::{Arc, MutexGuard};
 use std::time::Duration;
 
 use super::doc_id::DocId;
-use super::health::{FailReason, retry_delay};
+use super::health::FailReason;
 use super::log::{LOG_MAGIC, encode_record};
-use super::state::{DocDir, DocSlot, Failure, LogSize, Segment, Seq};
+use super::state::{DocDir, DocSlot, LogSize, Segment, Seq};
 use super::store::Shared;
 
 #[derive(Debug)]
@@ -29,6 +30,30 @@ pub(crate) fn run(shared: &Shared) {
 }
 
 pub(crate) fn run_once(shared: &Shared) -> Step {
+    panic::catch_unwind(AssertUnwindSafe(|| write_queued(shared))).unwrap_or_else(|_| Step::Idle {
+        retry_at: fail_every_queued_doc(shared),
+    })
+}
+
+/// A panic may have stopped any write partway, so every doc with queued updates fails and
+/// retries in a new segment.
+fn fail_every_queued_doc(shared: &Shared) -> Option<Duration> {
+    let now = shared.clock.now();
+    let mut retry_at: Option<Duration> = None;
+    for (_, slot) in shared.slots() {
+        let mut state = slot.state();
+        let Some(state) = state.as_mut().filter(|s| !s.queue.is_empty()) else {
+            continue;
+        };
+        state.log.segment = state.log.segment.abandon();
+        let at = state.fail(FailReason::Internal, now);
+        retry_at = Some(retry_at.map_or(at, |r| r.min(at)));
+    }
+    shared.refresh_health(Some(FailReason::Internal));
+    retry_at
+}
+
+fn write_queued(shared: &Shared) -> Step {
     let retry_failing = shared.take_retry_failing();
     let (queued, retry_at) = collect(shared, shared.clock.now(), retry_failing);
     if queued.is_empty() {
@@ -228,13 +253,7 @@ fn commit(shared: &Shared, jobs: Vec<Job>) -> Option<FailReason> {
                 if current {
                     state.log.segment = job.segment.abandon();
                 }
-                let attempts = state.failure.as_ref().map_or(1, |f| f.attempts + 1);
-                let retry_at = now + retry_delay(attempts);
-                state.failure = Some(Failure {
-                    reason: reason.clone(),
-                    attempts,
-                    retry_at,
-                });
+                state.fail(reason.clone(), now);
                 latest_failure = Some(reason);
             }
         }

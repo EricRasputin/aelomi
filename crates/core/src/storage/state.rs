@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use yrs::Doc;
 
-use super::health::FailReason;
+use super::health::{FailReason, retry_delay};
 use super::layout::{DocFile, Generation, SegmentNo};
 
 /// An update's place in the order the store received updates.
@@ -52,6 +52,20 @@ pub(crate) struct DocState {
     pub failure: Option<Failure>,
     pub corrupt: BTreeSet<String>,
     pub compaction: Compaction,
+}
+
+impl DocState {
+    /// Records a failed write and returns when to retry it.
+    pub fn fail(&mut self, reason: FailReason, now: Duration) -> Duration {
+        let attempts = self.failure.as_ref().map_or(1, |f| f.attempts + 1);
+        let retry_at = now + retry_delay(attempts);
+        self.failure = Some(Failure {
+            reason,
+            attempts,
+            retry_at,
+        });
+        retry_at
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

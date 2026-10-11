@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, VecDeque};
 use std::fmt;
 use std::io;
+use std::panic::{self, AssertUnwindSafe};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, PoisonError};
@@ -213,7 +214,8 @@ impl Store {
         lock_ignoring_poison(&self.shared.health).clone()
     }
 
-    /// Calls `f` with the new health each time it changes, from the writer's thread.
+    /// Calls `f` with the new health each time it changes, from the writer's thread. A panic in
+    /// `f` stops neither the writer nor the other subscribers.
     pub fn subscribe_health(&self, f: impl Fn(&Health) + Send + Sync + 'static) {
         lock_ignoring_poison(&self.shared.subscribers).push(Arc::new(f));
     }
@@ -430,7 +432,7 @@ impl Shared {
         drop(health);
         let subscribers = lock_ignoring_poison(&self.subscribers).clone();
         for subscriber in subscribers {
-            subscriber(&next);
+            let _ = panic::catch_unwind(AssertUnwindSafe(|| subscriber(&next)));
         }
     }
 
