@@ -70,7 +70,7 @@ fn compact(shared: &Shared, doc: &DocId, rotated: Rotated) -> Result<(), Compact
         return Err(e);
     }
     publish(shared, doc, &tmp, rotated.generation)?;
-    retire_older(shared, doc, snapshot.expected.ops(), rotated.generation)?;
+    retire_older(shared, doc, &snapshot, rotated.generation)?;
     Ok(())
 }
 
@@ -207,22 +207,30 @@ fn publish(shared: &Shared, doc: &DocId, tmp: &Path, generation: Generation) -> 
 fn retire_older(
     shared: &Shared,
     doc: &DocId,
-    held: &Ops,
+    snapshot: &Snapshot,
     generation: Generation,
 ) -> io::Result<()> {
     let (fs, layout) = (&*shared.fs, &shared.layout);
     let slot = shared.slot(doc);
     let dir = layout.doc_dir(doc);
-    let coverage: Vec<(String, Coverage)> = read_older(shared, &slot, &dir, generation)?
-        .into_iter()
+    let older = read_older(shared, &slot, &dir, generation)?;
+    let coverage: Vec<(String, Coverage)> = older
+        .iter()
         .map(|(name, file, bytes)| {
             let coverage = match file {
                 DocFile::SnapshotTmp(_) => Coverage::Full { damaged: false },
-                _ => coverage(held, file, &bytes),
+                _ => coverage(snapshot.expected.ops(), *file, bytes),
             };
-            (name, coverage)
+            (name.clone(), coverage)
         })
         .collect();
+    let lacking: Vec<&[u8]> = older
+        .iter()
+        .zip(&coverage)
+        .filter(|(_, (_, coverage))| *coverage == Coverage::Lacking)
+        .flat_map(|((_, file, bytes), _)| records(*file, bytes).0)
+        .collect();
+    let merge_back = !lacking.is_empty() && merging_back_adds(&snapshot.payload, lacking);
 
     let _files = slot.files();
     let corrupt = slot.state().as_ref().expect("still loaded").corrupt.clone();
@@ -233,7 +241,9 @@ fn retire_older(
                 eprintln!(
                     "aelomi storage: kept {doc}/{name}, which has changes the snapshot lacks"
                 );
-                slot.state().as_mut().expect("still loaded").ydoc = Ydoc::Stale;
+                if merge_back {
+                    slot.state().as_mut().expect("still loaded").ydoc = Ydoc::Stale;
+                }
             }
             Coverage::Full { damaged: false } if !corrupt.contains(&name) => {
                 fs.remove(&dir.join(&name))?;
@@ -283,17 +293,10 @@ pub(crate) enum Coverage {
 /// Compares IDs, not docs: yrs integrates pending structs differently when they arrive
 /// again, so a doc can change without gaining anything.
 pub(crate) fn coverage(held: &Ops, file: DocFile, bytes: &[u8]) -> Coverage {
-    let (records, damaged) = match file {
-        DocFile::Snapshot(_) => match read_snapshot(bytes) {
-            Some(payload) => (vec![payload], false),
-            None => (Vec::new(), true),
-        },
-        DocFile::Log(..) => {
-            let contents = read_log(bytes);
-            (contents.records, contents.end != LogEnd::Clean)
-        }
-        DocFile::SnapshotTmp(_) => return Coverage::Lacking,
-    };
+    if let DocFile::SnapshotTmp(_) = file {
+        return Coverage::Lacking;
+    }
+    let (records, damaged) = records(file, bytes);
     let holds = records.iter().all(|record| {
         Update::decode_v1(record).is_ok_and(|update| held.contains(&Ops::of_update(&update)))
     });
@@ -302,6 +305,37 @@ pub(crate) fn coverage(held: &Ops, file: DocFile, bytes: &[u8]) -> Coverage {
     } else {
         Coverage::Lacking
     }
+}
+
+fn records(file: DocFile, bytes: &[u8]) -> (Vec<&[u8]>, bool) {
+    match file {
+        DocFile::Snapshot(_) => match read_snapshot(bytes) {
+            Some(payload) => (vec![payload], false),
+            None => (Vec::new(), true),
+        },
+        DocFile::Log(..) => {
+            let contents = read_log(bytes);
+            (contents.records, contents.end != LogEnd::Clean)
+        }
+        DocFile::SnapshotTmp(_) => (Vec::new(), false),
+    }
+}
+
+/// A kept file's records that can't apply would make every rebuild and compaction keep it
+/// again, so the doc goes stale only when merging the files back changes what it holds.
+fn merging_back_adds<'a>(snapshot: &[u8], records: impl IntoIterator<Item = &'a [u8]>) -> bool {
+    let doc = Doc::new();
+    let mut txn = doc.transact_mut();
+    if let Ok(update) = Update::decode_v1(snapshot) {
+        let _ = txn.apply_update(update);
+    }
+    let before = Ops::of_doc(&txn);
+    for record in records {
+        if let Ok(update) = Update::decode_v1(record) {
+            let _ = txn.apply_update(update);
+        }
+    }
+    before.is_none() || before != Ops::of_doc(&txn)
 }
 
 fn move_to_quarantine_unsynced(shared: &Shared, doc: &DocId, name: &str) -> io::Result<()> {
