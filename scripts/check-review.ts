@@ -3,9 +3,12 @@ import { readFileSync } from "node:fs";
 
 type Review = {
   id: number;
+  author_association: string;
   body: string | null;
   submitted_at: string | null;
 };
+
+const trustedAuthors = new Set(["OWNER", "MEMBER", "COLLABORATOR"]);
 
 type Verdict = {
   id: number;
@@ -20,6 +23,7 @@ export function checkReview(
 ): { pass: boolean; reason: string } {
   let latest: Verdict | undefined;
   for (const review of reviews) {
+    if (!trustedAuthors.has(review.author_association)) continue;
     const [first, second] = (review.body ?? "").split(/\r?\n/);
     if (
       first !== "Reviewer verdict: APPROVE" &&
@@ -33,7 +37,7 @@ export function checkReview(
       id: review.id,
       verdict:
         first === "Reviewer verdict: APPROVE" ? "APPROVE" : "CHANGES REQUESTED",
-      head: sha,
+      head: sha.toLowerCase(),
       submittedAt: Date.parse(review.submitted_at),
     };
     if (
@@ -48,7 +52,7 @@ export function checkReview(
   const found = latest
     ? `Latest reviewer verdict: ${latest.verdict} for head ${latest.head}.`
     : "No reviewer verdict found.";
-  if (latest?.verdict === "APPROVE" && latest.head === head) {
+  if (latest?.verdict === "APPROVE" && latest.head === head.toLowerCase()) {
     return { pass: true, reason: `${found} PASS.` };
   }
   return {
@@ -64,6 +68,8 @@ function isReview(raw: unknown): raw is Review {
     "id" in raw &&
     typeof raw.id === "number" &&
     Number.isSafeInteger(raw.id) &&
+    "author_association" in raw &&
+    typeof raw.author_association === "string" &&
     "body" in raw &&
     (raw.body === null || typeof raw.body === "string") &&
     "submitted_at" in raw &&

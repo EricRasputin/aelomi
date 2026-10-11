@@ -111,7 +111,7 @@ Acceptance tests import `test` from `e2e/fixtures.ts`, and Playwright tests impo
 
 ## CI jobs
 
-`.github/workflows/ci.yml` runs on every pull request and on pushes to `main`. Every job runs on `macos-15`.
+`.github/workflows/ci.yml` runs on every pull request and on pushes to `main`. Every `ci.yml` job runs on `macos-15`. `review-gate.yml` runs `reviewer-approved` on `ubuntu-latest`, because it only calls the GitHub API.
 
 | Job | Runs |
 |---|---|

@@ -18,10 +18,16 @@ describe("checkReview", () => {
         [
           {
             id: 1,
+            author_association: "OWNER",
             body: "Looks good to me.",
             submitted_at: "2026-10-11T10:00:00Z",
           },
-          { id: 2, body: null, submitted_at: "2026-10-11T11:00:00Z" },
+          {
+            id: 2,
+            author_association: "OWNER",
+            body: null,
+            submitted_at: "2026-10-11T11:00:00Z",
+          },
         ],
         "1111111111111111111111111111111111111111",
       ),
@@ -38,6 +44,7 @@ describe("checkReview", () => {
         [
           {
             id: 1,
+            author_association: "OWNER",
             body: "Reviewer verdict: APPROVE\nHead: 2222222222222222222222222222222222222222\n\nNo findings.",
             submitted_at: "2026-10-11T10:00:00Z",
           },
@@ -57,11 +64,13 @@ describe("checkReview", () => {
         [
           {
             id: 1,
+            author_association: "OWNER",
             body: "Reviewer verdict: APPROVE\nHead: 1111111111111111111111111111111111111111\n\nNo findings.",
             submitted_at: "2026-10-11T10:00:00Z",
           },
           {
             id: 2,
+            author_association: "OWNER",
             body: "A follow-up without a verdict.",
             submitted_at: "2026-10-11T11:00:00Z",
           },
@@ -81,11 +90,13 @@ describe("checkReview", () => {
         [
           {
             id: 1,
+            author_association: "OWNER",
             body: "Reviewer verdict: APPROVE\nHead: 1111111111111111111111111111111111111111",
             submitted_at: "2026-10-11T10:00:00Z",
           },
           {
             id: 2,
+            author_association: "OWNER",
             body: "Reviewer verdict: CHANGES REQUESTED\nHead: 1111111111111111111111111111111111111111",
             submitted_at: "2026-10-11T11:00:00Z",
           },
@@ -105,11 +116,13 @@ describe("checkReview", () => {
         [
           {
             id: 1,
+            author_association: "OWNER",
             body: "Reviewer verdict: APPROVE\nHead: 1111111111111111111111111111111111111111",
             submitted_at: "2026-10-11T11:00:00Z",
           },
           {
             id: 2,
+            author_association: "OWNER",
             body: "Reviewer verdict: CHANGES REQUESTED\nHead: 1111111111111111111111111111111111111111",
             submitted_at: "2026-10-11T10:00:00Z",
           },
@@ -134,7 +147,14 @@ describe("checkReview", () => {
   ])("ignores the malformed verdict body %j", (body) => {
     expect(
       checkReview(
-        [{ id: 1, body, submitted_at: "2026-10-11T10:00:00Z" }],
+        [
+          {
+            id: 1,
+            author_association: "OWNER",
+            body,
+            submitted_at: "2026-10-11T10:00:00Z",
+          },
+        ],
         "1111111111111111111111111111111111111111",
       ),
     ).toEqual({
@@ -150,11 +170,13 @@ describe("checkReview", () => {
         [
           {
             id: 2,
+            author_association: "OWNER",
             body: "Reviewer verdict: CHANGES REQUESTED\nHead: 1111111111111111111111111111111111111111",
             submitted_at: "2026-10-11T10:00:00Z",
           },
           {
             id: 1,
+            author_association: "OWNER",
             body: "Reviewer verdict: APPROVE\nHead: 1111111111111111111111111111111111111111",
             submitted_at: "2026-10-11T10:00:00Z",
           },
@@ -174,6 +196,7 @@ describe("checkReview", () => {
         [
           {
             id: 1,
+            author_association: "OWNER",
             body: "Reviewer verdict: APPROVE\nHead: 1111111111111111111111111111111111111111",
             submitted_at: null,
           },
@@ -184,6 +207,46 @@ describe("checkReview", () => {
       pass: false,
       reason:
         "No reviewer verdict found. FAIL; run the reviewer agent on head 1111111111111111111111111111111111111111.",
+    });
+  });
+
+  it("ignores verdicts from accounts outside the repository", () => {
+    expect(
+      checkReview(
+        [
+          {
+            id: 1,
+            author_association: "NONE",
+            body: "Reviewer verdict: APPROVE\nHead: 1111111111111111111111111111111111111111",
+            submitted_at: "2026-10-11T10:00:00Z",
+          },
+        ],
+        "1111111111111111111111111111111111111111",
+      ),
+    ).toEqual({
+      pass: false,
+      reason:
+        "No reviewer verdict found. FAIL; run the reviewer agent on head 1111111111111111111111111111111111111111.",
+    });
+  });
+
+  it("matches the head regardless of hex case", () => {
+    expect(
+      checkReview(
+        [
+          {
+            id: 1,
+            author_association: "OWNER",
+            body: "Reviewer verdict: APPROVE\nHead: ABCDEFABCDEFABCDEFABCDEFABCDEFABCDEFABCD",
+            submitted_at: "2026-10-11T10:00:00Z",
+          },
+        ],
+        "abcdefabcdefabcdefabcdefabcdefabcdefabcd",
+      ),
+    ).toEqual({
+      pass: true,
+      reason:
+        "Latest reviewer verdict: APPROVE for head abcdefabcdefabcdefabcdefabcdefabcdefabcd. PASS.",
     });
   });
 });
