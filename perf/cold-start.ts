@@ -2,11 +2,12 @@ import { spawn } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
+  mkdtempSync,
   readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { cpus, loadavg } from "node:os";
+import { cpus, loadavg, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { readBudgets } from "./budgets.ts";
@@ -28,6 +29,10 @@ const { values: args } = parseArgs({
   },
 });
 const binary = resolve(args.app, "Contents/MacOS/aelomi");
+const sharedDataDir = mkdtempSync(join(tmpdir(), "aelomi-cold-start-"));
+process.on("exit", () =>
+  rmSync(sharedDataDir, { recursive: true, force: true }),
+);
 const outDir = resolve(args.out);
 mkdirSync(outDir, { recursive: true });
 const logPath = join(outDir, "harness.log");
@@ -96,7 +101,11 @@ async function launch(tag: string): Promise<Run> {
   let stderr = "";
   const t0 = epochMs();
   const child = spawn(binary, [], {
-    env: { ...process.env, AELOMI_PERF_REPORT: reportPath },
+    env: {
+      ...process.env,
+      AELOMI_PERF_REPORT: reportPath,
+      AELOMI_DATA_DIR: sharedDataDir,
+    },
     stdio: ["ignore", "ignore", "pipe"],
   });
   child.stderr.on("data", (chunk: Buffer) => {
@@ -192,6 +201,7 @@ log(
   `cold-start harness ${args.ci ? "(--ci, gates hosted budgets)" : "(local, gates specMs)"}. node ${process.version}, ${cpus().length} cpus (${cpus()[0]?.model}), load ${load()}, ${new Date().toISOString()}`,
 );
 log(`app ${binary}`);
+log(`data folder ${sharedDataDir}`);
 log(
   `plan: ${warmupRuns} discarded warm-up, then ${timedRuns} timed runs. T0 is the wall clock (Date.now, 1 ms resolution) read just before spawn, the same clock as the kernel's process start stamp. Marks are ms after T0. First content frame = min(rAF+MessageChannel, double rAF). ${TIMEOUT_MS / 1000} s timeout per run.`,
 );
