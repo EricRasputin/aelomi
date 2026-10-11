@@ -2,17 +2,20 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use yrs::updates::decoder::Decode;
-use yrs::{Doc, Text, Transact, Update};
+use yrs::{Doc, ReadTxn, StateVector, Text, Transact, Update};
 
 use super::{Delivery, Env, doc, in_order, ops_of_updates, out_of_order, soon};
 use crate::storage::clock::SystemClock;
 use crate::storage::equality::Ops;
 use crate::storage::fs::OsFs;
+use crate::storage::log::{
+    LOG_MAGIC, LogContents, LogEnd, encode_record, read_log, read_log_hashing,
+};
 use crate::storage::recover::merge;
 use crate::storage::snapshot::read_snapshot;
 use crate::storage::state::Limits;
 use crate::storage::store::{Driver, Store};
-use crate::storage::testkit::{SplitMix64, fingerprint};
+use crate::storage::testkit::{SplitMix64, UpdateGen, doc_from, fingerprint};
 
 #[derive(Clone, Copy, Debug)]
 enum Case {
@@ -182,4 +185,94 @@ fn measure_merge_of_10_000_records() {
     eprintln!(
         "merge of 10,000 records: {in_one_merge:.2?} in one merge, {fan_in:.2?} 32 at a time"
     );
+}
+
+fn realistic_log() -> (Vec<u8>, Vec<usize>, usize) {
+    let mut typing = UpdateGen::new(77, 3);
+    let mut rng = SplitMix64::new(5);
+    let mut bytes = LOG_MAGIC.to_vec();
+    let (mut starts, mut big) = (Vec::new(), 0);
+    while bytes.len() < 1_000_000 {
+        let payload = match rng.below(300) {
+            0 => {
+                let paste = Doc::with_client_id(5_000 + rng.below(1_000));
+                let text = paste.get_or_insert_text("t");
+                let s: String = (0..rng.below(200_000))
+                    .map(|i| (b'a' + (i % 26) as u8) as char)
+                    .collect();
+                text.insert(&mut paste.transact_mut(), 0, &s);
+                paste
+                    .transact()
+                    .encode_state_as_update_v1(&StateVector::default())
+            }
+            1 => {
+                let many = UpdateGen::new(100 + rng.below(1_000), 3).updates(3_000);
+                doc_from(many.iter().map(Vec::as_slice))
+                    .transact()
+                    .encode_state_as_update_v1(&StateVector::default())
+            }
+            _ => typing.next_update(),
+        };
+        big = big.max(payload.len());
+        starts.push(bytes.len());
+        encode_record(&payload, &mut bytes);
+    }
+    (bytes, starts, big)
+}
+
+fn timed(bytes: &[u8], read: impl Fn(&[u8]) -> LogContents<'_>) -> (Duration, LogEnd, usize) {
+    let started = Instant::now();
+    let contents = read(bytes);
+    (started.elapsed(), contents.end, contents.records.len())
+}
+
+#[test]
+#[ignore = "a measurement"]
+fn measure_resync() {
+    let mut rng = SplitMix64::new(9);
+    let mut random = LOG_MAGIC.to_vec();
+    random.extend((0..1_000_000).map(|_| rng.next_u64() as u8));
+    let (took, end, _) = timed(&random, read_log);
+    eprintln!("1 MB of random bytes after the magic: {took:.2?}, {end:?}");
+
+    let first = UpdateGen::new(1, 1).next_update();
+    let mut adversarial = LOG_MAGIC.to_vec();
+    encode_record(&first, &mut adversarial);
+    let damaged = adversarial.len();
+    adversarial.resize(1_000_000, 0);
+    adversarial[damaged..damaged + 4].copy_from_slice(&u32::MAX.to_le_bytes());
+    let len = adversarial.len();
+    for at in (damaged + 8..len - 8).step_by(4) {
+        let to_the_end = (len - at - 8) as u32;
+        adversarial[at..at + 4].copy_from_slice(&to_the_end.to_le_bytes());
+        adversarial[at + 4..at + 8].copy_from_slice(&0xdead_beef_u32.to_le_bytes());
+    }
+    let (took, end, records) = timed(&adversarial, read_log);
+    eprintln!(
+        "1 MB where every 4th offset reads as a record to the end: {took:.2?}, {end:?}, {records} record"
+    );
+    let (took, end, _) = timed(&adversarial, |b| read_log_hashing(b, usize::MAX));
+    eprintln!("  the same without a budget: {took:.2?}, {end:?}");
+
+    let (log, starts, big) = realistic_log();
+    let (mut worst, mut salvaged) = (Duration::ZERO, 0);
+    let (last, others) = starts.split_last().unwrap();
+    for &start in others {
+        let mut damaged = log.clone();
+        damaged[start + 2] ^= 0x10;
+        let (took, end, records) = timed(&damaged, read_log);
+        worst = worst.max(took);
+        salvaged += usize::from(end == LogEnd::Corrupt && records == starts.len() - 1);
+    }
+    eprintln!(
+        "{} B log of {} records up to {big} B, a length bit flipped in each but the last: \
+         every other record read in {salvaged} of {} cases, slowest {worst:.2?}",
+        log.len(),
+        starts.len(),
+        others.len()
+    );
+    let mut damaged = log.clone();
+    damaged[last + 2] ^= 0x10;
+    let (_, end, records) = timed(&damaged, read_log);
+    eprintln!("  in the last: {end:?}, {records} records");
 }

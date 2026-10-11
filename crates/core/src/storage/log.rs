@@ -1,5 +1,8 @@
 use std::cmp::Ordering;
 
+use yrs::Update;
+use yrs::updates::decoder::Decode;
+
 pub(crate) const LOG_MAGIC: [u8; 8] = *b"AELOG\0\0\x01";
 const RECORD_HEADER: usize = 8;
 
@@ -23,7 +26,17 @@ pub(crate) struct LogContents<'a> {
     pub end: LogEnd,
 }
 
+/// Reads every record it can. After a bad record it resumes at the next record whose CRC matches
+/// and whose payload decodes as an update. Only the first bad record decides torn or corrupt.
 pub(crate) fn read_log(bytes: &[u8]) -> LogContents<'_> {
+    read_log_hashing(bytes, bytes.len().saturating_mul(RESYNC_HASHED_PER_BYTE))
+}
+
+/// Resyncing hashes at most this many bytes per byte of the file, so a file where most offsets
+/// read as long records still takes linear time. `measure_resync` times it.
+const RESYNC_HASHED_PER_BYTE: usize = 1024;
+
+pub(crate) fn read_log_hashing(bytes: &[u8], mut budget: usize) -> LogContents<'_> {
     if bytes.len() < LOG_MAGIC.len() {
         let end = if LOG_MAGIC.starts_with(bytes) {
             LogEnd::Torn
@@ -41,48 +54,113 @@ pub(crate) fn read_log(bytes: &[u8]) -> LogContents<'_> {
             end: LogEnd::Corrupt,
         };
     }
-    let mut records = Vec::new();
+    let mut contents = LogContents {
+        records: Vec::new(),
+        end: LogEnd::Clean,
+    };
     let mut at = LOG_MAGIC.len();
     while at < bytes.len() {
-        let Some(payload) = record_at(bytes, at) else {
-            let end = if explained_by_torn_write(bytes, at) {
-                LogEnd::Torn
-            } else {
-                LogEnd::Corrupt
-            };
-            return LogContents { records, end };
+        if let Some(payload) = record_at(bytes, at) {
+            contents.records.push(payload);
+            at += RECORD_HEADER + payload.len();
+            continue;
+        }
+        let damage = match contents.end {
+            LogEnd::Clean => first_damage(bytes, at),
+            LogEnd::Torn | LogEnd::Corrupt => Damage::Corrupt,
         };
-        records.push(payload);
-        at += RECORD_HEADER + payload.len();
+        if damage == Damage::Torn {
+            contents.end = LogEnd::Torn;
+            break;
+        }
+        let scan = past_own_length(bytes, at, &mut budget)
+            .map_or_else(|| resync(bytes, at + 1, &mut budget), Scan::ResumeAt);
+        contents.end = match (damage, scan) {
+            (Damage::TornUnlessARecordFollows, Scan::NoRecord) => LogEnd::Torn,
+            _ => LogEnd::Corrupt,
+        };
+        let Scan::ResumeAt(next) = scan else {
+            break;
+        };
+        at = next;
     }
-    LogContents {
-        records,
-        end: LogEnd::Clean,
-    }
+    contents
 }
 
-fn explained_by_torn_write(bytes: &[u8], at: usize) -> bool {
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Damage {
+    Torn,
+    TornUnlessARecordFollows,
+    Corrupt,
+}
+
+fn first_damage(bytes: &[u8], at: usize) -> Damage {
     let rest = &bytes[at..];
     let Some(header) = rest.get(..RECORD_HEADER) else {
-        return true;
+        return Damage::Torn;
     };
     let len = u32::from_le_bytes(header[..4].try_into().unwrap()) as usize;
     match (RECORD_HEADER + len).cmp(&rest.len()) {
-        Ordering::Equal => true,
-        Ordering::Greater => !(at + 1..bytes.len()).any(|q| record_at(bytes, q).is_some()),
-        Ordering::Less => rest.iter().all(|&b| b == 0),
+        Ordering::Equal => Damage::Torn,
+        Ordering::Greater => Damage::TornUnlessARecordFollows,
+        Ordering::Less if rest.iter().all(|&b| b == 0) => Damage::Torn,
+        Ordering::Less => Damage::Corrupt,
     }
+}
+
+#[derive(Clone, Copy)]
+enum Scan {
+    ResumeAt(usize),
+    NoRecord,
+    /// Records follow but none decodes as an update, or some were too long to hash.
+    NoUpdate,
+}
+
+/// Damage inside a payload leaves its length intact, so the next record starts right after it.
+fn past_own_length(bytes: &[u8], at: usize, budget: &mut usize) -> Option<usize> {
+    let (_, damaged) = candidate_at(bytes, at)?;
+    let next = at + RECORD_HEADER + damaged.len();
+    let (crc, payload) = candidate_at(bytes, next)?;
+    *budget = budget.checked_sub(payload.len())?;
+    (crc32fast::hash(payload) == crc && Update::decode_v1(payload).is_ok()).then_some(next)
+}
+
+fn resync(bytes: &[u8], from: usize, budget: &mut usize) -> Scan {
+    let mut scan = Scan::NoRecord;
+    for at in from..bytes.len() {
+        let Some((crc, payload)) = candidate_at(bytes, at) else {
+            continue;
+        };
+        let Some(left) = budget.checked_sub(payload.len()) else {
+            scan = Scan::NoUpdate;
+            continue;
+        };
+        *budget = left;
+        if crc32fast::hash(payload) != crc {
+            continue;
+        }
+        if Update::decode_v1(payload).is_ok() {
+            return Scan::ResumeAt(at);
+        }
+        scan = Scan::NoUpdate;
+    }
+    scan
+}
+
+fn record_at(bytes: &[u8], at: usize) -> Option<&[u8]> {
+    let (crc, payload) = candidate_at(bytes, at)?;
+    (crc32fast::hash(payload) == crc).then_some(payload)
 }
 
 /// The store never writes an empty payload, so a zero length is invalid. That keeps a
 /// zero-filled tail from reading as records.
-fn record_at(bytes: &[u8], at: usize) -> Option<&[u8]> {
+fn candidate_at(bytes: &[u8], at: usize) -> Option<(u32, &[u8])> {
     let header = bytes.get(at..at + RECORD_HEADER)?;
     let len = u32::from_le_bytes(header[..4].try_into().unwrap()) as usize;
     let crc = u32::from_le_bytes(header[4..].try_into().unwrap());
     let start = at + RECORD_HEADER;
     let payload = bytes.get(start..start.checked_add(len)?)?;
-    (len > 0 && crc32fast::hash(payload) == crc).then_some(payload)
+    (len > 0).then_some((crc, payload))
 }
 
 #[cfg(test)]
@@ -201,6 +279,49 @@ mod tests {
         for (name, bytes, records, end) in cases {
             assert_eq!(
                 read_log(&bytes),
+                LogContents {
+                    records: records.to_vec(),
+                    end
+                },
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_resync_skips_records_too_long_for_its_budget_and_never_calls_that_torn() {
+        let updates = UpdateGen::new(5, 1).updates(3);
+        let (alpha, beta, gamma) = (&updates[0][..], &updates[1][..], &updates[2][..]);
+        let two = segment(&[alpha]).len();
+        let absurd_length = |tail: &[u8]| {
+            let mut bytes = [segment(&[alpha, beta]).as_slice(), tail].concat();
+            bytes[two + 3] ^= 0x40;
+            bytes
+        };
+        let then_gamma = absurd_length(&segment(&[gamma])[8..]);
+        let then_junk = absurd_length(&[1, 0, 0, 0, 0, 0, 0, 0, 0xab]);
+        let a: &[&[u8]] = &[alpha];
+        let ac: &[&[u8]] = &[alpha, gamma];
+        for (name, bytes, budget, records, end) in [
+            (
+                "then a record",
+                &then_gamma,
+                usize::MAX,
+                ac,
+                LogEnd::Corrupt,
+            ),
+            (
+                "then a record, no budget",
+                &then_gamma,
+                0,
+                a,
+                LogEnd::Corrupt,
+            ),
+            ("then junk", &then_junk, usize::MAX, a, LogEnd::Torn),
+            ("then junk, no budget", &then_junk, 0, a, LogEnd::Corrupt),
+        ] {
+            assert_eq!(
+                read_log_hashing(bytes, budget),
                 LogContents {
                     records: records.to_vec(),
                     end

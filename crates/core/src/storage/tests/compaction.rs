@@ -584,7 +584,13 @@ fn a_damaged_log_loads_every_record_around_the_damage_and_is_quarantined_not_del
             false,
             vec![5],
         ),
-        ("a bit in the sixth length", vec![sixth + 2], false, vec![5]),
+        (
+            "a high bit in the sixth length",
+            vec![sixth + 2],
+            false,
+            vec![5],
+        ),
+        ("a low bit in the sixth length", vec![sixth], false, vec![5]),
         (
             "a bit in each of the last two records",
             vec![record_at(&sent, 9) + 9, record_at(&sent, 10) + 9],
