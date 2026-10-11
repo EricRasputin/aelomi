@@ -5,6 +5,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
 use super::clock::Clock;
+use super::compact::SnapshotIds;
 use super::fs::{Fs, FsLock, LockError};
 use super::layout::DocFile;
 use super::recover::snapshot_doc;
@@ -362,15 +363,16 @@ impl Sim {
                 }
             }
             OpKind::Remove => {
-                let Ok((dir, name)) = self.parent(path) else {
+                let (Ok((dir, name)), Node::File(removed)) = (self.parent(path), &self.nodes[id])
+                else {
                     return;
                 };
                 let covered = match DocFile::parse(&name) {
                     Some(DocFile::SnapshotTmp(_)) => true,
-                    Some(file) => self.has_durable_snapshot_above(dir, file.generation().0),
+                    Some(file) => self.durable_snapshot_covers(dir, file, &removed.data),
                     None => name.ends_with(".tmp"),
                 };
-                if matches!(self.nodes[id], Node::File(_)) && !covered {
+                if !covered {
                     self.violation(format!(
                         "remove {path:?}, not a .tmp or covered by a durable snapshot"
                     ));
@@ -394,13 +396,16 @@ impl Sim {
         Ok(())
     }
 
-    fn has_durable_snapshot_above(&self, dir: usize, generation: u64) -> bool {
+    fn durable_snapshot_covers(&self, dir: usize, file: DocFile, bytes: &[u8]) -> bool {
         self.dir(dir).durable.iter().any(|(name, &id)| {
             let newer =
-                matches!(DocFile::parse(name), Some(DocFile::Snapshot(g)) if g.0 > generation);
+                matches!(DocFile::parse(name), Some(DocFile::Snapshot(g)) if g > file.generation());
             newer
                 && matches!(&self.nodes[id], Node::File(f) if f.durable == f.data.len()
-                    && read_snapshot(&f.data).and_then(snapshot_doc).is_some())
+                    && read_snapshot(&f.data)
+                        .filter(|payload| snapshot_doc(payload).is_some())
+                        .and_then(SnapshotIds::of)
+                        .is_some_and(|held| held.cover(file, bytes)))
         })
     }
 }
