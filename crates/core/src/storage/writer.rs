@@ -142,8 +142,9 @@ struct Job {
 }
 
 impl Job {
-    /// Takes the doc's segment once its file lock is held, so compaction can't rotate it and
-    /// retire the old file between this read and the write.
+    /// Reads the doc's segment once its file lock is held. Compaction can still rotate the doc
+    /// mid-batch, which `commit` checks, but it retires old files only under that lock, so this
+    /// segment stays until the batch ends.
     fn new(queued: Queued) -> Self {
         let state = queued.slot.state();
         let log = &state
