@@ -360,3 +360,39 @@ fn a_rebuild_queues_the_compaction_a_stale_doc_skipped() {
         assert_doc(&env.open(), &a, &sent);
     }
 }
+
+#[test]
+fn compaction_quarantines_damage_a_rebuild_finds_while_it_runs() {
+    let env = Env::manual();
+    let store = env.open();
+    let a = doc("a");
+    let PartlyApplying { good, bad } = partly_applying_update();
+    let mut sent = vec![good];
+    sent.extend(UpdateGen::new(31, 2).updates(9));
+    for update in &sent {
+        store.append(&a, update).unwrap();
+    }
+    assert_eq!(store.flush(soon()), []);
+    let rotated = store.begin_compaction(&a).unwrap();
+
+    let name = "log-0000000000-0000000000.ylog";
+    let path = env.path("docs/a").join(name);
+    let sixth_record = 8 + sent[..5].iter().map(|u| 8 + u.len()).sum::<usize>();
+    env.fs.flip_bit(&path, sixth_record + 9);
+    let damaged = env.fs.files()[&path].clone();
+    assert!(matches!(
+        store.append(&a, &bad),
+        Err(AppendError::InvalidUpdate)
+    ));
+    assert_doc(&store, &a, &sent[..5]);
+
+    store.finish_compaction(&a, rotated).unwrap();
+    assert_eq!(env.doc_files(&a), ["snapshot-0000000001.ysnap"]);
+    assert_eq!(
+        env.fs.files().get(&env.path("quarantine/a").join(name)),
+        Some(&damaged),
+        "moved byte for byte"
+    );
+    drop(store);
+    assert_doc(&env.open(), &a, &sent);
+}
