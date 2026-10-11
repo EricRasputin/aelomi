@@ -7,6 +7,7 @@ mod fixture;
 mod measure;
 mod real_disk;
 mod refusals;
+mod salvage;
 mod store;
 
 use std::collections::BTreeMap;
