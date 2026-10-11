@@ -6,6 +6,7 @@ mod compaction;
 mod crash;
 mod failures;
 mod real_disk;
+mod refusals;
 mod store;
 
 use std::path::{Path, PathBuf};
