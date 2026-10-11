@@ -196,7 +196,7 @@ log(
   `plan: ${warmupRuns} discarded warm-up, then ${timedRuns} timed runs. T0 is the wall clock (Date.now, 1 ms resolution) read just before spawn, the same clock as the kernel's process start stamp. Marks are ms after T0. First content frame = min(rAF+MessageChannel, double rAF). ${TIMEOUT_MS / 1000} s timeout per run.`,
 );
 
-const startNoise = machineNoise();
+const startNoise = machineNoise(args.ci ? "ci" : "local");
 if (startNoise) log(startNoise);
 
 for (let i = 1; i <= warmupRuns; i++) await launch(`warmup-${i}`);
@@ -232,7 +232,7 @@ log(
   `spec verdict${args.ci ? " (information)" : " (gate)"}: end-to-end ${verdict(endToEndMedian, budgets.specMs.value)}`,
 );
 log(`load at end ${load()}`);
-const endNoise = machineNoise();
+const endNoise = machineNoise(args.ci ? "ci" : "local");
 if (endNoise) log(endNoise);
 writeFileSync(
   join(outDir, "results.json"),

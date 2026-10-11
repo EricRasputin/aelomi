@@ -83,7 +83,7 @@ for (const surface of keystrokeSurfaces) {
   test(`EDIT-14 keystroke-to-paint on the ${surface} surface`, async ({
     page,
   }, testInfo) => {
-    const startNoise = machineNoise();
+    const startNoise = machineNoise(mode);
     if (startNoise) console.log(`${surface}: ${startNoise}`);
     await page.addInitScript(installRecorder);
     const loads: { p95: number; kept: Split[] }[] = [];
@@ -161,7 +161,7 @@ for (const surface of keystrokeSurfaces) {
       `${value} ms ${value <= budget ? "<=" : ">"} ${budget} ms ${value <= budget ? "PASS" : "FAIL"}`;
     const role = (metric: keyof Split) =>
       gated && metric === gate.metric ? "gate" : "information";
-    const endNoise = machineNoise();
+    const endNoise = machineNoise(mode);
     const noise = startNoise ?? endNoise;
     const summary = [
       withNoise(
