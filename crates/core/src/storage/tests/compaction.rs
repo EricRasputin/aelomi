@@ -3,7 +3,7 @@ use yrs::{Doc, GetString, ReadTxn, StateVector, Text, Transact, Update};
 
 use super::{
     Delivery, Env, applied, assert_doc, doc, in_order, ops_of_updates, out_of_order, record_at,
-    soon, with_a_loner_sixth, without,
+    soon, typed, with_a_loner_sixth, without,
 };
 use crate::storage::compact::CompactError;
 use crate::storage::equality::Ops;
@@ -799,6 +799,63 @@ fn compaction_keeps_a_damaged_log_until_the_doc_holds_what_it_salvages() {
     );
     drop(store);
     assert_doc(&env.open(), &a, &salvaged);
+}
+
+#[test]
+fn compaction_keeps_a_log_a_merged_load_marked_corrupt_until_the_snapshot_holds_what_it_salvages() {
+    let env = Env::manual();
+    let store = env.open();
+    let a = doc("a");
+    let first = typed(1, 2);
+    store.append(&a, &first).unwrap();
+    assert_eq!(store.flush(soon()), []);
+    let client = Doc::with_client_id(200);
+    let text = client.get_or_insert_text("u");
+    text.insert(&mut client.transact_mut(), 0, "dependency");
+    let dependency = client
+        .transact()
+        .encode_state_as_update_v1(&StateVector::default());
+    let pending = {
+        let mut txn = client.transact_mut();
+        text.insert(&mut txn, 0, "pending");
+        txn.encode_update_v1()
+    };
+    store.append(&a, &pending).unwrap();
+    assert!(store.has_pending_structs(&a));
+    let planted_updates = [typed(800, 2), typed(801, 3)];
+    let mut planted = LOG_MAGIC.to_vec();
+    for update in &planted_updates {
+        encode_record(update, &mut planted);
+    }
+    planted[record_at(&planted_updates, 0) + 4] ^= 1;
+    let name = "log-0000000000-0000000005.ylog";
+    env.fs.put_durable(&env.path("docs/a").join(name), &planted);
+    store.load(&a).unwrap();
+    store.append(&a, &dependency).unwrap();
+    assert!(!store.has_pending_structs(&a));
+
+    store.compact(&a).unwrap();
+    assert_eq!(
+        env.doc_files(&a),
+        [name, "snapshot-0000000001.ysnap"],
+        "snapshot 1 lacks the planted log's second record"
+    );
+    assert_eq!(env.quarantine(), [].into());
+    drop(store);
+    let store = env.open();
+    let (held, _) = applied(&store.load(&a).unwrap(), "reopened");
+    let salvaged = [first, dependency, pending, planted_updates[1].clone()];
+    assert_eq!(held, ops_of_updates(&salvaged));
+    let (_, compacted) = store
+        .run_compactor_once()
+        .expect("the kept log queues a compaction");
+    compacted.unwrap();
+    assert_eq!(env.doc_files(&a), ["snapshot-0000000002.ysnap"]);
+    assert_eq!(
+        env.quarantine(),
+        [(env.path("quarantine/a").join(name), planted)].into(),
+        "moved byte for byte"
+    );
 }
 
 #[test]

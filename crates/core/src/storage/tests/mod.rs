@@ -168,6 +168,14 @@ pub(crate) fn applied(bytes: &[u8], case: &str) -> (Ops, yrs::Doc) {
     (held, doc)
 }
 
+pub(crate) fn typed(client: u64, n: usize) -> Vec<u8> {
+    let client = yrs::Doc::with_client_id(client);
+    let text = client.get_or_insert_text("t");
+    let mut txn = client.transact_mut();
+    text.insert(&mut txn, 0, &"x".repeat(n));
+    txn.encode_update_v1()
+}
+
 pub(crate) fn with_a_loner_sixth(mut updates: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
     let client = yrs::Doc::with_client_id(999_999_999);
     let text = client.get_or_insert_text("loner");

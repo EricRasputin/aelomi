@@ -1,15 +1,5 @@
-use yrs::{Doc, Text, Transact};
-
-use super::{Env, applied, doc, ops_of_updates, record_at, soon, without};
+use super::{Env, applied, doc, ops_of_updates, record_at, soon, typed, without};
 use crate::storage::equality::Ops;
-
-fn typed(client: u64, n: usize) -> Vec<u8> {
-    let client = Doc::with_client_id(client);
-    let text = client.get_or_insert_text("t");
-    let mut txn = client.transact_mut();
-    text.insert(&mut txn, 0, &"x".repeat(n));
-    txn.encode_update_v1()
-}
 
 fn load_after(updates: &[Vec<u8>], damage: impl FnOnce(&mut [u8])) -> Ops {
     let env = Env::manual();
