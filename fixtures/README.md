@@ -33,8 +33,8 @@ starts with a planted token. Expected IDs are sorted.
 
 ## page-5000-blocks.json
 
-A JSON array of 5,000 BlockNote blocks (4,362 top level, the rest nested as
-`children` of list items). The shape follows the BlockNote `Block` type in
+A JSON array of 5,000 BlockNote blocks, some nested as `children` of list
+items. The shape follows the BlockNote `Block` type in
 `@blocknote/core` 0.55.0, checked against the published type definitions and
 the docs at `blocknotejs.org/docs/foundations/document-structure` and
 `blocknotejs.org/docs/features/blocks` on 2026-10-11:

@@ -28,7 +28,7 @@
     },
     "gate": {
       "value": "empty",
-      "why": "The surface whose p95 the keystroke job fails on; the other surface is reported. Neither clears 16 ms on hosted macos-15 today: across two CI runs the empty surface read p95 20 ms (p50 12) and the 5,000-block surface 23 to 30 ms, headed and headless alike, where an M1 reads 2 and 9 ms. The gate stays on the empty surface at the CLAUDE.md budget until the maintainer decides how to treat hosted runners. Moves to the real editor when BlockNote lands."
+      "why": "The surface whose p95 the keystroke job fails on; the other surface is reported. Neither clears 16 ms on hosted macos-15: in every hosted CI run so far the empty surface read p95 20 to 21 ms (p50 12) because the first rendering update after input waits for the next 60 Hz tick there, while an M1 reads 2 ms. The gate stays on the empty surface at the CLAUDE.md budget until the maintainer decides how to treat hosted runners. Moves to the real editor when BlockNote lands."
     },
     "pageLoads": {
       "value": 3,
