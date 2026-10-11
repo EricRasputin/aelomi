@@ -3,6 +3,7 @@ version = 2
 ignore = [
   { id = "RUSTSEC-2024-0436", reason = "paste has no patched release; Specta and Tauri use it transitively." },
   { id = "RUSTSEC-2024-0370", reason = "proc-macro-error has no patched release; Tauri's Linux GTK dependencies use it transitively." },
+  { id = "RUSTSEC-2026-0215", reason = "smallstr is unmaintained, with no known vulnerability; yrs 0.28, the latest release, depends on it." },
 ]
 
 [licenses]

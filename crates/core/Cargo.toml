@@ -3,3 +3,12 @@ name = "aelomi-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+
+[dependencies]
+crc32fast = "1.5.2"
+libc = "0.2.190"
+yrs = "0.28"
+
+[dev-dependencies]
+proptest = "1.12.0"
+tempfile = "3.27.0"
