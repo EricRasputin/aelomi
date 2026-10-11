@@ -402,16 +402,14 @@ impl Shared {
         Ok(())
     }
 
-    /// Merges every update in the doc's files, then its queue. The file lock keeps the writer
-    /// from moving a queued update into a file between the two reads.
     pub fn merge_held(&self, doc: &DocId) -> io::Result<Merged> {
         let slot = self.slot(doc);
-        let files = slot.files();
+        let writer_waits = slot.files();
         let stored = stored_updates(&*self.fs, &self.layout, doc)?;
         let queued: Vec<Arc<[u8]>> = slot.state().as_ref().map_or_else(Vec::new, |state| {
             state.queue.iter().map(|q| q.update.clone()).collect()
         });
-        drop(files);
+        drop(writer_waits);
         let updates = stored.iter().map(Vec::as_slice);
         Ok(merge(updates.chain(queued.iter().map(|update| &**update))))
     }

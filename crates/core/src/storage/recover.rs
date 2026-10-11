@@ -26,7 +26,7 @@ pub(crate) fn recover(
     doc: &DocId,
     limits: Limits,
 ) -> io::Result<Recovered> {
-    let Some(files) = doc_files(fs, layout, doc)? else {
+    let Some(files) = sorted_doc_files(fs, layout, doc)? else {
         let log = LogState {
             dir: DocDir::Missing,
             segment: Segment::Next(Generation(0), SegmentNo(0)),
@@ -107,14 +107,12 @@ pub(crate) fn recover(
     })
 }
 
-/// Every update recovery applies, in its order: each valid snapshot, newest first, then each
-/// log's records before any damage, oldest first.
 pub(crate) fn stored_updates(
     fs: &dyn Fs,
     layout: &Layout,
     doc: &DocId,
 ) -> io::Result<Vec<Vec<u8>>> {
-    let files = doc_files(fs, layout, doc)?.unwrap_or_default();
+    let files = sorted_doc_files(fs, layout, doc)?.unwrap_or_default();
     let mut updates = Vec::new();
     for file in files.iter().rev() {
         if let DocFile::Snapshot(_) = file
@@ -132,8 +130,6 @@ pub(crate) fn stored_updates(
     Ok(updates)
 }
 
-/// Merges `updates` into one that holds exactly their operations. Bytes that don't decode are
-/// left out, as recovery can't apply them either.
 pub(crate) fn merge<'a>(updates: impl IntoIterator<Item = &'a [u8]>) -> Merged {
     let mut ops = Ops::default();
     let mut level: Vec<Update> = updates
@@ -155,8 +151,8 @@ pub(crate) fn merge<'a>(updates: impl IntoIterator<Item = &'a [u8]>) -> Merged {
     }
 }
 
-/// yrs re-sorts every input at each step of a merge, so 10,000 records take about 250 ms in one
-/// merge and about 10 ms merged 32 at a time.
+/// yrs re-sorts every input at each step of a merge, so one merge of 10,000 records takes 250 to
+/// 370 ms, and merging 32 at a time takes about 10 ms. `measure_merge_of_10_000_records` times it.
 const MERGE_FAN_IN: usize = 32;
 
 pub(crate) struct Merged {
@@ -164,8 +160,7 @@ pub(crate) struct Merged {
     pub ops: Ops,
 }
 
-/// The doc's files, sorted, or `None` if it has no folder.
-fn doc_files(fs: &dyn Fs, layout: &Layout, doc: &DocId) -> io::Result<Option<Vec<DocFile>>> {
+fn sorted_doc_files(fs: &dyn Fs, layout: &Layout, doc: &DocId) -> io::Result<Option<Vec<DocFile>>> {
     let names = match fs.list(&layout.doc_dir(doc)) {
         Ok(names) => names,
         Err(e) if e.kind() == io::ErrorKind::NotFound => return Ok(None),

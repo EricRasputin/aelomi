@@ -265,8 +265,6 @@ fn pending_structs_still_let_compaction_delete_the_old_generation() {
     }
 }
 
-/// yrs 0.28's full-state encoding of seed 35 can't be applied, loads with different operations
-/// for seed 2, and renumbers pending structs for seed 7.
 #[test]
 fn a_doc_with_pending_structs_compacts_to_a_snapshot_of_exactly_its_operations() {
     for seed in [35, 2, 7, 0, 5, 8, 47] {

@@ -1,6 +1,3 @@
-//! Measurements that print what they find. Run with
-//! `cargo nextest run -p aelomi-core --cargo-profile release --run-ignored only measure --no-capture`.
-
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -11,6 +8,7 @@ use super::{Delivery, Env, doc, in_order, ops_of_updates, out_of_order, soon};
 use crate::storage::clock::SystemClock;
 use crate::storage::equality::Ops;
 use crate::storage::fs::OsFs;
+use crate::storage::recover::merge;
 use crate::storage::snapshot::read_snapshot;
 use crate::storage::state::Limits;
 use crate::storage::store::{Driver, Store};
@@ -23,11 +21,14 @@ enum Case {
     CompactedHalfway,
 }
 
-/// Whether a shuffled three-client doc that had pending structs compacts to one snapshot and
-/// reopens with every appended operation. A merged snapshot must hold exactly those operations.
-/// yrs's encoding of a doc whose pending structs all integrated also holds the deletions yrs
-/// derived, so it must hold at least them.
-fn accepted(seed: u64, n: usize, case: Case) -> Option<bool> {
+#[derive(PartialEq)]
+enum Outcome {
+    NeverPending,
+    Accepted,
+    Refused,
+}
+
+fn compact_and_reopen(seed: u64, n: usize, case: Case) -> Outcome {
     let mut sent = out_of_order(seed, n, Delivery::Shuffled);
     if let Case::OneWithheld = case {
         sent.remove(SplitMix64::new(seed).below(n as u64) as usize);
@@ -50,15 +51,17 @@ fn accepted(seed: u64, n: usize, case: Case) -> Option<bool> {
         compacted &= store.compact(&a).is_ok();
     }
     if !had_pending {
-        return None;
+        return Outcome::NeverPending;
     }
     let snapshot = format!("snapshot-{:010}.ysnap", halves.len());
     if !compacted || env.doc_files(&a) != [snapshot.clone()] {
-        return Some(false);
+        return Outcome::Refused;
     }
     let stored = &env.fs.files()[&env.path("docs/a").join(&snapshot)];
     let held = Ops::of_update(&Update::decode_v1(read_snapshot(stored).unwrap()).unwrap());
     let union = ops_of_updates(&sent);
+    // yrs's encoding of a doc whose pending structs all integrated also holds the deletions yrs
+    // derived from them.
     let holds = if merged {
         held == union
     } else {
@@ -76,7 +79,11 @@ fn accepted(seed: u64, n: usize, case: Case) -> Option<bool> {
             fingerprint(&loaded) == fingerprint(&in_order(seed, n))
         }
     };
-    Some(holds && applies && reopened)
+    if holds && applies && reopened {
+        Outcome::Accepted
+    } else {
+        Outcome::Refused
+    }
 }
 
 #[test]
@@ -85,23 +92,22 @@ fn measure_compaction_of_docs_with_pending_structs() {
     let mut refused = 0;
     for case in [Case::Shuffled, Case::OneWithheld, Case::CompactedHalfway] {
         for n in [20, 40, 80] {
-            let results: Vec<bool> = (0..400)
-                .filter_map(|seed| accepted(seed, n, case))
+            let outcomes: Vec<Outcome> = (0..400)
+                .map(|seed| compact_and_reopen(seed, n, case))
+                .filter(|outcome| *outcome != Outcome::NeverPending)
                 .collect();
-            let ok = results.iter().filter(|&&ok| ok).count();
-            refused += results.len() - ok;
+            let accepted = outcomes.iter().filter(|o| **o == Outcome::Accepted).count();
+            refused += outcomes.len() - accepted;
             eprintln!(
-                "{case:?}, {n} updates, 400 seeds: accepted {ok} of {} docs with pending structs",
-                results.len()
+                "{case:?}, {n} updates, 400 seeds: accepted {accepted} of {} docs with pending structs",
+                outcomes.len()
             );
         }
     }
     assert_eq!(refused, 0);
 }
 
-/// Inserting at the start makes each update depend on the one before, so withholding the first
-/// leaves every other one pending.
-fn typing(n: usize) -> Vec<Vec<u8>> {
+fn each_needing_the_one_before(n: usize) -> Vec<Vec<u8>> {
     let client = Doc::with_client_id(1);
     let text = client.get_or_insert_text("text");
     (0..n)
@@ -147,7 +153,7 @@ fn median_load(dir: &std::path::Path, updates: &[Vec<u8>], pending: bool) -> (Du
 #[test]
 #[ignore = "a measurement"]
 fn measure_load_of_a_10_000_record_doc() {
-    let updates = typing(10_001);
+    let updates = each_needing_the_one_before(10_001);
     let (complete, pending) = (&updates[..10_000], &updates[1..]);
     let size: usize = complete.iter().map(Vec::len).sum();
     for (name, sent, pending) in [
@@ -160,4 +166,20 @@ fn measure_load_of_a_10_000_record_doc() {
             "load, {name}, 10,000 records of {size} bytes in all: median {median:.2?}, {bytes} bytes"
         );
     }
+}
+
+#[test]
+#[ignore = "a measurement"]
+fn measure_merge_of_10_000_records() {
+    let updates = each_needing_the_one_before(10_000);
+    let started = Instant::now();
+    let once = yrs::merge_updates_v1(&updates).unwrap();
+    let in_one_merge = started.elapsed();
+    let started = Instant::now();
+    let merged = merge(updates.iter().map(Vec::as_slice));
+    let fan_in = started.elapsed();
+    assert_eq!(merged.payload.len(), once.len());
+    eprintln!(
+        "merge of 10,000 records: {in_one_merge:.2?} in one merge, {fan_in:.2?} 32 at a time"
+    );
 }

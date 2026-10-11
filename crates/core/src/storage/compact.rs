@@ -54,9 +54,9 @@ pub(crate) fn finish(
 }
 
 fn compact(shared: &Shared, doc: &DocId, rotated: Rotated) -> Result<(), CompactError> {
-    let snapshot = match rotated.encoded {
-        Some(snapshot) => snapshot,
-        None => match merged(shared, doc)? {
+    let snapshot = match rotated.source {
+        Source::Encoded(snapshot) => *snapshot,
+        Source::MergeHeld => match merged(shared, doc)? {
             Some(snapshot) => snapshot,
             None => return Ok(()),
         },
@@ -76,9 +76,12 @@ fn compact(shared: &Shared, doc: &DocId, rotated: Rotated) -> Result<(), Compact
 
 pub(crate) struct Rotated {
     generation: Generation,
-    /// `None` for a doc with pending structs, whose snapshot `compact` merges from every update
-    /// the store holds for it.
-    encoded: Option<Snapshot>,
+    source: Source,
+}
+
+enum Source {
+    Encoded(Box<Snapshot>),
+    MergeHeld,
 }
 
 struct Snapshot {
@@ -87,9 +90,10 @@ struct Snapshot {
 }
 
 enum Expected {
-    /// yrs's encoding of a doc without pending structs must load back equal.
-    Equal { ops: Ops, fingerprint: Fingerprint },
-    /// A merge must hold exactly the operations of the updates in it and load with all of them.
+    Equal {
+        ops: Ops,
+        fingerprint: Fingerprint,
+    },
     /// Loading can integrate structs yrs had left pending, and yrs deletes any that land in a
     /// deleted parent, so the loaded doc can hold more deletions.
     Merged(Ops),
@@ -133,8 +137,8 @@ pub(crate) fn rotate(shared: &Shared, doc: &DocId) -> Option<Rotated> {
     };
     let txn = ydoc.transact();
     state.log.unsnapshotted = LogSize::default();
-    let encoded = if txn.has_missing_updates() {
-        None
+    let source = if txn.has_missing_updates() {
+        Source::MergeHeld
     } else {
         let payload = txn.encode_state_as_update_v1(&StateVector::default());
         if too_large(shared, doc, &payload) {
@@ -146,20 +150,16 @@ pub(crate) fn rotate(shared: &Shared, doc: &DocId) -> Option<Rotated> {
             );
             return None;
         };
-        Some(Snapshot { payload, expected })
+        Source::Encoded(Box::new(Snapshot { payload, expected }))
     };
     state.compaction = Compaction::Running {
         asked_after_rotate: false,
     };
     let generation = state.log.segment.generation().next();
     state.log.segment = Segment::Next(generation, SegmentNo(0));
-    Some(Rotated {
-        generation,
-        encoded,
-    })
+    Some(Rotated { generation, source })
 }
 
-/// Reads after the rotation, so it holds at least what the doc held then.
 fn merged(shared: &Shared, doc: &DocId) -> io::Result<Option<Snapshot>> {
     let merged = shared.merge_held(doc)?;
     if too_large(shared, doc, &merged.payload) {

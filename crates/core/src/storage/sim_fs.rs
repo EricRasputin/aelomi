@@ -167,7 +167,6 @@ impl SimFs {
         });
     }
 
-    /// The next append to a matching path succeeds with one bit of it flipped.
     pub fn damage_append_once(&self, path_contains: &str) {
         let at = FaultPath::Containing(path_contains.to_owned());
         self.sim().faults.push(Fault {

@@ -16,7 +16,7 @@ This file maps the code. `CLAUDE.md` has the rules and the stack, `SPEC.md` has 
 | `crates/core/src/storage/fs.rs` | The `Fs` seam and `OsFs`, with the `F_FULLFSYNC` sources |
 | `crates/core/src/storage/sim_fs.rs` | `SimFs`, the crash-simulating filesystem that checks the append-only rules |
 | `crates/core/src/storage/data_path.rs` | `check_data_path`, the cloud folder check (SHELL-11) |
-| `crates/core/src/storage/tests/` | Store tests: crash points, compaction, failures, acknowledgement time, refusals, the fixture. `measure.rs` holds ignored measurements to rerun |
+| `crates/core/src/storage/tests/` | Store tests: crash points, compaction, failures, acknowledgement time, refusals, the fixture. `measure.rs` holds ignored measurements: `cargo nextest run -p aelomi-core --cargo-profile release --run-ignored only measure --no-capture` |
 | `src-tauri/` | `aelomi`, the Tauri 2 shell (library name `aelomi_lib`) |
 | `src-tauri/src/lib.rs` | `run()` builds the Tauri app and registers the commands |
 | `src-tauri/src/commands.rs` | Tauri commands, the tauri-specta `builder()`, and the `bindings_are_current` test |

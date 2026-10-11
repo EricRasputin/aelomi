@@ -279,8 +279,6 @@ fn applied(bytes: &[u8], case: &str) -> (Ops, Doc) {
     (held, doc)
 }
 
-/// yrs 0.28's full-state encoding of these docs can't be applied (35), loads with different
-/// operations (2), or renumbers pending structs (7).
 #[test]
 fn a_doc_with_pending_structs_loads_as_bytes_that_apply_and_hold_exactly_its_operations() {
     for seed in [35, 2, 7, 0, 5, 8, 47] {

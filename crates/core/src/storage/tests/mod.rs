@@ -145,13 +145,11 @@ pub(crate) fn out_of_order(seed: u64, n: usize, delivery: Delivery) -> Vec<Vec<u
     updates
 }
 
-/// The doc the shuffled updates of `seed` make when applied in the order they were made.
 pub(crate) fn in_order(seed: u64, n: usize) -> yrs::Doc {
     doc_from(UpdateGen::new(seed, 3).updates(n).iter().map(Vec::as_slice))
 }
 
-/// Every insert and deletion the updates carry. A doc can hold more deletions: yrs deletes what
-/// it integrates into a deleted parent.
+/// A doc can hold more deletions: yrs deletes what it integrates into a deleted parent.
 pub(crate) fn ops_of_updates(updates: &[Vec<u8>]) -> Ops {
     let mut ops = Ops::default();
     for update in updates {
