@@ -591,6 +591,7 @@ fn compaction_quarantines_damage_a_rebuild_finds_while_it_runs() {
     assert_doc(&store, &a, &sent[..5]);
 
     store.finish_compaction(&a, rotated).unwrap();
+    assert_doc(&store, &a, &sent);
     assert_eq!(env.doc_files(&a), ["snapshot-0000000001.ysnap"]);
     assert_eq!(
         env.fs.files().get(&env.path("quarantine/a").join(name)),
