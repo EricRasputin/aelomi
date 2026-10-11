@@ -227,6 +227,7 @@ jobs:
           path: perf-results/
           retention-days: 7
           if-no-files-found: error
+          overwrite: true
 
   keystroke:
     runs-on: macos-15
@@ -270,3 +271,4 @@ jobs:
             test-results/
           include-hidden-files: true
           retention-days: 7
+          overwrite: true
