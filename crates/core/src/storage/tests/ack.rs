@@ -1,7 +1,3 @@
-//! SHELL-9: while writes succeed, every update is acknowledged within 100 ms of `append`.
-//! `SimFs` charges 6 ms per full sync and 0.5 ms per fsync to a manual clock, and the test
-//! steps the writer and compactor itself, so every number here is exact and repeatable.
-
 use std::time::Duration;
 
 use super::{Env, doc};
@@ -24,16 +20,12 @@ fn slow_disk() -> Env {
     env
 }
 
-/// An append due at a time after the test starts.
 struct Due {
     at: Duration,
     doc: DocId,
     update: Vec<u8>,
 }
 
-/// Appends each update once the clock reaches its time, and steps the writer, then the
-/// compactor, as a real store's threads would. Returns how long each append took to be
-/// acknowledged, and how many compactions ran.
 fn acknowledgements(env: &Env, store: &Store, schedule: Vec<Due>) -> (Vec<Duration>, usize) {
     let start = env.clock.now();
     let mut schedule = schedule

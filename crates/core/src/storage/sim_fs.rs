@@ -1,10 +1,3 @@
-//! An in-memory [`Fs`] that models what survives a crash, for tests.
-//!
-//! Each file and directory has three layers: written, synced to the drive cache (`fsync`), and
-//! durable (`full_sync` makes everything in the drive cache durable). [`SimFs::crash`] drops
-//! whatever isn't durable. Every operation is logged, and the append-only rules are checked as
-//! each operation runs, so every test on `SimFs` asserts invariant 1.
-
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io;
 use std::path::{Component, Path, PathBuf};
@@ -40,9 +33,7 @@ pub(crate) struct Op {
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum Crash {
-    /// Everything not durable is lost.
     DropUnsynced,
-    /// Each file also keeps a random prefix of its bytes that weren't durable: a torn write.
     KeepTornPrefix(u64),
 }
 
@@ -115,8 +106,6 @@ impl SimFs {
         self.sim().latency.insert(kind, latency);
     }
 
-    /// Makes every `kind` operation on a path containing `path_contains` fail with `errno`.
-    /// A failing append writes half its bytes first, like a write cut short.
     pub fn fail(&self, kind: OpKind, path_contains: &str, errno: i32) {
         let path_contains = path_contains.to_owned();
         self.sim().faults.push(Fault {
@@ -130,8 +119,6 @@ impl SimFs {
         self.sim().faults.clear();
     }
 
-    /// The process dies after `ops` more operations: every later operation fails and does
-    /// nothing until [`SimFs::crash`].
     pub fn die_after(&self, ops: usize) {
         self.sim().ops_until_death = Some(ops);
     }
@@ -172,7 +159,6 @@ impl SimFs {
         self.sim().violations.clone()
     }
 
-    /// Every file reachable now, with its written bytes.
     pub fn files(&self) -> BTreeMap<PathBuf, Vec<u8>> {
         let sim = self.sim();
         let mut out = BTreeMap::new();
@@ -192,7 +178,6 @@ impl SimFs {
         out
     }
 
-    /// Creates a durable file with `bytes`, and any missing parents, outside the operation log.
     pub fn put(&self, path: &Path, bytes: &[u8]) {
         let mut sim = self.sim();
         let mut dir = ROOT;
@@ -213,7 +198,6 @@ impl SimFs {
         sim.insert_durable(dir, &name, Node::File(file));
     }
 
-    /// Flips one bit of a file in place, outside the operation log: disk corruption.
     pub fn flip_bit(&self, path: &Path, offset: usize) {
         let mut sim = self.sim();
         let id = sim.lookup(path).expect("file exists");
@@ -347,7 +331,6 @@ impl Sim {
         Ok(())
     }
 
-    /// Whether `dir` durably holds a complete snapshot of a generation above `generation`.
     fn has_durable_snapshot_above(&self, dir: usize, generation: u64) -> bool {
         self.dir(dir).durable.iter().any(|(name, &id)| {
             let newer = matches!(DocFile::parse(name), Some(DocFile::Snapshot(g)) if g.0 > generation);

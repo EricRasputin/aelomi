@@ -36,7 +36,6 @@ pub enum Health {
     },
 }
 
-/// How long the writer waits before its `attempt`th retry of a failed doc (1-based).
 pub(crate) fn retry_delay(attempt: u32) -> Duration {
     let first = Duration::from_millis(100);
     let cap = Duration::from_secs(5);

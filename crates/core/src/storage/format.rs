@@ -1,13 +1,9 @@
-//! `format.json`, the data folder's format version.
-
-/// The data folder format this build reads and writes. Migrations are additive and bump it.
 pub(crate) const FORMAT_VERSION: u32 = 1;
 
 pub(crate) fn encode_format() -> String {
     format!("{{\n  \"format\": {FORMAT_VERSION}\n}}\n")
 }
 
-/// Reads `{"format": <n>}`, ignoring whitespace. Anything else is `None`.
 pub(crate) fn parse_format(bytes: &[u8]) -> Option<u32> {
     let text = std::str::from_utf8(bytes).ok()?;
     let compact: String = text.chars().filter(|c| !c.is_whitespace()).collect();

@@ -1,6 +1,3 @@
-//! Store tests. Every test on `SimFs` also asserts the append-only rules (invariant 1):
-//! `SimFs` checks them as each operation runs, and [`Env`] checks for violations on drop.
-
 mod ack;
 mod compaction;
 mod crash;
@@ -30,7 +27,6 @@ pub(crate) struct Env {
 }
 
 impl Env {
-    /// The writer runs only when the test steps it, on a manual clock.
     pub fn manual() -> Self {
         let clock = Arc::new(ManualClock::default());
         let fs = SimFs::new(clock.clone());
@@ -43,7 +39,6 @@ impl Env {
         }
     }
 
-    /// The writer runs on its own thread, on the system clock.
     pub fn threaded() -> Self {
         let system: Arc<dyn Clock> = Arc::new(SystemClock::new());
         let fs = SimFs::new(system.clone());
@@ -79,7 +74,6 @@ impl Env {
         self.root().join(relative)
     }
 
-    /// The doc's files, by name.
     pub fn doc_files(&self, doc: &DocId) -> Vec<String> {
         let dir = self.path("docs").join(doc.as_str());
         let files = self.fs.files();
@@ -115,7 +109,6 @@ pub(crate) fn soon() -> Instant {
     Instant::now() + Duration::from_secs(10)
 }
 
-/// Asserts that `store` holds exactly the doc built from `updates`.
 pub(crate) fn assert_doc(store: &Store, id: &DocId, updates: &[Vec<u8>]) {
     let loaded = doc_from([store.load(id).expect("doc loads").as_slice()]);
     let expected = doc_from(updates.iter().map(Vec::as_slice));

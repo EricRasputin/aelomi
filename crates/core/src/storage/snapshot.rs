@@ -1,6 +1,3 @@
-//! Snapshot codec: an 8-byte magic header, a `u32` LE payload length, a `u32` LE CRC-32,
-//! then the payload (the full doc state as one Yjs v1 update).
-
 pub(crate) const SNAPSHOT_MAGIC: [u8; 8] = *b"AESNP\0\0\x01";
 const HEADER: usize = SNAPSHOT_MAGIC.len() + 8;
 
@@ -14,7 +11,6 @@ pub(crate) fn encode_snapshot(payload: &[u8]) -> Vec<u8> {
     out
 }
 
-/// The payload, or `None` if the file is not exactly one valid snapshot.
 pub(crate) fn read_snapshot(bytes: &[u8]) -> Option<&[u8]> {
     let header = bytes.get(..HEADER)?;
     let len = u32::from_le_bytes(header[8..12].try_into().unwrap()) as usize;

@@ -1,5 +1,3 @@
-//! Compaction (DATA-6): replace a doc's snapshot and logs with one verified snapshot.
-
 use std::collections::BTreeSet;
 use std::fmt;
 use std::io;
@@ -17,7 +15,6 @@ use super::store::Shared;
 #[derive(Debug)]
 pub(crate) enum CompactError {
     Io(io::Error),
-    /// The snapshot read back from disk isn't the doc it was written from. It isn't used.
     Mismatch,
 }
 
@@ -27,9 +24,6 @@ pub(crate) fn run(shared: &Shared) {
     }
 }
 
-/// Compacts a doc whose `compacting` flag is set, then clears the flag. A failed compaction
-/// leaves every file readable, so it is only logged. It runs again once the doc's new
-/// generation of logs passes the limits.
 pub(crate) fn compact_queued(shared: &Shared, doc: &DocId) -> Result<(), CompactError> {
     let result = compact(shared, doc);
     if let Err(e) = &result {
@@ -42,16 +36,6 @@ pub(crate) fn compact_queued(shared: &Shared, doc: &DocId) -> Result<(), Compact
     result
 }
 
-/// Compacts a loaded doc at generation N into generation N + 1:
-///
-/// 1. Rotate: new appends go to `log-(N+1)-0`. Take the doc's state.
-/// 2. Write `snapshot-(N+1).ysnap.tmp` and make it durable.
-/// 3. Read it back and check it decodes to a doc equal to the state from step 1.
-/// 4. Rename it into place and make the rename durable.
-/// 5. Delete every older file, moving corrupt ones to `quarantine/` instead.
-///
-/// A crash at any point leaves files that recovery reads correctly. Leftovers below the newest
-/// snapshot, or a `.tmp`, make the doc's next load compact again, which finishes step 5.
 fn compact(shared: &Shared, doc: &DocId) -> Result<(), CompactError> {
     let slot = shared.slot(doc);
     let (generation, state, expected, corrupt) = {
@@ -96,8 +80,6 @@ fn compact(shared: &Shared, doc: &DocId) -> Result<(), CompactError> {
     Ok(())
 }
 
-/// Deletes every file of a generation below `generation`, which a durable snapshot now
-/// covers, and moves corrupt files to `quarantine/` (invariant 7). Returns the moved names.
 fn retire_older(
     shared: &Shared,
     doc: &DocId,

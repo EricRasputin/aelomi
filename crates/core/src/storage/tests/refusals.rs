@@ -1,5 +1,3 @@
-//! Invariant 6: never open a folder the store can't handle safely.
-
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
@@ -7,7 +5,6 @@ use super::Env;
 use crate::storage::sim_fs::OpKind;
 use crate::storage::store::{OpenError, Store};
 
-/// Every file and folder under `dir`, with each file's bytes.
 fn tree(dir: &Path) -> BTreeMap<PathBuf, Option<Vec<u8>>> {
     let mut out = BTreeMap::new();
     for entry in std::fs::read_dir(dir).unwrap() {

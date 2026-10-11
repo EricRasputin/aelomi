@@ -51,9 +51,7 @@ pub enum AppendError {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Driver {
-    /// Background threads write and compact. Production uses this.
     Threads,
-    /// Nothing is written or compacted until a test steps the writer or the compactor.
     #[cfg(test)]
     Manual,
 }
@@ -234,7 +232,6 @@ impl Store {
         writer::run_once(&self.shared)
     }
 
-    /// Runs the next queued compaction, if any.
     #[cfg(test)]
     pub(crate) fn run_compactor_once(&self) -> Option<(DocId, Result<(), compact::CompactError>)> {
         let doc = self.shared.signal.lock().unwrap().compactions.pop_front()?;
@@ -254,7 +251,6 @@ impl Store {
             .collect()
     }
 
-    /// Compacts `doc` now, whatever its size.
     #[cfg(test)]
     pub(crate) fn compact(&self, doc: &DocId) -> Result<(), compact::CompactError> {
         let queued = self
@@ -271,7 +267,6 @@ impl Store {
         compact::compact_queued(&self.shared, doc)
     }
 
-    /// Whether every update of `doc` up to `seq` is durable.
     #[cfg(test)]
     pub(crate) fn is_durable(&self, doc: &DocId, seq: Seq) -> bool {
         self.shared.pending_through(seq).binary_search(doc).is_err()
@@ -301,7 +296,6 @@ impl Shared {
             .clone()
     }
 
-    /// Runs `f` on the doc, loading it from its files first if this is its first use.
     fn with_doc<R>(&self, doc: &DocId, f: impl FnOnce(&mut DocState) -> R) -> io::Result<R> {
         let slot = self.slot(doc);
         let mut state = slot.state.lock().unwrap();
@@ -350,8 +344,6 @@ impl Shared {
             .collect()
     }
 
-    /// Recomputes health from every doc's failure state, after a batch. `latest` is the
-    /// batch's last failure, which becomes the reported reason.
     pub fn refresh_health(&self, latest: Option<FailReason>) {
         let mut failing = Vec::new();
         let mut reason = latest;
@@ -389,13 +381,11 @@ impl Shared {
         }
     }
 
-    /// Queues `doc` for the compactor. The caller has set the doc's `compacting` flag.
     pub fn schedule_compaction(&self, doc: DocId) {
         self.signal.lock().unwrap().compactions.push_back(doc);
         self.wake_compactor.notify_one();
     }
 
-    /// The next doc to compact. Waits for one, or returns `None` once the store shuts down.
     pub fn next_compaction(&self) -> Option<DocId> {
         let mut signal = self.signal.lock().unwrap();
         loop {
@@ -423,8 +413,6 @@ impl Shared {
         self.batch_done.notify_all();
     }
 
-    /// Waits for new work, or until `wake_at` on the store's clock. Returns `false` once the
-    /// store is shutting down.
     pub fn wait_for_work(&self, wake_at: Option<Duration>) -> bool {
         let mut signal = self.signal.lock().unwrap();
         loop {
@@ -443,8 +431,6 @@ impl Shared {
     }
 }
 
-/// Checks `format.json` before writing anything, so a folder this build can't handle is left
-/// unchanged. Then takes the lock and creates what a new folder needs.
 fn prepare_folder(fs: &dyn Fs, layout: &Layout) -> Result<FsLock, OpenError> {
     let root = layout.root();
     match fs.list(root) {
@@ -469,7 +455,6 @@ fn prepare_folder(fs: &dyn Fs, layout: &Layout) -> Result<FsLock, OpenError> {
         fs.create(&tmp)?;
         fs.append(&tmp, encode_format().as_bytes())?;
         fs.fsync(&tmp)?;
-        // The contents must be durable before the name points at them.
         fs.full_sync(&tmp)?;
         fs.rename(&tmp, &layout.format_json())?;
         changed = true;

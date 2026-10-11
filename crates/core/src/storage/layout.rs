@@ -2,11 +2,9 @@ use std::path::{Path, PathBuf};
 
 use super::doc_id::DocId;
 
-/// A compaction generation. Generation `n` holds `snapshot-n` and the logs `log-n-*`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct Generation(pub u64);
 
-/// A log segment's number within its generation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct SegmentNo(pub u64);
 
@@ -22,7 +20,6 @@ impl SegmentNo {
     }
 }
 
-/// A file the store owns inside `docs/<doc-id>/`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) enum DocFile {
     Snapshot(Generation),
@@ -45,7 +42,6 @@ impl DocFile {
         }
     }
 
-    /// Parses a name written by [`DocFile::name`]. Anything else is not the store's file.
     pub fn parse(name: &str) -> Option<Self> {
         if let Some(rest) = name.strip_prefix("snapshot-") {
             if let Some(g) = rest.strip_suffix(".ysnap.tmp") {
@@ -69,7 +65,6 @@ fn number(digits: &str) -> Option<u64> {
     }
 }
 
-/// Paths inside the data folder.
 #[derive(Clone, Debug)]
 pub(crate) struct Layout {
     root: PathBuf,

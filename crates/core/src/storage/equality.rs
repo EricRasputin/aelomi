@@ -1,5 +1,3 @@
-//! Document equality without comparing encoded bytes, whose order yrs doesn't fix.
-
 use std::collections::BTreeMap;
 
 use yrs::branch::{Branch, BranchPtr};
@@ -9,13 +7,11 @@ use yrs::{
     Any, ArrayRef, Doc, IdSet, MapRef, Out, ReadTxn, Snapshot, StateVector, Transact, Update,
 };
 
-/// What makes two docs equal: the same snapshot (state vector plus delete set), root types
-/// that read back the same, and the same pending structs.
 #[derive(Debug, PartialEq)]
 pub(crate) struct Fingerprint {
     snapshot: Snapshot,
-    /// Each non-empty root as (its sequence, its map entries). A root decoded from an update
-    /// has no type until someone asks for one, so both parts are read type-agnostically.
+    /// A root decoded from an update has no type until someone asks for one, so both parts are
+    /// read type-agnostically.
     roots: BTreeMap<String, (Any, Any)>,
     pending: Option<PendingStructs>,
 }

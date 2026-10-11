@@ -1,6 +1,3 @@
-//! Log segment codec: an 8-byte magic header, then records of `u32` LE payload length,
-//! `u32` LE CRC-32 of the payload, and the payload (one Yjs v1 update).
-
 pub(crate) const LOG_MAGIC: [u8; 8] = *b"AELOG\0\0\x01";
 const RECORD_HEADER: usize = 8;
 
@@ -11,16 +8,10 @@ pub(crate) fn encode_record(payload: &[u8], out: &mut Vec<u8>) {
     out.extend_from_slice(payload);
 }
 
-/// How a segment ends after its last valid record.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum LogEnd {
-    /// Every byte belongs to a valid record.
     Clean,
-    /// The bytes after the last valid record hold no valid record, which a torn write explains.
-    /// The file is kept and never appended to again.
     Torn,
-    /// A valid record follows a bad one, which a torn write can't explain. The file goes to
-    /// `quarantine/` instead of being deleted.
     Corrupt,
 }
 
@@ -68,8 +59,8 @@ pub(crate) fn read_log(bytes: &[u8]) -> LogContents<'_> {
     }
 }
 
-/// The payload of a valid record starting at `at`. The store never writes an empty payload,
-/// so a zero length is invalid. That keeps a zero-filled tail from reading as records.
+/// The store never writes an empty payload, so a zero length is invalid. That keeps a
+/// zero-filled tail from reading as records.
 fn record_at(bytes: &[u8], at: usize) -> Option<&[u8]> {
     let header = bytes.get(at..at + RECORD_HEADER)?;
     let len = u32::from_le_bytes(header[..4].try_into().unwrap()) as usize;

@@ -6,7 +6,6 @@ use crate::storage::state::Limits;
 use crate::storage::store::Store;
 use crate::storage::testkit::UpdateGen;
 
-/// Doc `a` with a snapshot from one compaction and a log after it: `snapshot-1`, `log-1-0`.
 fn two_generations(env: &Env) -> (Store, Vec<Vec<u8>>) {
     let store = env.open();
     let a = doc("a");
@@ -32,7 +31,6 @@ fn two_generations(env: &Env) -> (Store, Vec<Vec<u8>>) {
     (store, sent)
 }
 
-/// `n` updates from one client, each inserting `chunk` characters at the start of a text.
 /// Inserting at the start keeps yrs from merging them into one ever-longer string.
 fn typing(n: usize, chunk: usize) -> Vec<Vec<u8>> {
     let client = Doc::with_client_id(1);

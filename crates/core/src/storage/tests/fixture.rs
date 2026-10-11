@@ -1,6 +1,3 @@
-//! `fixtures/data-folders/format-1/`, the first entry in SPEC's rule that `fixtures/` keeps a
-//! data folder from every released version. `AELOMI_WRITE_FIXTURES=1` rewrites it.
-
 use std::path::{Path, PathBuf};
 
 use yrs::types::ToJson;
@@ -64,9 +61,6 @@ impl Editor {
     }
 }
 
-/// Writes the fixture through `SimFs`, which can interrupt a compaction and tear a write.
-/// `page-1` ends with a snapshot, logs from two generations, and a torn tail. `workspace`
-/// has one log.
 fn write_fixture(target: &Path) {
     let env = Env::manual();
     let store = env.open();

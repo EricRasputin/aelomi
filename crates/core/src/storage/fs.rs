@@ -3,12 +3,8 @@ use std::io::{self, Write};
 use std::os::fd::AsRawFd;
 use std::path::Path;
 
-/// Every filesystem call the store makes. Files are only created, appended to, renamed, or
-/// removed, so the trait has no way to overwrite or truncate.
 pub(crate) trait Fs: Send + Sync {
-    /// Creates one directory. Fails with `AlreadyExists` if the path exists.
     fn create_dir(&self, path: &Path) -> io::Result<()>;
-    /// Creates an empty file. Fails with `AlreadyExists` if the path exists.
     fn create(&self, path: &Path) -> io::Result<()>;
     fn append(&self, path: &Path, bytes: &[u8]) -> io::Result<()>;
     /// Plain `fsync` of a file or directory: data reaches the drive, maybe only its cache.
@@ -17,11 +13,8 @@ pub(crate) trait Fs: Send + Sync {
     fn full_sync(&self, path: &Path) -> io::Result<()>;
     fn rename(&self, from: &Path, to: &Path) -> io::Result<()>;
     fn remove(&self, path: &Path) -> io::Result<()>;
-    /// File and directory names in `dir`, sorted.
     fn list(&self, dir: &Path) -> io::Result<Vec<String>>;
     fn read(&self, path: &Path) -> io::Result<Vec<u8>>;
-    /// Takes an exclusive lock on `path`, creating the file if needed. Dropping the guard
-    /// releases it.
     fn lock(&self, path: &Path) -> Result<FsLock, LockError>;
 }
 
@@ -43,7 +36,6 @@ pub(crate) enum LockError {
     Io(io::Error),
 }
 
-/// The real filesystem.
 pub(crate) struct OsFs;
 
 impl Fs for OsFs {
@@ -78,7 +70,7 @@ impl Fs for OsFs {
     // same thing as fsync(2) then asks the drive to flush all buffered data to the permanent
     // storage device ... data that had been fsync'd on the same device before is guaranteed to
     // be persisted when this call returns." So one call after plain `fsync` of every file and
-    // directory in a batch makes the whole batch durable, the pattern SQLite uses.
+    // directory in a batch makes the whole batch durable.
     fn full_sync(&self, path: &Path) -> io::Result<()> {
         File::open(path)?.sync_all()
     }

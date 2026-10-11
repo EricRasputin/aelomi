@@ -1,5 +1,3 @@
-//! SPEC section 1: crash at any point, and every acknowledged update is still there.
-
 use std::time::{Duration, Instant};
 
 use proptest::prelude::*;
@@ -28,7 +26,6 @@ enum Action {
 struct Scenario {
     seed: u64,
     actions: Vec<Action>,
-    /// Where the process dies, as a fraction of the scenario's filesystem operations.
     crash_at: u16,
     torn: Option<u64>,
 }
@@ -60,13 +57,10 @@ fn scenario() -> impl Strategy<Value = Scenario> {
         })
 }
 
-/// Doc `i`'s updates: every one appended, and how many of them were acknowledged.
 struct Sent {
     updates: Vec<Vec<u8>>,
     seqs: Vec<Seq>,
     acked: usize,
-    /// An update `append` refused. It goes first next time, so later updates never depend on
-    /// one the store doesn't have.
     refused: Option<Vec<u8>>,
 }
 
@@ -74,8 +68,6 @@ fn ids() -> Vec<DocId> {
     (0..DOCS).map(|i| doc(&format!("doc-{i}"))).collect()
 }
 
-/// Plays the scenario's actions, the process dying after `die_after` filesystem operations.
-/// Returns what was appended and acknowledged, and how many operations the actions made.
 fn play(scenario: &Scenario, die_after: usize) -> (Env, Vec<Sent>, usize) {
     let mut env = Env::manual();
     env.limits = Limits {

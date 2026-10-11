@@ -1,8 +1,3 @@
-//! The writer: one thread owns every log write. Each batch appends each doc's queued
-//! updates to its segment with one write per file, plain-`fsync`s every touched file and
-//! every directory that got a new entry, then makes the whole batch durable with one
-//! `full_sync`. Only then are the batch's updates acknowledged.
-
 use std::io;
 use std::path::PathBuf;
 use std::sync::{Arc, MutexGuard};
@@ -17,16 +12,11 @@ use super::store::Shared;
 #[derive(Debug)]
 pub(crate) enum Step {
     Wrote(#[cfg_attr(not(test), expect(dead_code, reason = "tests assert on each batch"))] Batch),
-    /// Nothing is queued, except for failed docs waiting to retry. The earliest retry is due
-    /// at `retry_at` on the store's clock.
-    Idle {
-        retry_at: Option<Duration>,
-    },
+    Idle { retry_at: Option<Duration> },
 }
 
 #[derive(Debug, Default)]
 pub(crate) struct Batch {
-    /// Each doc that became durable, through the `Seq` it became durable through.
     pub durable: Vec<(DocId, Seq)>,
     pub failed: Vec<(DocId, FailReason)>,
 }
@@ -55,13 +45,9 @@ pub(crate) fn run_once(shared: &Shared) -> Step {
     Step::Wrote(batch)
 }
 
-/// Writes and syncs every job, then records the outcome. Holds each doc's io lock throughout,
-/// so compaction can't delete a segment while it's being written.
 fn write(shared: &Shared, mut jobs: Vec<Job>) -> Batch {
     let slots: Vec<Arc<DocSlot>> = jobs.iter().map(|job| job.slot.clone()).collect();
     let _io: Vec<MutexGuard<'_, ()>> = slots.iter().map(|s| s.io.lock().unwrap()).collect();
-    // A compaction may have rotated a segment since `collect`, and may have deleted the old
-    // one. It can't delete anything while the io locks are held, so write where it points now.
     for job in &mut jobs {
         let state = job.slot.state.lock().unwrap();
         let log = &state
@@ -98,7 +84,6 @@ fn write(shared: &Shared, mut jobs: Vec<Job>) -> Batch {
     commit(shared, jobs)
 }
 
-/// One doc's part of a batch: every queued update, encoded as log records.
 struct Job {
     doc: DocId,
     slot: Arc<DocSlot>,
@@ -111,7 +96,6 @@ struct Job {
     error: Option<FailReason>,
 }
 
-/// Takes every doc with queued updates, except failed docs whose retry isn't due yet.
 fn collect(shared: &Shared, now: Duration) -> (Vec<Job>, Option<Duration>) {
     let mut jobs = Vec::new();
     let mut retry_at: Option<Duration> = None;
@@ -178,8 +162,6 @@ impl Job {
         }
     }
 
-    /// Fsyncs the segment, and the doc's directory if the segment is new. A new doc
-    /// directory's entry in `docs/` is fsynced once for the whole batch.
     fn sync(&self, shared: &Shared) -> io::Result<()> {
         let fs = &*shared.fs;
         fs.fsync(&self.path(shared))?;

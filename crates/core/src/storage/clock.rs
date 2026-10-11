@@ -1,9 +1,7 @@
 use std::time::{Duration, Instant};
 
-/// A monotonic clock. `now` is the time since the clock's origin.
 pub(crate) trait Clock: Send + Sync {
     fn now(&self) -> Duration;
-    /// `SimFs` sleeps on the store's clock to simulate slow operations.
     #[cfg(test)]
     fn sleep(&self, duration: Duration);
 }
@@ -31,7 +29,6 @@ impl Clock for SystemClock {
     }
 }
 
-/// A clock that moves only when a test advances it, or when `SimFs` sleeps on it.
 #[cfg(test)]
 #[derive(Default)]
 pub(crate) struct ManualClock {

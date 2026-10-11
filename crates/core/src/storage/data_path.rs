@@ -1,6 +1,3 @@
-//! SHELL-11: the data folder must never resolve into a cloud-synced folder, because cloud file
-//! sync corrupts SQLite and can tear the store's files.
-
 use std::fmt;
 use std::io;
 use std::path::{Component, Path, PathBuf};
@@ -29,8 +26,6 @@ pub fn check_data_path(path: &Path, forbidden_roots: &[PathBuf]) -> Result<PathB
     Ok(resolved)
 }
 
-/// Canonicalizes the deepest existing ancestor and appends the parts that don't exist yet.
-/// A dangling symlink is followed to its target, which may itself not exist yet.
 fn resolve(path: &Path) -> io::Result<PathBuf> {
     let mut path = std::path::absolute(path)?;
     for _ in 0..40 {
@@ -98,7 +93,6 @@ mod tests {
 
     use super::*;
 
-    /// A fake home folder in a temp dir, never the real `~/Library`.
     struct Home {
         _dir: tempfile::TempDir,
         root: PathBuf,

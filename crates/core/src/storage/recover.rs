@@ -1,6 +1,3 @@
-//! Loading a doc from its files on first use. The store opens without touching any doc, so
-//! this is also where an interrupted compaction is noticed.
-
 use std::collections::BTreeSet;
 use std::io;
 
@@ -18,12 +15,9 @@ pub(crate) struct Recovered {
     pub ydoc: Doc,
     pub log: LogState,
     pub corrupt: BTreeSet<String>,
-    /// The logs are over the limits, or an interrupted compaction left files behind.
     pub needs_compaction: bool,
 }
 
-/// Builds the doc from the newest valid snapshot and every log. Yjs updates are idempotent,
-/// so applying a log the snapshot already covers is harmless: when unsure, apply more.
 pub(crate) fn recover(
     fs: &dyn Fs,
     layout: &Layout,
@@ -129,7 +123,6 @@ pub(crate) fn recover(
     })
 }
 
-/// The doc a snapshot payload holds, or `None` if it doesn't decode and apply.
 pub(crate) fn snapshot_doc(payload: &[u8]) -> Option<Doc> {
     let update = Update::decode_v1(payload).ok()?;
     let doc = Doc::new();

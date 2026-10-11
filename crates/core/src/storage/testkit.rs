@@ -1,5 +1,3 @@
-//! Shared test helpers: a seeded random number generator and random Yjs updates.
-
 use yrs::updates::decoder::Decode;
 use yrs::{
     Doc, Map, MapRef, ReadTxn, Text, TextRef, Transact, Update, XmlElementPrelim, XmlFragment,
@@ -8,7 +6,6 @@ use yrs::{
 
 use super::equality::Fingerprint;
 
-/// SplitMix64. Small, fast, and the same sequence on every platform.
 pub(crate) struct Rng(u64);
 
 impl Rng {
@@ -24,14 +21,11 @@ impl Rng {
         z ^ (z >> 31)
     }
 
-    /// A number in `0..bound`. `bound` must be at least 1.
     pub fn below(&mut self, bound: u64) -> u64 {
         self.next_u64() % bound
     }
 }
 
-/// Random Yjs updates from several simulated clients editing a `content` XML fragment, a
-/// `text` Text, and a `meta` map. The seed fixes every client's ID, so output is reproducible.
 pub(crate) struct UpdateGen {
     rng: Rng,
     clients: Vec<Client>,
@@ -49,8 +43,6 @@ impl UpdateGen {
         Self::with_ids(seed, (seed % 1_000_000) * 16 + 1, clients)
     }
 
-    /// Clients that start from `state`, as after a restart. Their IDs differ from
-    /// [`UpdateGen::new`]'s for the same seed, as a new session's would.
     pub fn resume(seed: u64, clients: u64, state: &[u8]) -> Self {
         let resumed = Self::with_ids(seed, (seed % 1_000_000) * 16 + 9, clients);
         for client in &resumed.clients {
@@ -81,8 +73,6 @@ impl UpdateGen {
         }
     }
 
-    /// One non-empty update from a random client. Now and then that client first catches up
-    /// with the others, so later edits depend on other clients' items.
     pub fn next_update(&mut self) -> Vec<u8> {
         loop {
             let at = self.rng.below(self.clients.len() as u64) as usize;
@@ -183,7 +173,6 @@ pub(crate) fn apply(doc: &Doc, update: &[u8]) {
         .expect("update applies");
 }
 
-/// A doc holding every update in `updates`.
 pub(crate) fn doc_from<'a>(updates: impl IntoIterator<Item = &'a [u8]>) -> Doc {
     let doc = Doc::new();
     for update in updates {

@@ -1,5 +1,3 @@
-//! The store on the real filesystem, in a temp folder.
-
 use std::time::{Duration, Instant};
 
 use super::{assert_doc, doc};
