@@ -37,8 +37,8 @@ pub enum OpenError {
     Locked,
     /// The folder was written by a newer build. Nothing was written to it.
     NewerFormat {
-        found: u32,
-        supported: u32,
+        found: u64,
+        supported: u64,
     },
     /// The folder has data but no readable `format.json`.
     UnknownFormat,

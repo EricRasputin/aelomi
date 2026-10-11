@@ -1,12 +1,12 @@
-pub(crate) const FORMAT_VERSION: u32 = 1;
+pub(crate) const FORMAT_VERSION: u64 = 1;
 
 pub(crate) fn encode_format() -> String {
     format!("{{\n  \"format\": {FORMAT_VERSION}\n}}\n")
 }
 
-pub(crate) fn parse_format(bytes: &[u8]) -> Option<u32> {
+pub(crate) fn parse_format(bytes: &[u8]) -> Option<u64> {
     let json: serde_json::Value = serde_json::from_slice(bytes).ok()?;
-    u32::try_from(json.get("format")?.as_u64()?).ok()
+    json.get("format")?.as_u64()
 }
 
 #[cfg(test)]
@@ -21,6 +21,14 @@ mod tests {
         assert_eq!(parse_format(b" { \"format\" : 12 } "), Some(12));
         assert_eq!(parse_format(b"{\"format\":1,\"x\":2}"), Some(1));
         assert_eq!(
+            parse_format(b"{\"format\":4294967296}"),
+            Some(4_294_967_296)
+        );
+        assert_eq!(
+            parse_format(b"{\"format\":18446744073709551615}"),
+            Some(u64::MAX)
+        );
+        assert_eq!(
             parse_format(b"{\"x\":[1,{\"format\":3},\"}\"],\"format\":2}"),
             Some(2)
         );
@@ -32,7 +40,6 @@ mod tests {
             b"{\"format\":-1}",
             b"{\"format\":1.5}",
             b"{\"format\":null}",
-            b"{\"format\":4294967296}",
             b"[{\"format\":1}]",
             b"{\"format\":1",
             b"\xff",
