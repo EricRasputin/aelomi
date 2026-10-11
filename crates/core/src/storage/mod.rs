@@ -1,4 +1,4 @@
-//! The durable, append-only store of Y.Docs. See `ARCHITECTURE.md` ("Storage").
+//! The durable, append-only store of Y.Docs. See `ARCHITECTURE.md`, "Data model and storage".
 
 mod clock;
 mod compact;

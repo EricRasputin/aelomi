@@ -39,11 +39,11 @@ fn a_failing_doc_stays_pending_while_other_docs_are_acknowledged() {
     env.fs.fail(OpKind::Append, "/docs/a/", libc::ENOSPC);
     env.clock.advance(ms(1000));
 
-    let a_last = sent_a
+    let a_seqs: Vec<_> = sent_a
         .iter()
         .map(|u| store.append(&a, u).unwrap())
-        .last()
-        .unwrap();
+        .collect();
+    let a_last = a_seqs[a_seqs.len() - 1];
     sent_b.push(gen_b.next_update());
     let b_first = store.append(&b, &sent_b[0]).unwrap();
     let batch = wrote(store.run_writer_once());

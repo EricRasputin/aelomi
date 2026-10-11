@@ -183,7 +183,7 @@ fn an_update_that_fails_to_apply_is_rejected_and_leaves_no_trace_in_memory() {
         store.append(&doc("a"), &bad),
         Err(AppendError::InvalidUpdate)
     ));
-    assert_doc(&store, &doc("a"), &[good.clone()]);
+    assert_doc(&store, &doc("a"), std::slice::from_ref(&good));
     assert_eq!(store.flush(soon()), []);
     let appended: Vec<_> = env
         .fs
@@ -206,7 +206,7 @@ fn loading_writes_nothing_and_the_first_append_starts_a_new_segment() {
 
     let store = env.open();
     let before = env.fs.ops().len();
-    assert_doc(&store, &doc("a"), &[first.clone()]);
+    assert_doc(&store, &doc("a"), std::slice::from_ref(&first));
     let kinds: Vec<_> = env.fs.ops()[before..].iter().map(|op| op.kind).collect();
     assert_eq!(
         kinds,

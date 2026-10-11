@@ -19,9 +19,9 @@ use super::health::{FailReason, Health};
 use super::layout::Layout;
 use super::recover::recover;
 use super::state::{DocSlot, DocState, Limits, Queued, Seq};
-use super::writer::{self, Step};
+use super::writer;
 
-/// The durable store of Y.Docs in one data folder. See `ARCHITECTURE.md` ("Storage").
+/// The durable store of Y.Docs in one data folder. See `ARCHITECTURE.md`, "Data model and storage".
 pub struct Store {
     shared: Arc<Shared>,
     threads: Vec<JoinHandle<()>>,
@@ -54,6 +54,7 @@ pub(crate) enum Driver {
     /// Background threads write and compact. Production uses this.
     Threads,
     /// Nothing is written or compacted until a test steps the writer or the compactor.
+    #[cfg(test)]
     Manual,
 }
 
@@ -187,8 +188,9 @@ impl Store {
                 return pending;
             }
             match self.shared.driver {
+                #[cfg(test)]
                 Driver::Manual => {
-                    if let Step::Idle { .. } = writer::run_once(&self.shared) {
+                    if let writer::Step::Idle { .. } = writer::run_once(&self.shared) {
                         return pending;
                     }
                 }
@@ -228,7 +230,7 @@ impl Store {
     }
 
     #[cfg(test)]
-    pub(crate) fn run_writer_once(&self) -> Step {
+    pub(crate) fn run_writer_once(&self) -> writer::Step {
         writer::run_once(&self.shared)
     }
 

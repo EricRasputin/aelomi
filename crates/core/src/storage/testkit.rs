@@ -2,8 +2,8 @@
 
 use yrs::updates::decoder::Decode;
 use yrs::{
-    Doc, Map, MapRef, ReadTxn, StateVector, Text, TextRef, Transact, Update, XmlElementPrelim,
-    XmlFragment, XmlFragmentRef, XmlOut, XmlTextPrelim,
+    Doc, Map, MapRef, ReadTxn, Text, TextRef, Transact, Update, XmlElementPrelim, XmlFragment,
+    XmlFragmentRef, XmlOut, XmlTextPrelim,
 };
 
 use super::equality::Fingerprint;
@@ -194,9 +194,4 @@ pub(crate) fn doc_from<'a>(updates: impl IntoIterator<Item = &'a [u8]>) -> Doc {
 
 pub(crate) fn fingerprint(doc: &Doc) -> Fingerprint {
     Fingerprint::of(&doc.transact())
-}
-
-pub(crate) fn state(doc: &Doc) -> Vec<u8> {
-    doc.transact()
-        .encode_state_as_update_v1(&StateVector::default())
 }

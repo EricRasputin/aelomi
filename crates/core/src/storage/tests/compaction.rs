@@ -107,7 +107,7 @@ fn passing_10_000_records_triggers_compaction() {
     store.run_writer_once();
     assert_eq!(
         store.queued_compactions(),
-        [a.clone()],
+        std::slice::from_ref(&a),
         "10,001 records is over it"
     );
     let log = env.path("docs/a/log-0000000000-0000000000.ylog");
@@ -121,7 +121,7 @@ fn passing_10_000_records_triggers_compaction() {
     assert_doc(&store, &a, &sent);
     assert_eq!(
         store.queued_compactions(),
-        [a.clone()],
+        std::slice::from_ref(&a),
         "loading a doc over the limit queues it"
     );
     let (compacted, result) = store.run_compactor_once().unwrap();
@@ -164,7 +164,7 @@ fn passing_1_mb_of_logs_triggers_compaction() {
     assert!(env.fs.files()[&log].len() > 1_000_000);
     assert_eq!(
         store.queued_compactions(),
-        [a.clone()],
+        std::slice::from_ref(&a),
         "passing 1 MB queues it"
     );
     store.run_compactor_once().unwrap().1.unwrap();

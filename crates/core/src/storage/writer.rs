@@ -16,7 +16,7 @@ use super::store::Shared;
 
 #[derive(Debug)]
 pub(crate) enum Step {
-    Wrote(Batch),
+    Wrote(#[cfg_attr(not(test), expect(dead_code, reason = "tests assert on each batch"))] Batch),
     /// Nothing is queued, except for failed docs waiting to retry. The earliest retry is due
     /// at `retry_at` on the store's clock.
     Idle {
@@ -45,11 +45,19 @@ pub(crate) fn run(shared: &Shared) {
 }
 
 pub(crate) fn run_once(shared: &Shared) -> Step {
-    let now = shared.clock.now();
-    let (mut jobs, retry_at) = collect(shared, now);
+    let (jobs, retry_at) = collect(shared, shared.clock.now());
     if jobs.is_empty() {
         return Step::Idle { retry_at };
     }
+    let batch = write(shared, jobs);
+    shared.refresh_health(batch.failed.last().map(|(_, reason)| reason.clone()));
+    shared.batch_finished();
+    Step::Wrote(batch)
+}
+
+/// Writes and syncs every job, then records the outcome. Holds each doc's io lock throughout,
+/// so compaction can't delete a segment while it's being written.
+fn write(shared: &Shared, mut jobs: Vec<Job>) -> Batch {
     let slots: Vec<Arc<DocSlot>> = jobs.iter().map(|job| job.slot.clone()).collect();
     let _io: Vec<MutexGuard<'_, ()>> = slots.iter().map(|s| s.io.lock().unwrap()).collect();
     // A compaction may have rotated a segment since `collect`, and may have deleted the old
@@ -87,11 +95,7 @@ pub(crate) fn run_once(shared: &Shared) -> Step {
             job.error = Some(FailReason::from(&e));
         }
     }
-
-    let batch = commit(shared, jobs);
-    shared.refresh_health(batch.failed.last().map(|(_, reason)| reason.clone()));
-    shared.batch_finished();
-    Step::Wrote(batch)
+    commit(shared, jobs)
 }
 
 /// One doc's part of a batch: every queued update, encoded as log records.

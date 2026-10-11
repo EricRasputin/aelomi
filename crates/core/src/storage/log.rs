@@ -118,7 +118,8 @@ mod tests {
         let a: &[&[u8]] = &[b"alpha"];
         let ab: &[&[u8]] = &[b"alpha", b"beta"];
         let none: &[&[u8]] = &[];
-        let cases: Vec<(&str, Vec<u8>, &[&[u8]], LogEnd)> = vec![
+        type Case<'a> = (&'a str, Vec<u8>, &'a [&'a [u8]], LogEnd);
+        let cases: Vec<Case> = vec![
             ("empty file", vec![], none, LogEnd::Torn),
             ("partial magic", LOG_MAGIC[..5].to_vec(), none, LogEnd::Torn),
             ("wrong magic", b"NOTALOG!".to_vec(), none, LogEnd::Corrupt),
