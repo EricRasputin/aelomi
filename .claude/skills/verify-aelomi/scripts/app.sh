@@ -110,7 +110,7 @@ launch() {
   RUN=$(mktemp -d "$VERIFY_ROOT/$(date +%Y%m%d-%H%M%S)-$mode-XXXX")
   (cd "$REPO" && exec nohup "${cmd[@]}" >"$RUN/shell.log" 2>&1 </dev/null) &
   local launch_pid=$!
-  printf 'MODE=%s\nLAUNCH_PID=%s\nREPO=%s\n' "$mode" "$launch_pid" "$REPO" >"$RUN/run.env"
+  printf 'MODE=%q\nLAUNCH_PID=%q\nREPO=%q\n' "$mode" "$launch_pid" "$REPO" >"$RUN/run.env"
   echo "app.sh: started ${cmd[*]} as PID $launch_pid, log $RUN/shell.log" >&2
 
   local deadline=$((SECONDS + timeout))
@@ -136,7 +136,7 @@ launch() {
     done
     [ -n "$app_pid" ] || die "logged 'ping seq=1' but found no target/debug/aelomi under PID $launch_pid. Run: $0 cleanup $RUN"
   fi
-  printf 'APP_PID=%s\n' "$app_pid" >>"$RUN/run.env"
+  printf 'APP_PID=%q\n' "$app_pid" >>"$RUN/run.env"
   # The first accessibility query after launch can find no web content, so poll until one does.
   local tries=0 err=""
   until err=$(ax status "$app_pid" 2>&1 >/dev/null); do
