@@ -36,6 +36,7 @@ dependencies = [
  "crc32fast",
  "libc",
  "proptest",
+ "serde_json",
  "tempfile",
  "yrs",
 ]

@@ -4,14 +4,10 @@ pub(crate) fn encode_format() -> String {
     format!("{{\n  \"format\": {FORMAT_VERSION}\n}}\n")
 }
 
+/// Reads only `format`, so a later build can add keys and still be refused as newer.
 pub(crate) fn parse_format(bytes: &[u8]) -> Option<u32> {
-    let text = std::str::from_utf8(bytes).ok()?;
-    let compact: String = text.chars().filter(|c| !c.is_whitespace()).collect();
-    let digits = compact.strip_prefix("{\"format\":")?.strip_suffix('}')?;
-    if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
-        return None;
-    }
-    digits.parse().ok()
+    let json: serde_json::Value = serde_json::from_slice(bytes).ok()?;
+    u32::try_from(json.get("format")?.as_u64()?).ok()
 }
 
 #[cfg(test)]
