@@ -315,3 +315,31 @@ impl fmt::Display for CompactError {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use yrs::updates::decoder::Decode;
+    use yrs::{Transact, Update};
+
+    use super::Expected;
+    use crate::storage::equality::Ops;
+    use crate::storage::recover::merge;
+    use crate::storage::testkit::{UpdateGen, doc_from};
+
+    #[test]
+    fn a_merge_verifies_only_when_it_holds_exactly_and_loads_every_operation_merged() {
+        let updates = UpdateGen::new(9, 3).updates(21);
+        let merged = |n: usize| merge(updates[..n].iter().map(Vec::as_slice));
+        let all = merged(20);
+        let (one_less, one_more) = (merged(19).payload, merged(21).payload);
+        let expected = Expected::Merged(all.ops);
+        let verifies = |held: &[u8], loaded: &[u8]| {
+            let held = Ops::of_update(&Update::decode_v1(held).unwrap());
+            expected.met_by(&held, &doc_from([loaded]).transact())
+        };
+        assert!(verifies(&all.payload, &all.payload));
+        assert!(!verifies(&one_less, &all.payload), "holds one less");
+        assert!(!verifies(&one_more, &one_more), "holds one more");
+        assert!(!verifies(&all.payload, &one_less), "loads one less");
+    }
+}
