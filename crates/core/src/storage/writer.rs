@@ -71,6 +71,14 @@ pub(crate) fn run_once(shared: &Shared) -> Step {
         let result = job.sync(shared);
         job.fail_on(result);
     }
+    let new_doc_dir = |job: &Job| job.error.is_none() && job.dir == DocDir::Created;
+    if jobs.iter().any(new_doc_dir)
+        && let Err(e) = shared.fs.fsync(&shared.layout.docs())
+    {
+        for job in jobs.iter_mut().filter(|job| new_doc_dir(job)) {
+            job.error = Some(FailReason::from(&e));
+        }
+    }
     let first_ok = jobs.iter().find(|job| job.error.is_none());
     if let Some(path) = first_ok.map(|job| job.path(shared))
         && let Err(e) = shared.fs.full_sync(&path)
@@ -166,14 +174,13 @@ impl Job {
         }
     }
 
+    /// Fsyncs the segment, and the doc's directory if the segment is new. A new doc
+    /// directory's entry in `docs/` is fsynced once for the whole batch.
     fn sync(&self, shared: &Shared) -> io::Result<()> {
         let fs = &*shared.fs;
         fs.fsync(&self.path(shared))?;
         if self.created_segment {
             fs.fsync(&shared.layout.doc_dir(&self.doc))?;
-        }
-        if self.dir == DocDir::Created {
-            fs.fsync(&shared.layout.docs())?;
         }
         Ok(())
     }
