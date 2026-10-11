@@ -255,22 +255,30 @@ fn measure_resync() {
     eprintln!("  the same without a budget: {took:.2?}, {end:?}");
 
     let (log, starts, big) = realistic_log();
-    let (mut worst, mut salvaged) = (Duration::ZERO, 0);
     let (last, others) = starts.split_last().unwrap();
-    for &start in others {
-        let mut damaged = log.clone();
-        damaged[start + 2] ^= 0x10;
-        let (took, end, records) = timed(&damaged, read_log);
-        worst = worst.max(took);
-        salvaged += usize::from(end == LogEnd::Corrupt && records == starts.len() - 1);
+    for (name, offset) in [("a length bit", 2), ("a payload bit", usize::MAX)] {
+        let (mut worst, mut salvaged) = (Duration::ZERO, 0);
+        for (i, &start) in others.iter().enumerate() {
+            let payload = starts[i + 1] - start - 8;
+            let at = start + offset.min(8 + payload / 2);
+            let mut damaged = log.clone();
+            damaged[at] ^= 0x10;
+            let (took, end, records) = timed(&damaged, read_log);
+            worst = worst.max(took);
+            if end == LogEnd::Corrupt && records == starts.len() - 1 {
+                salvaged += 1;
+            } else {
+                eprintln!("  record {i} of {payload} B: {end:?}, {records} records");
+            }
+        }
+        eprintln!(
+            "{} B log of {} records up to {big} B, {name} flipped in each but the last: \
+             every other record read in {salvaged} of {} cases, slowest {worst:.2?}",
+            log.len(),
+            starts.len(),
+            others.len()
+        );
     }
-    eprintln!(
-        "{} B log of {} records up to {big} B, a length bit flipped in each but the last: \
-         every other record read in {salvaged} of {} cases, slowest {worst:.2?}",
-        log.len(),
-        starts.len(),
-        others.len()
-    );
     let mut damaged = log.clone();
     damaged[last + 2] ^= 0x10;
     let (_, end, records) = timed(&damaged, read_log);

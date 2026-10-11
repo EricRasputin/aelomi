@@ -165,6 +165,8 @@ fn candidate_at(bytes: &[u8], at: usize) -> Option<(u32, &[u8])> {
 
 #[cfg(test)]
 mod tests {
+    use yrs::{Doc, Text, Transact};
+
     use super::*;
     use crate::storage::testkit::UpdateGen;
 
@@ -203,9 +205,27 @@ mod tests {
             bytes[at] ^= 0x40;
             bytes
         };
+        let typed = |n: usize| {
+            let client = Doc::with_client_id(7);
+            let text = client.get_or_insert_text("t");
+            let mut txn = client.transact_mut();
+            text.insert(&mut txn, 0, &"x".repeat(n));
+            txn.encode_update_v1()
+        };
+        let sixty_four = (0..64).map(typed).find(|u| 8 + u.len() == 64).unwrap();
+        assert_eq!(
+            beta.len() & 0x40,
+            0,
+            "a flipped 0x40 adds 64 to beta's length"
+        );
+        let skips_one = flip(
+            [good.as_slice(), &segment(&[&sixty_four])[8..], &third].concat(),
+            two,
+        );
         let a: &[&[u8]] = &[alpha];
         let ab: &[&[u8]] = &[alpha, beta];
         let ac: &[&[u8]] = &[alpha, gamma];
+        let adc: &[&[u8]] = &[alpha, &sixty_four, gamma];
         let none: &[&[u8]] = &[];
         type Case<'a> = (&'a str, Vec<u8>, &'a [&'a [u8]], LogEnd);
         let cases: Vec<Case> = vec![
@@ -243,6 +263,12 @@ mod tests {
                 "absurd length, then a good record",
                 flip(with(&third), two + 3),
                 ac,
+                LogEnd::Corrupt,
+            ),
+            (
+                "a length that lands on the record after next",
+                skips_one,
+                adc,
                 LogEnd::Corrupt,
             ),
             (
