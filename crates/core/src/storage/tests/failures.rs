@@ -1,11 +1,13 @@
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use super::{Env, assert_doc, doc, soon};
+use crate::storage::doc_id::DocId;
 use crate::storage::health::{FailReason, Health};
-use crate::storage::log::read_log;
-use crate::storage::sim_fs::OpKind;
+use crate::storage::log::{LogEnd, read_log};
+use crate::storage::sim_fs::{Crash, OpKind};
 use crate::storage::store::Store;
 use crate::storage::testkit::UpdateGen;
 use crate::storage::writer::Step;
@@ -428,6 +430,102 @@ fn the_writer_thread_survives_a_panic() {
     store.append(&a, &sent[1]).unwrap();
     assert_eq!(store.flush(soon()), []);
     assert_eq!(store.health(), Health::Healthy);
+    drop(store);
+    assert_doc(&env.open(), &a, &sent);
+}
+
+/// Acknowledges three updates, then fails every write of the next ten `attempts` times, each
+/// in a new segment, before the disk recovers.
+fn fail_then_recover(env: &Env, store: &Store, a: &DocId, sent: &[Vec<u8>], attempts: usize) {
+    for update in &sent[..3] {
+        store.append(a, update).unwrap();
+    }
+    assert_eq!(store.flush(soon()), []);
+    env.fs.fail(OpKind::Append, "/docs/a/", libc::EIO);
+    for update in &sent[3..] {
+        store.append(a, update).unwrap();
+    }
+    write_batch(store);
+    for _ in 1..attempts {
+        let Step::Idle { retry_at: Some(at) } = store.run_writer_once() else {
+            panic!("a waits for its retry")
+        };
+        env.clock.advance_to(at);
+        write_batch(store);
+    }
+    env.fs.clear_faults();
+    assert_eq!(store.flush(soon()), []);
+}
+
+fn torn_logs(env: &Env, a: &DocId) -> Vec<(String, usize)> {
+    let files = env.fs.files();
+    env.doc_files(a)
+        .into_iter()
+        .filter_map(|name| {
+            let contents = read_log(&files[&env.path("docs/a").join(&name)]);
+            (contents.end == LogEnd::Torn).then_some((name, contents.records.len()))
+        })
+        .collect()
+}
+
+#[test]
+fn compaction_deletes_the_segments_this_sessions_failed_writes_left_instead_of_quarantining_them() {
+    let env = Env::manual();
+    let store = env.open();
+    let a = doc("a");
+    let sent = UpdateGen::new(17, 2).updates(13);
+    fail_then_recover(&env, &store, &a, &sent, 21);
+    let torn = torn_logs(&env, &a);
+    let segment = |n: usize| format!("log-0000000000-{n:010}.ylog");
+    assert_eq!(
+        torn.iter()
+            .map(|(name, _)| name.clone())
+            .collect::<Vec<_>>(),
+        (0..=20).map(segment).collect::<Vec<_>>(),
+        "the first attempt and 20 retries each tore a segment"
+    );
+    assert_eq!(torn[0].1, 3 + 4, "the first holds 3 acknowledged records");
+    assert!(
+        torn[1..].iter().all(|(_, records)| *records == 4),
+        "each retry wrote records before it failed: {torn:?}"
+    );
+    assert_eq!(env.doc_files(&a).len(), 22);
+
+    store.compact(&a).unwrap();
+    assert_eq!(env.doc_files(&a), ["snapshot-0000000001.ysnap"]);
+    let quarantined: Vec<PathBuf> = env.quarantine().into_keys().collect();
+    assert_eq!(quarantined, Vec::<PathBuf>::new());
+    drop(store);
+    assert_doc(&env.open(), &a, &sent);
+}
+
+#[test]
+fn a_segment_a_failed_write_tore_in_an_earlier_session_is_quarantined_not_deleted() {
+    let a = doc("a");
+    let sent = UpdateGen::new(17, 2).updates(13);
+    let name = "log-0000000000-0000000000.ylog";
+    let (env, torn) = (0..64)
+        .find_map(|seed| {
+            let env = Env::manual();
+            let store = env.open();
+            fail_then_recover(&env, &store, &a, &sent, 1);
+            drop(store);
+            env.fs.crash(Crash::KeepTornPrefix(seed));
+            let bytes = env.fs.files()[&env.path("docs/a").join(name)].clone();
+            let contents = read_log(&bytes);
+            let kept_a_failed_record = contents.records.len() > 3;
+            (contents.end == LogEnd::Torn && kept_a_failed_record).then_some((env, bytes))
+        })
+        .expect("a seed that keeps part of the failed write");
+
+    let store = env.open();
+    store.compact(&a).unwrap();
+    assert_eq!(env.doc_files(&a), ["snapshot-0000000001.ysnap"]);
+    assert_eq!(
+        env.quarantine(),
+        [(env.path("quarantine/a").join(name), torn)].into(),
+        "moved byte for byte"
+    );
     drop(store);
     assert_doc(&env.open(), &a, &sent);
 }

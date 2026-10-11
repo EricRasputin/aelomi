@@ -690,7 +690,8 @@ fn applies(payload: &[u8]) -> bool {
 mod tests {
     use super::*;
     use crate::storage::clock::ManualClock;
-    use crate::storage::log::{LOG_MAGIC, encode_segment};
+    use crate::storage::log::{LOG_MAGIC, LogEnd, SEGMENT_HEADER, encode_segment, read_log};
+    use crate::storage::recover::merge;
     use crate::storage::snapshot::encode_snapshot;
     use crate::storage::testkit::UpdateGen;
 
@@ -914,6 +915,49 @@ mod tests {
         }
         assert_eq!(fs.list(&p("/d")).unwrap(), ["snapshot-0000000002.ysnap"]);
         assert_eq!(fs.violations(), Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_log_a_failed_write_tore_this_session_may_be_removed_unless_damage_precedes_the_failure() {
+        let updates = UpdateGen::new(3, 1).updates(2);
+        let snapshot = encode_snapshot(&merge(updates.iter().map(Vec::as_slice)).payload);
+        let segment = encode_segment(&updates);
+        let acknowledged = SEGMENT_HEADER + 8 + updates[0].len();
+        let log = p("/d/log-0000000001-0000000000.ylog");
+        let tear = |fs: &SimFs| {
+            fs.create_dir(&p("/d")).unwrap();
+            fs.create_new(&log).unwrap();
+            fs.append(&log, &segment[..acknowledged]).unwrap();
+            for synced in [&log, &p("/d"), &p("/")] {
+                fs.fsync(synced).unwrap();
+            }
+            fs.full_sync(&log).unwrap();
+            fs.fail(OpKind::Append, "/d/log", libc::EIO);
+            fs.append(&log, &segment[acknowledged..]).unwrap_err();
+            fs.clear_faults();
+            fs.put_durable(&p("/d/snapshot-0000000002.ysnap"), &snapshot);
+        };
+
+        let fs = sim();
+        tear(&fs);
+        assert_eq!(read_log(&fs.files()[&log]).end, LogEnd::Torn);
+        fs.remove(&log).unwrap();
+        assert_eq!(fs.violations(), Vec::<String>::new());
+
+        let fs = sim();
+        tear(&fs);
+        fs.flip_bit(&log, acknowledged - 1);
+        let fs2 = fs.clone();
+        let removed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            fs2.remove(&log).unwrap();
+        }));
+        assert!(removed.is_err());
+        assert_eq!(
+            fs.violations(),
+            [
+                r#"remove "/d/log-0000000001-0000000000.ylog", not a .tmp or covered by a durable snapshot"#
+            ]
+        );
     }
 
     #[test]
