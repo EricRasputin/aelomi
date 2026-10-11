@@ -46,7 +46,21 @@ struct Client {
 
 impl UpdateGen {
     pub fn new(seed: u64, clients: u64) -> Self {
-        let first_id = (seed % 1_000_000) * 16 + 1;
+        Self::with_ids(seed, (seed % 1_000_000) * 16 + 1, clients)
+    }
+
+    /// Clients that start from `state`, as after a restart. Their IDs differ from
+    /// [`UpdateGen::new`]'s for the same seed, as a new session's would.
+    pub fn resume(seed: u64, clients: u64, state: &[u8]) -> Self {
+        let resumed = Self::with_ids(seed, (seed % 1_000_000) * 16 + 9, clients);
+        for client in &resumed.clients {
+            apply(&client.doc, state);
+        }
+        resumed
+    }
+
+    fn with_ids(seed: u64, first_id: u64, clients: u64) -> Self {
+        assert!(clients <= 7, "IDs stay inside the seed's block of 16");
         let clients = (first_id..first_id + clients)
             .map(|id| {
                 let doc = Doc::with_client_id(id);

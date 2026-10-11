@@ -2,6 +2,7 @@
 //! `SimFs` checks them as each operation runs, and [`Env`] checks for violations on drop.
 
 mod compaction;
+mod crash;
 mod failures;
 mod store;
 
