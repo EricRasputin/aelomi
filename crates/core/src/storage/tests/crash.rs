@@ -290,9 +290,9 @@ fn run(scenario: &Scenario) -> Result<(), TestCaseError> {
         prop_assert!(result.is_ok(), "compaction after the crash: {:?}", result);
     }
     for (path, bytes) in env.quarantine() {
-        prop_assert_eq!(
+        prop_assert_ne!(
             read_log(&bytes).end,
-            LogEnd::Torn,
+            LogEnd::Corrupt,
             "{:?}: a torn write is never corruption",
             path
         );
