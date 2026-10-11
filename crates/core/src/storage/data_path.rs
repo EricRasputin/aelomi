@@ -31,13 +31,19 @@ fn canonicalize_allowing_missing(path: &Path) -> io::Result<PathBuf> {
     for _ in 0..40 {
         let mut existing = path.as_path();
         let mut missing = Vec::new();
-        loop {
+        'walk: loop {
             match existing.canonicalize() {
                 Ok(mut resolved) => {
-                    for part in missing.iter().rev() {
+                    let mut parts = missing.iter().rev();
+                    while let Some(part) = parts.next() {
                         match part {
+                            // Going up out of a missing folder lands in one that exists, so
+                            // what follows may be a symlink and is resolved again.
                             Component::ParentDir => {
                                 resolved.pop();
+                                resolved.extend(parts);
+                                path = resolved;
+                                break 'walk;
                             }
                             Component::Normal(name) => resolved.push(name),
                             _ => {}
@@ -210,6 +216,35 @@ mod tests {
                 home.path("Library/CloudStorage/Dropbox/Later/data"),
                 home.path("Library/CloudStorage")
             ))
+        );
+    }
+
+    #[test]
+    fn resolves_a_symlink_reached_through_dot_dot_out_of_a_missing_folder() {
+        let home = Home::new();
+        std::fs::create_dir(home.path("local")).unwrap();
+        symlink(
+            home.path("Library/CloudStorage/Dropbox"),
+            home.path("local/link"),
+        )
+        .unwrap();
+        for path in [
+            "local/missing/../link/data",
+            "local/missing/deeper/../../link/data",
+            "local/./missing/./../link/./data",
+        ] {
+            assert_eq!(
+                home.check(path),
+                Err((
+                    home.path("Library/CloudStorage/Dropbox/data"),
+                    home.path("Library/CloudStorage")
+                )),
+                "{path}"
+            );
+        }
+        assert_eq!(
+            home.check("local/missing/../other/data"),
+            Ok(home.path("local/other/data"))
         );
     }
 
