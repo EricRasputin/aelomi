@@ -168,18 +168,31 @@ impl SimFs {
     }
 
     pub fn files(&self) -> BTreeMap<PathBuf, Vec<u8>> {
+        self.tree(|dir| &dir.live, |file| &file.data)
+    }
+
+    /// What a crash would leave, short of a torn write.
+    pub fn durable_files(&self) -> BTreeMap<PathBuf, Vec<u8>> {
+        self.tree(|dir| &dir.durable, |file| &file.data[..file.durable])
+    }
+
+    fn tree(
+        &self,
+        entries: impl Fn(&DirNode) -> &BTreeMap<String, usize>,
+        bytes: impl Fn(&FileNode) -> &[u8],
+    ) -> BTreeMap<PathBuf, Vec<u8>> {
         let sim = self.sim();
         let mut out = BTreeMap::new();
         let mut stack = vec![(PathBuf::from("/"), ROOT)];
         while let Some((path, id)) = stack.pop() {
             match &sim.nodes[id] {
                 Node::Dir(dir) => stack.extend(
-                    dir.live
+                    entries(dir)
                         .iter()
                         .map(|(name, &child)| (path.join(name), child)),
                 ),
                 Node::File(file) => {
-                    out.insert(path, file.data.clone());
+                    out.insert(path, bytes(file).to_vec());
                 }
             }
         }

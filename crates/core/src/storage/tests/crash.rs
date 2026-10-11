@@ -1,3 +1,5 @@
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use proptest::prelude::*;
@@ -5,6 +7,7 @@ use proptest::test_runner::{Config, TestRunner};
 
 use super::{Env, doc, soon};
 use crate::storage::doc_id::DocId;
+use crate::storage::log::encode_record;
 use crate::storage::sim_fs::{Crash, OpKind};
 use crate::storage::state::{Limits, Seq};
 use crate::storage::testkit::{UpdateGen, apply, doc_from, fingerprint};
@@ -231,4 +234,62 @@ fn every_acknowledged_update_survives_a_crash_at_any_point() {
     let result = runner.run(&scenario(), |s| run(&s));
     eprintln!("crash points: 1,000 cases in {:.1?}", started.elapsed());
     result.unwrap();
+}
+
+fn assert_in_durable_layer(env: &Env, doc: &DocId, update: &[u8], reported_by: &str) {
+    let mut record = Vec::new();
+    encode_record(update, &mut record);
+    let dir = env.path("docs").join(doc.as_str());
+    let durable = env.fs.durable_files().into_iter().any(|(path, bytes)| {
+        path.parent() == Some(&dir) && bytes.windows(record.len()).any(|w| w == record)
+    });
+    assert!(
+        durable,
+        "{reported_by} reported an update durable before a full sync covered it"
+    );
+}
+
+#[test]
+fn the_threaded_writer_reports_an_update_durable_only_after_a_full_sync() {
+    let env = Env::threaded();
+    env.fs
+        .set_latency(OpKind::FullSync, Duration::from_millis(20));
+    let a = doc("a");
+    let sent = UpdateGen::new(81, 2).updates(40);
+    let store = env.open();
+    let appended: Mutex<Vec<(Seq, Vec<u8>)>> = Mutex::default();
+    let finished = AtomicBool::new(false);
+    std::thread::scope(|s| {
+        s.spawn(|| {
+            let deadline = Instant::now() + Duration::from_secs(30);
+            let mut checked = 0;
+            loop {
+                let next = appended.lock().unwrap().get(checked).cloned();
+                match next {
+                    Some((seq, update)) if store.is_durable(&a, seq) => {
+                        assert_in_durable_layer(&env, &a, &update, "is_durable");
+                        checked += 1;
+                    }
+                    None if finished.load(Ordering::SeqCst) => break,
+                    _ => {
+                        assert!(Instant::now() < deadline, "{checked} of 40 acknowledged");
+                        std::thread::yield_now();
+                    }
+                }
+            }
+        });
+        for (i, update) in sent.iter().enumerate() {
+            let seq = store.append(&a, update).unwrap();
+            appended.lock().unwrap().push((seq, update.clone()));
+            if i % 4 == 3 {
+                assert_eq!(store.flush(soon()), []);
+                for update in &sent[..=i] {
+                    assert_in_durable_layer(&env, &a, update, "flush");
+                }
+            }
+            std::thread::sleep(Duration::from_millis(3));
+        }
+        assert_eq!(store.flush(soon()), []);
+        finished.store(true, Ordering::SeqCst);
+    });
 }
