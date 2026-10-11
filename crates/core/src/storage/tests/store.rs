@@ -478,6 +478,35 @@ fn an_update_after_a_rebuild_survives_damage_the_rebuild_read_in_the_open_segmen
 }
 
 #[test]
+fn a_queue_written_while_a_rebuild_fails_survives_damage_in_the_open_segment() {
+    let env = Env::manual();
+    let store = env.open();
+    let a = doc("a");
+    let PartlyApplying { good, bad } = partly_applying_update();
+    let mut sent = vec![good];
+    sent.extend(UpdateGen::new(31, 2).updates(9));
+    for update in &sent {
+        store.append(&a, update).unwrap();
+    }
+    assert_eq!(store.flush(soon()), []);
+    let open = env.path("docs/a/log-0000000000-0000000000.ylog");
+    env.fs.flip_bit(&open, record_at(&sent, 5) + 9);
+
+    let later = UpdateGen::new(41, 1).next_update();
+    store.append(&a, &later).unwrap();
+    assert!(store.append(&a, &bad).is_err());
+    env.fs.fail(OpKind::Read, "/docs/a/", libc::EIO);
+    assert!(store.load(&a).is_err(), "the rebuild fails");
+    assert_eq!(store.flush(soon()), [], "its queue is still written");
+    drop(store);
+    env.fs.clear_faults();
+    env.fs.crash(Crash::DropUnsynced);
+
+    let expected = [&sent[..5], std::slice::from_ref(&later)].concat();
+    assert_doc(&env.open(), &a, &expected);
+}
+
+#[test]
 fn an_update_after_a_pending_doc_loads_survives_damage_the_load_read_in_the_open_segment() {
     let sent = out_of_order(35, 80, Delivery::Shuffled);
     let later = UpdateGen::new(41, 1).next_update();
