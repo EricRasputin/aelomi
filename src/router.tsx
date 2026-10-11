@@ -3,6 +3,7 @@ import {
   createRootRoute,
   createRoute,
   createRouter,
+  Link,
   lazyRouteComponent,
   Outlet,
 } from "@tanstack/react-router";
@@ -68,6 +69,14 @@ function IndexScreen() {
           </Tooltip.Content>
         </Tooltip.Portal>
       </Tooltip.Root>
+      {import.meta.env.DEV && (
+        <Link
+          to="/dev/storage"
+          className="mt-4 block text-sm text-[var(--muted)] underline"
+        >
+          Storage probe
+        </Link>
+      )}
     </section>
   );
 }
@@ -97,8 +106,22 @@ const keystrokeRoutes =
       ]
     : [];
 
+const devRoutes = import.meta.env.DEV
+  ? [
+      createRoute({
+        getParentRoute: () => rootRoute,
+        path: "/dev/storage",
+        component: lazyRouteComponent(() => import("./dev/storage-probe")),
+      }),
+    ]
+  : [];
+
 export const router = createRouter({
-  routeTree: rootRoute.addChildren([indexRoute, ...keystrokeRoutes]),
+  routeTree: rootRoute.addChildren([
+    indexRoute,
+    ...keystrokeRoutes,
+    ...devRoutes,
+  ]),
 });
 
 declare module "@tanstack/react-router" {
