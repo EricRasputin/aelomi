@@ -69,9 +69,11 @@ function label(element) {
   return get(element, "name") || get(element, "description") || "";
 }
 
+// uiElements() returns references rooted at the process name, which reach the wrong
+// app when two Aelomi processes run. Index specifiers stay rooted at the PID.
 function children(element) {
   try {
-    return element.uiElements();
+    return Array.from({ length: element.uiElements.length }, (_, i) => element.uiElements[i]);
   } catch (_) {
     return [];
   }
