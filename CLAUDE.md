@@ -71,7 +71,7 @@ Data-safety checks end in exact assertions, never an AI judgment step. The `veri
 - **Emil Kowalski's skills** (`github.com/emilkowalski/skill`) are the design and motion rulebook. Not used: `animate-expo`, `mobile-native`, `write-swift`.
 - Both skill sets are vendored into `.claude/skills/` (pstack's subagents into `.claude/agents/`), pinned to commits in `scripts/vendor-skills.sh`. Licenses and the pinned source live in `.claude/vendor/`. Update deliberately: bump the ref, rerun the script, review the diff. Never hand-edit vendored files. Keep `.claude/` out of Biome, tsc, and Vitest (pstack ships its own TS scripts).
 - pstack's model roles live in `~/.agents/pstack-models.md`, written by `/setup-pstack`.
-- **Review gate.** After CI is green on a PR, the agent that opened or updated it runs a fresh `reviewer` subagent (`.claude/agents/reviewer.md`), preferably on a different model family from the one that wrote the code. Findings go back to the builder, and the loop repeats on each new head until the verdict is APPROVE for the current head SHA. The maintainer merges only PRs whose latest reviewer verdict is APPROVE for the head SHA.
+- **Review gate.** After CI is green on a PR, the agent that opened or updated it runs a fresh `reviewer` subagent (`.claude/agents/reviewer.md`) on Claude Fable. Builder subagents never use Fable. Findings go back to the builder, and the loop repeats on each new head until the verdict is APPROVE for the current head SHA. The maintainer merges only PRs whose latest reviewer verdict is APPROVE for the head SHA.
 
 ## Design direction
 
