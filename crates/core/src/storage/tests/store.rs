@@ -8,7 +8,7 @@ use yrs::{Doc, Map, ReadTxn, StateVector, Text, TextPrelim, TextRef, Transact, U
 use super::{Delivery, Env, assert_doc, doc, in_order, ops_of_updates, out_of_order, soon};
 use crate::storage::compact::CompactError;
 use crate::storage::equality::Ops;
-use crate::storage::sim_fs::OpKind;
+use crate::storage::sim_fs::{Crash, OpKind};
 use crate::storage::state::Limits;
 use crate::storage::store::{AppendError, Store};
 use crate::storage::testkit::{SplitMix64, UpdateGen, apply, fingerprint};
@@ -438,6 +438,71 @@ fn a_rebuild_keeps_damage_it_finds_for_quarantine() {
     );
     drop(store);
     assert_doc(&env.open(), &a, &sent[..5]);
+}
+
+fn record_at(updates: &[Vec<u8>], n: usize) -> usize {
+    8 + updates[..n].iter().map(|u| 8 + u.len()).sum::<usize>()
+}
+
+#[test]
+fn an_update_after_a_rebuild_survives_damage_the_rebuild_read_in_the_open_segment() {
+    let later = UpdateGen::new(41, 1).next_update();
+    for poisoned in [false, true] {
+        let env = Env::manual();
+        let store = env.open();
+        let a = doc("a");
+        let PartlyApplying { good, bad } = partly_applying_update();
+        let mut sent = vec![good];
+        sent.extend(UpdateGen::new(31, 2).updates(9));
+        for update in &sent {
+            store.append(&a, update).unwrap();
+        }
+        assert_eq!(store.flush(soon()), []);
+        let open = env.path("docs/a/log-0000000000-0000000000.ylog");
+        env.fs.flip_bit(&open, record_at(&sent, 5) + 9);
+
+        if poisoned {
+            store.panic_while_applying(&a, &UpdateGen::new(42, 1).next_update());
+        } else {
+            assert!(store.append(&a, &bad).is_err());
+        }
+        assert_doc(&store, &a, &sent[..5]);
+        store.append(&a, &later).unwrap();
+        assert_eq!(store.flush(soon()), []);
+        drop(store);
+        env.fs.crash(Crash::DropUnsynced);
+
+        let expected = [&sent[..5], std::slice::from_ref(&later)].concat();
+        assert_doc(&env.open(), &a, &expected);
+    }
+}
+
+#[test]
+fn an_update_after_a_pending_doc_loads_survives_damage_the_load_read_in_the_open_segment() {
+    let sent = out_of_order(35, 80, Delivery::Shuffled);
+    let later = UpdateGen::new(41, 1).next_update();
+    for (damage, intact) in [("mid-file", 9), ("in the last record", 79)] {
+        let env = Env::manual();
+        let store = env.open();
+        let a = doc("a");
+        for update in &sent {
+            store.append(&a, update).unwrap();
+        }
+        assert!(store.has_pending_structs(&a));
+        assert_eq!(store.flush(soon()), []);
+        let open = env.path("docs/a/log-0000000000-0000000000.ylog");
+        env.fs.flip_bit(&open, record_at(&sent, intact) + 9);
+
+        store.load(&a).unwrap();
+        store.append(&a, &later).unwrap();
+        assert_eq!(store.flush(soon()), []);
+        drop(store);
+        env.fs.crash(Crash::DropUnsynced);
+
+        let (held, _) = applied(&env.open().load(&a).unwrap(), damage);
+        let expected = [&sent[..intact], std::slice::from_ref(&later)].concat();
+        assert!(held.contains(&ops_of_updates(&expected)), "damage {damage}");
+    }
 }
 
 #[test]
