@@ -14,7 +14,7 @@ use super::layout::{DocFile, Generation, SegmentNo};
 use super::log::{LogEnd, read_log};
 use super::recover::snapshot_doc;
 use super::snapshot::{encode_snapshot, read_snapshot};
-use super::state::{Compaction, LogSize, Segment, Ydoc};
+use super::state::{Compaction, DocSlot, LogSize, Segment, Ydoc};
 use super::store::Shared;
 
 #[derive(Debug)]
@@ -100,32 +100,12 @@ fn publish(shared: &Shared, doc: &DocId, tmp: &Path, generation: Generation) -> 
     fs.full_sync(&layout.doc_dir(doc))
 }
 
-/// Deletes an older file only when the new snapshot holds everything in it, and quarantines
-/// corrupt ones. A file the snapshot lacks stays, so the next load merges it back.
 fn retire_older(shared: &Shared, doc: &DocId, rotated: &Rotated) -> io::Result<()> {
     let (fs, layout) = (&*shared.fs, &shared.layout);
     let slot = shared.slot(doc);
     let dir = layout.doc_dir(doc);
-    let older = {
-        let _files = slot.files.lock().unwrap();
-        let mut older = Vec::new();
-        for name in fs.list(&dir)? {
-            let Some(file) = DocFile::parse(&name).filter(|f| f.generation() < rotated.generation)
-            else {
-                continue;
-            };
-            let bytes = match file {
-                DocFile::SnapshotTmp(_) => Vec::new(),
-                _ => fs.read(&dir.join(&name))?,
-            };
-            older.push((name, file, bytes));
-        }
-        older
-    };
-    // Checked without the file lock, so the writer isn't held up. Nothing writes below the new
-    // generation any more.
     let held = SnapshotIds::of(&rotated.state).expect("the snapshot was verified");
-    let covered: Vec<(String, bool)> = older
+    let covered: Vec<(String, bool)> = read_older(shared, &slot, &dir, rotated.generation)?
         .into_iter()
         .map(|(name, file, bytes)| {
             let covered = matches!(file, DocFile::SnapshotTmp(_)) || held.cover(file, &bytes);
@@ -161,7 +141,30 @@ fn retire_older(shared: &Shared, doc: &DocId, rotated: &Rotated) -> io::Result<(
     Ok(())
 }
 
-/// The block IDs and deletions a snapshot holds, pending structs included.
+fn read_older(
+    shared: &Shared,
+    slot: &DocSlot,
+    dir: &Path,
+    generation: Generation,
+) -> io::Result<Vec<(String, DocFile, Vec<u8>)>> {
+    let fs = &*shared.fs;
+    let _files = slot.files.lock().unwrap();
+    let mut older = Vec::new();
+    for name in fs.list(dir)? {
+        let Some(file) = DocFile::parse(&name).filter(|f| f.generation() < generation) else {
+            continue;
+        };
+        let bytes = match file {
+            DocFile::SnapshotTmp(_) => Vec::new(),
+            _ => fs.read(&dir.join(&name))?,
+        };
+        older.push((name, file, bytes));
+    }
+    Ok(older)
+}
+
+const INCLUDE_DELETED: bool = true;
+
 pub(crate) struct SnapshotIds {
     inserted: IdSet,
     deleted: IdSet,
@@ -171,14 +174,13 @@ impl SnapshotIds {
     pub fn of(payload: &[u8]) -> Option<Self> {
         let update = Update::decode_v1(payload).ok()?;
         Some(Self {
-            inserted: update.insertions(true),
+            inserted: update.insertions(INCLUDE_DELETED),
             deleted: update.delete_set().clone(),
         })
     }
 
-    /// Whether every record in `file` adds no block or deletion the snapshot lacks. It compares
-    /// IDs, not docs: yrs integrates pending structs differently when they arrive again, so a
-    /// doc can change without gaining anything.
+    /// Compares IDs, not docs: yrs integrates pending structs differently when they arrive
+    /// again, so a doc can change without gaining anything.
     pub fn cover(&self, file: DocFile, bytes: &[u8]) -> bool {
         let records = match file {
             DocFile::Snapshot(_) => read_snapshot(bytes).map(|payload| vec![payload]),
@@ -191,7 +193,10 @@ impl SnapshotIds {
         records.is_some_and(|records| {
             records.iter().all(|record| {
                 Update::decode_v1(record).is_ok_and(|update| {
-                    update.insertions(true).diff(&self.inserted).is_empty()
+                    update
+                        .insertions(INCLUDE_DELETED)
+                        .diff(&self.inserted)
+                        .is_empty()
                         && update.delete_set().diff(&self.deleted).is_empty()
                 })
             })

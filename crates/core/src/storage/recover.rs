@@ -112,13 +112,14 @@ pub(crate) fn recover(
     })
 }
 
-/// Applies every record it can, and returns whether all of them applied.
 fn apply_records(ydoc: &Doc, records: &[&[u8]]) -> bool {
     let mut txn = ydoc.transact_mut();
-    records.iter().fold(true, |applied, record| {
+    let mut applied = true;
+    for record in records {
         let update = Update::decode_v1(record);
-        applied & update.is_ok_and(|u| txn.apply_update(u).is_ok())
-    })
+        applied &= update.is_ok_and(|u| txn.apply_update(u).is_ok());
+    }
+    applied
 }
 
 pub(crate) fn snapshot_doc(payload: &[u8]) -> Option<Doc> {

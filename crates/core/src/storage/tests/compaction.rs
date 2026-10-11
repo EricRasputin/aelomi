@@ -209,15 +209,23 @@ fn pending_structs_survive_compaction() {
     assert_eq!(text.get_string(&loaded.transact()), "bc");
 }
 
-/// Three clients' updates, shuffled or with one never delivered, so the doc holds pending structs.
-fn out_of_order(seed: u64, n: usize, withhold_one: bool) -> Vec<Vec<u8>> {
+#[derive(Clone, Copy, Debug)]
+enum Delivery {
+    Shuffled,
+    OneWithheld,
+}
+
+fn out_of_order(seed: u64, n: usize, delivery: Delivery) -> Vec<Vec<u8>> {
     let mut rng = SplitMix64::new(seed);
     let mut updates = UpdateGen::new(seed, 3).updates(n);
-    if withhold_one {
-        updates.remove(rng.below(n as u64 / 2) as usize);
-    } else {
-        for i in (1..n).rev() {
-            updates.swap(i, rng.below(i as u64 + 1) as usize);
+    match delivery {
+        Delivery::Shuffled => {
+            for i in (1..n).rev() {
+                updates.swap(i, rng.below(i as u64 + 1) as usize);
+            }
+        }
+        Delivery::OneWithheld => {
+            updates.remove(rng.below(n as u64 / 2) as usize);
         }
     }
     updates
@@ -225,20 +233,11 @@ fn out_of_order(seed: u64, n: usize, withhold_one: bool) -> Vec<Vec<u8>> {
 
 #[test]
 fn pending_structs_still_let_compaction_delete_the_old_generation() {
-    for (delivery, sent, pending, reapplying_changes_it) in [
-        (
-            "shuffled",
-            out_of_order(192, 20, false),
-            [true, false],
-            true,
-        ),
-        (
-            "one withheld",
-            out_of_order(17, 12, true),
-            [true, true],
-            false,
-        ),
+    for (delivery, seed, n, pending, reapplying_changes_it) in [
+        (Delivery::Shuffled, 192, 20, [true, false], true),
+        (Delivery::OneWithheld, 17, 12, [true, true], false),
     ] {
+        let sent = out_of_order(seed, n, delivery);
         let env = Env::manual();
         let store = env.open();
         let a = doc("a");
@@ -254,7 +253,7 @@ fn pending_structs_still_let_compaction_delete_the_old_generation() {
             assert_eq!(
                 env.doc_files(&a),
                 std::slice::from_ref(&name),
-                "{delivery}: generation {generation}"
+                "{delivery:?}: generation {generation}"
             );
             snapshots.push(env.fs.files()[&env.path("docs/a").join(name)].clone());
         }
@@ -267,7 +266,7 @@ fn pending_structs_still_let_compaction_delete_the_old_generation() {
                 .map(|doc| doc.transact().has_missing_updates())
                 .collect::<Vec<_>>(),
             pending,
-            "{delivery}: which snapshots hold pending structs"
+            "{delivery:?}: which snapshots hold pending structs"
         );
 
         let before = fingerprint(&held[0]);
@@ -277,7 +276,7 @@ fn pending_structs_still_let_compaction_delete_the_old_generation() {
         assert_eq!(
             fingerprint(&held[0]) != before,
             reapplying_changes_it,
-            "{delivery}: yrs re-applies pending structs differently, so containment compares IDs"
+            "{delivery:?}: yrs re-applies pending structs differently, so containment compares IDs"
         );
         drop(store);
         assert_doc(&env.open(), &a, &sent);
