@@ -640,6 +640,33 @@ fn a_damaged_log_loads_every_record_around_the_damage_and_is_quarantined_not_del
 }
 
 #[test]
+fn compaction_quarantines_damage_no_load_read_when_the_snapshot_holds_every_record() {
+    let env = Env::manual();
+    let store = env.open();
+    let a = doc("a");
+    let sent = with_a_loner_sixth(UpdateGen::new(31, 2).updates(10));
+    for update in &sent {
+        store.append(&a, update).unwrap();
+    }
+    assert_eq!(store.flush(soon()), []);
+    let name = "log-0000000000-0000000000.ylog";
+    let path = env.path("docs/a").join(name);
+    env.fs.flip_bit(&path, record_at(&sent, 5) + 9);
+    let damaged = env.fs.files()[&path].clone();
+
+    store.compact(&a).unwrap();
+    assert_eq!(env.doc_files(&a), ["snapshot-0000000001.ysnap"]);
+    assert_eq!(
+        env.fs.files().get(&env.path("quarantine/a").join(name)),
+        Some(&damaged),
+        "moved byte for byte"
+    );
+    assert_doc(&store, &a, &sent);
+    drop(store);
+    assert_doc(&env.open(), &a, &sent);
+}
+
+#[test]
 fn a_corrupt_snapshot_is_never_used_and_is_quarantined() {
     let env = Env::manual();
     let (store, sent) = two_generations(&env);
