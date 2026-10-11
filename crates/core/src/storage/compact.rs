@@ -213,22 +213,25 @@ fn retire_older(
     let (fs, layout) = (&*shared.fs, &shared.layout);
     let slot = shared.slot(doc);
     let dir = layout.doc_dir(doc);
-    let covered: Vec<(String, bool)> = read_older(shared, &slot, &dir, generation)?
+    let coverage: Vec<(String, Coverage)> = read_older(shared, &slot, &dir, generation)?
         .into_iter()
         .map(|(name, file, bytes)| {
-            let covered = matches!(file, DocFile::SnapshotTmp(_)) || covers(held, file, &bytes);
-            (name, covered)
+            let coverage = match file {
+                DocFile::SnapshotTmp(_) => Coverage::Whole,
+                _ => coverage(held, file, &bytes),
+            };
+            (name, coverage)
         })
         .collect();
 
     let _files = slot.files();
     let corrupt = slot.state().as_ref().expect("still loaded").corrupt.clone();
     let mut moved = BTreeSet::new();
-    for (name, covered) in covered {
-        if corrupt.contains(&name) {
+    for (name, coverage) in coverage {
+        if corrupt.contains(&name) || coverage == Coverage::DamagedButHeld {
             move_to_quarantine_unsynced(shared, doc, &name)?;
             moved.insert(name);
-        } else if covered {
+        } else if coverage == Coverage::Whole {
             fs.remove(&dir.join(&name))?;
         } else {
             eprintln!("aelomi storage: kept {doc}/{name}, which has changes the snapshot lacks");
@@ -265,22 +268,35 @@ fn read_older(
     Ok(older)
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Coverage {
+    Whole,
+    DamagedButHeld,
+    Lacking,
+}
+
 /// Compares IDs, not docs: yrs integrates pending structs differently when they arrive
 /// again, so a doc can change without gaining anything.
-pub(crate) fn covers(held: &Ops, file: DocFile, bytes: &[u8]) -> bool {
-    let records = match file {
-        DocFile::Snapshot(_) => read_snapshot(bytes).map(|payload| vec![payload]),
+pub(crate) fn coverage(held: &Ops, file: DocFile, bytes: &[u8]) -> Coverage {
+    let (records, damaged) = match file {
+        DocFile::Snapshot(_) => match read_snapshot(bytes) {
+            Some(payload) => (vec![payload], false),
+            None => (Vec::new(), true),
+        },
         DocFile::Log(..) => {
             let contents = read_log(bytes);
-            (contents.end != LogEnd::Corrupt).then_some(contents.records)
+            (contents.records, contents.end == LogEnd::Corrupt)
         }
-        DocFile::SnapshotTmp(_) => None,
+        DocFile::SnapshotTmp(_) => return Coverage::Lacking,
     };
-    records.is_some_and(|records| {
-        records.iter().all(|record| {
-            Update::decode_v1(record).is_ok_and(|update| held.contains(&Ops::of_update(&update)))
-        })
-    })
+    let holds = records.iter().all(|record| {
+        Update::decode_v1(record).is_ok_and(|update| held.contains(&Ops::of_update(&update)))
+    });
+    match (holds, damaged) {
+        (false, _) => Coverage::Lacking,
+        (true, true) => Coverage::DamagedButHeld,
+        (true, false) => Coverage::Whole,
+    }
 }
 
 fn move_to_quarantine_unsynced(shared: &Shared, doc: &DocId, name: &str) -> io::Result<()> {

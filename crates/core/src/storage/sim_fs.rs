@@ -5,7 +5,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
 use super::clock::Clock;
-use super::compact::covers;
+use super::compact::{Coverage, coverage};
 use super::equality::Ops;
 use super::fs::{Fs, FsLock, LockError};
 use super::layout::DocFile;
@@ -470,10 +470,12 @@ impl Sim {
                 matches!(DocFile::parse(name), Some(DocFile::Snapshot(g)) if g > file.generation());
             newer
                 && matches!(&self.nodes[id], Node::File(f) if f.durable == f.data.len()
-                    && read_snapshot(&f.data)
-                        .filter(|payload| applies(payload))
-                        .and_then(|payload| Update::decode_v1(payload).ok())
-                        .is_some_and(|update| covers(&Ops::of_update(&update), file, bytes)))
+                && read_snapshot(&f.data)
+                    .filter(|payload| applies(payload))
+                    .and_then(|payload| Update::decode_v1(payload).ok())
+                    .is_some_and(|update| {
+                        coverage(&Ops::of_update(&update), file, bytes) == Coverage::Whole
+                    }))
         })
     }
 }

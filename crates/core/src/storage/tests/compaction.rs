@@ -7,7 +7,7 @@ use super::{
 };
 use crate::storage::compact::CompactError;
 use crate::storage::equality::Ops;
-use crate::storage::log::read_log;
+use crate::storage::log::{LOG_MAGIC, encode_record, read_log};
 use crate::storage::sim_fs::{Crash, OpKind};
 use crate::storage::snapshot::{encode_snapshot, read_snapshot};
 use crate::storage::state::Limits;
@@ -664,6 +664,46 @@ fn compaction_quarantines_damage_no_load_read_when_the_snapshot_holds_every_reco
     assert_doc(&store, &a, &sent);
     drop(store);
     assert_doc(&env.open(), &a, &sent);
+}
+
+#[test]
+fn compaction_keeps_a_damaged_log_until_the_doc_holds_what_it_salvages() {
+    let env = Env::manual();
+    let store = env.open();
+    let a = doc("a");
+    let sent = with_a_loner_sixth(UpdateGen::new(31, 2).updates(10));
+    for update in &sent[..5] {
+        store.append(&a, update).unwrap();
+    }
+    assert_eq!(store.flush(soon()), []);
+    let mut planted = LOG_MAGIC.to_vec();
+    for update in &sent[5..] {
+        encode_record(update, &mut planted);
+    }
+    planted[record_at(&sent[5..], 0) + 9] ^= 0x10;
+    let name = "log-0000000000-0000000005.ylog";
+    env.fs.put_durable(&env.path("docs/a").join(name), &planted);
+
+    store.compact(&a).unwrap();
+    assert_eq!(
+        env.doc_files(&a),
+        [name, "snapshot-0000000001.ysnap"],
+        "snapshot 1 lacks updates 7 to 11"
+    );
+    let salvaged = without(&sent, &[5]);
+    assert_doc(&store, &a, &salvaged);
+    let (_, compacted) = store
+        .run_compactor_once()
+        .expect("the kept log queues a compaction");
+    compacted.unwrap();
+    assert_eq!(env.doc_files(&a), ["snapshot-0000000002.ysnap"]);
+    assert_eq!(
+        env.fs.files().get(&env.path("quarantine/a").join(name)),
+        Some(&planted),
+        "moved byte for byte"
+    );
+    drop(store);
+    assert_doc(&env.open(), &a, &salvaged);
 }
 
 #[test]
