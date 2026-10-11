@@ -540,11 +540,11 @@ fn not_found() -> io::Error {
 
 #[cfg(test)]
 mod tests {
-    use yrs::{Doc, ReadTxn, StateVector, Transact};
-
     use super::*;
     use crate::storage::clock::ManualClock;
+    use crate::storage::log::{LOG_MAGIC, encode_record};
     use crate::storage::snapshot::encode_snapshot;
+    use crate::storage::testkit::UpdateGen;
 
     fn sim() -> Arc<SimFs> {
         SimFs::new(Arc::new(ManualClock::default()))
@@ -689,12 +689,36 @@ mod tests {
             );
         }
 
+        let held = UpdateGen::new(1, 1).next_update();
+        let log = |update: &[u8]| {
+            let mut bytes = LOG_MAGIC.to_vec();
+            encode_record(update, &mut bytes);
+            bytes
+        };
+        for (name, log) in [
+            (
+                "an update it lacks",
+                log(&UpdateGen::new(2, 1).next_update()),
+            ),
+            ("corrupt bytes", b"x".to_vec()),
+        ] {
+            let msgs = caught(&|fs| {
+                fs.put_durable(&p("/d/log-0000000001-0000000000.ylog"), &log);
+                fs.put_durable(&p("/d/snapshot-0000000002.ysnap"), &encode_snapshot(&held));
+                fs.remove(&p("/d/log-0000000001-0000000000.ylog")).unwrap();
+            });
+            assert_eq!(
+                msgs,
+                [
+                    r#"remove "/d/log-0000000001-0000000000.ylog", not a .tmp or covered by a durable snapshot"#
+                ],
+                "a newer snapshot doesn't cover a log with {name}"
+            );
+        }
+
         let fs = sim();
-        let state = Doc::new()
-            .transact()
-            .encode_state_as_update_v1(&StateVector::default());
-        fs.put_durable(&p("/d/log-0000000001-0000000000.ylog"), b"x");
-        fs.put_durable(&p("/d/snapshot-0000000002.ysnap"), &encode_snapshot(&state));
+        fs.put_durable(&p("/d/log-0000000001-0000000000.ylog"), &log(&held));
+        fs.put_durable(&p("/d/snapshot-0000000002.ysnap"), &encode_snapshot(&held));
         fs.put_durable(&p("/d/snapshot-0000000003.ysnap.tmp"), b"z");
         fs.remove(&p("/d/log-0000000001-0000000000.ylog")).unwrap();
         fs.remove(&p("/d/snapshot-0000000003.ysnap.tmp")).unwrap();
