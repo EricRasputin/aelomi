@@ -304,6 +304,85 @@ fn a_doc_with_pending_structs_compacts_to_a_snapshot_of_exactly_its_operations()
 }
 
 #[test]
+fn a_snapshot_damaged_on_its_way_to_disk_is_refused_and_leaves_every_file() {
+    for (seed, shuffled) in [(3, false), (35, true)] {
+        let sent = match shuffled {
+            true => out_of_order(seed, 80, Delivery::Shuffled),
+            false => UpdateGen::new(seed, 3).updates(80),
+        };
+        let env = Env::manual();
+        let store = env.open();
+        let a = doc("a");
+        for update in &sent {
+            store.append(&a, update).unwrap();
+        }
+        assert_eq!(store.has_pending_structs(&a), shuffled, "seed {seed}");
+        assert_eq!(store.flush(soon()), []);
+
+        env.fs.damage_append_once(".ysnap.tmp");
+        let refused = store.compact(&a);
+        assert!(
+            matches!(refused, Err(CompactError::Mismatch)),
+            "seed {seed}: {refused:?}"
+        );
+        let log = "log-0000000000-0000000000.ylog";
+        assert_eq!(env.doc_files(&a), [log], "seed {seed}");
+
+        store.compact(&a).unwrap();
+        assert_eq!(
+            env.doc_files(&a),
+            ["snapshot-0000000002.ysnap"],
+            "seed {seed}"
+        );
+        drop(store);
+        let loaded = doc_from([env.open().load(&a).unwrap().as_slice()]);
+        assert_eq!(
+            fingerprint(&loaded),
+            fingerprint(&in_order(seed, 80)),
+            "seed {seed}"
+        );
+    }
+}
+
+#[test]
+fn a_doc_with_pending_structs_whose_merge_passes_the_payload_limit_keeps_its_files() {
+    let sent = typing(5, 40);
+    let mut env = Env::manual();
+    env.limits = Limits {
+        records: 3,
+        max_payload: 150,
+        ..Limits::DATA_6
+    };
+    let store = env.open();
+    let a = doc("a");
+    for update in &sent[1..] {
+        store.append(&a, update).unwrap();
+    }
+    assert!(
+        store.has_pending_structs(&a),
+        "each insert needs the one before"
+    );
+    assert_eq!(store.flush(soon()), []);
+    assert!(store.load(&a).unwrap().len() > 150);
+
+    let (compacted, result) = store.run_compactor_once().expect("4 records queue it");
+    assert_eq!(compacted, a);
+    result.expect("compaction skips the doc");
+    let log = "log-0000000000-0000000000.ylog";
+    assert_eq!(env.doc_files(&a), [log]);
+
+    store.append(&a, &sent[0]).unwrap();
+    assert_eq!(store.flush(soon()), []);
+    assert_eq!(
+        env.doc_files(&a),
+        [log, "log-0000000001-0000000000.ylog"],
+        "the merge comes after the rotation"
+    );
+    drop(store);
+    assert_doc(&env.open(), &a, &sent);
+}
+
+#[test]
 fn a_doc_whose_snapshot_passes_the_payload_limit_skips_compaction_and_keeps_writing() {
     let sent = typing(5, 40);
     let mut env = Env::manual();

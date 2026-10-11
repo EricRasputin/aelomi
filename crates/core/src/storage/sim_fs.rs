@@ -53,6 +53,7 @@ struct Fault {
 enum Effect {
     Fail(i32),
     PanicOnce,
+    DamageOnce,
 }
 
 enum FaultPath {
@@ -163,6 +164,17 @@ impl SimFs {
             at,
             skip: 0,
             effect: Effect::PanicOnce,
+        });
+    }
+
+    /// The next append to a matching path succeeds with one bit of it flipped.
+    pub fn damage_append_once(&self, path_contains: &str) {
+        let at = FaultPath::Containing(path_contains.to_owned());
+        self.sim().faults.push(Fault {
+            kind: OpKind::Append,
+            at,
+            skip: 0,
+            effect: Effect::DamageOnce,
         });
     }
 
@@ -298,6 +310,11 @@ impl SimFs {
                 drop(sim);
                 panic!("simulated panic during {kind:?} on {path:?}");
             }
+            Some(Effect::DamageOnce) => f(&mut sim).inspect(|_| {
+                let (_, file) = sim.file(path).expect("just appended to");
+                let at = file.data.len() - bytes.len() / 2 - 1;
+                file.data[at] ^= 0x10;
+            }),
             None => f(&mut sim),
         };
         let ok = result.is_ok();
@@ -319,7 +336,7 @@ impl Sim {
             return None;
         }
         let effect = fault.effect;
-        if let Effect::PanicOnce = effect {
+        if let Effect::PanicOnce | Effect::DamageOnce = effect {
             self.faults.remove(at);
         }
         Some(effect)
