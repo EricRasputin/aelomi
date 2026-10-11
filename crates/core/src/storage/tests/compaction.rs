@@ -2,10 +2,10 @@ use yrs::{Doc, GetString, ReadTxn, StateVector, Text, Transact};
 
 use super::{Env, assert_doc, doc, soon};
 use crate::storage::sim_fs::{Crash, OpKind};
-use crate::storage::snapshot::encode_snapshot;
+use crate::storage::snapshot::{encode_snapshot, read_snapshot};
 use crate::storage::state::Limits;
 use crate::storage::store::Store;
-use crate::storage::testkit::{UpdateGen, doc_from};
+use crate::storage::testkit::{SplitMix64, UpdateGen, apply, doc_from, fingerprint};
 
 fn two_generations(env: &Env) -> (Store, Vec<Vec<u8>>) {
     let store = env.open();
@@ -207,6 +207,81 @@ fn pending_structs_survive_compaction() {
     let loaded = crate::storage::testkit::doc_from([store.load(&a).unwrap().as_slice()]);
     let text = loaded.get_or_insert_text("text");
     assert_eq!(text.get_string(&loaded.transact()), "bc");
+}
+
+/// Three clients' updates, shuffled or with one never delivered, so the doc holds pending structs.
+fn out_of_order(seed: u64, n: usize, withhold_one: bool) -> Vec<Vec<u8>> {
+    let mut rng = SplitMix64::new(seed);
+    let mut updates = UpdateGen::new(seed, 3).updates(n);
+    if withhold_one {
+        updates.remove(rng.below(n as u64 / 2) as usize);
+    } else {
+        for i in (1..n).rev() {
+            updates.swap(i, rng.below(i as u64 + 1) as usize);
+        }
+    }
+    updates
+}
+
+#[test]
+fn pending_structs_still_let_compaction_delete_the_old_generation() {
+    for (delivery, sent, pending, reapplying_changes_it) in [
+        (
+            "shuffled",
+            out_of_order(192, 20, false),
+            [true, false],
+            true,
+        ),
+        (
+            "one withheld",
+            out_of_order(17, 12, true),
+            [true, true],
+            false,
+        ),
+    ] {
+        let env = Env::manual();
+        let store = env.open();
+        let a = doc("a");
+        let (first, second) = sent.split_at(sent.len() / 2);
+        let mut snapshots = Vec::new();
+        for (generation, half) in [(1, first), (2, second)] {
+            for update in half {
+                store.append(&a, update).unwrap();
+            }
+            assert_eq!(store.flush(soon()), []);
+            store.compact(&a).unwrap();
+            let name = format!("snapshot-{generation:010}.ysnap");
+            assert_eq!(
+                env.doc_files(&a),
+                std::slice::from_ref(&name),
+                "{delivery}: generation {generation}"
+            );
+            snapshots.push(env.fs.files()[&env.path("docs/a").join(name)].clone());
+        }
+        let held: Vec<_> = snapshots
+            .iter()
+            .map(|bytes| doc_from([read_snapshot(bytes).unwrap()]))
+            .collect();
+        assert_eq!(
+            held.iter()
+                .map(|doc| doc.transact().has_missing_updates())
+                .collect::<Vec<_>>(),
+            pending,
+            "{delivery}: which snapshots hold pending structs"
+        );
+
+        let before = fingerprint(&held[0]);
+        for update in first {
+            apply(&held[0], update);
+        }
+        assert_eq!(
+            fingerprint(&held[0]) != before,
+            reapplying_changes_it,
+            "{delivery}: yrs re-applies pending structs differently, so containment compares IDs"
+        );
+        drop(store);
+        assert_doc(&env.open(), &a, &sent);
+    }
 }
 
 #[test]
