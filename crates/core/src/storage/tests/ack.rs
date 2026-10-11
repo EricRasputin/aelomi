@@ -1,6 +1,7 @@
+use std::sync::mpsc;
 use std::time::Duration;
 
-use super::{Env, doc};
+use super::{Env, assert_doc, doc, soon};
 use crate::storage::clock::Clock;
 use crate::storage::doc_id::DocId;
 use crate::storage::sim_fs::OpKind;
@@ -154,4 +155,47 @@ fn appends_during_compaction_are_acknowledged_within_100_ms() {
         "slowest: {:?}",
         max(&latencies)
     );
+}
+
+#[test]
+fn a_docs_first_load_from_a_slow_disk_never_delays_another_docs_acknowledgement() {
+    let env = slow_disk();
+    let (a, b) = (doc("a"), doc("b"));
+    let on_b = UpdateGen::new(5, 2).updates(3);
+    let store = env.open();
+    for update in &on_b {
+        store.append(&b, update).unwrap();
+    }
+    assert_eq!(store.flush(soon()), []);
+    drop(store);
+
+    let store = env.open();
+    let hold = env
+        .fs
+        .hold_once(OpKind::Read, "/docs/b/", Duration::from_millis(500));
+    let on_a = UpdateGen::new(6, 2).next_update();
+    let (store, env) = (&store, &env);
+    let (acked, latency) = std::thread::scope(|s| {
+        let loading = s.spawn(|| store.load(&b).unwrap());
+        hold.wait_until_reached();
+        let start = env.clock.now();
+        let seq = store.append(&a, &on_a).unwrap();
+        let (done, writer_done) = mpsc::channel();
+        s.spawn(move || {
+            store.run_writer_once();
+            done.send(env.clock.now()).unwrap();
+        });
+        let finished = writer_done.recv_timeout(Duration::from_secs(2));
+        hold.release();
+        let finished = finished.unwrap_or_else(|_| writer_done.recv().unwrap());
+        loading.join().unwrap();
+        (store.is_durable(&a, seq), finished - start)
+    });
+    assert!(acked, "a is acknowledged");
+    assert_eq!(
+        latency,
+        Duration::from_micros(7_500),
+        "a's first batch waits on no read of b's: 3 fsyncs, 1 full sync"
+    );
+    assert_doc(store, &b, &on_b);
 }

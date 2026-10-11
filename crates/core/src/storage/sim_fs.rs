@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::io;
 use std::path::{Component, Path, PathBuf};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::Duration;
 
 use super::clock::Clock;
@@ -49,11 +49,44 @@ struct Fault {
     effect: Effect,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 enum Effect {
     Fail(i32),
     PanicOnce,
     DamageOnce,
+    HoldOnce(Arc<Hold>, Duration),
+}
+
+/// Stops one operation until the test releases it, so a test can act while it is in flight.
+#[derive(Default)]
+pub(crate) struct Hold {
+    state: Mutex<HoldState>,
+    changed: Condvar,
+}
+
+#[derive(Default)]
+struct HoldState {
+    reached: bool,
+    released: bool,
+}
+
+impl Hold {
+    pub fn wait_until_reached(&self) {
+        let state = self.state.lock().unwrap();
+        drop(self.changed.wait_while(state, |s| !s.reached).unwrap());
+    }
+
+    pub fn release(&self) {
+        self.state.lock().unwrap().released = true;
+        self.changed.notify_all();
+    }
+
+    fn pass(&self) {
+        let mut state = self.state.lock().unwrap();
+        state.reached = true;
+        self.changed.notify_all();
+        drop(self.changed.wait_while(state, |s| !s.released).unwrap());
+    }
 }
 
 enum FaultPath {
@@ -165,6 +198,19 @@ impl SimFs {
             skip: 0,
             effect: Effect::PanicOnce,
         });
+    }
+
+    /// Holds the next matching operation until released, then charges it `latency`.
+    pub fn hold_once(&self, kind: OpKind, path_contains: &str, latency: Duration) -> Arc<Hold> {
+        let hold = Arc::new(Hold::default());
+        let at = FaultPath::Containing(path_contains.to_owned());
+        self.sim().faults.push(Fault {
+            kind,
+            at,
+            skip: 0,
+            effect: Effect::HoldOnce(hold.clone(), latency),
+        });
+        hold
     }
 
     pub fn damage_append_once(&self, path_contains: &str) {
@@ -300,7 +346,14 @@ impl SimFs {
             Some(left) => *left -= 1,
             None => {}
         }
-        let result = match sim.take_fault(kind, path) {
+        let effect = sim.take_fault(kind, path);
+        if let Some(Effect::HoldOnce(hold, latency)) = &effect {
+            drop(sim);
+            hold.pass();
+            self.clock.sleep(*latency);
+            sim = self.sim();
+        }
+        let result = match effect {
             Some(Effect::Fail(errno)) => {
                 sim.fail_op(kind, path, bytes);
                 Err(io::Error::from_raw_os_error(errno))
@@ -314,7 +367,7 @@ impl SimFs {
                 let at = file.data.len() - bytes.len() / 2 - 1;
                 file.data[at] ^= 0x10;
             }),
-            None => f(&mut sim),
+            Some(Effect::HoldOnce(..)) | None => f(&mut sim),
         };
         let ok = result.is_ok();
         let (path, to) = (path.to_path_buf(), to.map(Path::to_path_buf));
@@ -334,8 +387,8 @@ impl Sim {
             fault.skip -= 1;
             return None;
         }
-        let effect = fault.effect;
-        if let Effect::PanicOnce | Effect::DamageOnce = effect {
+        let effect = fault.effect.clone();
+        if let Effect::PanicOnce | Effect::DamageOnce | Effect::HoldOnce(..) = effect {
             self.faults.remove(at);
         }
         Some(effect)
