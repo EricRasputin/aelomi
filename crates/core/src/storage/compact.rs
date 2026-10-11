@@ -32,7 +32,6 @@ pub(crate) fn run(shared: &Shared) {
     }
 }
 
-/// A panic abandons this doc's compaction and leaves its files as they are.
 pub(crate) fn compact_queued(shared: &Shared, doc: &DocId) -> Result<(), CompactError> {
     panic::catch_unwind(AssertUnwindSafe(|| {
         let rotated = rotate(shared, doc);
@@ -74,9 +73,8 @@ pub(crate) struct Rotated {
     expected: Expected,
 }
 
-/// What a snapshot must hold to replace the files before it. The doc's fingerprint is compared
-/// only without pending structs, since yrs integrates those differently when they're applied
-/// again.
+/// The doc's fingerprint is compared only without pending structs, since yrs integrates those
+/// differently when they're applied again.
 struct Expected {
     ops: Ops,
     fingerprint: Option<Fingerprint>,
@@ -94,8 +92,6 @@ impl Expected {
         })
     }
 
-    /// The snapshot holds exactly the doc's operations, and loads into a doc that holds
-    /// exactly those too.
     fn met_by(&self, held: &Ops, loaded: &impl ReadTxn) -> bool {
         *held == self.ops
             && Ops::of_doc(loaded).is_some_and(|ops| ops == self.ops)

@@ -97,8 +97,6 @@ fn branch(root: &Out) -> Option<BranchPtr> {
 
 const INCLUDE_DELETED: bool = true;
 
-/// The operations an update or a doc holds: the ID of every block, deleted or not, and every
-/// deletion.
 #[derive(Debug)]
 pub(crate) struct Ops {
     inserted: IdSet,
@@ -115,7 +113,7 @@ impl Ops {
 
     /// Takes integrated blocks from yrs's plain encoding, since a client's blocks can start past
     /// its state vector, and pending structs from the pending update itself, since yrs's
-    /// full-state encoding can renumber them. `None` if yrs can't decode its own encoding.
+    /// full-state encoding can renumber them.
     pub fn of_doc(txn: &impl ReadTxn) -> Option<Self> {
         let integrated = Update::decode_v1(&txn.encode_diff_v1(&StateVector::default())).ok()?;
         let mut ops = Self::of_update(&integrated);

@@ -55,7 +55,6 @@ pub(crate) struct DocState {
 }
 
 impl DocState {
-    /// Records a failed write and returns when to retry it.
     pub fn fail(&mut self, reason: FailReason, now: Duration) -> Duration {
         let attempts = self.failure.as_ref().map_or(1, |f| f.attempts + 1);
         let retry_at = now + retry_delay(attempts);
@@ -153,7 +152,6 @@ impl LogSize {
 pub(crate) struct Limits {
     pub bytes: u64,
     pub records: u64,
-    /// The largest update or snapshot payload. A record's length field holds a `u32`.
     pub max_payload: u32,
 }
 

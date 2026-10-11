@@ -35,8 +35,7 @@ pub(crate) fn run_once(shared: &Shared) -> Step {
     })
 }
 
-/// A panic may have stopped any write partway, so every doc with queued updates fails and
-/// retries in a new segment.
+/// The panic may have left any doc's write partway, so each retries in a new segment.
 fn fail_every_queued_doc(shared: &Shared) -> Option<Duration> {
     let now = shared.clock.now();
     let mut retry_at: Option<Duration> = None;

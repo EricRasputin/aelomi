@@ -429,7 +429,6 @@ fn compaction_quarantines_damage_a_rebuild_finds_while_it_runs() {
     assert_doc(&env.open(), &a, &sent);
 }
 
-/// Leaves snapshot 1 holding ten updates and the doc in memory holding the first five.
 fn rebuild_from_a_log_damaged_mid_compaction(env: &Env) -> (Store, Vec<Vec<u8>>) {
     let store = env.open();
     let a = doc("a");

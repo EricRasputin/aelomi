@@ -146,7 +146,6 @@ impl SimFs {
         self.fail_at_after(kind, path, 0, errno);
     }
 
-    /// Lets the first `skip` matching operations succeed.
     pub fn fail_at_after(&self, kind: OpKind, path: &Path, skip: usize, errno: i32) {
         let at = FaultPath::Exactly(path.to_path_buf());
         self.sim().faults.push(Fault {
@@ -157,7 +156,6 @@ impl SimFs {
         });
     }
 
-    /// Panics the next matching operation, as a bug in the code calling it would.
     pub fn panic_once(&self, kind: OpKind, path_contains: &str) {
         let at = FaultPath::Containing(path_contains.to_owned());
         self.sim().faults.push(Fault {
