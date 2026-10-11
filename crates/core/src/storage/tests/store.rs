@@ -396,3 +396,60 @@ fn compaction_quarantines_damage_a_rebuild_finds_while_it_runs() {
     drop(store);
     assert_doc(&env.open(), &a, &sent);
 }
+
+#[test]
+fn a_compaction_asked_for_while_one_runs_is_queued_once_when_it_ends() {
+    let PartlyApplying { good, bad } = partly_applying_update();
+    let more = UpdateGen::new(51, 2).updates(3);
+    for ask_while_running in [false, true] {
+        let mut env = Env::manual();
+        env.limits = Limits {
+            bytes: u64::MAX,
+            records: 1,
+        };
+        let store = env.open();
+        let a = doc("a");
+        let mut sent = vec![good.clone(), more[0].clone()];
+        for update in &sent {
+            store.append(&a, update).unwrap();
+        }
+        assert_eq!(store.flush(soon()), []);
+        store.append(&a, &more[1]).unwrap();
+        sent.push(more[1].clone());
+        assert_eq!(store.flush(soon()), []);
+        assert_eq!(
+            store.queued_compactions(),
+            std::slice::from_ref(&a),
+            "asked twice before it runs"
+        );
+
+        let rotated = store.begin_compaction(&a).unwrap();
+        if ask_while_running {
+            assert!(store.append(&a, &bad).is_err());
+            assert_doc(&store, &a, &sent);
+            store.append(&a, &more[2]).unwrap();
+            sent.push(more[2].clone());
+            assert_eq!(store.flush(soon()), []);
+        }
+        store.finish_compaction(&a, rotated).unwrap();
+        if ask_while_running {
+            assert_eq!(
+                store.queued_compactions(),
+                std::slice::from_ref(&a),
+                "asked by a rebuild and by the writer while it ran"
+            );
+            let (_, compacted) = store.run_compactor_once().expect("a was queued");
+            assert!(compacted.is_ok());
+            assert_eq!(env.doc_files(&a), ["snapshot-0000000002.ysnap"]);
+        } else {
+            assert_eq!(env.doc_files(&a), ["snapshot-0000000001.ysnap"]);
+        }
+        assert_eq!(
+            store.queued_compactions(),
+            [],
+            "asked while running: {ask_while_running}"
+        );
+        drop(store);
+        assert_doc(&env.open(), &a, &sent);
+    }
+}
