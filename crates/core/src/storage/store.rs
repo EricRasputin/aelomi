@@ -278,6 +278,22 @@ impl Store {
         compact::finish(&self.shared, doc, rotated)
     }
 
+    /// Stands in for a yrs panic partway through applying `update`.
+    #[cfg(test)]
+    pub(crate) fn panic_while_applying(&self, doc: &DocId, update: &[u8]) {
+        let slot = self.shared.slot(doc);
+        let update = update.to_vec();
+        let _ = std::thread::spawn(move || {
+            let state = slot.state.lock().unwrap();
+            if let Some(Ydoc::Fresh(ydoc)) = state.as_ref().map(|s| &s.ydoc) {
+                let update = Update::decode_v1(&update).expect("a valid update");
+                ydoc.transact_mut().apply_update(update).unwrap();
+            }
+            panic!("yrs panicked while applying an update");
+        })
+        .join();
+    }
+
     #[cfg(test)]
     pub(crate) fn is_durable(&self, doc: &DocId, seq: Seq) -> bool {
         self.shared.pending_through(seq).binary_search(doc).is_err()

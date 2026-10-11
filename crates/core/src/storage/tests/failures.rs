@@ -287,3 +287,35 @@ fn close_never_discards_a_pending_update() {
     store.close(soon()).unwrap();
     assert_doc(&env.open(), &a, &sent);
 }
+
+#[test]
+fn a_panic_holding_a_docs_state_stops_neither_its_writes_nor_any_others() {
+    let env = Env::manual();
+    let store = env.open();
+    let (a, b) = (doc("a"), doc("b"));
+    let mut gen_a = UpdateGen::new(93, 2);
+    let mut sent_a = gen_a.updates(3);
+    let sent_b = UpdateGen::new(94, 2).updates(3);
+    let mut seqs = Vec::new();
+    for (id, sent) in [(&a, &sent_a), (&b, &sent_b)] {
+        for update in sent {
+            seqs.push((id, store.append(id, update).unwrap()));
+        }
+    }
+
+    store.panic_while_applying(&a, &UpdateGen::new(95, 1).next_update());
+    write_batch(&store);
+    assert!(seqs.iter().all(|(id, seq)| store.is_durable(id, *seq)));
+    assert_eq!(store.health(), Health::Healthy);
+    assert_doc(&store, &a, &sent_a);
+    assert_doc(&store, &b, &sent_b);
+
+    let more = gen_a.next_update();
+    store.append(&a, &more).unwrap();
+    assert_eq!(store.flush(soon()), []);
+    sent_a.push(more);
+    drop(store);
+    let store = env.open();
+    assert_doc(&store, &a, &sent_a);
+    assert_doc(&store, &b, &sent_b);
+}
