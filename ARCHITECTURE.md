@@ -100,7 +100,7 @@ To add a command:
 
 | Layer | Tool | Location | CI job |
 |---|---|---|---|
-| Pure TypeScript logic | Vitest | `src/`, `perf/`, and `fixtures/` `*.test.ts`, configured in `vitest.config.ts` | `vitest` |
+| Pure TypeScript logic | Vitest | `*.test.ts` in `src/`, `tests/`, `perf/`, and `fixtures/`, configured in `vitest.config.ts` | `vitest` |
 | Rust core and shell | cargo-nextest | `#[cfg(test)]` modules in each crate | `nextest` |
 | Acceptance | TesterArmy `e2e` | `e2e/*.e2e.ts`, configured in `e2e.config.ts` | `e2e` |
 | WebKit flows and the network check | Playwright, `webkit` project | `tests/playwright/*.spec.ts`, configured in `playwright.config.ts` | `playwright` |
