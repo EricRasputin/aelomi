@@ -87,18 +87,12 @@
               "level": "error",
               "options": {
                 "paths": {
-                  "./ipc/bindings": {
-                    "importNames": ["commands"],
-                    "message": "Import commands from src/ipc so mock builds can swap them."
-                  },
-                  "../ipc/bindings": {
-                    "importNames": ["commands"],
-                    "message": "Import commands from src/ipc so mock builds can swap them."
-                  },
-                  "../../ipc/bindings": {
-                    "importNames": ["commands"],
-                    "message": "Import commands from src/ipc so mock builds can swap them."
-                  }
+                  "./ipc/bindings": "Import from src/ipc so mock builds can swap the commands.",
+                  "./ipc/bindings.ts": "Import from src/ipc so mock builds can swap the commands.",
+                  "../ipc/bindings": "Import from src/ipc so mock builds can swap the commands.",
+                  "../ipc/bindings.ts": "Import from src/ipc so mock builds can swap the commands.",
+                  "../../ipc/bindings": "Import from src/ipc so mock builds can swap the commands.",
+                  "../../ipc/bindings.ts": "Import from src/ipc so mock builds can swap the commands."
                 }
               }
             }

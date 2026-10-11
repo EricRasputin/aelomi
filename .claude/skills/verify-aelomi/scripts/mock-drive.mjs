@@ -4,6 +4,7 @@ import {
   createWriteStream,
   existsSync,
   mkdirSync,
+  mkdtempSync,
   readdirSync,
   readFileSync,
   statSync,
@@ -47,13 +48,11 @@ const stamp = new Date()
   .replace(/[-:]/g, "")
   .replace("T", "-")
   .slice(0, 15);
-const out = path.resolve(
-  opts.out ??
-    path.join(
-      process.env.AELOMI_VERIFY_ROOT ?? "/tmp/aelomi-verify",
-      `${stamp}-mock`,
-    ),
-);
+const verifyRoot = process.env.AELOMI_VERIFY_ROOT ?? "/tmp/aelomi-verify";
+mkdirSync(verifyRoot, { recursive: true });
+const out = opts.out
+  ? path.resolve(opts.out)
+  : mkdtempSync(path.join(verifyRoot, `${stamp}-mock-`));
 mkdirSync(out, { recursive: true });
 
 function newestMtime(entry) {

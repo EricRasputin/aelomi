@@ -178,7 +178,7 @@ doctor() {
     check "port $DEV_PORT is served by this run (owner PID ${owner:-none})" is_ours "${owner:-none}"
   else
     local newer
-    newer=$(find "$REPO/src" "$REPO/src-tauri/src" "$REPO/crates" "$REPO/index.html" -newer "$(app_bin)" -type f -print -quit 2>/dev/null || true)
+    newer=$(find "$REPO/src" "$REPO/src-tauri/src" "$REPO/src-tauri/tauri.conf.json" "$REPO/src-tauri/Cargo.toml" "$REPO/crates" "$REPO/index.html" -newer "$(app_bin)" -type f -print -quit 2>/dev/null || true)
     check "built app is newer than the sources${newer:+ (stale: $newer is newer)}" test -z "$newer"
   fi
   check "shell log has 'ping seq=1'" grep -q '^ping seq=1$' "$RUN/shell.log"
