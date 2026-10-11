@@ -46,7 +46,7 @@ pub enum OpenError {
 
 #[derive(Debug)]
 pub enum AppendError {
-    /// The bytes are not a Yjs v1 update this doc can apply, or pass the 4 GiB a log record
+    /// The bytes are not a Yjs v1 update this doc can apply, or are more than a log record
     /// holds. Nothing was stored.
     InvalidUpdate,
     Io(io::Error),
@@ -157,7 +157,7 @@ impl Store {
     /// An update that decodes but fails to apply is rejected. yrs may have applied part of it,
     /// so the doc is rebuilt from its files and queue before it is used again.
     pub fn append(&self, doc: &DocId, update: &[u8]) -> Result<Seq, AppendError> {
-        if u32::try_from(update.len()).is_err() {
+        if update.len() > self.shared.limits.max_payload as usize {
             return Err(AppendError::InvalidUpdate);
         }
         let decoded = Update::decode_v1(update).map_err(|_| AppendError::InvalidUpdate)?;

@@ -291,6 +291,7 @@ fn a_doc_yrs_cannot_settle_skips_compaction_and_keeps_writing() {
     env.limits = Limits {
         bytes: u64::MAX,
         records: 50,
+        ..Limits::DATA_6
     };
     let store = env.open();
     let (a, b) = (doc("a"), doc("b"));
@@ -322,6 +323,46 @@ fn a_doc_yrs_cannot_settle_skips_compaction_and_keeps_writing() {
     let bytes = &env.fs.durable_files()[&env.path("docs/a").join(log)];
     assert_eq!(read_log(bytes).records, sent);
     assert_doc(&store, &b, &more[1..]);
+}
+
+#[test]
+fn a_doc_whose_snapshot_passes_the_payload_limit_skips_compaction_and_keeps_writing() {
+    let sent = typing(5, 40);
+    let mut env = Env::manual();
+    env.limits = Limits {
+        records: 3,
+        max_payload: 150,
+        ..Limits::DATA_6
+    };
+    assert!(sent.iter().all(|u| u.len() < 150));
+    let store = env.open();
+    let a = doc("a");
+    for update in &sent[..4] {
+        store.append(&a, update).unwrap();
+    }
+    assert_eq!(store.flush(soon()), []);
+    let snapshot = store.load(&a).unwrap();
+    assert!(snapshot.len() > 150, "{} bytes", snapshot.len());
+
+    let (compacted, result) = store.run_compactor_once().expect("4 records queue it");
+    assert_eq!(compacted, a);
+    result.expect("compaction skips the doc");
+    let log = "log-0000000000-0000000000.ylog";
+    assert_eq!(env.doc_files(&a), [log]);
+
+    let seq = store.append(&a, &sent[4]).unwrap();
+    store.run_writer_once();
+    assert!(store.is_durable(&a, seq));
+    assert_eq!(env.doc_files(&a), [log], "the segment was not rotated");
+    assert_eq!(
+        store.queued_compactions(),
+        [],
+        "a skipped doc waits for another 3 records"
+    );
+    let bytes = &env.fs.durable_files()[&env.path("docs/a").join(log)];
+    assert_eq!(read_log(bytes).records, sent);
+    drop(store);
+    assert_doc(&env.open(), &a, &sent);
 }
 
 #[test]
@@ -421,6 +462,7 @@ fn compaction_runs_beside_the_writer_without_losing_updates() {
     env.limits = Limits {
         bytes: 4_000,
         records: 40,
+        ..Limits::DATA_6
     };
     let docs = [doc("a"), doc("b")];
     let mut gens = [UpdateGen::new(41, 3), UpdateGen::new(42, 3)];

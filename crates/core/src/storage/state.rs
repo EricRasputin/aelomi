@@ -139,12 +139,15 @@ impl LogSize {
 pub(crate) struct Limits {
     pub bytes: u64,
     pub records: u64,
+    /// The largest update or snapshot payload. A record's length field holds a `u32`.
+    pub max_payload: u32,
 }
 
 impl Limits {
     pub const DATA_6: Self = Self {
         bytes: 1_000_000,
         records: 10_000,
+        max_payload: u32::MAX,
     };
 }
 

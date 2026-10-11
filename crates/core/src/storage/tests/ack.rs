@@ -138,6 +138,7 @@ fn appends_during_compaction_are_acknowledged_within_100_ms() {
     env.limits = Limits {
         bytes: 3_000,
         records: 10_000,
+        ..Limits::DATA_6
     };
     let store = env.open();
     let docs = [doc("a"), doc("b")];

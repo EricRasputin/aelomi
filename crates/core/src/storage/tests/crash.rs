@@ -76,6 +76,7 @@ fn play(scenario: &Scenario, die_after: usize) -> (Env, Vec<Sent>, usize) {
     env.limits = Limits {
         bytes: 1_500,
         records: 12,
+        ..Limits::DATA_6
     };
     let ids = ids();
     let mut gens: Vec<UpdateGen> = (0..DOCS as u64)

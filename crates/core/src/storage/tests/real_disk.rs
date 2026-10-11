@@ -53,6 +53,7 @@ fn compaction_and_quarantine_work_on_a_real_disk() {
         let limits = Limits {
             bytes: u64::MAX,
             records: 20,
+            ..Limits::DATA_6
         };
         let clock = Arc::new(SystemClock::new());
         Store::open_with(dir.path(), Arc::new(OsFs), clock, Driver::Manual, limits).unwrap()

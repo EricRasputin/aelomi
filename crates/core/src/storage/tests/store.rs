@@ -141,6 +141,35 @@ fn bytes_that_do_not_decode_are_rejected_and_write_nothing() {
     assert_doc(&store, &doc("a"), &[]);
 }
 
+#[test]
+fn an_update_larger_than_a_record_holds_is_rejected_and_stores_nothing() {
+    let insert = |s: &str| {
+        let client = Doc::with_client_id(1);
+        let text = client.get_or_insert_text("text");
+        let mut txn = client.transact_mut();
+        text.insert(&mut txn, 0, s);
+        txn.encode_update_v1()
+    };
+    let (fits, over) = (insert("ab"), insert("abc"));
+    assert_eq!(over.len(), fits.len() + 1);
+    let mut env = Env::manual();
+    env.limits.max_payload = fits.len() as u32;
+    let store = env.open();
+    let a = doc("a");
+
+    assert!(matches!(
+        store.append(&a, &over),
+        Err(AppendError::InvalidUpdate)
+    ));
+    assert_doc(&store, &a, &[]);
+    assert_eq!(store.flush(soon()), []);
+    assert_eq!(env.doc_files(&a), Vec::<String>::new());
+    store.append(&a, &fits).unwrap();
+    assert_eq!(store.flush(soon()), []);
+    drop(store);
+    assert_doc(&env.open(), &a, &[fits]);
+}
+
 struct PartlyApplying {
     good: Vec<u8>,
     bad: Vec<u8>,
@@ -244,6 +273,7 @@ fn a_doc_that_fails_to_rebuild_stays_stale_until_a_rebuild_succeeds() {
     env.limits = Limits {
         bytes: u64::MAX,
         records: 0,
+        ..Limits::DATA_6
     };
     let store = env.open();
     let a = doc("a");
@@ -330,6 +360,7 @@ fn a_rebuild_queues_the_compaction_a_stale_doc_skipped() {
         env.limits = Limits {
             bytes: u64::MAX,
             records: 0,
+            ..Limits::DATA_6
         };
         let store = env.open();
         let a = doc("a");
@@ -502,6 +533,7 @@ fn a_compaction_asked_for_while_one_runs_is_queued_once_when_it_ends() {
         env.limits = Limits {
             bytes: u64::MAX,
             records: 1,
+            ..Limits::DATA_6
         };
         let store = env.open();
         let a = doc("a");

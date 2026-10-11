@@ -73,8 +73,8 @@ pub(crate) fn rotate(shared: &Shared, doc: &DocId) -> Option<Rotated> {
     let txn = ydoc.transact();
     state.log.unsnapshotted = LogSize::default();
     let snapshot = txn.encode_state_as_update_v1(&StateVector::default());
-    if u32::try_from(snapshot.len()).is_err() {
-        eprintln!("aelomi storage: skipped compacting {doc}, as its snapshot passes 4 GiB");
+    if snapshot.len() > shared.limits.max_payload as usize {
+        eprintln!("aelomi storage: skipped compacting {doc}, as its snapshot is too large");
         return None;
     }
     let Some(expected) = Fingerprint::of(&txn) else {
