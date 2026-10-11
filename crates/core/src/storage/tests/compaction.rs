@@ -1,6 +1,8 @@
 use yrs::{Doc, GetString, ReadTxn, StateVector, Text, Transact};
 
 use super::{Env, assert_doc, doc, soon};
+use crate::storage::health::Health;
+use crate::storage::log::read_log;
 use crate::storage::sim_fs::{Crash, OpKind};
 use crate::storage::snapshot::{encode_snapshot, read_snapshot};
 use crate::storage::state::Limits;
@@ -281,6 +283,34 @@ fn pending_structs_still_let_compaction_delete_the_old_generation() {
         drop(store);
         assert_doc(&env.open(), &a, &sent);
     }
+}
+
+#[test]
+fn a_doc_yrs_cannot_settle_skips_compaction_and_keeps_writing() {
+    let env = Env::manual();
+    let store = env.open();
+    let (a, b) = (doc("a"), doc("b"));
+    let mut sent = out_of_order(35, 80, Delivery::Shuffled);
+    for update in &sent {
+        store.append(&a, update).unwrap();
+    }
+    assert_eq!(store.flush(soon()), []);
+    let log = "log-0000000000-0000000000.ylog";
+
+    store.compact(&a).expect("compaction skips the doc");
+    assert_eq!(env.doc_files(&a), [log]);
+
+    let more = UpdateGen::new(36, 2).updates(2);
+    let seq_a = store.append(&a, &more[0]).unwrap();
+    let seq_b = store.append(&b, &more[1]).unwrap();
+    store.run_writer_once();
+    assert!(store.is_durable(&a, seq_a) && store.is_durable(&b, seq_b));
+    assert_eq!(store.health(), Health::Healthy);
+    assert_eq!(env.doc_files(&a), [log], "the segment was not rotated");
+    sent.push(more[0].clone());
+    let bytes = &env.fs.durable_files()[&env.path("docs/a").join(log)];
+    assert_eq!(read_log(bytes).records, sent);
+    assert_doc(&store, &b, &more[1..]);
 }
 
 #[test]
