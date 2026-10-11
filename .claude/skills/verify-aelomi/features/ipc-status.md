@@ -11,7 +11,7 @@ The status line under the welcome text shows whether the UI can reach the Rust c
 
 ## How to get to it (user POV)
 
-- Launch the app. The status line is under `Welcome to Aelomi.`.
+- Launch the app. The status line sits under the `Aelomi` header, above **Ping again**.
 - Press the **Ping again** button below the status line.
 - Hover the pointer over **Ping again**.
 
