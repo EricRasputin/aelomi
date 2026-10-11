@@ -1,10 +1,11 @@
-use yrs::{Doc, GetString, Text, Transact};
+use yrs::{Doc, GetString, ReadTxn, StateVector, Text, Transact};
 
 use super::{Env, assert_doc, doc, soon};
 use crate::storage::sim_fs::{Crash, OpKind};
+use crate::storage::snapshot::encode_snapshot;
 use crate::storage::state::Limits;
 use crate::storage::store::Store;
-use crate::storage::testkit::UpdateGen;
+use crate::storage::testkit::{UpdateGen, doc_from};
 
 fn two_generations(env: &Env) -> (Store, Vec<Vec<u8>>) {
     let store = env.open();
@@ -266,6 +267,37 @@ fn a_corrupt_snapshot_is_never_used_and_is_quarantined() {
     let quarantined = env.path("quarantine/a/snapshot-0000000001.ysnap");
     assert_eq!(env.fs.files().get(&quarantined), Some(&damaged));
     assert_eq!(env.doc_files(&doc("a")), ["snapshot-0000000002.ysnap"]);
+}
+
+#[test]
+fn recovery_loads_the_union_of_every_valid_snapshot() {
+    let env = Env::manual();
+    drop(env.open());
+    let a = doc("a");
+    let older = UpdateGen::new(61, 1).updates(5);
+    let newer = UpdateGen::new(62, 1).updates(5);
+    for (generation, updates) in [(1, &older), (2, &newer)] {
+        let state = doc_from(updates.iter().map(Vec::as_slice))
+            .transact()
+            .encode_state_as_update_v1(&StateVector::default());
+        let path = env.path(&format!("docs/a/snapshot-{generation:010}.ysnap"));
+        env.fs.put_durable(&path, &encode_snapshot(&state));
+    }
+    let both = [older, newer].concat();
+
+    let store = env.open();
+    assert_doc(&store, &a, &both);
+    let (_, compacted) = store
+        .run_compactor_once()
+        .expect("the older snapshot queues a compaction");
+    compacted.unwrap();
+    assert_eq!(
+        env.doc_files(&a),
+        ["snapshot-0000000003.ysnap"],
+        "the new snapshot holds both"
+    );
+    drop(store);
+    assert_doc(&env.open(), &a, &both);
 }
 
 #[test]
