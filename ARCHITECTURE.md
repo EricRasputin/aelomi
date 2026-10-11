@@ -60,7 +60,7 @@ The `ping` command is the working example.
 5. Tauri runs `ping` in `src-tauri/src/commands.rs`, which reads `aelomi_core::VERSION` and returns a `PingReply`.
 6. The store sets `status` to `ready`. Only components that select `status` re-render.
 
-Import `commands` from `src/ipc/index.ts`. A direct import of `commands` from `bindings.ts` skips the mock swap, so Biome rejects it outside `src/ipc/`. Type imports from `bindings.ts` are fine.
+Outside `src/ipc/`, import `commands` and the IPC types from `src/ipc/index.ts`. A direct import from `bindings.ts` would skip the mock swap, so Biome rejects any import of it outside `src/ipc/`.
 
 ## Bindings are generated and checked in CI
 
