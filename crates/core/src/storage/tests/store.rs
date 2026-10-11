@@ -398,6 +398,48 @@ fn compaction_quarantines_damage_a_rebuild_finds_while_it_runs() {
 }
 
 #[test]
+fn a_later_compaction_keeps_a_snapshot_the_rebuilt_doc_lacks() {
+    let env = Env::manual();
+    let store = env.open();
+    let a = doc("a");
+    let PartlyApplying { good, bad } = partly_applying_update();
+    let mut sent = vec![good];
+    sent.extend(UpdateGen::new(31, 2).updates(9));
+    for update in &sent {
+        store.append(&a, update).unwrap();
+    }
+    assert_eq!(store.flush(soon()), []);
+    let rotated = store.begin_compaction(&a).unwrap();
+    let path = env.path("docs/a/log-0000000000-0000000000.ylog");
+    let sixth_record = 8 + sent[..5].iter().map(|u| 8 + u.len()).sum::<usize>();
+    env.fs.flip_bit(&path, sixth_record + 9);
+    assert!(store.append(&a, &bad).is_err());
+    assert_doc(&store, &a, &sent[..5]);
+    store.finish_compaction(&a, rotated).unwrap();
+    let all_ten = env.path("docs/a/snapshot-0000000001.ysnap");
+    let holding = env.fs.files()[&all_ten].clone();
+
+    store.compact(&a).unwrap();
+    assert_eq!(
+        env.doc_files(&a),
+        ["snapshot-0000000001.ysnap", "snapshot-0000000002.ysnap"],
+        "snapshot 2 lacks updates 6 to 10"
+    );
+    assert_eq!(env.fs.files().get(&all_ten), Some(&holding));
+    drop(store);
+
+    let store = env.open();
+    assert_doc(&store, &a, &sent);
+    let (_, compacted) = store
+        .run_compactor_once()
+        .expect("the older snapshot queues a compaction");
+    compacted.unwrap();
+    assert_eq!(env.doc_files(&a), ["snapshot-0000000003.ysnap"]);
+    drop(store);
+    assert_doc(&env.open(), &a, &sent);
+}
+
+#[test]
 fn a_compaction_asked_for_while_one_runs_is_queued_once_when_it_ends() {
     let PartlyApplying { good, bad } = partly_applying_update();
     let more = UpdateGen::new(51, 2).updates(3);
