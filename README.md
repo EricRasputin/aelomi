@@ -22,6 +22,10 @@ and on pushes to `main`. Its seven check IDs are `biome`, `tsc`, `vitest`,
 `nextest`, `cargo-deny`, `pnpm-audit`, and `build-app`.
 The `pnpm-audit` job also runs `pnpm check-licenses`.
 The `nextest` job includes the `bindings_are_current` test.
+Cargo steps run with `--locked`, so a `Cargo.toml` change without its `Cargo.lock` fails.
+
+A repository admin runs `./scripts/protect-main.sh` to make every job a required check on `main`.
+Rerun it after adding or renaming a job.
 
 Every job uses `macos-15`, GitHub's [Apple Silicon M1 arm64 runner](https://docs.github.com/en/actions/reference/runners/github-hosted-runners#standard-github-hosted-runners-for-public-repositories).
 The pinned OS label keeps the machine class stable for later performance gates.
