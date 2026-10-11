@@ -122,6 +122,7 @@ fn retire_older(shared: &Shared, doc: &DocId, rotated: &Rotated) -> io::Result<(
     let _files = slot.files();
     let corrupt = slot.state().as_ref().expect("still loaded").corrupt.clone();
     let mut moved = BTreeSet::new();
+    let mut kept = false;
     for (name, covered) in covered {
         if corrupt.contains(&name) {
             move_to_quarantine_unsynced(shared, doc, &name)?;
@@ -130,6 +131,7 @@ fn retire_older(shared: &Shared, doc: &DocId, rotated: &Rotated) -> io::Result<(
             fs.remove(&dir.join(&name))?;
         } else {
             eprintln!("aelomi storage: kept {doc}/{name}, which has changes the snapshot lacks");
+            kept = true;
         }
     }
     shared.sync_quarantine_then_doc_dir(doc)?;
@@ -137,6 +139,9 @@ fn retire_older(shared: &Shared, doc: &DocId, rotated: &Rotated) -> io::Result<(
     let mut state = slot.state();
     let state = state.as_mut().expect("still loaded");
     state.corrupt.retain(|name| !moved.contains(name));
+    if kept {
+        state.ydoc = Ydoc::Stale;
+    }
     Ok(())
 }
 
