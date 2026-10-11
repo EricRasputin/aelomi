@@ -2,7 +2,7 @@ use std::time::{Duration, Instant};
 
 pub(crate) trait Clock: Send + Sync {
     fn now(&self) -> Duration;
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     fn sleep(&self, duration: Duration);
 }
 
@@ -23,7 +23,7 @@ impl Clock for SystemClock {
         self.origin.elapsed()
     }
 
-    #[cfg(test)]
+    #[cfg(any(test, feature = "test-support"))]
     fn sleep(&self, duration: Duration) {
         std::thread::sleep(duration);
     }
