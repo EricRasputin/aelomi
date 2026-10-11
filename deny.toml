@@ -1,0 +1,50 @@
+[advisories]
+version = 2
+ignore = [
+  { id = "RUSTSEC-2024-0436", reason = "paste has no patched release; Specta and Tauri use it transitively." },
+  { id = "RUSTSEC-2024-0370", reason = "proc-macro-error has no patched release; Tauri's Linux GTK dependencies use it transitively." },
+]
+
+[licenses]
+version = 2
+allow = [
+  "MIT",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "MPL-2.0",
+]
+# Permissive licenses outside the list above, allowed only for the crates that need them.
+exceptions = [
+  { crate = "foldhash", allow = ["Zlib"] },
+  { crate = "icu_collections", allow = ["Unicode-3.0"] },
+  { crate = "icu_locale_core", allow = ["Unicode-3.0"] },
+  { crate = "icu_normalizer", allow = ["Unicode-3.0"] },
+  { crate = "icu_normalizer_data", allow = ["Unicode-3.0"] },
+  { crate = "icu_properties", allow = ["Unicode-3.0"] },
+  { crate = "icu_properties_data", allow = ["Unicode-3.0"] },
+  { crate = "icu_provider", allow = ["Unicode-3.0"] },
+  { crate = "litemap", allow = ["Unicode-3.0"] },
+  { crate = "potential_utf", allow = ["Unicode-3.0"] },
+  { crate = "tinystr", allow = ["Unicode-3.0"] },
+  { crate = "unicode-ident", allow = ["Unicode-3.0"] },
+  { crate = "writeable", allow = ["Unicode-3.0"] },
+  { crate = "yoke", allow = ["Unicode-3.0"] },
+  { crate = "yoke-derive", allow = ["Unicode-3.0"] },
+  { crate = "zerofrom", allow = ["Unicode-3.0"] },
+  { crate = "zerofrom-derive", allow = ["Unicode-3.0"] },
+  { crate = "zerotrie", allow = ["Unicode-3.0"] },
+  { crate = "zerovec", allow = ["Unicode-3.0"] },
+  { crate = "zerovec-derive", allow = ["Unicode-3.0"] },
+]
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

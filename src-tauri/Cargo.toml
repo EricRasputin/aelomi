@@ -1,0 +1,21 @@
+[package]
+name = "aelomi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "aelomi_lib"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+aelomi-core = { path = "../crates/core", version = "0.1.0" }
+serde = { version = "1", features = ["derive"] }
+specta = { version = "=2.0.0-rc.25", features = ["derive", "function"] }
+tauri = { version = "2", features = ["specta"] }
+tauri-specta = { version = "=2.0.0-rc.25", features = ["typescript"] }
+
+[dev-dependencies]
+specta-typescript = "=0.0.12"
