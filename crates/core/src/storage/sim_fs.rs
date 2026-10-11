@@ -220,6 +220,7 @@ impl SimFs {
             self.clock.sleep(latency);
         }
         let mut sim = self.sim();
+        sim.check(kind, path, to);
         match &mut sim.ops_until_death {
             Some(0) => return Err(io::Error::other("simulated process death")),
             Some(left) => *left -= 1,
@@ -317,6 +318,42 @@ impl Sim {
         }
     }
 
+    fn check(&mut self, kind: OpKind, path: &Path, to: Option<&Path>) {
+        let Some(id) = self.lookup(path) else { return };
+        match kind {
+            OpKind::Append => {
+                if !self.created_this_session.contains(&id) {
+                    self.violation(format!("append to {path:?}, created before this session"));
+                }
+                if self.failed.contains(&id) {
+                    self.violation(format!("append to {path:?} after a failed write or sync"));
+                }
+            }
+            OpKind::Rename => {
+                let to = to.expect("a rename has a target");
+                if self.lookup(to).is_some() {
+                    self.violation(format!("rename {path:?} onto existing {to:?}"));
+                }
+            }
+            OpKind::Remove => {
+                let Ok((dir, name)) = self.parent(path) else {
+                    return;
+                };
+                let covered = match DocFile::parse(&name) {
+                    Some(DocFile::SnapshotTmp(_)) => true,
+                    Some(file) => self.has_durable_snapshot_above(dir, file.generation().0),
+                    None => name.ends_with(".tmp"),
+                };
+                if matches!(self.nodes[id], Node::File(_)) && !covered {
+                    self.violation(format!(
+                        "remove {path:?}, not a .tmp or covered by a durable snapshot"
+                    ));
+                }
+            }
+            _ => {}
+        }
+    }
+
     fn violation(&mut self, message: String) -> ! {
         self.violations.push(message.clone());
         panic!("append-only violation: {message}");
@@ -357,13 +394,6 @@ impl Fs for SimFs {
 
     fn append(&self, path: &Path, bytes: &[u8]) -> io::Result<()> {
         self.run(OpKind::Append, path, None, bytes, |sim| {
-            let id = sim.file(path)?.0;
-            if !sim.created_this_session.contains(&id) {
-                sim.violation(format!("append to {path:?}, created before this session"));
-            }
-            if sim.failed.contains(&id) {
-                sim.violation(format!("append to {path:?} after a failed write or sync"));
-            }
             sim.file(path)?.1.data.extend_from_slice(bytes);
             Ok(())
         })
@@ -395,9 +425,6 @@ impl Fs for SimFs {
                 .live
                 .get(&from_name)
                 .ok_or_else(not_found)?;
-            if sim.dir(to_dir).live.contains_key(&to_name) {
-                sim.violation(format!("rename {from:?} onto existing {to:?}"));
-            }
             sim.dir_mut(from_dir).live.remove(&from_name);
             sim.dir_mut(to_dir).live.insert(to_name, id);
             Ok(())
@@ -408,16 +435,6 @@ impl Fs for SimFs {
         self.run(OpKind::Remove, path, None, &[], |sim| {
             let (dir, name) = sim.parent(path)?;
             sim.file(path)?;
-            let covered = match DocFile::parse(&name) {
-                Some(DocFile::SnapshotTmp(_)) => true,
-                Some(file) => sim.has_durable_snapshot_above(dir, file.generation().0),
-                None => name.ends_with(".tmp"),
-            };
-            if !covered {
-                sim.violation(format!(
-                    "remove {path:?}, not a .tmp or covered by a durable snapshot"
-                ));
-            }
             sim.dir_mut(dir).live.remove(&name);
             Ok(())
         })
@@ -631,6 +648,54 @@ mod tests {
         fs.remove(&p("/d/snapshot-0000000003.ysnap.tmp")).unwrap();
         assert_eq!(fs.list(&p("/d")).unwrap(), ["snapshot-0000000002.ysnap"]);
         assert_eq!(fs.violations(), Vec::<String>::new());
+    }
+
+    #[test]
+    fn append_only_rules_are_checked_before_faults_are_injected() {
+        let caught = |kind: OpKind, setup: &dyn Fn(&SimFs), op: &dyn Fn(&SimFs)| {
+            let fs = sim();
+            setup(&fs);
+            fs.fail(kind, "/", libc::EIO);
+            let fs2 = fs.clone();
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| op(&fs2)));
+            assert!(result.is_err(), "{kind:?} is a violation");
+            fs.violations()
+        };
+        let msgs = caught(
+            OpKind::Append,
+            &|fs| fs.put_durable(&p("/old"), b"x"),
+            &|fs| drop(fs.append(&p("/old"), b"y")),
+        );
+        assert_eq!(msgs, [r#"append to "/old", created before this session"#]);
+        let msgs = caught(
+            OpKind::Append,
+            &|fs| fs.create_new(&p("/a")).unwrap(),
+            &|fs| {
+                fs.append(&p("/a"), b"y").unwrap_err();
+                drop(fs.append(&p("/a"), b"y"));
+            },
+        );
+        assert_eq!(msgs, [r#"append to "/a" after a failed write or sync"#]);
+        let msgs = caught(
+            OpKind::Rename,
+            &|fs| {
+                fs.put_durable(&p("/a"), b"x");
+                fs.put_durable(&p("/b"), b"y");
+            },
+            &|fs| drop(fs.rename(&p("/a"), &p("/b"))),
+        );
+        assert_eq!(msgs, [r#"rename "/a" onto existing "/b""#]);
+        let msgs = caught(
+            OpKind::Remove,
+            &|fs| fs.put_durable(&p("/d/log-0000000001-0000000000.ylog"), b"x"),
+            &|fs| drop(fs.remove(&p("/d/log-0000000001-0000000000.ylog"))),
+        );
+        assert_eq!(
+            msgs,
+            [
+                r#"remove "/d/log-0000000001-0000000000.ylog", not a .tmp or covered by a durable snapshot"#
+            ]
+        );
     }
 
     #[test]
