@@ -5,7 +5,7 @@ use std::path::Path;
 
 pub(crate) trait Fs: Send + Sync {
     fn create_dir(&self, path: &Path) -> io::Result<()>;
-    fn create(&self, path: &Path) -> io::Result<()>;
+    fn create_new(&self, path: &Path) -> io::Result<()>;
     fn append(&self, path: &Path, bytes: &[u8]) -> io::Result<()>;
     /// Plain `fsync` of a file or directory: data reaches the drive, maybe only its cache.
     fn fsync(&self, path: &Path) -> io::Result<()>;
@@ -16,6 +16,15 @@ pub(crate) trait Fs: Send + Sync {
     fn list(&self, dir: &Path) -> io::Result<Vec<String>>;
     fn read(&self, path: &Path) -> io::Result<Vec<u8>>;
     fn lock(&self, path: &Path) -> Result<FsLock, LockError>;
+}
+
+/// Writes `path` and makes it durable, so a rename can publish it without exposing a name
+/// that points at bytes a crash could lose.
+pub(crate) fn create_durable(fs: &dyn Fs, path: &Path, bytes: &[u8]) -> io::Result<()> {
+    fs.create_new(path)?;
+    fs.append(path, bytes)?;
+    fs.fsync(path)?;
+    fs.full_sync(path)
 }
 
 pub(crate) struct FsLock {
@@ -43,7 +52,7 @@ impl Fs for OsFs {
         std::fs::create_dir(path)
     }
 
-    fn create(&self, path: &Path) -> io::Result<()> {
+    fn create_new(&self, path: &Path) -> io::Result<()> {
         OpenOptions::new()
             .write(true)
             .create_new(true)

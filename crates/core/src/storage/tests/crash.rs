@@ -26,7 +26,7 @@ enum Action {
 struct Scenario {
     seed: u64,
     actions: Vec<Action>,
-    crash_at: u16,
+    crash_fraction: u16,
     torn: Option<u64>,
 }
 
@@ -49,10 +49,10 @@ fn scenario() -> impl Strategy<Value = Scenario> {
         any::<u16>(),
         any::<Option<u64>>(),
     )
-        .prop_map(|(seed, actions, crash_at, torn)| Scenario {
+        .prop_map(|(seed, actions, crash_fraction, torn)| Scenario {
             seed,
             actions,
-            crash_at,
+            crash_fraction,
             torn,
         })
 }
@@ -136,7 +136,7 @@ fn play(scenario: &Scenario, die_after: usize) -> (Env, Vec<Sent>, usize) {
 
 fn run(scenario: &Scenario) -> Result<(), TestCaseError> {
     let (_, _, ops) = play(scenario, usize::MAX);
-    let crash_after = scenario.crash_at as usize * ops / u16::MAX as usize;
+    let crash_after = scenario.crash_fraction as usize * ops / u16::MAX as usize;
     let (env, sent, _) = play(scenario, crash_after);
     let ids = ids();
     env.fs.clear_faults();

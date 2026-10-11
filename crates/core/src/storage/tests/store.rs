@@ -49,7 +49,7 @@ fn a_batch_makes_one_full_sync_after_fsyncing_every_file_and_new_entry() {
             .map(|d| store.append(d, &updates.next_update()).unwrap())
             .collect();
         let before = env.fs.ops().len();
-        assert!(matches!(store.run_writer_once(), Step::Wrote(_)), "{round}");
+        assert!(matches!(store.run_writer_once(), Step::Wrote), "{round}");
         let ops = env.fs.ops()[before..].to_vec();
 
         let paths = |kinds: &[OpKind]| -> BTreeSet<PathBuf> {

@@ -10,10 +10,16 @@ use yrs::{
 #[derive(Debug, PartialEq)]
 pub(crate) struct Fingerprint {
     snapshot: Snapshot,
-    /// A root decoded from an update has no type until someone asks for one, so both parts are
-    /// read type-agnostically.
-    roots: BTreeMap<String, (Any, Any)>,
+    roots: BTreeMap<String, Root>,
     pending: Option<PendingStructs>,
+}
+
+/// A root decoded from an update has no type until someone asks for one, so it is read both
+/// as a sequence and as a map.
+#[derive(Debug, PartialEq)]
+struct Root {
+    sequence: Any,
+    entries: Any,
 }
 
 #[derive(Debug, PartialEq)]
@@ -33,7 +39,7 @@ impl Fingerprint {
                 let sequence = ArrayRef::from(branch).to_json(txn);
                 let entries = MapRef::from(branch).to_json(txn);
                 let empty = matches!((&sequence, &entries), (Any::Array(s), Any::Map(m)) if s.is_empty() && m.is_empty());
-                (!empty).then(|| (name.to_owned(), (sequence, entries)))
+                (!empty).then(|| (name.to_owned(), Root { sequence, entries }))
             })
             .collect();
         Self {

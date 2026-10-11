@@ -11,14 +11,8 @@ use super::store::Shared;
 
 #[derive(Debug)]
 pub(crate) enum Step {
-    Wrote(#[cfg_attr(not(test), expect(dead_code, reason = "tests assert on each batch"))] Batch),
+    Wrote,
     Idle { retry_at: Option<Duration> },
-}
-
-#[derive(Debug, Default)]
-pub(crate) struct Batch {
-    pub durable: Vec<(DocId, Seq)>,
-    pub failed: Vec<(DocId, FailReason)>,
 }
 
 pub(crate) fn run(shared: &Shared) {
@@ -26,8 +20,8 @@ pub(crate) fn run(shared: &Shared) {
     while shared.wait_for_work(retry_at) {
         retry_at = loop {
             match run_once(shared) {
-                Step::Wrote(_) if shared.is_shutting_down() => return,
-                Step::Wrote(_) => {}
+                Step::Wrote if shared.is_shutting_down() => return,
+                Step::Wrote => {}
                 Step::Idle { retry_at } => break retry_at,
             }
         };
@@ -35,27 +29,60 @@ pub(crate) fn run(shared: &Shared) {
 }
 
 pub(crate) fn run_once(shared: &Shared) -> Step {
-    let (jobs, retry_at) = collect(shared, shared.clock.now());
-    if jobs.is_empty() {
+    let (queued, retry_at) = collect(shared, shared.clock.now());
+    if queued.is_empty() {
         return Step::Idle { retry_at };
     }
-    let batch = write(shared, jobs);
-    shared.refresh_health(batch.failed.last().map(|(_, reason)| reason.clone()));
+    let latest_failure = write(shared, queued);
+    shared.refresh_health(latest_failure);
     shared.batch_finished();
-    Step::Wrote(batch)
+    Step::Wrote
 }
 
-fn write(shared: &Shared, mut jobs: Vec<Job>) -> Batch {
-    let slots: Vec<Arc<DocSlot>> = jobs.iter().map(|job| job.slot.clone()).collect();
-    let _io: Vec<MutexGuard<'_, ()>> = slots.iter().map(|s| s.io.lock().unwrap()).collect();
-    for job in &mut jobs {
-        let state = job.slot.state.lock().unwrap();
-        let log = &state
-            .as_ref()
-            .expect("a doc with queued updates is loaded")
-            .log;
-        (job.segment, job.dir) = (log.segment, log.dir);
+struct Queued {
+    doc: DocId,
+    slot: Arc<DocSlot>,
+    records: Vec<u8>,
+    count: u64,
+    through: Seq,
+}
+
+fn collect(shared: &Shared, now: Duration) -> (Vec<Queued>, Option<Duration>) {
+    let mut queued = Vec::new();
+    let mut retry_at: Option<Duration> = None;
+    for (doc, slot) in shared.slots() {
+        let state = slot.state.lock().unwrap();
+        let Some(state) = state.as_ref() else {
+            continue;
+        };
+        let Some(last) = state.queue.back() else {
+            continue;
+        };
+        if let Some(failure) = &state.failure
+            && failure.retry_at > now
+        {
+            retry_at = Some(retry_at.map_or(failure.retry_at, |at| at.min(failure.retry_at)));
+            continue;
+        }
+        let mut records = Vec::new();
+        for update in &state.queue {
+            encode_record(&update.update, &mut records);
+        }
+        queued.push(Queued {
+            doc,
+            slot: slot.clone(),
+            records,
+            count: state.queue.len() as u64,
+            through: last.seq,
+        });
     }
+    (queued, retry_at)
+}
+
+fn write(shared: &Shared, queued: Vec<Queued>) -> Option<FailReason> {
+    let slots: Vec<Arc<DocSlot>> = queued.iter().map(|q| q.slot.clone()).collect();
+    let _files: Vec<MutexGuard<'_, ()>> = slots.iter().map(|s| s.files.lock().unwrap()).collect();
+    let mut jobs: Vec<Job> = queued.into_iter().map(Job::new).collect();
 
     for job in &mut jobs {
         let result = job.write(shared);
@@ -85,56 +112,37 @@ fn write(shared: &Shared, mut jobs: Vec<Job>) -> Batch {
 }
 
 struct Job {
-    doc: DocId,
-    slot: Arc<DocSlot>,
-    records: Vec<u8>,
-    count: u64,
-    through: Seq,
+    queued: Queued,
     segment: Segment,
     dir: DocDir,
     created_segment: bool,
     error: Option<FailReason>,
 }
 
-fn collect(shared: &Shared, now: Duration) -> (Vec<Job>, Option<Duration>) {
-    let mut jobs = Vec::new();
-    let mut retry_at: Option<Duration> = None;
-    for (doc, slot) in shared.slots() {
-        let state = slot.state.lock().unwrap();
-        let Some(state) = state.as_ref() else {
-            continue;
-        };
-        let Some(last) = state.queue.back() else {
-            continue;
-        };
-        if let Some(failure) = &state.failure
-            && failure.retry_at > now
-        {
-            retry_at = Some(retry_at.map_or(failure.retry_at, |at| at.min(failure.retry_at)));
-            continue;
-        }
-        let mut records = Vec::new();
-        for queued in &state.queue {
-            encode_record(&queued.update, &mut records);
-        }
-        jobs.push(Job {
-            doc,
-            slot: slot.clone(),
-            records,
-            count: state.queue.len() as u64,
-            through: last.seq,
-            segment: state.log.segment,
-            dir: state.log.dir,
+impl Job {
+    /// Takes the doc's segment once its file lock is held, so compaction can't rotate it and
+    /// retire the old file between this read and the write.
+    fn new(queued: Queued) -> Self {
+        let state = queued.slot.state.lock().unwrap();
+        let log = &state
+            .as_ref()
+            .expect("a doc with queued updates is loaded")
+            .log;
+        let (segment, dir) = (log.segment, log.dir);
+        drop(state);
+        Self {
+            queued,
+            segment,
+            dir,
             created_segment: false,
             error: None,
-        });
+        }
     }
-    (jobs, retry_at)
-}
 
-impl Job {
     fn path(&self, shared: &Shared) -> PathBuf {
-        shared.layout.doc_file(&self.doc, self.segment.file())
+        shared
+            .layout
+            .doc_file(&self.queued.doc, self.segment.file())
     }
 
     fn fail_on(&mut self, result: io::Result<()>) {
@@ -146,18 +154,18 @@ impl Job {
     fn write(&mut self, shared: &Shared) -> io::Result<()> {
         let fs = &*shared.fs;
         if self.dir == DocDir::Missing {
-            match fs.create_dir(&shared.layout.doc_dir(&self.doc)) {
+            match fs.create_dir(&shared.layout.doc_dir(&self.queued.doc)) {
                 Err(e) if e.kind() != io::ErrorKind::AlreadyExists => return Err(e),
                 _ => self.dir = DocDir::Created,
             }
         }
         let path = self.path(shared);
         match self.segment {
-            Segment::Open(..) => fs.append(&path, &self.records),
+            Segment::Open(..) => fs.append(&path, &self.queued.records),
             Segment::Next(..) => {
-                fs.create(&path)?;
+                fs.create_new(&path)?;
                 self.created_segment = true;
-                fs.append(&path, &[&LOG_MAGIC[..], &self.records].concat())
+                fs.append(&path, &[&LOG_MAGIC[..], &self.queued.records].concat())
             }
         }
     }
@@ -166,7 +174,7 @@ impl Job {
         let fs = &*shared.fs;
         fs.fsync(&self.path(shared))?;
         if self.created_segment {
-            fs.fsync(&shared.layout.doc_dir(&self.doc))?;
+            fs.fsync(&shared.layout.doc_dir(&self.queued.doc))?;
         }
         Ok(())
     }
@@ -178,23 +186,26 @@ impl Job {
             0
         };
         LogSize {
-            bytes: (self.records.len() + magic) as u64,
-            records: self.count,
+            bytes: (self.queued.records.len() + magic) as u64,
+            records: self.queued.count,
         }
     }
 }
 
-fn commit(shared: &Shared, jobs: Vec<Job>) -> Batch {
+fn commit(shared: &Shared, jobs: Vec<Job>) -> Option<FailReason> {
     let now = shared.clock.now();
-    let mut batch = Batch::default();
-    let mut to_compact = Vec::new();
+    let mut latest_failure = None;
     for job in jobs {
-        let mut state = job.slot.state.lock().unwrap();
+        let mut state = job.queued.slot.state.lock().unwrap();
         let state = state.as_mut().expect("a doc with queued updates is loaded");
         let current = state.log.segment == job.segment;
         match job.error {
             None => {
-                while state.queue.front().is_some_and(|q| q.seq <= job.through) {
+                while state
+                    .queue
+                    .front()
+                    .is_some_and(|q| q.seq <= job.queued.through)
+                {
                     state.queue.pop_front();
                 }
                 state.log.dir = DocDir::Durable;
@@ -205,11 +216,9 @@ fn commit(shared: &Shared, jobs: Vec<Job>) -> Batch {
                     state.log.unsnapshotted += job.size();
                 }
                 state.failure = None;
-                if state.log.unsnapshotted.exceeds(shared.limits) && !state.compacting {
-                    state.compacting = true;
-                    to_compact.push(job.doc.clone());
+                if state.log.unsnapshotted.exceeds(shared.limits) {
+                    shared.queue_compaction(&job.queued.doc, state);
                 }
-                batch.durable.push((job.doc, job.through));
             }
             Some(reason) => {
                 if state.log.dir == DocDir::Missing {
@@ -225,12 +234,9 @@ fn commit(shared: &Shared, jobs: Vec<Job>) -> Batch {
                     attempts,
                     retry_at,
                 });
-                batch.failed.push((job.doc, reason));
+                latest_failure = Some(reason);
             }
         }
     }
-    for doc in to_compact {
-        shared.schedule_compaction(doc);
-    }
-    batch
+    latest_failure
 }

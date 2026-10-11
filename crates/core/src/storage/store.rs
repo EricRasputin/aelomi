@@ -14,7 +14,7 @@ use super::clock::{Clock, SystemClock};
 use super::compact;
 use super::doc_id::DocId;
 use super::format::{FORMAT_VERSION, encode_format, parse_format};
-use super::fs::{Fs, FsLock, LockError, OsFs};
+use super::fs::{Fs, FsLock, LockError, OsFs, create_durable};
 use super::health::{FailReason, Health};
 use super::layout::Layout;
 use super::recover::recover;
@@ -307,10 +307,10 @@ impl Shared {
                 log: recovered.log,
                 failure: None,
                 corrupt: recovered.corrupt,
-                compacting: recovered.needs_compaction,
+                compacting: false,
             });
             if recovered.needs_compaction {
-                self.schedule_compaction(doc.clone());
+                self.queue_compaction(doc, state.as_mut().expect("loaded above"));
             }
         }
         Ok(f(state.as_mut().expect("loaded above")))
@@ -320,7 +320,7 @@ impl Shared {
     /// but failed to apply may have left part of itself in memory only.
     fn rebuild(&self, doc: &DocId) -> io::Result<()> {
         let slot = self.slot(doc);
-        let _io = slot.io.lock().unwrap();
+        let _io = slot.files.lock().unwrap();
         let mut state = slot.state.lock().unwrap();
         let state = state.as_mut().expect("append loaded the doc");
         let ydoc = recover(&*self.fs, &self.layout, doc, self.limits)?.ydoc;
@@ -381,12 +381,18 @@ impl Shared {
         }
     }
 
-    pub fn schedule_compaction(&self, doc: DocId) {
-        self.signal.lock().unwrap().compactions.push_back(doc);
-        self.wake_compactor.notify_one();
+    pub fn queue_compaction(&self, doc: &DocId, state: &mut DocState) {
+        if !std::mem::replace(&mut state.compacting, true) {
+            self.signal
+                .lock()
+                .unwrap()
+                .compactions
+                .push_back(doc.clone());
+            self.wake_compactor.notify_one();
+        }
     }
 
-    pub fn next_compaction(&self) -> Option<DocId> {
+    pub fn wait_for_compaction(&self) -> Option<DocId> {
         let mut signal = self.signal.lock().unwrap();
         loop {
             if signal.shutdown {
@@ -433,12 +439,8 @@ impl Shared {
 
 fn prepare_folder(fs: &dyn Fs, layout: &Layout) -> Result<FsLock, OpenError> {
     let root = layout.root();
-    match fs.list(root) {
-        Ok(names) => {
-            check_format(fs, layout, &names)?;
-        }
-        Err(e) if e.kind() == io::ErrorKind::NotFound => create_dir_all(fs, root)?,
-        Err(e) => return Err(e.into()),
+    if refuse_before_writing(fs, layout)? == Folder::Missing {
+        create_dir_all(fs, root)?;
     }
     let lock = fs.lock(&layout.lock()).map_err(|e| match e {
         LockError::Held => OpenError::Locked,
@@ -452,10 +454,7 @@ fn prepare_folder(fs: &dyn Fs, layout: &Layout) -> Result<FsLock, OpenError> {
         if has("format.json.tmp") {
             fs.remove(&tmp)?;
         }
-        fs.create(&tmp)?;
-        fs.append(&tmp, encode_format().as_bytes())?;
-        fs.fsync(&tmp)?;
-        fs.full_sync(&tmp)?;
+        create_durable(fs, &tmp, encode_format().as_bytes())?;
         fs.rename(&tmp, &layout.format_json())?;
         changed = true;
     }
@@ -468,6 +467,21 @@ fn prepare_folder(fs: &dyn Fs, layout: &Layout) -> Result<FsLock, OpenError> {
         fs.full_sync(root)?;
     }
     Ok(lock)
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum Folder {
+    Missing,
+    Present,
+}
+
+/// Refuses a folder this build can't handle before anything, even `.lock`, is written to it.
+fn refuse_before_writing(fs: &dyn Fs, layout: &Layout) -> Result<Folder, OpenError> {
+    match fs.list(layout.root()) {
+        Ok(names) => check_format(fs, layout, &names).map(|_| Folder::Present),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(Folder::Missing),
+        Err(e) => Err(e.into()),
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]

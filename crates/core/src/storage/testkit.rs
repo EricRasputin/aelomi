@@ -6,9 +6,9 @@ use yrs::{
 
 use super::equality::Fingerprint;
 
-pub(crate) struct Rng(u64);
+pub(crate) struct SplitMix64(u64);
 
-impl Rng {
+impl SplitMix64 {
     pub fn new(seed: u64) -> Self {
         Self(seed)
     }
@@ -27,7 +27,7 @@ impl Rng {
 }
 
 pub(crate) struct UpdateGen {
-    rng: Rng,
+    rng: SplitMix64,
     clients: Vec<Client>,
 }
 
@@ -38,21 +38,30 @@ struct Client {
     meta: MapRef,
 }
 
+/// Each seed owns a block of client IDs. A resumed session takes the block's second half, so
+/// it never reuses an ID, and so a clock, from before the restart.
+const IDS_PER_SEED: u64 = 16;
+const MAX_CLIENTS: u64 = IDS_PER_SEED / 2 - 1;
+
 impl UpdateGen {
     pub fn new(seed: u64, clients: u64) -> Self {
-        Self::with_ids(seed, (seed % 1_000_000) * 16 + 1, clients)
+        Self::with_ids(seed, Self::first_id(seed), clients)
     }
 
     pub fn resume(seed: u64, clients: u64, state: &[u8]) -> Self {
-        let resumed = Self::with_ids(seed, (seed % 1_000_000) * 16 + 9, clients);
+        let resumed = Self::with_ids(seed, Self::first_id(seed) + IDS_PER_SEED / 2, clients);
         for client in &resumed.clients {
             apply(&client.doc, state);
         }
         resumed
     }
 
+    fn first_id(seed: u64) -> u64 {
+        (seed % 1_000_000) * IDS_PER_SEED + 1
+    }
+
     fn with_ids(seed: u64, first_id: u64, clients: u64) -> Self {
-        assert!(clients <= 7, "IDs stay inside the seed's block of 16");
+        assert!(clients <= MAX_CLIENTS, "IDs stay inside the seed's block");
         let clients = (first_id..first_id + clients)
             .map(|id| {
                 let doc = Doc::with_client_id(id);
@@ -68,7 +77,7 @@ impl UpdateGen {
             })
             .collect();
         Self {
-            rng: Rng::new(seed),
+            rng: SplitMix64::new(seed),
             clients,
         }
     }
@@ -160,7 +169,7 @@ impl UpdateGen {
     }
 }
 
-fn word(rng: &mut Rng) -> String {
+fn word(rng: &mut SplitMix64) -> String {
     (0..1 + rng.below(6))
         .map(|_| (b'a' + rng.below(26) as u8) as char)
         .collect()

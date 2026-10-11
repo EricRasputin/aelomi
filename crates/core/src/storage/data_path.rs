@@ -16,9 +16,9 @@ pub enum DataPathError {
 /// root. Returns the resolved path. The path need not exist yet. Comparing paths the
 /// filesystem resolved, never raw strings, also handles APFS's case-insensitive names.
 pub fn check_data_path(path: &Path, forbidden_roots: &[PathBuf]) -> Result<PathBuf, DataPathError> {
-    let resolved = resolve(path)?;
+    let resolved = canonicalize_allowing_missing(path)?;
     for root in forbidden_roots {
-        let root = resolve(root)?;
+        let root = canonicalize_allowing_missing(root)?;
         if resolved.starts_with(&root) {
             return Err(DataPathError::CloudFolder { resolved, root });
         }
@@ -26,7 +26,7 @@ pub fn check_data_path(path: &Path, forbidden_roots: &[PathBuf]) -> Result<PathB
     Ok(resolved)
 }
 
-fn resolve(path: &Path) -> io::Result<PathBuf> {
+fn canonicalize_allowing_missing(path: &Path) -> io::Result<PathBuf> {
     let mut path = std::path::absolute(path)?;
     for _ in 0..40 {
         let mut existing = path.as_path();

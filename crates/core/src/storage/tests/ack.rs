@@ -9,7 +9,7 @@ use crate::storage::store::Store;
 use crate::storage::testkit::UpdateGen;
 use crate::storage::writer::Step;
 
-const BUDGET: Duration = Duration::from_millis(100);
+const SHELL_9_BUDGET: Duration = Duration::from_millis(100);
 
 fn slow_disk() -> Env {
     let env = Env::manual();
@@ -43,7 +43,7 @@ fn acknowledgements(env: &Env, store: &Store, schedule: Vec<Due>) -> (Vec<Durati
             let seq = store.append(&due.doc, &due.update).unwrap();
             waiting.push((due.doc, seq, due.at));
         }
-        let wrote = matches!(store.run_writer_once(), Step::Wrote(_));
+        let wrote = matches!(store.run_writer_once(), Step::Wrote);
         let now = env.clock.now();
         waiting.retain(|(doc, seq, at)| {
             let durable = store.is_durable(doc, *seq);
@@ -110,7 +110,11 @@ fn a_burst_of_1_000_appends_in_10_ms_is_acknowledged_within_100_ms() {
     let schedule = spaced(&[doc("a")], 1_000, Duration::from_micros(10), 2);
     let (latencies, _) = acknowledgements(&env, &store, schedule);
     assert_eq!(latencies.len(), 1_000);
-    assert!(max(&latencies) <= BUDGET, "slowest: {:?}", max(&latencies));
+    assert!(
+        max(&latencies) <= SHELL_9_BUDGET,
+        "slowest: {:?}",
+        max(&latencies)
+    );
 }
 
 #[test]
@@ -121,7 +125,11 @@ fn appends_across_50_docs_are_acknowledged_within_100_ms() {
     let schedule = spaced(&docs, 1_000, Duration::from_micros(100), 3);
     let (latencies, _) = acknowledgements(&env, &store, schedule);
     assert_eq!(latencies.len(), 1_000);
-    assert!(max(&latencies) <= BUDGET, "slowest: {:?}", max(&latencies));
+    assert!(
+        max(&latencies) <= SHELL_9_BUDGET,
+        "slowest: {:?}",
+        max(&latencies)
+    );
 }
 
 #[test]
@@ -140,5 +148,9 @@ fn appends_during_compaction_are_acknowledged_within_100_ms() {
         "{compactions} compactions ran among the appends"
     );
     assert_eq!(latencies.len(), 600);
-    assert!(max(&latencies) <= BUDGET, "slowest: {:?}", max(&latencies));
+    assert!(
+        max(&latencies) <= SHELL_9_BUDGET,
+        "slowest: {:?}",
+        max(&latencies)
+    );
 }

@@ -7,7 +7,7 @@ use std::time::Duration;
 use super::clock::Clock;
 use super::fs::{Fs, FsLock, LockError};
 use super::layout::DocFile;
-use super::testkit::Rng;
+use super::testkit::SplitMix64;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum OpKind {
@@ -127,7 +127,7 @@ impl SimFs {
         let mut sim = self.sim();
         let mut rng = match mode {
             Crash::DropUnsynced => None,
-            Crash::KeepTornPrefix(seed) => Some(Rng::new(seed)),
+            Crash::KeepTornPrefix(seed) => Some(SplitMix64::new(seed)),
         };
         for node in &mut sim.nodes {
             match node {
@@ -178,7 +178,7 @@ impl SimFs {
         out
     }
 
-    pub fn put(&self, path: &Path, bytes: &[u8]) {
+    pub fn put_durable(&self, path: &Path, bytes: &[u8]) {
         let mut sim = self.sim();
         let mut dir = ROOT;
         let parent: Vec<String> = names(path.parent().unwrap());
@@ -347,7 +347,7 @@ impl Fs for SimFs {
         })
     }
 
-    fn create(&self, path: &Path) -> io::Result<()> {
+    fn create_new(&self, path: &Path) -> io::Result<()> {
         self.run(OpKind::Create, path, None, &[], |sim| {
             let id = sim.add(path, Node::File(FileNode::default()))?;
             sim.created_this_session.insert(id);
@@ -510,7 +510,7 @@ mod tests {
     fn crash_keeps_only_what_full_sync_made_durable() {
         let fs = sim();
         fs.create_dir(&p("/d")).unwrap();
-        fs.create(&p("/d/a")).unwrap();
+        fs.create_new(&p("/d/a")).unwrap();
         fs.append(&p("/d/a"), b"one").unwrap();
         fs.fsync(&p("/d/a")).unwrap();
         fs.fsync(&p("/d")).unwrap();
@@ -518,7 +518,7 @@ mod tests {
         fs.full_sync(&p("/d/a")).unwrap();
         fs.append(&p("/d/a"), b"two").unwrap();
         fs.fsync(&p("/d/a")).unwrap();
-        fs.create(&p("/d/b")).unwrap();
+        fs.create_new(&p("/d/b")).unwrap();
         fs.crash(Crash::DropUnsynced);
         assert_eq!(fs.files(), BTreeMap::from([(p("/d/a"), b"one".to_vec())]));
     }
@@ -528,7 +528,7 @@ mod tests {
         let kept: HashSet<Vec<u8>> = (0..40)
             .map(|seed| {
                 let fs = sim();
-                fs.create(&p("/a")).unwrap();
+                fs.create_new(&p("/a")).unwrap();
                 fs.fsync(&p("/")).unwrap();
                 fs.full_sync(&p("/a")).unwrap();
                 fs.append(&p("/a"), b"0123456789").unwrap();
@@ -546,7 +546,7 @@ mod tests {
     #[test]
     fn rename_and_remove_follow_durable_directory_entries() {
         let fs = sim();
-        fs.create(&p("/a.tmp")).unwrap();
+        fs.create_new(&p("/a.tmp")).unwrap();
         fs.append(&p("/a.tmp"), b"x").unwrap();
         fs.fsync(&p("/a.tmp")).unwrap();
         fs.fsync(&p("/")).unwrap();
@@ -564,7 +564,7 @@ mod tests {
     #[test]
     fn faults_and_death_fail_operations() {
         let fs = sim();
-        fs.create(&p("/a")).unwrap();
+        fs.create_new(&p("/a")).unwrap();
         fs.fail(OpKind::Append, "/a", libc::ENOSPC);
         let error = fs.append(&p("/a"), b"abcdefgh").unwrap_err();
         assert_eq!(error.raw_os_error(), Some(libc::ENOSPC));
@@ -575,8 +575,8 @@ mod tests {
         );
         fs.clear_faults();
         fs.die_after(1);
-        fs.create(&p("/b")).unwrap();
-        assert!(fs.create(&p("/c")).is_err());
+        fs.create_new(&p("/b")).unwrap();
+        assert!(fs.create_new(&p("/c")).is_err());
         assert_eq!(
             fs.list(&p("/")).map_err(|e| e.to_string()),
             Err("simulated process death".into())
@@ -593,12 +593,12 @@ mod tests {
             fs.violations()
         };
         let msgs = caught(&|fs| {
-            fs.put(&p("/old"), b"x");
+            fs.put_durable(&p("/old"), b"x");
             fs.append(&p("/old"), b"y").unwrap();
         });
         assert_eq!(msgs, [r#"append to "/old", created before this session"#]);
         let msgs = caught(&|fs| {
-            fs.create(&p("/a")).unwrap();
+            fs.create_new(&p("/a")).unwrap();
             fs.fail(OpKind::Append, "/a", libc::EIO);
             fs.append(&p("/a"), b"y").unwrap_err();
             fs.clear_faults();
@@ -606,14 +606,14 @@ mod tests {
         });
         assert_eq!(msgs, [r#"append to "/a" after a failed write or sync"#]);
         let msgs = caught(&|fs| {
-            fs.put(&p("/a"), b"x");
-            fs.put(&p("/b"), b"y");
+            fs.put_durable(&p("/a"), b"x");
+            fs.put_durable(&p("/b"), b"y");
             fs.rename(&p("/a"), &p("/b")).unwrap();
         });
         assert_eq!(msgs, [r#"rename "/a" onto existing "/b""#]);
         let msgs = caught(&|fs| {
-            fs.put(&p("/d/log-0000000001-0000000000.ylog"), b"x");
-            fs.put(&p("/d/snapshot-0000000001.ysnap"), b"y");
+            fs.put_durable(&p("/d/log-0000000001-0000000000.ylog"), b"x");
+            fs.put_durable(&p("/d/snapshot-0000000001.ysnap"), b"y");
             fs.remove(&p("/d/log-0000000001-0000000000.ylog")).unwrap();
         });
         assert_eq!(
@@ -624,9 +624,9 @@ mod tests {
         );
 
         let fs = sim();
-        fs.put(&p("/d/log-0000000001-0000000000.ylog"), b"x");
-        fs.put(&p("/d/snapshot-0000000002.ysnap"), b"y");
-        fs.put(&p("/d/snapshot-0000000003.ysnap.tmp"), b"z");
+        fs.put_durable(&p("/d/log-0000000001-0000000000.ylog"), b"x");
+        fs.put_durable(&p("/d/snapshot-0000000002.ysnap"), b"y");
+        fs.put_durable(&p("/d/snapshot-0000000003.ysnap.tmp"), b"z");
         fs.remove(&p("/d/log-0000000001-0000000000.ylog")).unwrap();
         fs.remove(&p("/d/snapshot-0000000003.ysnap.tmp")).unwrap();
         assert_eq!(fs.list(&p("/d")).unwrap(), ["snapshot-0000000002.ysnap"]);
@@ -650,7 +650,7 @@ mod tests {
         let fs = SimFs::new(clock.clone());
         fs.set_latency(OpKind::FullSync, Duration::from_millis(6));
         fs.set_latency(OpKind::Fsync, Duration::from_micros(500));
-        fs.create(&p("/a")).unwrap();
+        fs.create_new(&p("/a")).unwrap();
         fs.fsync(&p("/a")).unwrap();
         fs.full_sync(&p("/a")).unwrap();
         assert_eq!(clock.now(), Duration::from_micros(6500));

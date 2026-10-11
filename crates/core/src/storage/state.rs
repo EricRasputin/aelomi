@@ -14,7 +14,7 @@ pub struct Seq(pub u64);
 #[derive(Default)]
 pub(crate) struct DocSlot {
     pub state: Mutex<Option<DocState>>,
-    pub io: Mutex<()>,
+    pub files: Mutex<()>,
 }
 
 pub(crate) struct DocState {

@@ -63,7 +63,8 @@ fn a_newer_format_is_refused_and_the_folder_is_left_byte_for_byte_unchanged() {
     assert_eq!(tree(dir.path()), before, "not even a .lock");
 
     let env = Env::manual();
-    env.fs.put(&env.path("format.json"), b"{\"format\": 3}");
+    env.fs
+        .put_durable(&env.path("format.json"), b"{\"format\": 3}");
     let before = env.fs.ops().len();
     assert!(matches!(
         env.try_open(),
@@ -122,7 +123,7 @@ fn a_new_or_empty_folder_gets_format_json_and_docs() {
 #[test]
 fn a_format_json_left_half_written_by_a_crash_is_redone() {
     let env = Env::manual();
-    env.fs.put(&env.path("format.json.tmp"), b"{\"for");
+    env.fs.put_durable(&env.path("format.json.tmp"), b"{\"for");
     drop(env.open());
     let files = env.fs.files();
     assert_eq!(

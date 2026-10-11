@@ -7,17 +7,18 @@ use crate::storage::log::read_log;
 use crate::storage::sim_fs::OpKind;
 use crate::storage::store::Store;
 use crate::storage::testkit::UpdateGen;
-use crate::storage::writer::{Batch, Step};
+use crate::storage::writer::Step;
 
 fn ms(n: u64) -> Duration {
     Duration::from_millis(n)
 }
 
-fn wrote(step: Step) -> Batch {
-    match step {
-        Step::Wrote(batch) => batch,
-        Step::Idle { retry_at } => panic!("expected a batch, got Idle until {retry_at:?}"),
-    }
+fn write_batch(store: &Store) {
+    let step = store.run_writer_once();
+    assert!(
+        matches!(step, Step::Wrote),
+        "expected a batch, got {step:?}"
+    );
 }
 
 fn record_health(store: &Store) -> Arc<Mutex<Vec<Health>>> {
@@ -46,9 +47,8 @@ fn a_failing_doc_stays_pending_while_other_docs_are_acknowledged() {
     let a_last = a_seqs[a_seqs.len() - 1];
     sent_b.push(gen_b.next_update());
     let b_first = store.append(&b, &sent_b[0]).unwrap();
-    let batch = wrote(store.run_writer_once());
-    assert_eq!(batch.durable, [(b.clone(), b_first)], "b is acknowledged");
-    assert_eq!(batch.failed, [(a.clone(), FailReason::DiskFull)], "a fails");
+    write_batch(&store);
+    assert!(store.is_durable(&b, b_first), "b is acknowledged");
     assert!(!store.is_durable(&a, a_last), "a stays pending");
     let failing = Health::Failing {
         reason: FailReason::DiskFull,
@@ -59,13 +59,12 @@ fn a_failing_doc_stays_pending_while_other_docs_are_acknowledged() {
 
     sent_b.push(gen_b.next_update());
     let b_second = store.append(&b, &sent_b[1]).unwrap();
-    let batch = wrote(store.run_writer_once());
-    assert_eq!(
-        batch.durable,
-        [(b.clone(), b_second)],
+    write_batch(&store);
+    assert!(
+        store.is_durable(&b, b_second),
         "b keeps going while a waits"
     );
-    assert_eq!(batch.failed, []);
+    assert!(!store.is_durable(&a, a_last));
 
     let mut retries = Vec::new();
     for _ in 0..4 {
@@ -74,8 +73,8 @@ fn a_failing_doc_stays_pending_while_other_docs_are_acknowledged() {
         };
         retries.push(at);
         env.clock.advance_to(at);
-        let batch = wrote(store.run_writer_once());
-        assert_eq!(batch.failed, [(a.clone(), FailReason::DiskFull)]);
+        write_batch(&store);
+        assert!(!store.is_durable(&a, a_last), "retry at {at:?} fails too");
     }
     assert_eq!(
         retries,
@@ -96,10 +95,9 @@ fn a_failing_doc_stays_pending_while_other_docs_are_acknowledged() {
     };
     assert_eq!(at, ms(4100));
     env.clock.advance_to(at);
-    let batch = wrote(store.run_writer_once());
-    assert_eq!(
-        batch.durable,
-        [(a.clone(), a_more)],
+    write_batch(&store);
+    assert!(
+        store.is_durable(&a, a_more),
         "a recovers with everything queued"
     );
     assert_eq!(store.health(), Health::Healthy);
@@ -127,15 +125,14 @@ fn queued_updates_reach_disk_in_order_once_writes_recover() {
     let sent = UpdateGen::new(5, 3).updates(100);
     env.fs.fail(OpKind::Append, "/docs/a/", libc::EIO);
 
-    for update in &sent {
-        store.append(&a, update).unwrap();
-    }
-    let batch = wrote(store.run_writer_once());
-    assert_eq!(batch.failed.len(), 1);
+    let seqs: Vec<_> = sent.iter().map(|u| store.append(&a, u).unwrap()).collect();
+    let last = seqs[seqs.len() - 1];
+    write_batch(&store);
+    assert!(!store.is_durable(&a, last));
     env.fs.clear_faults();
     env.clock.advance(ms(100));
-    let batch = wrote(store.run_writer_once());
-    assert_eq!(batch.failed, []);
+    write_batch(&store);
+    assert!(store.is_durable(&a, last));
     assert_eq!(store.health(), Health::Healthy);
     let health = seen.lock().unwrap().clone();
     assert!(matches!(
@@ -173,21 +170,16 @@ fn a_failed_full_sync_leaves_the_whole_batch_pending() {
     let docs = [doc("a"), doc("b")];
     let mut updates = UpdateGen::new(9, 2);
     let mut sent = vec![Vec::new(), Vec::new()];
+    let mut seqs = Vec::new();
     for (i, d) in docs.iter().enumerate() {
         sent[i].push(updates.next_update());
-        store.append(d, &sent[i][0]).unwrap();
+        seqs.push(store.append(d, &sent[i][0]).unwrap());
     }
     env.fs.fail(OpKind::FullSync, "/docs/", libc::EIO);
-    let batch = wrote(store.run_writer_once());
-    assert_eq!(batch.durable, []);
-    assert_eq!(
-        batch
-            .failed
-            .iter()
-            .map(|(d, _)| d.clone())
-            .collect::<Vec<_>>(),
-        docs
-    );
+    write_batch(&store);
+    for (d, seq) in docs.iter().zip(&seqs) {
+        assert!(!store.is_durable(d, *seq), "{d} stays pending");
+    }
     let Health::Failing { pending_docs, .. } = store.health() else {
         panic!("failing")
     };
@@ -195,8 +187,10 @@ fn a_failed_full_sync_leaves_the_whole_batch_pending() {
 
     env.fs.clear_faults();
     env.clock.advance(ms(100));
-    let batch = wrote(store.run_writer_once());
-    assert_eq!(batch.durable.len(), 2);
+    write_batch(&store);
+    for (d, seq) in docs.iter().zip(&seqs) {
+        assert!(store.is_durable(d, *seq), "{d} lands on retry");
+    }
     assert_eq!(store.health(), Health::Healthy);
     drop(store);
     let store = env.open();
