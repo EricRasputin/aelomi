@@ -209,19 +209,14 @@ impl Store {
         self.shared.subscribers.lock().unwrap().push(Arc::new(f));
     }
 
-    /// Stops the writer after its current batch and releases the folder. Returns the docs
-    /// whose pending updates were not durable: call [`Store::flush`] first.
-    pub fn close(mut self) -> Vec<DocId> {
-        self.stop();
-        self.shared.pending_through(Seq(u64::MAX))
-    }
-
-    fn stop(&mut self) {
-        self.shared.signal.lock().unwrap().shutdown = true;
-        self.shared.wake_writer.notify_all();
-        self.shared.wake_compactor.notify_all();
-        for thread in self.threads.drain(..) {
-            let _ = thread.join();
+    /// Flushes until `deadline`, then stops the threads and releases the folder. If updates are
+    /// still pending, nothing is discarded: the store comes back with the docs that have them.
+    pub fn close(self, deadline: Instant) -> Result<(), (Store, Vec<DocId>)> {
+        let pending = self.flush(deadline);
+        if pending.is_empty() {
+            Ok(())
+        } else {
+            Err((self, pending))
         }
     }
 
@@ -271,9 +266,24 @@ impl Store {
     }
 }
 
+/// Stops the threads and drops any update still pending, so dropping a store is for process
+/// exit. Otherwise use [`Store::close`].
 impl Drop for Store {
     fn drop(&mut self) {
-        self.stop();
+        self.shared.signal.lock().unwrap().shutdown = true;
+        self.shared.wake_writer.notify_all();
+        self.shared.wake_compactor.notify_all();
+        for thread in self.threads.drain(..) {
+            let _ = thread.join();
+        }
+    }
+}
+
+impl fmt::Debug for Store {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Store")
+            .field("root", &self.shared.layout.root())
+            .finish_non_exhaustive()
     }
 }
 

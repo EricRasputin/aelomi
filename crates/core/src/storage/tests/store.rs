@@ -28,7 +28,7 @@ fn docs_round_trip_through_close_and_reopen() {
         store.run_writer_once();
     }
     assert_eq!(store.flush(soon()), [], "flush leaves nothing pending");
-    assert_eq!(store.close(), [], "close finds nothing pending");
+    store.close(soon()).unwrap();
 
     let store = env.open();
     for (i, id) in docs.iter().enumerate() {
@@ -116,7 +116,7 @@ fn flush_then_close_keeps_every_update() {
         [],
         "flush finishes before its deadline"
     );
-    assert_eq!(store.close(), []);
+    store.close(soon()).unwrap();
 
     let store = env.open();
     for (id, updates) in docs.iter().zip(&sent) {

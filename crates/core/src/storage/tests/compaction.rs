@@ -285,7 +285,7 @@ fn compaction_runs_beside_the_writer_without_losing_updates() {
         sent[i % 2].push(update);
     }
     assert_eq!(store.flush(soon()), []);
-    assert_eq!(store.close(), []);
+    store.close(soon()).unwrap();
 
     let store = env.open();
     for (d, sent) in docs.iter().zip(&sent) {

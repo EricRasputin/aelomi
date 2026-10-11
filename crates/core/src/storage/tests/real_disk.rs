@@ -35,6 +35,8 @@ fn every_append_is_acknowledged_on_a_real_disk() {
         "p95 {p95:?}; CI disks are noisy, so the gate is loose"
     );
 
-    assert_eq!(store.close(), []);
+    store
+        .close(Instant::now() + Duration::from_secs(5))
+        .unwrap();
     assert_doc(&Store::open(dir.path()).unwrap(), &a, &sent);
 }

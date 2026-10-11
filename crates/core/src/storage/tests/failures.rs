@@ -229,3 +229,26 @@ fn the_writer_thread_retries_on_its_own() {
     drop(store);
     assert_doc(&env.open(), &a, &sent);
 }
+
+#[test]
+fn close_never_discards_a_pending_update() {
+    let env = Env::manual();
+    let a = doc("a");
+    let sent = UpdateGen::new(71, 2).updates(3);
+    let store = env.open();
+    env.fs.fail(OpKind::Append, "/docs/a/", libc::EIO);
+    for update in &sent {
+        store.append(&a, update).unwrap();
+    }
+    let (store, pending) = store.close(soon()).unwrap_err();
+    assert_eq!(
+        pending,
+        std::slice::from_ref(&a),
+        "close hands the store back"
+    );
+    assert_doc(&store, &a, &sent);
+    env.fs.clear_faults();
+    env.clock.advance(ms(100));
+    store.close(soon()).unwrap();
+    assert_doc(&env.open(), &a, &sent);
+}
