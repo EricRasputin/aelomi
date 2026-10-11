@@ -2,6 +2,7 @@
 
 mod clock;
 mod compact;
+mod data_path;
 mod doc_id;
 mod equality;
 mod format;
@@ -22,6 +23,7 @@ mod testkit;
 #[cfg(test)]
 mod tests;
 
+pub use data_path::{DataPathError, check_data_path};
 pub use doc_id::{DocId, InvalidDocId};
 pub use health::{FailReason, Health};
 pub use state::Seq;
