@@ -547,6 +547,35 @@ fn an_update_after_a_pending_doc_loads_survives_damage_the_load_read_in_the_open
 }
 
 #[test]
+fn the_next_compaction_quarantines_damage_a_pending_doc_load_reads() {
+    let env = Env::manual();
+    let store = env.open();
+    let a = doc("a");
+    let sent = out_of_order(35, 80, Delivery::Shuffled);
+    for update in &sent {
+        store.append(&a, update).unwrap();
+    }
+    assert!(store.has_pending_structs(&a));
+    assert_eq!(store.flush(soon()), []);
+    let name = "log-0000000000-0000000000.ylog";
+    let path = env.path("docs/a").join(name);
+    env.fs.flip_bit(&path, record_at(&sent, 9) + 9);
+    let damaged = env.fs.files()[&path].clone();
+
+    store.load(&a).unwrap();
+    store.compact(&a).unwrap();
+    assert_eq!(env.doc_files(&a), ["snapshot-0000000001.ysnap"]);
+    assert_eq!(
+        env.fs.files().get(&env.path("quarantine/a").join(name)),
+        Some(&damaged),
+        "moved byte for byte"
+    );
+    drop(store);
+    let (held, _) = applied(&env.open().load(&a).unwrap(), "reopened");
+    assert!(held.contains(&ops_of_updates(&without(&sent, &[9]))));
+}
+
+#[test]
 fn a_rebuild_queues_the_compaction_a_stale_doc_skipped() {
     let later = UpdateGen::new(41, 1).next_update();
     for rebuild_by_appending in [false, true] {
