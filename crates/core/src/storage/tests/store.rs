@@ -5,6 +5,7 @@ use std::time::Duration;
 use yrs::{Doc, Map, ReadTxn, StateVector, Text, TextPrelim, TextRef, Transact};
 
 use super::{Env, assert_doc, doc, soon};
+use crate::storage::compact::CompactError;
 use crate::storage::sim_fs::OpKind;
 use crate::storage::state::Limits;
 use crate::storage::store::{AppendError, Store};
@@ -397,7 +398,8 @@ fn compaction_quarantines_damage_a_rebuild_finds_while_it_runs() {
     assert_doc(&env.open(), &a, &sent);
 }
 
-fn keep_a_snapshot_the_rebuilt_doc_lacks(env: &Env) -> (Store, Vec<Vec<u8>>) {
+/// Leaves snapshot 1 holding ten updates and the doc in memory holding the first five.
+fn rebuild_from_a_log_damaged_mid_compaction(env: &Env) -> (Store, Vec<Vec<u8>>) {
     let store = env.open();
     let a = doc("a");
     let PartlyApplying { good, bad } = partly_applying_update();
@@ -414,6 +416,12 @@ fn keep_a_snapshot_the_rebuilt_doc_lacks(env: &Env) -> (Store, Vec<Vec<u8>>) {
     assert!(store.append(&a, &bad).is_err());
     assert_doc(&store, &a, &sent[..5]);
     store.finish_compaction(&a, rotated).unwrap();
+    (store, sent)
+}
+
+fn keep_a_snapshot_the_rebuilt_doc_lacks(env: &Env) -> (Store, Vec<Vec<u8>>) {
+    let a = doc("a");
+    let (store, sent) = rebuild_from_a_log_damaged_mid_compaction(env);
     let all_ten = env.path("docs/a/snapshot-0000000001.ysnap");
     let holding = env.fs.files()[&all_ten].clone();
 
@@ -457,6 +465,30 @@ fn a_kept_snapshot_merges_back_without_reopening() {
     compacted.unwrap();
     assert_eq!(env.doc_files(&a), ["snapshot-0000000003.ysnap"]);
     assert_eq!(store.queued_compactions(), []);
+    drop(store);
+    assert_doc(&env.open(), &a, &sent);
+}
+
+#[test]
+fn a_kept_snapshot_merges_back_even_if_a_sync_after_the_keep_fails() {
+    let env = Env::manual();
+    let a = doc("a");
+    let (store, sent) = rebuild_from_a_log_damaged_mid_compaction(&env);
+    let publish_then_retire = 1;
+    env.fs.fail_at_after(
+        OpKind::FullSync,
+        &env.path("docs/a"),
+        publish_then_retire,
+        libc::EIO,
+    );
+    assert!(matches!(store.compact(&a), Err(CompactError::Io(_))));
+    env.fs.clear_faults();
+    assert_eq!(
+        env.doc_files(&a),
+        ["snapshot-0000000001.ysnap", "snapshot-0000000002.ysnap"],
+        "snapshot 2 lacks updates 6 to 10"
+    );
+    assert_doc(&store, &a, &sent);
     drop(store);
     assert_doc(&env.open(), &a, &sent);
 }

@@ -43,12 +43,22 @@ pub(crate) enum Crash {
 struct Fault {
     kind: OpKind,
     at: FaultPath,
+    skip: usize,
     errno: i32,
 }
 
 enum FaultPath {
     Containing(String),
     Exactly(PathBuf),
+}
+
+impl FaultPath {
+    fn matches(&self, path: &Path) -> bool {
+        match self {
+            Self::Containing(part) => path.to_string_lossy().contains(part),
+            Self::Exactly(at) => path == at,
+        }
+    }
 }
 
 pub(crate) struct SimFs {
@@ -116,12 +126,27 @@ impl SimFs {
 
     pub fn fail(&self, kind: OpKind, path_contains: &str, errno: i32) {
         let at = FaultPath::Containing(path_contains.to_owned());
-        self.sim().faults.push(Fault { kind, at, errno });
+        self.sim().faults.push(Fault {
+            kind,
+            at,
+            skip: 0,
+            errno,
+        });
     }
 
     pub fn fail_at(&self, kind: OpKind, path: &Path, errno: i32) {
+        self.fail_at_after(kind, path, 0, errno);
+    }
+
+    /// Lets the first `skip` matching operations succeed.
+    pub fn fail_at_after(&self, kind: OpKind, path: &Path, skip: usize, errno: i32) {
         let at = FaultPath::Exactly(path.to_path_buf());
-        self.sim().faults.push(Fault { kind, at, errno });
+        self.sim().faults.push(Fault {
+            kind,
+            at,
+            skip,
+            errno,
+        });
     }
 
     pub fn clear_faults(&self) {
@@ -247,17 +272,7 @@ impl SimFs {
             Some(left) => *left -= 1,
             None => {}
         }
-        let fault = sim
-            .faults
-            .iter()
-            .find(|f| {
-                f.kind == kind
-                    && match &f.at {
-                        FaultPath::Containing(part) => path.to_string_lossy().contains(part),
-                        FaultPath::Exactly(at) => path == at,
-                    }
-            })
-            .map(|f| io::Error::from_raw_os_error(f.errno));
+        let fault = sim.take_fault(kind, path);
         let result = match fault {
             Some(error) => {
                 sim.fail_op(kind, path, bytes);
@@ -273,6 +288,18 @@ impl SimFs {
 }
 
 impl Sim {
+    fn take_fault(&mut self, kind: OpKind, path: &Path) -> Option<io::Error> {
+        let fault = self
+            .faults
+            .iter_mut()
+            .find(|f| f.kind == kind && f.at.matches(path))?;
+        if fault.skip > 0 {
+            fault.skip -= 1;
+            return None;
+        }
+        Some(io::Error::from_raw_os_error(fault.errno))
+    }
+
     fn dir(&self, id: usize) -> &DirNode {
         match &self.nodes[id] {
             Node::Dir(dir) => dir,
