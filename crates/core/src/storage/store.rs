@@ -18,7 +18,9 @@ use super::fs::{Fs, FsLock, LockError, OsFs, create_durable};
 use super::health::{FailReason, Health};
 use super::layout::Layout;
 use super::recover::recover;
-use super::state::{Compaction, DocSlot, DocState, Limits, Queued, Seq, Ydoc, lock};
+use super::state::{
+    Compaction, DocSlot, DocState, Limits, Queued, Seq, Ydoc, lock_ignoring_poison,
+};
 use super::writer;
 
 /// The durable store of Y.Docs in one data folder. See `ARCHITECTURE.md`, "Data model and storage".
@@ -181,10 +183,10 @@ impl Store {
     /// retries once at the start, whatever its backoff.
     pub fn flush(&self, deadline: Instant) -> Vec<DocId> {
         let target = Seq(self.shared.next_seq.load(Ordering::SeqCst) - 1);
-        lock(&self.shared.signal).retry_failing = true;
+        lock_ignoring_poison(&self.shared.signal).retry_failing = true;
         self.shared.notify_writer();
         loop {
-            let batches = lock(&self.shared.signal).batches;
+            let batches = lock_ignoring_poison(&self.shared.signal).batches;
             let pending = self.shared.pending_through(target);
             let now = Instant::now();
             if pending.is_empty() || now >= deadline {
@@ -198,7 +200,7 @@ impl Store {
                     }
                 }
                 Driver::Threads => {
-                    let signal = lock(&self.shared.signal);
+                    let signal = lock_ignoring_poison(&self.shared.signal);
                     if signal.batches == batches {
                         let _wait = self.shared.batch_done.wait_timeout(signal, deadline - now);
                     }
@@ -208,12 +210,12 @@ impl Store {
     }
 
     pub fn health(&self) -> Health {
-        lock(&self.shared.health).clone()
+        lock_ignoring_poison(&self.shared.health).clone()
     }
 
     /// Calls `f` with the new health each time it changes, from the writer's thread.
     pub fn subscribe_health(&self, f: impl Fn(&Health) + Send + Sync + 'static) {
-        lock(&self.shared.subscribers).push(Arc::new(f));
+        lock_ignoring_poison(&self.shared.subscribers).push(Arc::new(f));
     }
 
     /// Flushes until `deadline`, then stops the threads and releases the folder. If updates are
@@ -234,14 +236,16 @@ impl Store {
 
     #[cfg(test)]
     pub(crate) fn run_compactor_once(&self) -> Option<(DocId, Result<(), compact::CompactError>)> {
-        let doc = lock(&self.shared.signal).compactions.pop_front()?;
+        let doc = lock_ignoring_poison(&self.shared.signal)
+            .compactions
+            .pop_front()?;
         let result = compact::compact_queued(&self.shared, &doc);
         Some((doc, result))
     }
 
     #[cfg(test)]
     pub(crate) fn queued_compactions(&self) -> Vec<DocId> {
-        lock(&self.shared.signal)
+        lock_ignoring_poison(&self.shared.signal)
             .compactions
             .iter()
             .cloned()
@@ -260,7 +264,9 @@ impl Store {
             std::mem::replace(&mut state.compaction, Compaction::Queued)
         })?;
         if was == Compaction::Queued {
-            lock(&self.shared.signal).compactions.retain(|d| d != doc);
+            lock_ignoring_poison(&self.shared.signal)
+                .compactions
+                .retain(|d| d != doc);
         }
         Ok(compact::rotate(&self.shared, doc))
     }
@@ -274,7 +280,6 @@ impl Store {
         compact::finish(&self.shared, doc, rotated)
     }
 
-    /// Stands in for a yrs panic partway through applying `update`.
     #[cfg(test)]
     pub(crate) fn panic_while_applying(&self, doc: &DocId, update: &[u8]) {
         let slot = self.shared.slot(doc);
@@ -300,7 +305,7 @@ impl Store {
 /// exit. Otherwise use [`Store::close`].
 impl Drop for Store {
     fn drop(&mut self) {
-        lock(&self.shared.signal).shutdown = true;
+        lock_ignoring_poison(&self.shared.signal).shutdown = true;
         self.shared.wake_writer.notify_all();
         self.shared.wake_compactor.notify_all();
         for thread in self.threads.drain(..) {
@@ -319,14 +324,17 @@ impl fmt::Debug for Store {
 
 impl Shared {
     pub fn slots(&self) -> Vec<(DocId, Arc<DocSlot>)> {
-        let docs = lock(&self.docs);
+        let docs = lock_ignoring_poison(&self.docs);
         docs.iter()
             .map(|(id, slot)| (id.clone(), slot.clone()))
             .collect()
     }
 
     pub fn slot(&self, doc: &DocId) -> Arc<DocSlot> {
-        lock(&self.docs).entry(doc.clone()).or_default().clone()
+        lock_ignoring_poison(&self.docs)
+            .entry(doc.clone())
+            .or_default()
+            .clone()
     }
 
     fn with_doc<R>(&self, doc: &DocId, f: impl FnOnce(&Doc, &mut DocState) -> R) -> io::Result<R> {
@@ -399,7 +407,7 @@ impl Shared {
                 failing.push(id);
             }
         }
-        let mut health = lock(&self.health);
+        let mut health = lock_ignoring_poison(&self.health);
         let next = match (reason, &*health) {
             (Some(reason), Health::Failing { since, .. }) if !failing.is_empty() => {
                 Health::Failing {
@@ -420,7 +428,7 @@ impl Shared {
         }
         *health = next.clone();
         drop(health);
-        let subscribers = lock(&self.subscribers).clone();
+        let subscribers = lock_ignoring_poison(&self.subscribers).clone();
         for subscriber in subscribers {
             subscriber(&next);
         }
@@ -444,7 +452,9 @@ impl Shared {
         match state.compaction {
             Compaction::Idle => {
                 state.compaction = Compaction::Queued;
-                lock(&self.signal).compactions.push_back(doc.clone());
+                lock_ignoring_poison(&self.signal)
+                    .compactions
+                    .push_back(doc.clone());
                 self.wake_compactor.notify_one();
             }
             Compaction::Queued => {}
@@ -472,7 +482,7 @@ impl Shared {
     }
 
     pub fn wait_for_compaction(&self) -> Option<DocId> {
-        let mut signal = lock(&self.signal);
+        let mut signal = lock_ignoring_poison(&self.signal);
         loop {
             if signal.shutdown {
                 return None;
@@ -488,25 +498,25 @@ impl Shared {
     }
 
     pub fn is_shutting_down(&self) -> bool {
-        lock(&self.signal).shutdown
+        lock_ignoring_poison(&self.signal).shutdown
     }
 
     fn notify_writer(&self) {
-        lock(&self.signal).work = true;
+        lock_ignoring_poison(&self.signal).work = true;
         self.wake_writer.notify_one();
     }
 
     pub fn take_retry_failing(&self) -> bool {
-        std::mem::take(&mut lock(&self.signal).retry_failing)
+        std::mem::take(&mut lock_ignoring_poison(&self.signal).retry_failing)
     }
 
     pub fn batch_finished(&self) {
-        lock(&self.signal).batches += 1;
+        lock_ignoring_poison(&self.signal).batches += 1;
         self.batch_done.notify_all();
     }
 
     pub fn wait_for_work(&self, wake_at: Option<Duration>) -> bool {
-        let mut signal = lock(&self.signal);
+        let mut signal = lock_ignoring_poison(&self.signal);
         loop {
             if signal.shutdown {
                 return false;
