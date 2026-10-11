@@ -9,7 +9,7 @@ Aelomi has two surfaces an agent can drive. Prove every change on the real app. 
 
 | Surface | What runs | Driven by | Proves |
 |---|---|---|---|
-| Real app | `pnpm tauri dev` or the built `Aelomi.app`. A WKWebView in a Tauri 2 window, with real IPC to the Rust shell | `scripts/app.sh`, through the macOS accessibility tree | The UI, the IPC round trip, and the Rust side together |
+| Real app | `pnpm dev:app` or the built `Aelomi.app`. A WKWebView in a Tauri 2 window, with real IPC to the Rust shell | `scripts/app.sh`, through the macOS accessibility tree | The UI, the IPC round trip, and the Rust side together |
 | Mock browser | The production React build from `pnpm build:mock`, with the in-memory IPC mock from `src/ipc/mock.ts` | `scripts/mock-drive.mjs`, with Playwright WebKit | UI behavior against the mock, and no non-local requests (SHELL-13) |
 
 No WebDriver exists for WKWebView on macOS. System Events can still reach the window's web content through the accessibility tree, and `AXPress` on a button runs its click handler.
@@ -32,11 +32,11 @@ To launch the dev build, run:
 RUN=$($S/app.sh launch dev)
 ```
 
-`launch dev` runs `pnpm tauri dev` and waits for the line `ping seq=1` in the shell log. The UI sends its first `ping` command when it mounts, and the Rust handler prints that line. So the line means the window, the UI, and the IPC round trip are up. `launch` then waits until the web content appears in the accessibility tree, and prints the run directory on stdout, for example `/tmp/aelomi-verify/20261011-064618-dev-ik2v`. Pass that directory to every other command.
+`launch dev` runs `pnpm dev:app`, which prints `AELOMI_DEV_PORT=N` and runs `tauri dev` with the UI on port N. `launch` waits for the line `ping seq=1` in the shell log. The UI sends its first `ping` command when it mounts, and the Rust handler prints that line. So the line means the window, the UI, and the IPC round trip are up. `launch` then waits until the web content appears in the accessibility tree, and prints the run directory on stdout, for example `/tmp/aelomi-verify/20261011-064618-dev-ik2v`. Pass that directory to every other command.
 
 The first build compiles about 350 crates and took 59 s on an Apple Silicon Mac. Later launches reuse it. `launch` waits up to 900 s. Change the limit with `--timeout S`. It fails early, and prints the end of the log, if the launch process exits, Rust fails to compile, or the app panics.
 
-`launch dev` refuses to start if port 1420 is in use. `vite.config.ts` serves the dev UI on 1420 with `strictPort`, and `src-tauri/tauri.conf.json` points the window at it, so only one dev instance can run per machine. If one of your runs holds the port, clean it up. If you did not start it, leave it alone and use the built app or the mock browser.
+Each `launch dev` serves the UI on its own free port and records it as `DEV_PORT` in `run.env`, so several dev instances can run at once, from one checkout or several. To choose the port, run `AELOMI_DEV_PORT=1500 $S/app.sh launch dev`. If that port is in use, Vite exits and the launch fails within seconds. The port is compiled into the app, so a launch on a new port relinks the `aelomi` crate, which took 5 to 7 s. Launches from one checkout share `target/`, so a second launch waits for the first build.
 
 To launch the release build, run:
 
@@ -58,14 +58,14 @@ Run it after launch and whenever a command behaves oddly. It changes nothing, wr
 - The launch process and the app process still run the commands this run started.
 - System Events has Accessibility access.
 - The app window is on screen, and its web content has a `role="status"` region.
-- For `dev`, a process from this run listens on port 1420. For `app`, the bundle is newer than `src/`, `src-tauri/src/`, `crates/`, and `index.html`.
+- For `dev`, a process from this run listens on the run's `DEV_PORT`. For `app`, the bundle is newer than `src/`, `src-tauri/src/`, `crates/`, and `index.html`.
 - The shell log has `ping seq=1`.
 
 If a check fails, do not drive the instance. Run cleanup and launch again.
 
 ## Drive the real app
 
-`app.sh` finds the window by the app's PID, never by process name, so it cannot drive another Aelomi instance by mistake.
+`app.sh` finds the window by the app's PID, never by process name, so it cannot drive another Aelomi instance by mistake. System Events returns child elements as references through the process name, which every Aelomi instance shares, so `ax.js` builds each child reference by index from the PID instead.
 
 | Command | Effect |
 |---|---|
@@ -161,7 +161,7 @@ A real-app run directory holds these files:
 
 | File | Contents |
 |---|---|
-| `shell.log` | Everything `pnpm tauri dev` or the app printed, including one `ping seq=N` line per IPC call |
+| `shell.log` | Everything `pnpm dev:app` or the app printed, including one `ping seq=N` line per IPC call |
 | `doctor.txt` | The latest doctor result |
 | `actions.log` | Each `press`, `focus`, `keys`, and `screenshot`, with the time |
 | `NAME.png` | The window, captured with `screencapture -l <window id>` |
@@ -187,7 +187,7 @@ Hold every proof to these standards:
 $S/app.sh cleanup "$RUN"
 ```
 
-`cleanup` stops every process the launch started: pnpm, the Tauri CLI, Vite, and the app. It reads the process list that `launch` recorded, and it signals a PID only while that PID still runs the recorded command. It sends SIGTERM, and SIGKILL to anything left after 10 s. It keeps the run directory and lists its files. Running it twice is safe. Run it after every attempt, including a failed launch, before you launch again.
+`cleanup` stops every process the launch started: pnpm, the `dev:app` launcher, the Tauri CLI, Vite, and the app. It reads the process list that `launch` recorded, and it signals a PID only while that PID still runs the recorded command. It sends SIGTERM, and SIGKILL to anything left after 10 s. It keeps the run directory and lists its files. Running it twice is safe. Run it after every attempt, including a failed launch, before you launch again.
 
 Never kill Aelomi, Vite, or node by name. Another agent or the maintainer may be running their own instance.
 

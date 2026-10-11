@@ -5,7 +5,6 @@ HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 REPO=$(cd "$HERE/../../../.." && pwd -P)
 AX="$HERE/ax.js"
 VERIFY_ROOT=${AELOMI_VERIFY_ROOT:-/tmp/aelomi-verify}
-DEV_PORT=1420
 BUNDLE="$REPO/target/release/bundle/macos/Aelomi.app"
 
 usage() {
@@ -91,13 +90,9 @@ launch() {
       *) die "unknown option $1" ;;
     esac
   done
-  local cmd owner
+  local cmd
   case $mode in
-    dev)
-      owner=$(port_owner "$DEV_PORT")
-      [ -z "$owner" ] || die "port $DEV_PORT is in use by PID $owner ($(proc_cmd "$owner")). Run cleanup on the run that started it. Never drive an instance you did not start."
-      cmd=(pnpm tauri dev)
-      ;;
+    dev) cmd=(pnpm dev:app) ;;
     app)
       local bin
       bin=$(app_bin) && [ -x "$bin" ] || die "no built app at $BUNDLE. Run: pnpm tauri build --bundles app"
@@ -130,6 +125,10 @@ launch() {
 
   local app_pid=$launch_pid pid
   if [ "$mode" = dev ]; then
+    local port
+    port=$(sed -n 's/^AELOMI_DEV_PORT=\([0-9]*\)$/\1/p' "$RUN/shell.log" | head -1)
+    [ -n "$port" ] || die "logged 'ping seq=1' but no AELOMI_DEV_PORT line. Run: $0 cleanup $RUN"
+    printf 'DEV_PORT=%q\n' "$port" >>"$RUN/run.env"
     app_pid=""
     for pid in $(descendants "$launch_pid"); do
       case $(proc_cmd "$pid") in */target/debug/aelomi) app_pid=$pid ;; esac
@@ -173,9 +172,9 @@ doctor() {
   check "app window is on screen" ax window "${APP_PID:-0}"
   check "web content has a role=\"status\" region" ax status "${APP_PID:-0}"
   if [ "$MODE" = dev ]; then
-    local owner
-    owner=$(port_owner "$DEV_PORT")
-    check "port $DEV_PORT is served by this run (owner PID ${owner:-none})" is_ours "${owner:-none}"
+    local owner=""
+    [ -z "${DEV_PORT:-}" ] || owner=$(port_owner "$DEV_PORT")
+    check "port ${DEV_PORT:-unknown} is served by this run (owner PID ${owner:-none})" is_ours "${owner:-none}"
   else
     local newer
     newer=$(find "$REPO/src" "$REPO/src-tauri/src" "$REPO/src-tauri/tauri.conf.json" "$REPO/src-tauri/Cargo.toml" "$REPO/crates" "$REPO/index.html" -newer "$(app_bin)" -type f -print -quit 2>/dev/null || true)
@@ -219,7 +218,7 @@ cleanup() {
     [ -z "$pids" ] || die "still running after SIGKILL: $pids"
     echo "app.sh: stopped every process this run started"
   fi
-  if [ "$MODE" = dev ]; then
+  if [ "$MODE" = dev ] && [ -n "${DEV_PORT:-}" ]; then
     local owner
     owner=$(port_owner "$DEV_PORT")
     [ -z "$owner" ] || echo "app.sh: port $DEV_PORT is held by PID $owner ($(proc_cmd "$owner")), which this run did not start" >&2
