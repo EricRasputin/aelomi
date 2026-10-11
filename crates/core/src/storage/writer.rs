@@ -52,6 +52,16 @@ pub(crate) fn run_once(shared: &Shared) -> Step {
     }
     let slots: Vec<Arc<DocSlot>> = jobs.iter().map(|job| job.slot.clone()).collect();
     let _io: Vec<MutexGuard<'_, ()>> = slots.iter().map(|s| s.io.lock().unwrap()).collect();
+    // A compaction may have rotated a segment since `collect`, and may have deleted the old
+    // one. It can't delete anything while the io locks are held, so write where it points now.
+    for job in &mut jobs {
+        let state = job.slot.state.lock().unwrap();
+        let log = &state
+            .as_ref()
+            .expect("a doc with queued updates is loaded")
+            .log;
+        (job.segment, job.dir) = (log.segment, log.dir);
+    }
 
     for job in &mut jobs {
         let result = job.write(shared);
@@ -70,7 +80,7 @@ pub(crate) fn run_once(shared: &Shared) -> Step {
         }
     }
 
-    let batch = commit(jobs, shared.clock.now());
+    let batch = commit(shared, jobs);
     shared.refresh_health(batch.failed.last().map(|(_, reason)| reason.clone()));
     shared.batch_finished();
     Step::Wrote(batch)
@@ -181,8 +191,10 @@ impl Job {
     }
 }
 
-fn commit(jobs: Vec<Job>, now: Duration) -> Batch {
+fn commit(shared: &Shared, jobs: Vec<Job>) -> Batch {
+    let now = shared.clock.now();
     let mut batch = Batch::default();
+    let mut to_compact = Vec::new();
     for job in jobs {
         let mut state = job.slot.state.lock().unwrap();
         let state = state.as_mut().expect("a doc with queued updates is loaded");
@@ -200,6 +212,10 @@ fn commit(jobs: Vec<Job>, now: Duration) -> Batch {
                     state.log.unsnapshotted += job.size();
                 }
                 state.failure = None;
+                if state.log.unsnapshotted.exceeds(shared.limits) && !state.compacting {
+                    state.compacting = true;
+                    to_compact.push(job.doc.clone());
+                }
                 batch.durable.push((job.doc, job.through));
             }
             Some(reason) => {
@@ -219,6 +235,9 @@ fn commit(jobs: Vec<Job>, now: Duration) -> Batch {
                 batch.failed.push((job.doc, reason));
             }
         }
+    }
+    for doc in to_compact {
+        shared.schedule_compaction(doc);
     }
     batch
 }

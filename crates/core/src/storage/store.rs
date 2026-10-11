@@ -11,13 +11,14 @@ use yrs::updates::decoder::Decode;
 use yrs::{ReadTxn, StateVector, Transact, Update};
 
 use super::clock::{Clock, SystemClock};
+use super::compact;
 use super::doc_id::DocId;
 use super::format::{FORMAT_VERSION, encode_format, parse_format};
 use super::fs::{Fs, FsLock, LockError, OsFs};
 use super::health::{FailReason, Health};
 use super::layout::Layout;
 use super::recover::recover;
-use super::state::{DocSlot, DocState, Queued, Seq};
+use super::state::{DocSlot, DocState, Limits, Queued, Seq};
 use super::writer::{self, Step};
 
 /// The durable store of Y.Docs in one data folder. See `ARCHITECTURE.md` ("Storage").
@@ -50,9 +51,9 @@ pub enum AppendError {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Driver {
-    /// A background thread writes. Production uses this.
+    /// Background threads write and compact. Production uses this.
     Threads,
-    /// Nothing is written until a test steps the writer.
+    /// Nothing is written or compacted until a test steps the writer or the compactor.
     Manual,
 }
 
@@ -60,11 +61,13 @@ pub(crate) struct Shared {
     pub fs: Arc<dyn Fs>,
     pub clock: Arc<dyn Clock>,
     pub layout: Layout,
+    pub limits: Limits,
     driver: Driver,
     next_seq: AtomicU64,
     docs: Mutex<BTreeMap<DocId, Arc<DocSlot>>>,
     signal: Mutex<Signal>,
     wake_writer: Condvar,
+    wake_compactor: Condvar,
     batch_done: Condvar,
     health: Mutex<Health>,
     subscribers: Mutex<Vec<Subscriber>>,
@@ -77,12 +80,14 @@ struct Signal {
     work: bool,
     shutdown: bool,
     batches: u64,
+    compactions: VecDeque<DocId>,
 }
 
 impl Store {
     pub fn open(root: impl AsRef<Path>) -> Result<Self, OpenError> {
         let clock = Arc::new(SystemClock::new());
-        Self::open_with(root.as_ref(), Arc::new(OsFs), clock, Driver::Threads)
+        let fs = Arc::new(OsFs);
+        Self::open_with(root.as_ref(), fs, clock, Driver::Threads, Limits::DATA_6)
     }
 
     pub(crate) fn open_with(
@@ -90,6 +95,7 @@ impl Store {
         fs: Arc<dyn Fs>,
         clock: Arc<dyn Clock>,
         driver: Driver,
+        limits: Limits,
     ) -> Result<Self, OpenError> {
         let layout = Layout::new(root);
         let lock = prepare_folder(&*fs, &layout)?;
@@ -97,27 +103,33 @@ impl Store {
             fs,
             clock,
             layout,
+            limits,
             driver,
             next_seq: AtomicU64::new(1),
             docs: Mutex::default(),
             signal: Mutex::default(),
             wake_writer: Condvar::new(),
+            wake_compactor: Condvar::new(),
             batch_done: Condvar::new(),
             health: Mutex::new(Health::Healthy),
             subscribers: Mutex::default(),
         });
-        let threads = match driver {
-            Driver::Threads => {
-                let writer = shared.clone();
-                vec![
-                    std::thread::Builder::new()
-                        .name("aelomi-storage-writer".into())
-                        .spawn(move || writer::run(&writer))
-                        .map_err(OpenError::Io)?,
-                ]
-            }
-            Driver::Manual => Vec::new(),
-        };
+        let mut threads = Vec::new();
+        if driver == Driver::Threads {
+            let writer = shared.clone();
+            let compactor = shared.clone();
+            let spawn = |name: &str, f: Box<dyn FnOnce() + Send>| {
+                std::thread::Builder::new().name(name.into()).spawn(f)
+            };
+            threads.push(spawn(
+                "aelomi-storage-writer",
+                Box::new(move || writer::run(&writer)),
+            )?);
+            threads.push(spawn(
+                "aelomi-storage-compactor",
+                Box::new(move || compact::run(&compactor)),
+            )?);
+        }
         Ok(Self {
             shared,
             threads,
@@ -209,6 +221,7 @@ impl Store {
     fn stop(&mut self) {
         self.shared.signal.lock().unwrap().shutdown = true;
         self.shared.wake_writer.notify_all();
+        self.shared.wake_compactor.notify_all();
         for thread in self.threads.drain(..) {
             let _ = thread.join();
         }
@@ -217,6 +230,43 @@ impl Store {
     #[cfg(test)]
     pub(crate) fn run_writer_once(&self) -> Step {
         writer::run_once(&self.shared)
+    }
+
+    /// Runs the next queued compaction, if any.
+    #[cfg(test)]
+    pub(crate) fn run_compactor_once(&self) -> Option<(DocId, Result<(), compact::CompactError>)> {
+        let doc = self.shared.signal.lock().unwrap().compactions.pop_front()?;
+        let result = compact::compact_queued(&self.shared, &doc);
+        Some((doc, result))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn queued_compactions(&self) -> Vec<DocId> {
+        self.shared
+            .signal
+            .lock()
+            .unwrap()
+            .compactions
+            .iter()
+            .cloned()
+            .collect()
+    }
+
+    /// Compacts `doc` now, whatever its size.
+    #[cfg(test)]
+    pub(crate) fn compact(&self, doc: &DocId) -> Result<(), compact::CompactError> {
+        let queued = self
+            .shared
+            .with_doc(doc, |state| std::mem::replace(&mut state.compacting, true))?;
+        if queued {
+            self.shared
+                .signal
+                .lock()
+                .unwrap()
+                .compactions
+                .retain(|d| d != doc);
+        }
+        compact::compact_queued(&self.shared, doc)
     }
 
     /// Whether every update of `doc` up to `seq` is durable.
@@ -240,7 +290,7 @@ impl Shared {
             .collect()
     }
 
-    fn slot(&self, doc: &DocId) -> Arc<DocSlot> {
+    pub fn slot(&self, doc: &DocId) -> Arc<DocSlot> {
         self.docs
             .lock()
             .unwrap()
@@ -254,13 +304,18 @@ impl Shared {
         let slot = self.slot(doc);
         let mut state = slot.state.lock().unwrap();
         if state.is_none() {
-            let recovered = recover(&*self.fs, &self.layout, doc)?;
+            let recovered = recover(&*self.fs, &self.layout, doc, self.limits)?;
             *state = Some(DocState {
                 ydoc: recovered.ydoc,
                 queue: VecDeque::new(),
                 log: recovered.log,
                 failure: None,
+                corrupt: recovered.corrupt,
+                compacting: recovered.needs_compaction,
             });
+            if recovered.needs_compaction {
+                self.schedule_compaction(doc.clone());
+            }
         }
         Ok(f(state.as_mut().expect("loaded above")))
     }
@@ -272,7 +327,7 @@ impl Shared {
         let _io = slot.io.lock().unwrap();
         let mut state = slot.state.lock().unwrap();
         let state = state.as_mut().expect("append loaded the doc");
-        let ydoc = recover(&*self.fs, &self.layout, doc)?.ydoc;
+        let ydoc = recover(&*self.fs, &self.layout, doc, self.limits)?.ydoc;
         for queued in &state.queue {
             let update = Update::decode_v1(&queued.update).expect("queued updates decode");
             let _ = ydoc.transact_mut().apply_update(update);
@@ -329,6 +384,26 @@ impl Shared {
         let subscribers = self.subscribers.lock().unwrap().clone();
         for subscriber in subscribers {
             subscriber(&next);
+        }
+    }
+
+    /// Queues `doc` for the compactor. The caller has set the doc's `compacting` flag.
+    pub fn schedule_compaction(&self, doc: DocId) {
+        self.signal.lock().unwrap().compactions.push_back(doc);
+        self.wake_compactor.notify_one();
+    }
+
+    /// The next doc to compact. Waits for one, or returns `None` once the store shuts down.
+    pub fn next_compaction(&self) -> Option<DocId> {
+        let mut signal = self.signal.lock().unwrap();
+        loop {
+            if signal.shutdown {
+                return None;
+            }
+            if let Some(doc) = signal.compactions.pop_front() {
+                return Some(doc);
+            }
+            signal = self.wake_compactor.wait(signal).unwrap();
         }
     }
 

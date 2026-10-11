@@ -1,6 +1,7 @@
 //! Store tests. Every test on `SimFs` also asserts the append-only rules (invariant 1):
 //! `SimFs` checks them as each operation runs, and [`Env`] checks for violations on drop.
 
+mod compaction;
 mod failures;
 mod store;
 
@@ -11,12 +12,14 @@ use std::time::{Duration, Instant};
 use super::clock::{Clock, ManualClock, SystemClock};
 use super::doc_id::DocId;
 use super::sim_fs::SimFs;
+use super::state::Limits;
 use super::store::{Driver, OpenError, Store};
 use super::testkit::{doc_from, fingerprint};
 
 pub(crate) struct Env {
     pub fs: Arc<SimFs>,
     pub clock: Arc<ManualClock>,
+    pub limits: Limits,
     store_clock: Arc<dyn Clock>,
     driver: Driver,
 }
@@ -30,6 +33,7 @@ impl Env {
             fs,
             store_clock: clock.clone(),
             clock,
+            limits: Limits::DATA_6,
             driver: Driver::Manual,
         }
     }
@@ -42,6 +46,7 @@ impl Env {
         Self {
             fs,
             clock,
+            limits: Limits::DATA_6,
             store_clock: system,
             driver: Driver::Threads,
         }
@@ -57,6 +62,7 @@ impl Env {
             self.fs.clone(),
             self.store_clock.clone(),
             self.driver,
+            self.limits,
         )
     }
 

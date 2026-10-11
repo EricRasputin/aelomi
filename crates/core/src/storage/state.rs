@@ -1,4 +1,4 @@
-use std::collections::VecDeque;
+use std::collections::{BTreeSet, VecDeque};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -30,6 +30,11 @@ pub(crate) struct DocState {
     pub log: LogState,
     /// Set while the doc's last batch failed. Its queue waits until `retry_at`.
     pub failure: Option<Failure>,
+    /// Names of files that failed validation in a way a torn write can't explain.
+    /// Compaction moves them to `quarantine/` instead of deleting them.
+    pub corrupt: BTreeSet<String>,
+    /// Queued for compaction, or being compacted.
+    pub compacting: bool,
 }
 
 pub(crate) struct Failure {
@@ -100,6 +105,26 @@ impl Segment {
 pub(crate) struct LogSize {
     pub bytes: u64,
     pub records: u64,
+}
+
+impl LogSize {
+    pub fn exceeds(self, limits: Limits) -> bool {
+        self.bytes > limits.bytes || self.records > limits.records
+    }
+}
+
+/// When a doc's unsnapshotted logs get compacted (DATA-6).
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Limits {
+    pub bytes: u64,
+    pub records: u64,
+}
+
+impl Limits {
+    pub const DATA_6: Self = Self {
+        bytes: 1_000_000,
+        records: 10_000,
+    };
 }
 
 impl std::ops::AddAssign for LogSize {
