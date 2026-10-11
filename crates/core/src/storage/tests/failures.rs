@@ -231,6 +231,41 @@ fn the_writer_thread_retries_on_its_own() {
 }
 
 #[test]
+fn flush_retries_a_failing_doc_at_once_whatever_its_backoff() {
+    let env = Env::manual();
+    let store = env.open();
+    let a = doc("a");
+    let sent = UpdateGen::new(81, 2).updates(3);
+    env.fs.fail(OpKind::Append, "/docs/a/", libc::EIO);
+    for update in &sent {
+        store.append(&a, update).unwrap();
+    }
+    write_batch(&store);
+    for _ in 0..6 {
+        env.clock.advance(ms(5000));
+        write_batch(&store);
+    }
+    assert!(matches!(
+        store.run_writer_once(),
+        Step::Idle { retry_at: Some(at) } if at == ms(35_000)
+    ));
+
+    let appends = || {
+        let ops = env.fs.ops();
+        ops.iter().filter(|op| op.kind == OpKind::Append).count()
+    };
+    let before = appends();
+    let quit_deadline = || Instant::now() + Duration::from_secs(2);
+    assert_eq!(store.flush(quit_deadline()), std::slice::from_ref(&a));
+    assert_eq!(appends(), before + 1, "one retry per flush");
+    env.fs.clear_faults();
+    assert_eq!(store.flush(quit_deadline()), [], "the disk recovered");
+    assert_eq!(store.health(), Health::Healthy);
+    drop(store);
+    assert_doc(&env.open(), &a, &sent);
+}
+
+#[test]
 fn close_never_discards_a_pending_update() {
     let env = Env::manual();
     let a = doc("a");
