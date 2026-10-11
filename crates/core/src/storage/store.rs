@@ -445,7 +445,11 @@ impl Shared {
                 self.wake_compactor.notify_one();
             }
             Compaction::Queued => {}
-            Compaction::Running { .. } => state.compaction = Compaction::Running { again: true },
+            Compaction::Running { .. } => {
+                state.compaction = Compaction::Running {
+                    asked_after_rotate: true,
+                }
+            }
         }
     }
 
@@ -454,7 +458,12 @@ impl Shared {
         let mut state = slot.state.lock().unwrap();
         let state = state.as_mut().expect("compaction runs on loaded docs");
         let ended = std::mem::replace(&mut state.compaction, Compaction::Idle);
-        if ended == (Compaction::Running { again: true }) {
+        if matches!(
+            ended,
+            Compaction::Running {
+                asked_after_rotate: true
+            }
+        ) {
             self.queue_compaction(doc, state);
         }
     }

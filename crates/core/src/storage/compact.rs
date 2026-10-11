@@ -68,7 +68,9 @@ pub(crate) fn rotate(shared: &Shared, doc: &DocId) -> Option<Rotated> {
     let Ydoc::Fresh(ydoc) = state.ydoc.clone() else {
         return None;
     };
-    state.compaction = Compaction::Running { again: false };
+    state.compaction = Compaction::Running {
+        asked_after_rotate: false,
+    };
     let generation = state.log.segment.generation().next();
     state.log.segment = Segment::Next(generation, SegmentNo(0));
     state.log.unsnapshotted = LogSize::default();
@@ -96,8 +98,6 @@ fn publish(shared: &Shared, doc: &DocId, tmp: &Path, generation: Generation) -> 
     fs.full_sync(&layout.doc_dir(doc))
 }
 
-/// Reads the corrupt set once the file lock is held. A rebuild adds to it under the same lock,
-/// so the set can't grow while the old files go.
 fn retire_older(shared: &Shared, doc: &DocId, generation: Generation) -> io::Result<()> {
     let (fs, layout) = (&*shared.fs, &shared.layout);
     let slot = shared.slot(doc);
