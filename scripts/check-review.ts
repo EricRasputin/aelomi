@@ -61,6 +61,23 @@ export function checkReview(
   };
 }
 
+export function buildStatusPayload(
+  result: ReturnType<typeof checkReview>,
+  runUrl: string,
+): {
+  context: "reviewer-approved";
+  state: "success" | "failure";
+  description: string;
+  target_url: string;
+} {
+  return {
+    context: "reviewer-approved",
+    state: result.pass ? "success" : "failure",
+    description: Array.from(result.reason).slice(0, 140).join(""),
+    target_url: runUrl,
+  };
+}
+
 function isReview(raw: unknown): raw is Review {
   return (
     typeof raw === "object" &&
@@ -82,8 +99,13 @@ function isReview(raw: unknown): raw is Review {
 function main(): void {
   const repository = process.env.GITHUB_REPOSITORY;
   const eventPath = process.env.GITHUB_EVENT_PATH;
+  const serverUrl = process.env.GITHUB_SERVER_URL;
+  const runId = process.env.GITHUB_RUN_ID;
   if (!repository || !/^[\w.-]+\/[\w.-]+$/.test(repository) || !eventPath) {
     throw new Error("Set GITHUB_REPOSITORY and GITHUB_EVENT_PATH.");
+  }
+  if (!serverUrl || !runId || !/^\d+$/.test(runId)) {
+    throw new Error("Set GITHUB_SERVER_URL and GITHUB_RUN_ID.");
   }
   const event: unknown = JSON.parse(readFileSync(eventPath, "utf8"));
   if (
@@ -133,7 +155,27 @@ function main(): void {
   }
   const result = checkReview(reviews, pr.head.sha);
   console.log(result.reason);
-  process.exitCode = result.pass ? 0 : 1;
+  execFileSync(
+    "gh",
+    [
+      "api",
+      "--method",
+      "POST",
+      `repos/${repository}/statuses/${pr.head.sha}`,
+      "--input",
+      "-",
+      "--silent",
+    ],
+    {
+      input: JSON.stringify(
+        buildStatusPayload(
+          result,
+          `${serverUrl}/${repository}/actions/runs/${runId}`,
+        ),
+      ),
+      encoding: "utf8",
+    },
+  );
 }
 
 if (import.meta.main) {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkReview } from "./check-review.ts";
+import { buildStatusPayload, checkReview } from "./check-review.ts";
 
 describe("checkReview", () => {
   it("fails when there are no reviews", () => {
@@ -247,6 +247,60 @@ describe("checkReview", () => {
       pass: true,
       reason:
         "Latest reviewer verdict: APPROVE for head abcdefabcdefabcdefabcdefabcdefabcdefabcd. PASS.",
+    });
+  });
+});
+
+describe("buildStatusPayload", () => {
+  it("reports an approval with the workflow run URL", () => {
+    expect(
+      buildStatusPayload(
+        { pass: true, reason: "Approved for the current head." },
+        "https://github.com/aelomi/aelomi/actions/runs/123",
+      ),
+    ).toEqual({
+      context: "reviewer-approved",
+      state: "success",
+      description: "Approved for the current head.",
+      target_url: "https://github.com/aelomi/aelomi/actions/runs/123",
+    });
+  });
+
+  it("truncates a failure reason to 140 characters", () => {
+    expect(
+      buildStatusPayload(
+        {
+          pass: false,
+          reason:
+            "Latest reviewer verdict: CHANGES REQUESTED for head 1111111111111111111111111111111111111111. FAIL; run the reviewer agent on head 1111111111111111111111111111111111111111.",
+        },
+        "https://github.com/aelomi/aelomi/actions/runs/456",
+      ),
+    ).toEqual({
+      context: "reviewer-approved",
+      state: "failure",
+      description:
+        "Latest reviewer verdict: CHANGES REQUESTED for head 1111111111111111111111111111111111111111. FAIL; run the reviewer agent on head 111111111",
+      target_url: "https://github.com/aelomi/aelomi/actions/runs/456",
+    });
+  });
+
+  it("keeps a Unicode character whole at the truncation boundary", () => {
+    expect(
+      buildStatusPayload(
+        {
+          pass: false,
+          reason:
+            "Latest reviewer verdict: CHANGES REQUESTED for head 1111111111111111111111111111111111111111. FAIL; run the reviewer agent on head 11111111🤖extra",
+        },
+        "https://github.com/aelomi/aelomi/actions/runs/789",
+      ),
+    ).toEqual({
+      context: "reviewer-approved",
+      state: "failure",
+      description:
+        "Latest reviewer verdict: CHANGES REQUESTED for head 1111111111111111111111111111111111111111. FAIL; run the reviewer agent on head 11111111🤖",
+      target_url: "https://github.com/aelomi/aelomi/actions/runs/789",
     });
   });
 });
