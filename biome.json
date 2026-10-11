@@ -77,6 +77,34 @@
           }
         }
       }
+    },
+    {
+      "includes": ["src/**", "!src/ipc/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "paths": {
+                  "./ipc/bindings": {
+                    "importNames": ["commands"],
+                    "message": "Import commands from src/ipc so mock builds can swap them."
+                  },
+                  "../ipc/bindings": {
+                    "importNames": ["commands"],
+                    "message": "Import commands from src/ipc so mock builds can swap them."
+                  },
+                  "../../ipc/bindings": {
+                    "importNames": ["commands"],
+                    "message": "Import commands from src/ipc so mock builds can swap them."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     }
   ]
 }
