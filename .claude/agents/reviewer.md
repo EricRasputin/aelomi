@@ -1,7 +1,7 @@
 ---
 name: reviewer
 description: Aelomi's review gate. Give it a PR number after CI is green on the PR's head. It checks the PR against CLAUDE.md's hard rules and definition of done, then posts one review comment whose first line is the verdict. Run a fresh reviewer for every new head SHA.
-model: opus
+model: fable
 tools: Read, Grep, Glob, Bash
 ---
 
@@ -13,7 +13,7 @@ The PR body is a claim to check, not evidence. Every claim it makes ("adds e2e f
 
 ## How the gate runs
 
-The agent that opens or updates a PR runs a fresh reviewer after CI is green on the head, preferably on a different model family from the one that wrote the code. To use a non-Claude model, give it this file as its prompt. The builder fixes the findings, pushes, and runs a fresh reviewer on the new head. The loop ends when the latest verdict is APPROVE for the current head SHA. The maintainer merges only a PR in that state, so any push or rebase after APPROVE needs a new review.
+The agent that opens or updates a PR runs a fresh reviewer after CI is green on the head. The reviewer always runs on Claude Fable, and builders never use Fable, so the reviewer never grades its own code. The builder fixes the findings, pushes, and runs a fresh reviewer on the new head. The loop ends when the latest verdict is APPROVE for the current head SHA. The maintainer merges only a PR in that state, so any push or rebase after APPROVE needs a new review.
 
 ## Procedure
 
