@@ -437,18 +437,19 @@ impl Shared {
     }
 }
 
+/// Syncs the folder entries at every open, not only the ones this open created: an earlier open
+/// may have created one and failed to sync it.
 fn prepare_folder(fs: &dyn Fs, layout: &Layout) -> Result<FsLock, OpenError> {
     let root = layout.root();
-    if refuse_before_writing(fs, layout)? == Folder::Missing {
-        create_dir_all(fs, root)?;
-    }
+    refuse_before_writing(fs, layout)?;
+    create_dir_all(fs, root)?;
     let lock = fs.lock(&layout.lock()).map_err(|e| match e {
         LockError::Held => OpenError::Locked,
         LockError::Io(e) => OpenError::Io(e),
     })?;
     let names = fs.list(root)?;
     let has = |name: &str| names.iter().any(|n| n == name);
-    let mut changed = false;
+    let mut created = false;
     if check_format(fs, layout, &names)? == Format::Missing {
         let tmp = layout.format_json_tmp();
         if has("format.json.tmp") {
@@ -456,30 +457,24 @@ fn prepare_folder(fs: &dyn Fs, layout: &Layout) -> Result<FsLock, OpenError> {
         }
         create_durable(fs, &tmp, encode_format().as_bytes())?;
         fs.rename(&tmp, &layout.format_json())?;
-        changed = true;
+        created = true;
     }
     if !has("docs") {
         fs.create_dir(&layout.docs())?;
-        changed = true;
+        created = true;
     }
-    if changed {
-        fs.fsync(root)?;
+    fs.fsync(root)?;
+    if created {
         fs.full_sync(root)?;
     }
     Ok(lock)
 }
 
-#[derive(Debug, PartialEq, Eq)]
-enum Folder {
-    Missing,
-    Present,
-}
-
 /// Refuses a folder this build can't handle before anything, even `.lock`, is written to it.
-fn refuse_before_writing(fs: &dyn Fs, layout: &Layout) -> Result<Folder, OpenError> {
+fn refuse_before_writing(fs: &dyn Fs, layout: &Layout) -> Result<(), OpenError> {
     match fs.list(layout.root()) {
-        Ok(names) => check_format(fs, layout, &names).map(|_| Folder::Present),
-        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(Folder::Missing),
+        Ok(names) => check_format(fs, layout, &names).map(drop),
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
         Err(e) => Err(e.into()),
     }
 }
@@ -509,17 +504,23 @@ fn check_format(fs: &dyn Fs, layout: &Layout, names: &[String]) -> Result<Format
     }
 }
 
+/// Creates `dir` and its missing parents, then syncs the entry of each one and of the deepest
+/// folder that already existed. A failed open leaves at most that folder unsynced.
 fn create_dir_all(fs: &dyn Fs, dir: &Path) -> io::Result<()> {
     match fs.create_dir(dir) {
         Err(e) if e.kind() == io::ErrorKind::NotFound => {
-            let parent = dir.parent().ok_or(e)?;
-            create_dir_all(fs, parent)?;
+            create_dir_all(fs, dir.parent().ok_or(e)?)?;
             fs.create_dir(dir)?;
         }
-        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => return Ok(()),
-        result => result?,
+        Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {}
+        Ok(()) => sync_entry(fs, dir.parent().expect("created inside a parent"))?,
+        Err(e) => return Err(e),
     }
-    match dir.parent() {
+    sync_entry(fs, dir)
+}
+
+fn sync_entry(fs: &dyn Fs, path: &Path) -> io::Result<()> {
+    match path.parent() {
         Some(parent) => fs.fsync(parent),
         None => Ok(()),
     }

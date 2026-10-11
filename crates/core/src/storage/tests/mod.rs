@@ -1,6 +1,7 @@
 mod ack;
 mod compaction;
 mod crash;
+mod dirs;
 mod failures;
 mod fixture;
 mod real_disk;
@@ -22,6 +23,7 @@ pub(crate) struct Env {
     pub fs: Arc<SimFs>,
     pub clock: Arc<ManualClock>,
     pub limits: Limits,
+    pub root: PathBuf,
     store_clock: Arc<dyn Clock>,
     driver: Driver,
 }
@@ -35,6 +37,7 @@ impl Env {
             store_clock: clock.clone(),
             clock,
             limits: Limits::DATA_6,
+            root: PathBuf::from("/data"),
             driver: Driver::Manual,
         }
     }
@@ -47,13 +50,14 @@ impl Env {
             fs,
             clock,
             limits: Limits::DATA_6,
+            root: PathBuf::from("/data"),
             store_clock: system,
             driver: Driver::Threads,
         }
     }
 
     pub fn root(&self) -> &Path {
-        Path::new("/data")
+        &self.root
     }
 
     pub fn try_open(&self) -> Result<Store, OpenError> {

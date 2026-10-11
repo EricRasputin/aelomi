@@ -41,8 +41,13 @@ pub(crate) enum Crash {
 
 struct Fault {
     kind: OpKind,
-    path_contains: String,
+    at: FaultPath,
     errno: i32,
+}
+
+enum FaultPath {
+    Containing(String),
+    Exactly(PathBuf),
 }
 
 pub(crate) struct SimFs {
@@ -109,12 +114,13 @@ impl SimFs {
     }
 
     pub fn fail(&self, kind: OpKind, path_contains: &str, errno: i32) {
-        let path_contains = path_contains.to_owned();
-        self.sim().faults.push(Fault {
-            kind,
-            path_contains,
-            errno,
-        });
+        let at = FaultPath::Containing(path_contains.to_owned());
+        self.sim().faults.push(Fault { kind, at, errno });
+    }
+
+    pub fn fail_at(&self, kind: OpKind, path: &Path, errno: i32) {
+        let at = FaultPath::Exactly(path.to_path_buf());
+        self.sim().faults.push(Fault { kind, at, errno });
     }
 
     pub fn clear_faults(&self) {
@@ -231,7 +237,13 @@ impl SimFs {
         let fault = sim
             .faults
             .iter()
-            .find(|f| f.kind == kind && path.to_string_lossy().contains(&f.path_contains))
+            .find(|f| {
+                f.kind == kind
+                    && match &f.at {
+                        FaultPath::Containing(part) => path.to_string_lossy().contains(part),
+                        FaultPath::Exactly(at) => path == at,
+                    }
+            })
             .map(|f| io::Error::from_raw_os_error(f.errno));
         let result = match fault {
             Some(error) => {
