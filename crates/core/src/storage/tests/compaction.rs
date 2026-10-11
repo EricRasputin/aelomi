@@ -1,7 +1,9 @@
 use yrs::updates::decoder::Decode;
 use yrs::{Doc, GetString, ReadTxn, StateVector, Text, Transact, Update};
 
-use super::{Delivery, Env, assert_doc, doc, in_order, ops_of_updates, out_of_order, soon};
+use super::{
+    Delivery, Env, applied, assert_doc, doc, in_order, ops_of_updates, out_of_order, soon,
+};
 use crate::storage::compact::CompactError;
 use crate::storage::equality::Ops;
 use crate::storage::log::read_log;
@@ -87,6 +89,98 @@ fn compaction_interrupted_at_every_step_loses_nothing() {
             assert!(files[0].starts_with("snapshot-"), "{files:?}");
             drop(store);
             assert_doc(&env.open(), &a, &sent);
+        }
+    }
+}
+
+fn two_generations_pending(env: &Env, sent: &[Vec<u8>]) -> Store {
+    let store = env.open();
+    let a = doc("a");
+    let (first, second) = sent.split_at(sent.len() / 2);
+    for (half, then_compact) in [(first, true), (second, false)] {
+        for update in half {
+            store.append(&a, update).unwrap();
+        }
+        assert_eq!(store.flush(soon()), []);
+        if then_compact {
+            store.compact(&a).unwrap();
+        }
+    }
+    assert!(store.has_pending_structs(&a));
+    assert_eq!(
+        env.doc_files(&a),
+        [
+            "log-0000000001-0000000000.ylog",
+            "snapshot-0000000001.ysnap"
+        ]
+    );
+    store
+}
+
+fn assert_holds_what_was_sent(store: &Store, sent: &[Vec<u8>], case: &str) {
+    let (held, _) = applied(&store.load(&doc("a")).unwrap(), case);
+    assert!(
+        held.contains(&ops_of_updates(sent)),
+        "{case}: lost an update"
+    );
+    assert!(
+        held.only_from(&ops_of_updates(sent)),
+        "{case}: holds something never appended"
+    );
+}
+
+#[test]
+fn compaction_of_a_doc_with_pending_structs_interrupted_at_every_step_loses_nothing() {
+    let a = doc("a");
+    for (delivery, seed, n) in [
+        (Delivery::Shuffled, 35, 80),
+        (Delivery::OneWithheld, 17, 12),
+    ] {
+        let sent = out_of_order(seed, n, delivery);
+        let steps = {
+            let env = Env::manual();
+            let store = two_generations_pending(&env, &sent);
+            let before = env.fs.ops().len();
+            store.compact(&a).unwrap();
+            env.fs.ops().len() - before
+        };
+        assert_eq!(
+            steps, 18,
+            "list and 2 reads to merge, then as many as an in-order compaction"
+        );
+
+        for k in 0..=steps {
+            for crash in [Crash::DropUnsynced, Crash::KeepTornPrefix(k as u64)] {
+                let case = format!("{delivery:?}, crash after {k} ops ({crash:?})");
+                let env = Env::manual();
+                let store = two_generations_pending(&env, &sent);
+                env.fs.die_after(k);
+                let _ = store.compact(&a);
+                drop(store);
+                env.fs.crash(crash);
+
+                let store = env.open();
+                assert_holds_what_was_sent(&store, &sent, &case);
+                let result = match store.run_compactor_once() {
+                    Some((_, result)) => result,
+                    None => store.compact(&a),
+                };
+                result.unwrap_or_else(|e| panic!("{case}: next compaction fails: {e}"));
+                let files = env.doc_files(&a);
+                assert_eq!(files.len(), 1, "{case}: {files:?}");
+                assert!(files[0].starts_with("snapshot-"), "{case}: {files:?}");
+                drop(store);
+                let store = env.open();
+                assert_holds_what_was_sent(&store, &sent, &case);
+                if let Delivery::Shuffled = delivery {
+                    let loaded = doc_from([store.load(&a).unwrap().as_slice()]);
+                    assert_eq!(
+                        fingerprint(&loaded),
+                        fingerprint(&in_order(seed, n)),
+                        "{case}"
+                    );
+                }
+            }
         }
     }
 }
