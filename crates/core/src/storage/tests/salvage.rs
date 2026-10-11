@@ -1,5 +1,13 @@
+use std::collections::BTreeSet;
+
+use proptest::prelude::*;
+use proptest::sample::Index;
+use yrs::{Any, Doc, Map, Text, Transact};
+
 use super::{Env, applied, doc, ops_of_updates, record_at, soon, typed, without};
 use crate::storage::equality::Ops;
+use crate::storage::log::LOG_MAGIC;
+use crate::storage::testkit::UpdateGen;
 
 fn load_after(updates: &[Vec<u8>], damage: impl FnOnce(&mut [u8])) -> Ops {
     let env = Env::manual();
@@ -67,5 +75,89 @@ fn a_length_flip_loses_only_its_own_record_wherever_the_new_length_ends() {
             flip_length(bytes, record_at(&five, damaged), mask);
         });
         assert_eq!(held, ops_of_updates(&without(&five, &[damaged])), "{case}");
+    }
+}
+
+/// The framing a record had before segments were salted.
+fn unsalted_frame(payload: &[u8]) -> Vec<u8> {
+    let len = u32::try_from(payload.len()).unwrap().to_le_bytes();
+    [&len[..], &crc32fast::hash(payload).to_le_bytes(), payload].concat()
+}
+
+/// A note whose text is a whole record holding an update from a client that never wrote to
+/// the doc.
+fn note_holding_a_frame(writer: u64) -> Vec<u8> {
+    let frame = (1..200)
+        .map(|n| unsalted_frame(&typed(7, n)))
+        .find(|frame| frame.is_ascii())
+        .unwrap();
+    let client = Doc::with_client_id(writer);
+    let text = client.get_or_insert_text("t");
+    let mut txn = client.transact_mut();
+    text.insert(&mut txn, 0, std::str::from_utf8(&frame).unwrap());
+    txn.encode_update_v1()
+}
+
+#[test]
+fn a_record_written_inside_note_text_never_loads_after_damage() {
+    let updates = [note_holding_a_frame(300), typed(400, 3)];
+    let held = load_after(&updates, |bytes| bytes[record_at(&updates, 0) + 4] ^= 1);
+    assert_eq!(held, ops_of_updates(&updates[1..]));
+}
+
+#[test]
+fn a_frame_the_unsalted_format_accepts_never_loads_after_damage_whatever_the_salt() {
+    let mut salts = BTreeSet::new();
+    for writer in 0..64 {
+        let updates = [
+            note_holding_a_frame(1_000 + writer),
+            typed(2_000 + writer, 3),
+        ];
+        let held = load_after(&updates, |bytes| {
+            salts.insert(bytes[LOG_MAGIC.len()..record_at(&[], 0)].to_vec());
+            bytes[record_at(&updates, 0) + 4] ^= 1;
+        });
+        assert_eq!(held, ops_of_updates(&updates[1..]), "writer {writer}");
+    }
+    assert_eq!(salts.len(), 64, "each segment has its own salt");
+}
+
+fn carrying_a_frame(writer: u64, ghost: &[u8]) -> Vec<u8> {
+    let client = Doc::with_client_id(writer);
+    let blobs = client.get_or_insert_map("blobs");
+    let mut txn = client.transact_mut();
+    let blob = Any::Buffer(unsalted_frame(ghost).into());
+    blobs.insert(&mut txn, writer.to_string(), blob);
+    txn.encode_update_v1()
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig {
+        failure_persistence: None,
+        ..ProptestConfig::default()
+    })]
+
+    #[test]
+    fn a_flipped_bit_anywhere_in_a_segment_loads_nothing_that_was_never_appended(
+        seed in 0..1_000_000u64,
+        at in any::<Index>(),
+        bit in 0..8u8,
+    ) {
+        let ghosts = UpdateGen::new(seed, 2).updates(4);
+        let updates: Vec<Vec<u8>> = (0..4)
+            .map(|k| carrying_a_frame(900_000_000 + k as u64, &ghosts[k]))
+            .collect();
+        let mut flipped = 0;
+        let held = load_after(&updates, |bytes| {
+            flipped = at.index(bytes.len());
+            bytes[flipped] ^= 1 << bit;
+        });
+        let damaged = (0..updates.len())
+            .find(|&k| (record_at(&updates, k)..record_at(&updates, k + 1)).contains(&flipped));
+        let expected = match damaged {
+            Some(k) => ops_of_updates(&without(&updates, &[k])),
+            None => Ops::default(),
+        };
+        prop_assert_eq!(held, expected, "bit {} of byte {}", bit, flipped);
     }
 }
