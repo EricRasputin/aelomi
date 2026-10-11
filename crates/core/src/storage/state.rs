@@ -1,5 +1,5 @@
 use std::collections::{BTreeSet, VecDeque};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
 use yrs::Doc;
@@ -11,10 +11,35 @@ use super::layout::{DocFile, Generation, SegmentNo};
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Seq(pub u64);
 
+/// A panic on another thread doesn't stop storage. Only a yrs call can panic partway through
+/// a change, and [`DocSlot::state`] rebuilds the yrs doc.
+pub(crate) fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
 #[derive(Default)]
 pub(crate) struct DocSlot {
-    pub state: Mutex<Option<DocState>>,
-    pub files: Mutex<()>,
+    state: Mutex<Option<DocState>>,
+    files: Mutex<()>,
+}
+
+impl DocSlot {
+    /// A panic while the state was held may have left the yrs doc half-changed, so it goes
+    /// stale and is rebuilt from disk and the queue.
+    pub fn state(&self) -> MutexGuard<'_, Option<DocState>> {
+        self.state.lock().unwrap_or_else(|poisoned| {
+            let mut state = poisoned.into_inner();
+            if let Some(state) = state.as_mut() {
+                state.ydoc = Ydoc::Stale;
+            }
+            self.state.clear_poison();
+            state
+        })
+    }
+
+    pub fn files(&self) -> MutexGuard<'_, ()> {
+        lock(&self.files)
+    }
 }
 
 pub(crate) struct DocState {

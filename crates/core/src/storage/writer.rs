@@ -52,7 +52,7 @@ fn collect(shared: &Shared, now: Duration, retry_failing: bool) -> (Vec<Queued>,
     let mut queued = Vec::new();
     let mut retry_at: Option<Duration> = None;
     for (doc, slot) in shared.slots() {
-        let state = slot.state.lock().unwrap();
+        let state = slot.state();
         let Some(state) = state.as_ref() else {
             continue;
         };
@@ -83,7 +83,7 @@ fn collect(shared: &Shared, now: Duration, retry_failing: bool) -> (Vec<Queued>,
 
 fn write(shared: &Shared, queued: Vec<Queued>) -> Option<FailReason> {
     let slots: Vec<Arc<DocSlot>> = queued.iter().map(|q| q.slot.clone()).collect();
-    let _files: Vec<MutexGuard<'_, ()>> = slots.iter().map(|s| s.files.lock().unwrap()).collect();
+    let _files: Vec<MutexGuard<'_, ()>> = slots.iter().map(|s| s.files()).collect();
     let mut jobs: Vec<Job> = queued.into_iter().map(Job::new).collect();
 
     for job in &mut jobs {
@@ -125,7 +125,7 @@ impl Job {
     /// Takes the doc's segment once its file lock is held, so compaction can't rotate it and
     /// retire the old file between this read and the write.
     fn new(queued: Queued) -> Self {
-        let state = queued.slot.state.lock().unwrap();
+        let state = queued.slot.state();
         let log = &state
             .as_ref()
             .expect("a doc with queued updates is loaded")
@@ -197,7 +197,7 @@ fn commit(shared: &Shared, jobs: Vec<Job>) -> Option<FailReason> {
     let now = shared.clock.now();
     let mut latest_failure = None;
     for job in jobs {
-        let mut state = job.queued.slot.state.lock().unwrap();
+        let mut state = job.queued.slot.state();
         let state = state.as_mut().expect("a doc with queued updates is loaded");
         let current = state.log.segment == job.segment;
         match job.error {

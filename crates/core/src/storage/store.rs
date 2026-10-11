@@ -3,7 +3,7 @@ use std::fmt;
 use std::io;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Condvar, Mutex};
+use std::sync::{Arc, Condvar, Mutex, PoisonError};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
@@ -18,7 +18,7 @@ use super::fs::{Fs, FsLock, LockError, OsFs, create_durable};
 use super::health::{FailReason, Health};
 use super::layout::Layout;
 use super::recover::recover;
-use super::state::{Compaction, DocSlot, DocState, Limits, Queued, Seq, Ydoc};
+use super::state::{Compaction, DocSlot, DocState, Limits, Queued, Seq, Ydoc, lock};
 use super::writer;
 
 /// The durable store of Y.Docs in one data folder. See `ARCHITECTURE.md`, "Data model and storage".
@@ -177,10 +177,10 @@ impl Store {
     /// retries once at the start, whatever its backoff.
     pub fn flush(&self, deadline: Instant) -> Vec<DocId> {
         let target = Seq(self.shared.next_seq.load(Ordering::SeqCst) - 1);
-        self.shared.signal.lock().unwrap().retry_failing = true;
+        lock(&self.shared.signal).retry_failing = true;
         self.shared.notify_writer();
         loop {
-            let batches = self.shared.signal.lock().unwrap().batches;
+            let batches = lock(&self.shared.signal).batches;
             let pending = self.shared.pending_through(target);
             let now = Instant::now();
             if pending.is_empty() || now >= deadline {
@@ -194,7 +194,7 @@ impl Store {
                     }
                 }
                 Driver::Threads => {
-                    let signal = self.shared.signal.lock().unwrap();
+                    let signal = lock(&self.shared.signal);
                     if signal.batches == batches {
                         let _wait = self.shared.batch_done.wait_timeout(signal, deadline - now);
                     }
@@ -204,12 +204,12 @@ impl Store {
     }
 
     pub fn health(&self) -> Health {
-        self.shared.health.lock().unwrap().clone()
+        lock(&self.shared.health).clone()
     }
 
     /// Calls `f` with the new health each time it changes, from the writer's thread.
     pub fn subscribe_health(&self, f: impl Fn(&Health) + Send + Sync + 'static) {
-        self.shared.subscribers.lock().unwrap().push(Arc::new(f));
+        lock(&self.shared.subscribers).push(Arc::new(f));
     }
 
     /// Flushes until `deadline`, then stops the threads and releases the folder. If updates are
@@ -230,17 +230,14 @@ impl Store {
 
     #[cfg(test)]
     pub(crate) fn run_compactor_once(&self) -> Option<(DocId, Result<(), compact::CompactError>)> {
-        let doc = self.shared.signal.lock().unwrap().compactions.pop_front()?;
+        let doc = lock(&self.shared.signal).compactions.pop_front()?;
         let result = compact::compact_queued(&self.shared, &doc);
         Some((doc, result))
     }
 
     #[cfg(test)]
     pub(crate) fn queued_compactions(&self) -> Vec<DocId> {
-        self.shared
-            .signal
-            .lock()
-            .unwrap()
+        lock(&self.shared.signal)
             .compactions
             .iter()
             .cloned()
@@ -259,12 +256,7 @@ impl Store {
             std::mem::replace(&mut state.compaction, Compaction::Queued)
         })?;
         if was == Compaction::Queued {
-            self.shared
-                .signal
-                .lock()
-                .unwrap()
-                .compactions
-                .retain(|d| d != doc);
+            lock(&self.shared.signal).compactions.retain(|d| d != doc);
         }
         Ok(compact::rotate(&self.shared, doc))
     }
@@ -284,7 +276,7 @@ impl Store {
         let slot = self.shared.slot(doc);
         let update = update.to_vec();
         let _ = std::thread::spawn(move || {
-            let state = slot.state.lock().unwrap();
+            let state = slot.state();
             if let Some(Ydoc::Fresh(ydoc)) = state.as_ref().map(|s| &s.ydoc) {
                 let update = Update::decode_v1(&update).expect("a valid update");
                 ydoc.transact_mut().apply_update(update).unwrap();
@@ -304,7 +296,7 @@ impl Store {
 /// exit. Otherwise use [`Store::close`].
 impl Drop for Store {
     fn drop(&mut self) {
-        self.shared.signal.lock().unwrap().shutdown = true;
+        lock(&self.shared.signal).shutdown = true;
         self.shared.wake_writer.notify_all();
         self.shared.wake_compactor.notify_all();
         for thread in self.threads.drain(..) {
@@ -323,26 +315,21 @@ impl fmt::Debug for Store {
 
 impl Shared {
     pub fn slots(&self) -> Vec<(DocId, Arc<DocSlot>)> {
-        let docs = self.docs.lock().unwrap();
+        let docs = lock(&self.docs);
         docs.iter()
             .map(|(id, slot)| (id.clone(), slot.clone()))
             .collect()
     }
 
     pub fn slot(&self, doc: &DocId) -> Arc<DocSlot> {
-        self.docs
-            .lock()
-            .unwrap()
-            .entry(doc.clone())
-            .or_default()
-            .clone()
+        lock(&self.docs).entry(doc.clone()).or_default().clone()
     }
 
     fn with_doc<R>(&self, doc: &DocId, f: impl FnOnce(&Doc, &mut DocState) -> R) -> io::Result<R> {
         let slot = self.slot(doc);
         loop {
             {
-                let mut state = slot.state.lock().unwrap();
+                let mut state = slot.state();
                 if state.is_none() {
                     let recovered = recover(&*self.fs, &self.layout, doc, self.limits)?;
                     *state = Some(DocState {
@@ -367,8 +354,8 @@ impl Shared {
     }
 
     fn rebuild(&self, slot: &DocSlot, doc: &DocId) -> io::Result<()> {
-        let _io = slot.files.lock().unwrap();
-        let mut state = slot.state.lock().unwrap();
+        let _io = slot.files();
+        let mut state = slot.state();
         let state = state.as_mut().expect("only a loaded doc goes stale");
         if let Ydoc::Fresh(_) = state.ydoc {
             return Ok(());
@@ -390,7 +377,7 @@ impl Shared {
         self.slots()
             .into_iter()
             .filter(|(_, slot)| {
-                let state = slot.state.lock().unwrap();
+                let state = slot.state();
                 let front = state.as_ref().and_then(|s| s.queue.front());
                 front.is_some_and(|queued| queued.seq <= target)
             })
@@ -402,13 +389,13 @@ impl Shared {
         let mut failing = Vec::new();
         let mut reason = latest;
         for (id, slot) in self.slots() {
-            let state = slot.state.lock().unwrap();
+            let state = slot.state();
             if let Some(failure) = state.as_ref().and_then(|s| s.failure.as_ref()) {
                 reason.get_or_insert_with(|| failure.reason.clone());
                 failing.push(id);
             }
         }
-        let mut health = self.health.lock().unwrap();
+        let mut health = lock(&self.health);
         let next = match (reason, &*health) {
             (Some(reason), Health::Failing { since, .. }) if !failing.is_empty() => {
                 Health::Failing {
@@ -429,7 +416,7 @@ impl Shared {
         }
         *health = next.clone();
         drop(health);
-        let subscribers = self.subscribers.lock().unwrap().clone();
+        let subscribers = lock(&self.subscribers).clone();
         for subscriber in subscribers {
             subscriber(&next);
         }
@@ -453,11 +440,7 @@ impl Shared {
         match state.compaction {
             Compaction::Idle => {
                 state.compaction = Compaction::Queued;
-                self.signal
-                    .lock()
-                    .unwrap()
-                    .compactions
-                    .push_back(doc.clone());
+                lock(&self.signal).compactions.push_back(doc.clone());
                 self.wake_compactor.notify_one();
             }
             Compaction::Queued => {}
@@ -471,7 +454,7 @@ impl Shared {
 
     pub fn compaction_ended(&self, doc: &DocId) {
         let slot = self.slot(doc);
-        let mut state = slot.state.lock().unwrap();
+        let mut state = slot.state();
         let state = state.as_mut().expect("compaction runs on loaded docs");
         let ended = std::mem::replace(&mut state.compaction, Compaction::Idle);
         if matches!(
@@ -485,7 +468,7 @@ impl Shared {
     }
 
     pub fn wait_for_compaction(&self) -> Option<DocId> {
-        let mut signal = self.signal.lock().unwrap();
+        let mut signal = lock(&self.signal);
         loop {
             if signal.shutdown {
                 return None;
@@ -493,30 +476,33 @@ impl Shared {
             if let Some(doc) = signal.compactions.pop_front() {
                 return Some(doc);
             }
-            signal = self.wake_compactor.wait(signal).unwrap();
+            signal = self
+                .wake_compactor
+                .wait(signal)
+                .unwrap_or_else(PoisonError::into_inner);
         }
     }
 
     pub fn is_shutting_down(&self) -> bool {
-        self.signal.lock().unwrap().shutdown
+        lock(&self.signal).shutdown
     }
 
     fn notify_writer(&self) {
-        self.signal.lock().unwrap().work = true;
+        lock(&self.signal).work = true;
         self.wake_writer.notify_one();
     }
 
     pub fn take_retry_failing(&self) -> bool {
-        std::mem::take(&mut self.signal.lock().unwrap().retry_failing)
+        std::mem::take(&mut lock(&self.signal).retry_failing)
     }
 
     pub fn batch_finished(&self) {
-        self.signal.lock().unwrap().batches += 1;
+        lock(&self.signal).batches += 1;
         self.batch_done.notify_all();
     }
 
     pub fn wait_for_work(&self, wake_at: Option<Duration>) -> bool {
-        let mut signal = self.signal.lock().unwrap();
+        let mut signal = lock(&self.signal);
         loop {
             if signal.shutdown {
                 return false;
@@ -526,8 +512,19 @@ impl Shared {
             }
             match wake_at.map(|at| at.saturating_sub(self.clock.now())) {
                 Some(wait) if wait.is_zero() => return true,
-                Some(wait) => signal = self.wake_writer.wait_timeout(signal, wait).unwrap().0,
-                None => signal = self.wake_writer.wait(signal).unwrap(),
+                Some(wait) => {
+                    signal = self
+                        .wake_writer
+                        .wait_timeout(signal, wait)
+                        .unwrap_or_else(PoisonError::into_inner)
+                        .0
+                }
+                None => {
+                    signal = self
+                        .wake_writer
+                        .wait(signal)
+                        .unwrap_or_else(PoisonError::into_inner)
+                }
             }
         }
     }

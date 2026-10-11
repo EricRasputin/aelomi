@@ -65,7 +65,7 @@ pub(crate) struct Rotated {
 
 pub(crate) fn rotate(shared: &Shared, doc: &DocId) -> Option<Rotated> {
     let slot = shared.slot(doc);
-    let mut guard = slot.state.lock().unwrap();
+    let mut guard = slot.state();
     let state = guard.as_mut().expect("compaction runs on loaded docs");
     let Ydoc::Fresh(ydoc) = state.ydoc.clone() else {
         return None;
@@ -119,15 +119,8 @@ fn retire_older(shared: &Shared, doc: &DocId, rotated: &Rotated) -> io::Result<(
         })
         .collect();
 
-    let _files = slot.files.lock().unwrap();
-    let corrupt = slot
-        .state
-        .lock()
-        .unwrap()
-        .as_ref()
-        .expect("still loaded")
-        .corrupt
-        .clone();
+    let _files = slot.files();
+    let corrupt = slot.state().as_ref().expect("still loaded").corrupt.clone();
     let mut moved = BTreeSet::new();
     for (name, covered) in covered {
         if corrupt.contains(&name) {
@@ -141,7 +134,7 @@ fn retire_older(shared: &Shared, doc: &DocId, rotated: &Rotated) -> io::Result<(
     }
     shared.sync_quarantine_then_doc_dir(doc)?;
     fs.full_sync(&dir)?;
-    let mut state = slot.state.lock().unwrap();
+    let mut state = slot.state();
     let state = state.as_mut().expect("still loaded");
     state.corrupt.retain(|name| !moved.contains(name));
     Ok(())
@@ -154,7 +147,7 @@ fn read_older(
     generation: Generation,
 ) -> io::Result<Vec<(String, DocFile, Vec<u8>)>> {
     let fs = &*shared.fs;
-    let _files = slot.files.lock().unwrap();
+    let _files = slot.files();
     let mut older = Vec::new();
     for name in fs.list(dir)? {
         let Some(file) = DocFile::parse(&name).filter(|f| f.generation() < generation) else {
