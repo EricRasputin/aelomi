@@ -429,24 +429,33 @@ impl Sim {
                 if self.lookup(to).is_some() {
                     self.violation(format!("rename {path:?} onto existing {to:?}"));
                 }
+                let held = |coverage| matches!(coverage, Coverage::Full { .. });
+                if to.parent() != path.parent() && !self.may_leave(id, path, held) {
+                    self.violation(format!(
+                        "move {path:?} out of its folder, though no durable snapshot holds it"
+                    ));
+                }
             }
             OpKind::Remove => {
-                let (Ok((dir, name)), Node::File(removed)) = (self.parent(path), &self.nodes[id])
-                else {
-                    return;
-                };
-                let covered = match DocFile::parse(&name) {
-                    Some(DocFile::SnapshotTmp(_)) => true,
-                    Some(file) => self.durable_snapshot_covers(dir, file, &removed.data),
-                    None => name.ends_with(".tmp"),
-                };
-                if !covered {
+                let clean = |coverage| coverage == Coverage::Full { damaged: false };
+                if !self.may_leave(id, path, clean) {
                     self.violation(format!(
                         "remove {path:?}, not a .tmp or covered by a durable snapshot"
                     ));
                 }
             }
             _ => {}
+        }
+    }
+
+    fn may_leave(&self, id: usize, path: &Path, enough: impl Fn(Coverage) -> bool) -> bool {
+        let (Ok((dir, name)), Node::File(leaving)) = (self.parent(path), &self.nodes[id]) else {
+            return true;
+        };
+        match DocFile::parse(&name) {
+            Some(DocFile::SnapshotTmp(_)) => true,
+            Some(file) => self.durable_snapshot_covers(dir, file, &leaving.data, enough),
+            None => name.ends_with(".tmp"),
         }
     }
 
@@ -464,7 +473,13 @@ impl Sim {
         Ok(())
     }
 
-    fn durable_snapshot_covers(&self, dir: usize, file: DocFile, bytes: &[u8]) -> bool {
+    fn durable_snapshot_covers(
+        &self,
+        dir: usize,
+        file: DocFile,
+        bytes: &[u8],
+        enough: impl Fn(Coverage) -> bool,
+    ) -> bool {
         self.dir(dir).durable.iter().any(|(name, &id)| {
             let newer =
                 matches!(DocFile::parse(name), Some(DocFile::Snapshot(g)) if g > file.generation());
@@ -474,7 +489,7 @@ impl Sim {
                     .filter(|payload| applies(payload))
                     .and_then(|payload| Update::decode_v1(payload).ok())
                     .is_some_and(|update| {
-                        coverage(&Ops::of_update(&update), file, bytes) == Coverage::Whole
+                        enough(coverage(&Ops::of_update(&update), file, bytes))
                     }))
         })
     }
@@ -797,10 +812,37 @@ mod tests {
             );
         }
 
+        let msgs = caught(&|fs| {
+            let lacking = log(&UpdateGen::new(2, 1).next_update());
+            let corrupt_too = [&lacking[..], &[9, 0, 0]].concat();
+            fs.put_durable(&p("/d/log-0000000001-0000000000.ylog"), &corrupt_too);
+            fs.put_durable(&p("/d/snapshot-0000000002.ysnap"), &encode_snapshot(&held));
+            fs.create_dir(&p("/q")).unwrap();
+            let to = p("/q/log-0000000001-0000000000.ylog");
+            fs.rename(&p("/d/log-0000000001-0000000000.ylog"), &to)
+                .unwrap();
+        });
+        assert_eq!(
+            msgs,
+            [
+                r#"move "/d/log-0000000001-0000000000.ylog" out of its folder, though no durable snapshot holds it"#
+            ]
+        );
+
         let fs = sim();
         fs.put_durable(&p("/d/log-0000000001-0000000000.ylog"), &log(&held));
+        fs.put_durable(
+            &p("/d/log-0000000001-0000000001.ylog"),
+            &[&log(&held)[..], &[9, 0, 0]].concat(),
+        );
         fs.put_durable(&p("/d/snapshot-0000000002.ysnap"), &encode_snapshot(&held));
         fs.put_durable(&p("/d/snapshot-0000000003.ysnap.tmp"), b"z");
+        fs.create_dir(&p("/q")).unwrap();
+        fs.rename(
+            &p("/d/log-0000000001-0000000001.ylog"),
+            &p("/q/log-0000000001-0000000001.ylog"),
+        )
+        .unwrap();
         fs.remove(&p("/d/log-0000000001-0000000000.ylog")).unwrap();
         fs.remove(&p("/d/snapshot-0000000003.ysnap.tmp")).unwrap();
         assert_eq!(fs.list(&p("/d")).unwrap(), ["snapshot-0000000002.ysnap"]);

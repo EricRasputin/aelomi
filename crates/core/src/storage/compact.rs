@@ -217,7 +217,7 @@ fn retire_older(
         .into_iter()
         .map(|(name, file, bytes)| {
             let coverage = match file {
-                DocFile::SnapshotTmp(_) => Coverage::Whole,
+                DocFile::SnapshotTmp(_) => Coverage::Full { damaged: false },
                 _ => coverage(held, file, &bytes),
             };
             (name, coverage)
@@ -228,14 +228,20 @@ fn retire_older(
     let corrupt = slot.state().as_ref().expect("still loaded").corrupt.clone();
     let mut moved = BTreeSet::new();
     for (name, coverage) in coverage {
-        if corrupt.contains(&name) || coverage == Coverage::DamagedButHeld {
-            move_to_quarantine_unsynced(shared, doc, &name)?;
-            moved.insert(name);
-        } else if coverage == Coverage::Whole {
-            fs.remove(&dir.join(&name))?;
-        } else {
-            eprintln!("aelomi storage: kept {doc}/{name}, which has changes the snapshot lacks");
-            slot.state().as_mut().expect("still loaded").ydoc = Ydoc::Stale;
+        match coverage {
+            Coverage::Lacking => {
+                eprintln!(
+                    "aelomi storage: kept {doc}/{name}, which has changes the snapshot lacks"
+                );
+                slot.state().as_mut().expect("still loaded").ydoc = Ydoc::Stale;
+            }
+            Coverage::Full { damaged: false } if !corrupt.contains(&name) => {
+                fs.remove(&dir.join(&name))?;
+            }
+            Coverage::Full { .. } => {
+                move_to_quarantine_unsynced(shared, doc, &name)?;
+                moved.insert(name);
+            }
         }
     }
     shared.sync_quarantine_then_doc_dir(doc)?;
@@ -270,8 +276,7 @@ fn read_older(
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Coverage {
-    Whole,
-    DamagedButHeld,
+    Full { damaged: bool },
     Lacking,
 }
 
@@ -292,10 +297,10 @@ pub(crate) fn coverage(held: &Ops, file: DocFile, bytes: &[u8]) -> Coverage {
     let holds = records.iter().all(|record| {
         Update::decode_v1(record).is_ok_and(|update| held.contains(&Ops::of_update(&update)))
     });
-    match (holds, damaged) {
-        (false, _) => Coverage::Lacking,
-        (true, true) => Coverage::DamagedButHeld,
-        (true, false) => Coverage::Whole,
+    if holds {
+        Coverage::Full { damaged }
+    } else {
+        Coverage::Lacking
     }
 }
 
