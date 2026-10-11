@@ -19,6 +19,7 @@
     "e2e",
     "fixtures",
     "perf",
+    "scripts",
     "tests",
     "scripts",
     "e2e.config.ts",

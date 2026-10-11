@@ -29,6 +29,7 @@ This file maps the code. `CLAUDE.md` has the rules and the stack, `SPEC.md` has 
 | `scripts/check-licenses.mjs` | Fails on an npm license outside the allow list |
 | `scripts/check-no-mock.mjs` | Fails if the IPC mock is in the production bundle in `dist/` |
 | `scripts/protect-main.sh` | Makes each CI job a required check on `main` |
+| `scripts/tauri-dev.ts` | `pnpm dev:app`, which runs `tauri dev` with the UI on `AELOMI_DEV_PORT` or a free port |
 | `scripts/vendor-skills.sh` | Vendors the pinned pstack and Emil skills into `.claude/`, and fetches the gitignored pen.dev skill |
 | `deny.toml` | cargo-deny policy: Rust licenses, advisories, and sources |
 | `vite.config.ts` | Vite config. Mock builds go to `dist-mock/`, production builds to `dist/` |
