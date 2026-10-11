@@ -345,6 +345,9 @@ impl Shared {
         }
         state.ydoc = Ydoc::Fresh(recovered.ydoc);
         state.corrupt.extend(recovered.corrupt);
+        if recovered.needs_compaction {
+            self.queue_compaction(doc, state);
+        }
         Ok(())
     }
 
