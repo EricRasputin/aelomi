@@ -72,6 +72,11 @@ pub(crate) fn rotate(shared: &Shared, doc: &DocId) -> Option<Rotated> {
     };
     let txn = ydoc.transact();
     state.log.unsnapshotted = LogSize::default();
+    let snapshot = txn.encode_state_as_update_v1(&StateVector::default());
+    if u32::try_from(snapshot.len()).is_err() {
+        eprintln!("aelomi storage: skipped compacting {doc}, as its snapshot passes 4 GiB");
+        return None;
+    }
     let Some(expected) = Fingerprint::of(&txn) else {
         eprintln!(
             "aelomi storage: skipped compacting {doc}, as yrs can't apply its own encoding of it"
@@ -85,7 +90,7 @@ pub(crate) fn rotate(shared: &Shared, doc: &DocId) -> Option<Rotated> {
     state.log.segment = Segment::Next(generation, SegmentNo(0));
     Some(Rotated {
         generation,
-        state: txn.encode_state_as_update_v1(&StateVector::default()),
+        state: snapshot,
         expected,
     })
 }
@@ -110,7 +115,12 @@ fn retire_older(shared: &Shared, doc: &DocId, rotated: &Rotated) -> io::Result<(
     let (fs, layout) = (&*shared.fs, &shared.layout);
     let slot = shared.slot(doc);
     let dir = layout.doc_dir(doc);
-    let held = SnapshotIds::of(&rotated.state).expect("the snapshot was verified");
+    let Some(held) = SnapshotIds::of(&rotated.state) else {
+        eprintln!(
+            "aelomi storage: kept every older file of {doc}, as yrs can't decode its snapshot"
+        );
+        return Ok(());
+    };
     let covered: Vec<(String, bool)> = read_older(shared, &slot, &dir, rotated.generation)?
         .into_iter()
         .map(|(name, file, bytes)| {

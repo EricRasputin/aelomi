@@ -4,7 +4,7 @@ pub(crate) const LOG_MAGIC: [u8; 8] = *b"AELOG\0\0\x01";
 const RECORD_HEADER: usize = 8;
 
 pub(crate) fn encode_record(payload: &[u8], out: &mut Vec<u8>) {
-    let len = u32::try_from(payload.len()).expect("a Yjs update is under 4 GiB");
+    let len = u32::try_from(payload.len()).expect("append rejects an update over 4 GiB");
     out.extend_from_slice(&len.to_le_bytes());
     out.extend_from_slice(&crc32fast::hash(payload).to_le_bytes());
     out.extend_from_slice(payload);

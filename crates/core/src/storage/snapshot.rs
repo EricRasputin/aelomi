@@ -2,7 +2,7 @@ pub(crate) const SNAPSHOT_MAGIC: [u8; 8] = *b"AESNP\0\0\x01";
 const HEADER: usize = SNAPSHOT_MAGIC.len() + 8;
 
 pub(crate) fn encode_snapshot(payload: &[u8]) -> Vec<u8> {
-    let len = u32::try_from(payload.len()).expect("a Yjs update is under 4 GiB");
+    let len = u32::try_from(payload.len()).expect("compaction skips a snapshot over 4 GiB");
     let mut out = Vec::with_capacity(HEADER + payload.len());
     out.extend_from_slice(&SNAPSHOT_MAGIC);
     out.extend_from_slice(&len.to_le_bytes());
