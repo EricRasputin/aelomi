@@ -22,6 +22,6 @@ mod testkit;
 mod tests;
 
 pub use doc_id::{DocId, InvalidDocId};
-pub use health::FailReason;
+pub use health::{FailReason, Health};
 pub use state::Seq;
 pub use store::{AppendError, OpenError, Store};

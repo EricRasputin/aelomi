@@ -1,8 +1,10 @@
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use yrs::Doc;
 
+use super::health::FailReason;
 use super::layout::{DocFile, Generation, SegmentNo};
 
 /// An update's place in the order the store received updates.
@@ -26,6 +28,14 @@ pub(crate) struct DocState {
     /// only once a full sync covers it, so a failed batch is retried from here.
     pub queue: VecDeque<Queued>,
     pub log: LogState,
+    /// Set while the doc's last batch failed. Its queue waits until `retry_at`.
+    pub failure: Option<Failure>,
+}
+
+pub(crate) struct Failure {
+    pub reason: FailReason,
+    pub attempts: u32,
+    pub retry_at: Duration,
 }
 
 pub(crate) struct Queued {

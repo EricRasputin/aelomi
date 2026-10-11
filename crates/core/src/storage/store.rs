@@ -14,6 +14,7 @@ use super::clock::{Clock, SystemClock};
 use super::doc_id::DocId;
 use super::format::{FORMAT_VERSION, encode_format, parse_format};
 use super::fs::{Fs, FsLock, LockError, OsFs};
+use super::health::{FailReason, Health};
 use super::layout::Layout;
 use super::recover::recover;
 use super::state::{DocSlot, DocState, Queued, Seq};
@@ -65,7 +66,11 @@ pub(crate) struct Shared {
     signal: Mutex<Signal>,
     wake_writer: Condvar,
     batch_done: Condvar,
+    health: Mutex<Health>,
+    subscribers: Mutex<Vec<Subscriber>>,
 }
+
+type Subscriber = Arc<dyn Fn(&Health) + Send + Sync>;
 
 #[derive(Default)]
 struct Signal {
@@ -98,6 +103,8 @@ impl Store {
             signal: Mutex::default(),
             wake_writer: Condvar::new(),
             batch_done: Condvar::new(),
+            health: Mutex::new(Health::Healthy),
+            subscribers: Mutex::default(),
         });
         let threads = match driver {
             Driver::Threads => {
@@ -169,7 +176,7 @@ impl Store {
             }
             match self.shared.driver {
                 Driver::Manual => {
-                    if let Step::Idle = writer::run_once(&self.shared) {
+                    if let Step::Idle { .. } = writer::run_once(&self.shared) {
                         return pending;
                     }
                 }
@@ -181,6 +188,15 @@ impl Store {
                 }
             }
         }
+    }
+
+    pub fn health(&self) -> Health {
+        self.shared.health.lock().unwrap().clone()
+    }
+
+    /// Calls `f` with the new health each time it changes, from the writer's thread.
+    pub fn subscribe_health(&self, f: impl Fn(&Health) + Send + Sync + 'static) {
+        self.shared.subscribers.lock().unwrap().push(Arc::new(f));
     }
 
     /// Stops the writer after its current batch and releases the folder. Returns the docs
@@ -243,6 +259,7 @@ impl Shared {
                 ydoc: recovered.ydoc,
                 queue: VecDeque::new(),
                 log: recovered.log,
+                failure: None,
             });
         }
         Ok(f(state.as_mut().expect("loaded above")))
@@ -274,6 +291,49 @@ impl Shared {
             })
             .map(|(id, _)| id)
             .collect()
+    }
+
+    /// Recomputes health from every doc's failure state, after a batch. `latest` is the
+    /// batch's last failure, which becomes the reported reason.
+    pub fn refresh_health(&self, latest: Option<FailReason>) {
+        let mut failing = Vec::new();
+        let mut reason = latest;
+        for (id, slot) in self.slots() {
+            let state = slot.state.lock().unwrap();
+            if let Some(failure) = state.as_ref().and_then(|s| s.failure.as_ref()) {
+                reason.get_or_insert_with(|| failure.reason.clone());
+                failing.push(id);
+            }
+        }
+        let mut health = self.health.lock().unwrap();
+        let next = match (reason, &*health) {
+            (Some(reason), Health::Failing { since, .. }) if !failing.is_empty() => {
+                Health::Failing {
+                    reason,
+                    since: *since,
+                    pending_docs: failing,
+                }
+            }
+            (Some(reason), Health::Healthy) if !failing.is_empty() => Health::Failing {
+                reason,
+                since: self.clock.now(),
+                pending_docs: failing,
+            },
+            _ => Health::Healthy,
+        };
+        if next == *health {
+            return;
+        }
+        *health = next.clone();
+        drop(health);
+        let subscribers = self.subscribers.lock().unwrap().clone();
+        for subscriber in subscribers {
+            subscriber(&next);
+        }
+    }
+
+    pub fn is_shutting_down(&self) -> bool {
+        self.signal.lock().unwrap().shutdown
     }
 
     fn notify_writer(&self) {

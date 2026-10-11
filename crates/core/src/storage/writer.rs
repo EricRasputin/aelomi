@@ -6,18 +6,22 @@
 use std::io;
 use std::path::PathBuf;
 use std::sync::{Arc, MutexGuard};
+use std::time::Duration;
 
 use super::doc_id::DocId;
-use super::health::FailReason;
+use super::health::{FailReason, retry_delay};
 use super::log::{LOG_MAGIC, encode_record};
-use super::state::{DocDir, DocSlot, LogSize, Segment, Seq};
+use super::state::{DocDir, DocSlot, Failure, LogSize, Segment, Seq};
 use super::store::Shared;
 
 #[derive(Debug)]
 pub(crate) enum Step {
     Wrote(Batch),
-    /// Nothing was queued.
-    Idle,
+    /// Nothing is queued, except for failed docs waiting to retry. The earliest retry is due
+    /// at `retry_at` on the store's clock.
+    Idle {
+        retry_at: Option<Duration>,
+    },
 }
 
 #[derive(Debug, Default)]
@@ -28,15 +32,23 @@ pub(crate) struct Batch {
 }
 
 pub(crate) fn run(shared: &Shared) {
-    while shared.wait_for_work(None) {
-        while let Step::Wrote(_) = run_once(shared) {}
+    let mut retry_at = None;
+    while shared.wait_for_work(retry_at) {
+        retry_at = loop {
+            match run_once(shared) {
+                Step::Wrote(_) if shared.is_shutting_down() => return,
+                Step::Wrote(_) => {}
+                Step::Idle { retry_at } => break retry_at,
+            }
+        };
     }
 }
 
 pub(crate) fn run_once(shared: &Shared) -> Step {
-    let mut jobs = collect(shared);
+    let now = shared.clock.now();
+    let (mut jobs, retry_at) = collect(shared, now);
     if jobs.is_empty() {
-        return Step::Idle;
+        return Step::Idle { retry_at };
     }
     let slots: Vec<Arc<DocSlot>> = jobs.iter().map(|job| job.slot.clone()).collect();
     let _io: Vec<MutexGuard<'_, ()>> = slots.iter().map(|s| s.io.lock().unwrap()).collect();
@@ -58,7 +70,8 @@ pub(crate) fn run_once(shared: &Shared) -> Step {
         }
     }
 
-    let batch = commit(jobs);
+    let batch = commit(jobs, shared.clock.now());
+    shared.refresh_health(batch.failed.last().map(|(_, reason)| reason.clone()));
     shared.batch_finished();
     Step::Wrote(batch)
 }
@@ -76,8 +89,10 @@ struct Job {
     error: Option<FailReason>,
 }
 
-fn collect(shared: &Shared) -> Vec<Job> {
+/// Takes every doc with queued updates, except failed docs whose retry isn't due yet.
+fn collect(shared: &Shared, now: Duration) -> (Vec<Job>, Option<Duration>) {
     let mut jobs = Vec::new();
+    let mut retry_at: Option<Duration> = None;
     for (doc, slot) in shared.slots() {
         let state = slot.state.lock().unwrap();
         let Some(state) = state.as_ref() else {
@@ -86,6 +101,12 @@ fn collect(shared: &Shared) -> Vec<Job> {
         let Some(last) = state.queue.back() else {
             continue;
         };
+        if let Some(failure) = &state.failure
+            && failure.retry_at > now
+        {
+            retry_at = Some(retry_at.map_or(failure.retry_at, |at| at.min(failure.retry_at)));
+            continue;
+        }
         let mut records = Vec::new();
         for queued in &state.queue {
             encode_record(&queued.update, &mut records);
@@ -102,7 +123,7 @@ fn collect(shared: &Shared) -> Vec<Job> {
             error: None,
         });
     }
-    jobs
+    (jobs, retry_at)
 }
 
 impl Job {
@@ -160,7 +181,7 @@ impl Job {
     }
 }
 
-fn commit(jobs: Vec<Job>) -> Batch {
+fn commit(jobs: Vec<Job>, now: Duration) -> Batch {
     let mut batch = Batch::default();
     for job in jobs {
         let mut state = job.slot.state.lock().unwrap();
@@ -178,6 +199,7 @@ fn commit(jobs: Vec<Job>) -> Batch {
                 if job.segment.generation() == state.log.segment.generation() {
                     state.log.unsnapshotted += job.size();
                 }
+                state.failure = None;
                 batch.durable.push((job.doc, job.through));
             }
             Some(reason) => {
@@ -187,6 +209,13 @@ fn commit(jobs: Vec<Job>) -> Batch {
                 if current {
                     state.log.segment = job.segment.abandon();
                 }
+                let attempts = state.failure.as_ref().map_or(1, |f| f.attempts + 1);
+                let retry_at = now + retry_delay(attempts);
+                state.failure = Some(Failure {
+                    reason: reason.clone(),
+                    attempts,
+                    retry_at,
+                });
                 batch.failed.push((job.doc, reason));
             }
         }

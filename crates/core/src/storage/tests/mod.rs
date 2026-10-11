@@ -1,6 +1,7 @@
 //! Store tests. Every test on `SimFs` also asserts the append-only rules (invariant 1):
 //! `SimFs` checks them as each operation runs, and [`Env`] checks for violations on drop.
 
+mod failures;
 mod store;
 
 use std::path::{Path, PathBuf};
