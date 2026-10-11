@@ -7,7 +7,7 @@ use yrs::{Doc, Map, ReadTxn, StateVector, Text, TextPrelim, TextRef, Transact};
 use super::{Env, assert_doc, doc, soon};
 use crate::storage::sim_fs::OpKind;
 use crate::storage::state::Limits;
-use crate::storage::store::AppendError;
+use crate::storage::store::{AppendError, Store};
 use crate::storage::testkit::{UpdateGen, apply};
 use crate::storage::writer::Step;
 
@@ -397,9 +397,7 @@ fn compaction_quarantines_damage_a_rebuild_finds_while_it_runs() {
     assert_doc(&env.open(), &a, &sent);
 }
 
-#[test]
-fn a_later_compaction_keeps_a_snapshot_the_rebuilt_doc_lacks() {
-    let env = Env::manual();
+fn keep_a_snapshot_the_rebuilt_doc_lacks(env: &Env) -> (Store, Vec<Vec<u8>>) {
     let store = env.open();
     let a = doc("a");
     let PartlyApplying { good, bad } = partly_applying_update();
@@ -426,6 +424,14 @@ fn a_later_compaction_keeps_a_snapshot_the_rebuilt_doc_lacks() {
         "snapshot 2 lacks updates 6 to 10"
     );
     assert_eq!(env.fs.files().get(&all_ten), Some(&holding));
+    (store, sent)
+}
+
+#[test]
+fn a_later_compaction_keeps_a_snapshot_the_rebuilt_doc_lacks() {
+    let env = Env::manual();
+    let a = doc("a");
+    let (store, sent) = keep_a_snapshot_the_rebuilt_doc_lacks(&env);
     drop(store);
 
     let store = env.open();
@@ -435,6 +441,22 @@ fn a_later_compaction_keeps_a_snapshot_the_rebuilt_doc_lacks() {
         .expect("the older snapshot queues a compaction");
     compacted.unwrap();
     assert_eq!(env.doc_files(&a), ["snapshot-0000000003.ysnap"]);
+    drop(store);
+    assert_doc(&env.open(), &a, &sent);
+}
+
+#[test]
+fn a_kept_snapshot_merges_back_without_reopening() {
+    let env = Env::manual();
+    let a = doc("a");
+    let (store, sent) = keep_a_snapshot_the_rebuilt_doc_lacks(&env);
+    assert_doc(&store, &a, &sent);
+    let (_, compacted) = store
+        .run_compactor_once()
+        .expect("the older snapshot queues a compaction");
+    compacted.unwrap();
+    assert_eq!(env.doc_files(&a), ["snapshot-0000000003.ysnap"]);
+    assert_eq!(store.queued_compactions(), []);
     drop(store);
     assert_doc(&env.open(), &a, &sent);
 }
