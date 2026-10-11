@@ -285,7 +285,7 @@ pub(crate) fn coverage(held: &Ops, file: DocFile, bytes: &[u8]) -> Coverage {
         },
         DocFile::Log(..) => {
             let contents = read_log(bytes);
-            (contents.records, contents.end == LogEnd::Corrupt)
+            (contents.records, contents.end != LogEnd::Clean)
         }
         DocFile::SnapshotTmp(_) => return Coverage::Lacking,
     };

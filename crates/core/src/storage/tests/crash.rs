@@ -10,7 +10,7 @@ use yrs::{Doc, Transact};
 use super::{Delivery, Env, applied, doc, ops_of_updates, out_of_order, soon};
 use crate::storage::doc_id::DocId;
 use crate::storage::equality::Ops;
-use crate::storage::log::encode_record;
+use crate::storage::log::{LogEnd, encode_record, read_log};
 use crate::storage::sim_fs::{Crash, OpKind};
 use crate::storage::state::{Limits, Seq};
 use crate::storage::testkit::{SplitMix64, UpdateGen, apply, doc_from, fingerprint};
@@ -289,17 +289,14 @@ fn run(scenario: &Scenario) -> Result<(), TestCaseError> {
     while let Some((_, result)) = store.run_compactor_once() {
         prop_assert!(result.is_ok(), "compaction after the crash: {:?}", result);
     }
-    let quarantined: Vec<_> = env
-        .fs
-        .files()
-        .into_keys()
-        .filter(|p| p.starts_with("/data/quarantine"))
-        .collect();
-    prop_assert_eq!(
-        quarantined,
-        Vec::<std::path::PathBuf>::new(),
-        "a torn write is never corruption"
-    );
+    for (path, bytes) in env.quarantine() {
+        prop_assert_eq!(
+            read_log(&bytes).end,
+            LogEnd::Torn,
+            "{:?}: a torn write is never corruption",
+            path
+        );
+    }
     Ok(())
 }
 

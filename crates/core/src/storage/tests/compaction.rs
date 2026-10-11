@@ -88,6 +88,7 @@ fn compaction_interrupted_at_every_step_loses_nothing() {
             let files = env.doc_files(&a);
             assert_eq!(files.len(), 1, "crash after {k} ops ({crash:?}): {files:?}");
             assert!(files[0].starts_with("snapshot-"), "{files:?}");
+            assert_eq!(env.quarantine(), [].into(), "the old generation is deleted");
             drop(store);
             assert_doc(&env.open(), &a, &sent);
         }
@@ -170,6 +171,11 @@ fn compaction_of_a_doc_with_pending_structs_interrupted_at_every_step_loses_noth
                 let files = env.doc_files(&a);
                 assert_eq!(files.len(), 1, "{case}: {files:?}");
                 assert!(files[0].starts_with("snapshot-"), "{case}: {files:?}");
+                assert_eq!(
+                    env.quarantine(),
+                    [].into(),
+                    "{case}: the old generation is deleted"
+                );
                 drop(store);
                 let store = env.open();
                 assert_holds_what_was_sent(&store, &sent, &case);
