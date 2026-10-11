@@ -1,13 +1,13 @@
 # App window
 
-Aelomi opens one window titled `Aelomi` with standard macOS window controls and a native menu bar. The window shows an `Aelomi` header and a welcome section with the heading `A space to think.` and the line `Welcome to Aelomi.`. The sidebar and pages from SHELL-1 do not exist yet.
+Aelomi opens one window titled `Aelomi` with standard macOS window controls and a native menu bar. The window shows an `Aelomi` header and, below it, the IPC status line and a **Ping again** button. The sidebar and pages from SHELL-1 do not exist yet.
 
 ## Sub-features
 
 - `window-open` opens exactly one window titled `Aelomi`, 960 by 640 points by default.
 - `window-controls` shows the close, minimize, and full screen buttons.
 - `window-menu` shows the native menu bar with `Aelomi`, `File`, `Edit`, `View`, `Window`, and `Help`.
-- `window-content` shows the `Aelomi` header, the `A space to think.` heading, and `Welcome to Aelomi.`.
+- `window-content` shows the `Aelomi` header, the status line, and **Ping again**.
 
 ## How to get to it (user POV)
 
@@ -24,8 +24,8 @@ Preconditions:
 - **Window opens.** Launch the app. Run `$S/app.sh screenshot "$RUN" window`. The first line of `window.ax.txt` reads `title="Aelomi"` with `w=960 h=640`, and `window.png` shows one window with the title `Aelomi`.
 - **Window controls.** Look at `window.png`. The red, yellow, and green buttons are at the top left of the title bar.
 - **Menu bar.** Run `$S/app.sh menus "$RUN"`. The output is `Apple`, `Aelomi`, `File`, `Edit`, `View`, `Window`, and `Help`, one per line.
-- **Welcome content.** Run `$S/app.sh tree "$RUN"`. The tree has `AXGroup/AXLandmarkBanner` containing `AXStaticText "Aelomi"`, and `AXGroup/AXLandmarkMain` containing `AXHeading "A space to think."` and `AXStaticText "Welcome to Aelomi."`.
-- **Mock browser.** Run `$S/mock-drive.mjs`. `before.aria.yml` lists `banner: Aelomi`, `heading "A space to think." [level=1]`, and `paragraph: Welcome to Aelomi.`.
+- **Window content.** Run `$S/app.sh tree "$RUN"`. The tree has `AXGroup/AXLandmarkBanner` containing `AXStaticText "Aelomi"`, and `AXGroup/AXLandmarkMain` containing the status group and `AXButton "Ping again"`.
+- **Mock browser.** Run `$S/mock-drive.mjs`. `before.aria.yml` lists `banner: Aelomi`, the `status` line, and `button "Ping again"`.
 - **Proof.** Keep `window.png`, `window.ax.txt`, and the `menus` output. The screenshot shows the title bar, the header, and the welcome section.
 
 ## Gotchas

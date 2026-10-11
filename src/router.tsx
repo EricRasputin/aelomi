@@ -45,11 +45,7 @@ function IndexScreen() {
 
   return (
     <section className="w-full max-w-md">
-      <h1 className="text-3xl font-semibold tracking-tight">
-        A space to think.
-      </h1>
-      <p className="mt-3 text-base text-[var(--muted)]">Welcome to Aelomi.</p>
-      <p role="status" className="mt-8 text-base font-medium tabular-nums">
+      <p role="status" className="text-sm text-[var(--muted)] tabular-nums">
         {text}
       </p>
       <Tooltip.Root>
@@ -58,7 +54,7 @@ function IndexScreen() {
             type="button"
             disabled={status.kind === "pending"}
             onClick={() => void ping()}
-            className="mt-5 rounded-md border border-[var(--border)] bg-[var(--button)] px-3 py-1.5 text-sm font-medium hover:bg-[var(--button-hover)] focus-visible:outline-2 focus-visible:outline-offset-4 disabled:opacity-50"
+            className="mt-4 rounded-md border border-[var(--border)] bg-[var(--button)] px-3 py-1.5 text-sm font-medium hover:bg-[var(--button-hover)] focus-visible:outline-2 focus-visible:outline-offset-4 disabled:opacity-50"
           >
             Ping again
           </button>
