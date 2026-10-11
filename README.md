@@ -10,5 +10,5 @@ Run `pnpm lint`, `pnpm typecheck`, `pnpm test`, `cargo nextest run --workspace`,
 `cargo deny check`, `pnpm audit`, and `pnpm check-licenses` before committing.
 
 The license policy allows Unicode-3.0 for the ICU and unicode-ident dependencies,
-Zlib for foldhash and zlib-rs, and Unlicense for isbot.
+Zlib for foldhash, and Unlicense for isbot. Each is scoped to the packages named in `deny.toml` or `scripts/check-licenses.mjs`.
 `deny.toml` names two unmaintained transitive crates with no patched releases.
