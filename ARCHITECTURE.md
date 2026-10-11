@@ -8,6 +8,15 @@ This file maps the code. `CLAUDE.md` has the rules and the stack, `SPEC.md` has 
 |---|---|
 | `Cargo.toml` | Cargo workspace with members `crates/core` and `src-tauri`, edition 2024 |
 | `crates/core/` | `aelomi-core`, the Rust core |
+| `crates/core/src/storage/` | The append-only Y.Doc store. `mod.rs` lists the public API |
+| `crates/core/src/storage/store.rs` | `Store`: open the data folder, `load`, `append`, `flush`, `health`, `close` |
+| `crates/core/src/storage/writer.rs` | The writer thread and its group commit |
+| `crates/core/src/storage/compact.rs` | Compaction into a verified snapshot (DATA-6) |
+| `crates/core/src/storage/recover.rs` | Loading a doc from its files, and noticing an interrupted compaction |
+| `crates/core/src/storage/fs.rs` | The `Fs` seam and `OsFs`, with the `F_FULLFSYNC` sources |
+| `crates/core/src/storage/sim_fs.rs` | `SimFs`, the crash-simulating filesystem that checks the append-only rules |
+| `crates/core/src/storage/data_path.rs` | `check_data_path`, the cloud folder check (SHELL-11) |
+| `crates/core/src/storage/tests/` | Store tests: crash points, compaction, failures, acknowledgement time, refusals, the fixture |
 | `src-tauri/` | `aelomi`, the Tauri 2 shell (library name `aelomi_lib`) |
 | `src-tauri/src/lib.rs` | `run()` builds the Tauri app and registers the commands |
 | `src-tauri/src/commands.rs` | Tauri commands, the tauri-specta `builder()`, and the `bindings_are_current` test |
@@ -24,6 +33,7 @@ This file maps the code. `CLAUDE.md` has the rules and the stack, `SPEC.md` has 
 | `tests/playwright/` | Playwright WebKit tests and their guarded fixture |
 | `perf/` | Perf harnesses and `budgets.json`, the numbers every perf gate reads |
 | `fixtures/` | The seeded fixture generator and its output in `fixtures/generated/` |
+| `fixtures/data-folders/` | A data folder per storage format, for migration tests |
 | `tests/is-local-url.ts` | The loopback allow list both browser suites share |
 | `.github/workflows/ci.yml` | Every CI job |
 | `scripts/check-licenses.mjs` | Fails on an npm license outside the allow list |
@@ -42,7 +52,7 @@ This file maps the code. `CLAUDE.md` has the rules and the stack, `SPEC.md` has 
 
 The workspace has two crates. Both use the version, edition, and license from `[workspace.package]` in `Cargo.toml`.
 
-`crates/core` is the package `aelomi-core`. `CLAUDE.md` assigns storage, indexing, search, markdown export, the MCP server, and later the sync client to it. Today it holds one constant, `VERSION`. It depends on no Tauri crate, so its tests need no window.
+`crates/core` is the package `aelomi-core`. `CLAUDE.md` assigns storage, indexing, search, markdown export, the MCP server, and later the sync client to it. Today it holds the storage engine, `aelomi_core::storage`, and the constant `VERSION`. It depends on no Tauri crate, so its tests need no window.
 
 `src-tauri` is the package `aelomi`, the desktop shell. `src-tauri/src/main.rs` calls `aelomi_lib::run()`. `run()` in `src-tauri/src/lib.rs` passes the command list from `commands::builder()` to Tauri's `invoke_handler` and calls `macos::setup` from Tauri's `setup` hook.
 
@@ -140,12 +150,34 @@ To add a job, add its ID to `CHECKS` in `scripts/protect-main.sh` and rerun the 
 - **Fixtures.** `fixtures/generator.ts` (`pnpm fixtures`) writes `fixtures/generated/`: 10,000 pages for search, their expected query results, and a 5,000-block BlockNote page. `fixtures/generator.test.ts` regenerates them and compares hashes, so a hand edit fails Vitest.
 - **CI.** The `cold-start` job downloads the `build-app` artifact. The `keystroke` job runs the `perf` project. Both are in `CHECKS` in `scripts/protect-main.sh`.
 
-## Data model (planned, not built)
+## Data model and storage
 
-None of this section exists in code yet. It records the direction from `CLAUDE.md` and `SPEC.md` ("Where data lives") so new code fits it.
+Yjs is the source of truth (DATA-1, DATA-2). Each page body is one Y.Doc, and one workspace Y.Doc, `DocId::workspace()`, holds every page's record. Each database in v2 will be one Y.Doc with a Y.Map per row. `aelomi_core::storage::Store` keeps them.
 
-- Yjs is the source of truth. Each page body is one Y.Doc, and one workspace Y.Doc holds every page's record (DATA-1, DATA-2). Each database in v2 is one Y.Doc with a Y.Map per row.
-- Each Y.Doc is stored as a snapshot file plus newer update files. Writes only append, and compaction replaces old files with a verified snapshot (DATA-6).
-- SQLite (rusqlite with FTS5) is a derived index for search, backlinks, and the page tree. The app can always delete it and rebuild it from the Y.Docs (DATA-5).
-- The Rust core updates SQLite and emits change events over Tauri IPC. Zustand stores subscribe to them. Page content skips this path, because BlockNote edits Yjs directly.
-- The data folder is `~/Library/Application Support/Aelomi`. No data path may resolve into iCloud Drive.
+Not built yet: the Tauri wiring that opens the store at launch, and the SQLite index. SQLite (rusqlite with FTS5) will be a derived index for search, backlinks, and the page tree, always rebuildable from the Y.Docs (DATA-5). The Rust core will update it and emit change events over Tauri IPC for Zustand stores. Page content skips that path, because BlockNote edits Yjs directly.
+
+**Data folder.** `~/Library/Application Support/Aelomi`, checked by `check_data_path` before opening: it resolves every symlink and refuses a path inside `~/Library/Mobile Documents` or `~/Library/CloudStorage` (SHELL-11).
+
+```text
+Aelomi/
+  format.json                       {"format": 1}, written once through a .tmp rename
+  .lock                             exclusive lock while a Store has the folder open
+  docs/<doc-id>/
+    snapshot-<gen>.ysnap            the doc's full state when generation <gen> began
+    log-<gen>-<seg>.ylog            updates appended during generation <gen>
+  quarantine/<doc-id>/              files that failed validation, never deleted
+```
+
+`<gen>` and `<seg>` are 10-digit zero-padded numbers. A log is an 8-byte magic header, then records of a `u32` length, a `u32` CRC-32, and one Yjs v1 update. A snapshot is a magic header, length, CRC-32, and the doc's state as one update.
+
+**Refusals.** `Store::open` returns `Locked` if another process holds `.lock`, `NewerFormat` if `format.json` is newer than this build (checked before anything is written), and `UnknownFormat` if there is data but no readable `format.json`. Opening does no per-doc work.
+
+**Write path.** `append` checks that the bytes decode, applies them to the doc in memory, queues them, and returns a `Seq` without waiting. One writer thread takes every queued update, appends each doc's records to its current segment with one write per file, plain-`fsync`s each touched file and each directory with a new entry, then calls `F_FULLFSYNC` once for the whole batch. Only then are the updates acknowledged. Each session, and each write error, starts a new segment, so the writer never appends after a torn tail. `flush(deadline)` waits for everything appended before it.
+
+**Failures.** A doc whose write or sync fails is left out of the batch's full sync, so other docs still acknowledge. Its updates stay queued and retry into a new segment after 100 ms, doubling to 5 s. `health()` and `subscribe_health` report `Failing { reason, since, pending_docs }` until they land.
+
+**Compaction.** When a doc's unsnapshotted logs pass 1 MB or 10,000 records, the compactor thread rotates new appends to generation N + 1, writes `snapshot-(N+1).ysnap.tmp`, reads it back and checks it equals the doc, renames it into place, and only then deletes older files. Files that failed validation move to `quarantine/` instead. Equality compares state vectors, delete sets, root contents, and pending structs, never encoded bytes.
+
+**Loading.** A doc's first `load` or `append` reads its newest valid snapshot and every log. A log ends cleanly, with a torn tail (kept and never appended to), or with corruption (records before it load, and the file is quarantined at the next compaction). Leftovers from an interrupted compaction make that load compact again.
+
+**Testing seams.** `Store` runs over the `Fs` and `Clock` traits. `OsFs` and the system clock are production. `SimFs` models written, drive-cache, and durable layers, crashes with torn prefixes, injects errors and latency, and checks the append-only rules on every operation. With `Driver::Manual` a test steps the writer and compactor itself.
