@@ -1,18 +1,24 @@
 import { loadavg } from "node:os";
 import { keystrokeSurfaces, readBudgets } from "../../../perf/budgets.ts";
+import {
+  keystrokeMode,
+  type Split,
+  type Stamps,
+  splitResidual,
+  splitSample,
+} from "../../../perf/keystroke.ts";
 import { median, percentile95, range } from "../../../perf/stats.ts";
 import { expect, test } from "../fixtures";
 
 const budgets = readBudgets().keystroke;
+const mode = keystrokeMode(process.env);
+const gates = {
+  local: { metric: "full", budget: budgets.p95Ms.value },
+  ci: { metric: "appOwned", budget: budgets.hostedAppOwnedP95Ms.value },
+} as const satisfies Record<string, { metric: keyof Split; budget: number }>;
+const gate = gates[mode];
 
-type Sample = {
-  rafMc: number;
-  doubleRaf: number;
-  keyToInput: number;
-  inputToRaf: number;
-  shown: boolean;
-};
-type Recorder = { samples: Sample[]; missing: number };
+type Recorder = { samples: Stamps[]; missing: number };
 
 declare global {
   interface Window {
@@ -34,37 +40,40 @@ function installRecorder() {
     true,
   );
   addEventListener("input", (event) => {
-    const start = down;
-    const inputAt = performance.now();
+    const stamps: Stamps = {
+      down,
+      input: performance.now(),
+      raf: 0,
+      rafMc: 0,
+      doubleRaf: 0,
+      shown: false,
+    };
     const target = event.target instanceof HTMLElement ? event.target : null;
     requestAnimationFrame(() => {
-      const shown = (target?.lastChild?.textContent ?? "").endsWith(key);
-      if (!shown) recorder.missing += 1;
-      const sample: Sample = {
-        rafMc: 0,
-        doubleRaf: 0,
-        keyToInput: inputAt - start,
-        inputToRaf: performance.now() - inputAt,
-        shown,
-      };
+      stamps.raf = performance.now();
+      stamps.shown = (target?.lastChild?.textContent ?? "").endsWith(key);
+      if (!stamps.shown) recorder.missing += 1;
       let landed = 0;
       const finish = () => {
         landed += 1;
-        if (landed === 2) recorder.samples.push(sample);
+        if (landed === 2) recorder.samples.push(stamps);
       };
       const channel = new MessageChannel();
       channel.port1.onmessage = () => {
-        sample.rafMc = performance.now() - start;
+        stamps.rafMc = performance.now();
         finish();
       };
       channel.port2.postMessage(0);
       requestAnimationFrame(() => {
-        sample.doubleRaf = performance.now() - start;
+        stamps.doubleRaf = performance.now();
         finish();
       });
     });
   });
 }
+
+const p50p95 = (values: number[]) =>
+  `p50 ${median(values)} ms p95 ${percentile95(values)} ms`;
 
 for (const surface of keystrokeSurfaces) {
   const gated = surface === budgets.gate.value;
@@ -72,7 +81,7 @@ for (const surface of keystrokeSurfaces) {
     page,
   }, testInfo) => {
     await page.addInitScript(installRecorder);
-    const loads: { p95: number; kept: Sample[] }[] = [];
+    const loads: { p95: number; kept: Split[] }[] = [];
     const cadences: number[] = [];
     for (let load = 1; load <= budgets.pageLoads.value; load++) {
       await page.goto(`/perf/keystroke/${surface}`);
@@ -130,19 +139,26 @@ for (const surface of keystrokeSurfaces) {
         after.recorder?.missing,
         `load ${load}: typed character missing from the DOM at the first frame`,
       ).toBe(0);
-      const kept = samples.slice(budgets.discardedPerLoad.value);
-      loads.push({ p95: percentile95(kept.map((s) => s.rafMc)), kept });
+      const kept = samples
+        .slice(budgets.discardedPerLoad.value)
+        .map(splitSample);
+      loads.push({ p95: percentile95(kept.map((s) => s[gate.metric])), kept });
     }
     const kept = loads.flatMap((load) => load.kept);
-    const rafMc = kept.map((s) => s.rafMc);
-    const p95 = percentile95(rafMc);
-    const doubleRafP95 = percentile95(kept.map((s) => s.doubleRaf));
-    const inputToRaf = kept.map((s) => s.inputToRaf);
-    const verdict = p95 <= budgets.p95Ms.value ? "PASS" : "FAIL";
+    const column = (metric: keyof Split) => kept.map((s) => s[metric]);
+    const fullP95 = percentile95(column("full"));
+    const appOwnedP95 = percentile95(column("appOwned"));
+    const residual = Math.max(...kept.map(splitResidual));
+    const verdict = (value: number, budget: number) =>
+      `${value} ms ${value <= budget ? "<=" : ">"} ${budget} ms ${value <= budget ? "PASS" : "FAIL"}`;
+    const role = (metric: keyof Split) =>
+      gated && metric === gate.metric ? "gate" : "information";
     const summary = [
-      `${surface}: p95 ${p95} ms ${p95 <= budgets.p95Ms.value ? "<=" : ">"} ${budgets.p95Ms.value} ms ${verdict} (${gated ? "gate" : "information"})`,
-      `${kept.length} samples from ${loads.length} loads, per-load p95 ${loads.map((load) => load.p95).join(", ")}, p50 ${median(rafMc)} ms, range ${range(rafMc)} ms`,
-      `double rAF p95 ${doubleRafP95} ms, key-to-input p50 ${median(kept.map((s) => s.keyToInput))} ms, input-to-rAF p50 ${median(inputToRaf)} ms p95 ${percentile95(inputToRaf)} ms`,
+      `${surface}: full key-to-paint p95 ${verdict(fullP95, budgets.p95Ms.value)} (spec, ${role("full")})`,
+      `app-owned p95 ${verdict(appOwnedP95, budgets.hostedAppOwnedP95Ms.value)} (hosted, ${role("appOwned")})`,
+      `tick wait ${p50p95(column("tickWait"))}, key-to-input ${p50p95(column("keyToInput"))}, render ${p50p95(column("render"))}`,
+      `full key-to-paint p50 ${median(column("full"))} ms, range ${range(column("full"))} ms, per-load ${gate.metric} p95 ${loads.map((load) => load.p95).join(", ")}, double rAF p95 ${percentile95(column("doubleRaf"))} ms`,
+      `split check: max |app-owned + tick wait - full| ${residual.toFixed(3)} ms over ${kept.length} samples from ${loads.length} loads`,
       `idle rAF cadence per load ${cadences.map((c) => c.toFixed(1)).join(", ")} ms, load average ${loadavg()
         .map((x) => x.toFixed(2))
         .join(" ")}`,
@@ -153,10 +169,12 @@ for (const surface of keystrokeSurfaces) {
       body: JSON.stringify(
         {
           surface,
+          mode,
           gated,
-          budgetMs: budgets.p95Ms.value,
-          p95,
-          doubleRafP95,
+          gate,
+          fullP95,
+          appOwnedP95,
+          residual,
           loads,
         },
         null,
@@ -164,10 +182,14 @@ for (const surface of keystrokeSurfaces) {
       ),
       contentType: "application/json",
     });
+    expect(
+      residual,
+      `${surface}: split check, app-owned plus tick wait must equal full key-to-paint`,
+    ).toBeLessThanOrEqual(1);
     if (gated)
       expect(
-        p95,
-        `EDIT-14 ${surface} keystroke-to-paint p95`,
-      ).toBeLessThanOrEqual(budgets.p95Ms.value);
+        percentile95(column(gate.metric)),
+        `EDIT-14 ${surface} ${gate.metric} p95 (${mode} mode)`,
+      ).toBeLessThanOrEqual(gate.budget);
   });
 }

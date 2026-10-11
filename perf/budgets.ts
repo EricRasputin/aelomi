@@ -12,6 +12,7 @@ export type Budgets = {
   };
   keystroke: {
     p95Ms: Budget;
+    hostedAppOwnedP95Ms: Budget;
     gate: Budget<KeystrokeSurface>;
     pageLoads: Budget;
     samplesPerLoad: Budget;
@@ -70,6 +71,11 @@ export function readBudgets(): Budgets {
     },
     keystroke: {
       p95Ms: budget(keystroke, "keystroke.p95Ms", isNumber),
+      hostedAppOwnedP95Ms: budget(
+        keystroke,
+        "keystroke.hostedAppOwnedP95Ms",
+        isNumber,
+      ),
       gate: budget(keystroke, "keystroke.gate", isSurface),
       pageLoads: budget(keystroke, "keystroke.pageLoads", isNumber),
       samplesPerLoad: budget(keystroke, "keystroke.samplesPerLoad", isNumber),

@@ -97,11 +97,21 @@ exit code 1 means a budget miss.
 **Keystroke-to-paint.** `pnpm perf:keystroke` runs the Playwright `perf` project
 against `dist-mock/`. The mock build adds `/perf/keystroke/empty` and
 `/perf/keystroke/page-5000-blocks`, plain `contenteditable` surfaces that stand
-in for the editor until BlockNote lands. The test presses a key, waits for the
-first frame after the `input` event (rAF requested in the handler, then a
-MessageChannel task), and repeats 300 times per page load with 100 ms between
-keys, over 3 loads. It keeps 270 samples per load and gates the pooled p95 of
-the surface named by `keystroke.gate`; the other surface is reported.
+in for the editor until BlockNote lands. The test presses a key and records four
+stamps on the page clock: the key event, the end of the `input` handler, the
+start of the rAF callback requested there, and the MessageChannel task after
+that rAF, which is the first frame. Each sample splits into app-owned time (key
+to input, plus rAF to MessageChannel) and the tick wait between the input
+handler and the rAF callback. The two must add up to the full key-to-paint, and
+the test prints that check. It repeats 300 times per page load with 100 ms
+between keys, over 3 loads, and keeps 270 samples per load.
+Local mode gates the full key-to-paint p95 of the surface named by
+`keystroke.gate` against `p95Ms`, the CLAUDE.md budget. With `AELOMI_PERF_CI=1`,
+which the `keystroke` CI job sets, the test gates the app-owned p95 against
+`hostedAppOwnedP95Ms` instead and prints the full key-to-paint verdict as
+information, because on hosted `macos-15` the first rendering update after
+input waits for the runner's next 17 ms display tick. The other surface is
+reported in both modes.
 Did-it-happen guards fail the test when samples are missing or the text did not
 grow by one character per key.
 
