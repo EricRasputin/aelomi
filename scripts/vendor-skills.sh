@@ -11,6 +11,11 @@ EMIL_REF=e8a175de22ae1e49370fc144c1f3bb9aeedf988d
 # Not used in Aelomi (see CLAUDE.md > Workflow).
 EMIL_EXCLUDE="animate-expo mobile-native write-swift"
 
+# pen.dev's skill ships as SKILL.md inside its CLI package, under a license
+# that forbids redistribution. It is fetched here but gitignored, never committed.
+PEN_PKG=@pen.dev/cli
+PEN_VERSION=0.3.11
+
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SKILLS="$ROOT/.claude/skills"
 AGENTS="$ROOT/.claude/agents"
@@ -54,9 +59,14 @@ mkdir -p "$AGENTS"
 cp "$TMP/pstack/agents/poteto-agent.md" "$AGENTS/poteto-agent.md"
 cp "$TMP/pstack/agents/comment-sicko.md" "$AGENTS/comment-sicko.md"
 
+mkdir -p "$TMP/pen" "$SKILLS/pen-design"
+npm pack -q --pack-destination "$TMP/pen" "$PEN_PKG@$PEN_VERSION" >/dev/null
+tar -xzf "$TMP/pen"/*.tgz -C "$TMP/pen"
+cp "$TMP/pen/package/SKILL.md" "$SKILLS/pen-design/SKILL.md"
+
 cp "$TMP/pstack/LICENSE" "$VENDOR/pstack/LICENSE"
 cp "$TMP/emil/LICENSE" "$VENDOR/emil/LICENSE"
 printf '%s\n%s\n' "$PSTACK_URL" "$PSTACK_REF" >"$VENDOR/pstack/SOURCE"
 printf '%s\n%s\n' "$EMIL_URL" "$EMIL_REF" >"$VENDOR/emil/SOURCE"
 
-echo "Vendored pstack@${PSTACK_REF:0:7} and emil@${EMIL_REF:0:7} into .claude/"
+echo "Vendored pstack@${PSTACK_REF:0:7}, emil@${EMIL_REF:0:7} and pen-design@$PEN_VERSION into .claude/"

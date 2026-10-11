@@ -8,3 +8,5 @@ target/
 src-tauri/gen/
 .DS_Store
 perf-results/
+# Proprietary; fetched by scripts/vendor-skills.sh.
+.claude/skills/pen-design/
