@@ -31,6 +31,7 @@ This file maps the code. `CLAUDE.md` has the rules and the stack, `SPEC.md` has 
 | `tsconfig.json` | Strict TypeScript settings for `src/`, `e2e/`, and `tests/` |
 | `biome.json` | Lint and format rules, including the test import restrictions |
 | `.claude/agents/reviewer.md` | The reviewer agent that gates each PR |
+| `.claude/skills/verify-aelomi/` | The skill agents use to launch, drive, and screenshot the app to prove a change works, with its feature map |
 
 ## Rust workspace
 
