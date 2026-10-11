@@ -26,14 +26,10 @@ pub(crate) struct LogContents<'a> {
     pub end: LogEnd,
 }
 
-/// Reads every record it can. After a bad record it resumes at the next record whose CRC matches
-/// and whose payload decodes as an update. Only the first bad record decides torn or corrupt.
 pub(crate) fn read_log(bytes: &[u8]) -> LogContents<'_> {
     read_log_hashing(bytes, bytes.len().saturating_mul(RESYNC_HASHED_PER_BYTE))
 }
 
-/// Resyncing hashes at most this many bytes per byte of the file, so a file where most offsets
-/// read as long records still takes linear time. `measure_resync` times it.
 const RESYNC_HASHED_PER_BYTE: usize = 1024;
 
 pub(crate) fn read_log_hashing(bytes: &[u8], mut budget: usize) -> LogContents<'_> {
@@ -111,8 +107,8 @@ fn first_damage(bytes: &[u8], at: usize) -> Damage {
 enum Scan {
     ResumeAt(usize),
     NoRecord,
-    /// Records follow but none decodes as an update, or some were too long to hash.
     NoUpdate,
+    OverBudget,
 }
 
 fn resync(bytes: &[u8], from: usize, budget: &mut usize) -> Scan {
@@ -122,7 +118,7 @@ fn resync(bytes: &[u8], from: usize, budget: &mut usize) -> Scan {
             continue;
         };
         let Some(left) = budget.checked_sub(payload.len()) else {
-            scan = Scan::NoUpdate;
+            scan = Scan::OverBudget;
             continue;
         };
         *budget = left;

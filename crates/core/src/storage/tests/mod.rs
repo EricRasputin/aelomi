@@ -160,7 +160,6 @@ pub(crate) fn applied(bytes: &[u8], case: &str) -> (Ops, yrs::Doc) {
     (held, doc)
 }
 
-/// An update from its own client into its own root, so a log can lose it and nothing else.
 pub(crate) fn with_a_loner_sixth(mut updates: Vec<Vec<u8>>) -> Vec<Vec<u8>> {
     let client = yrs::Doc::with_client_id(999_999_999);
     let text = client.get_or_insert_text("loner");

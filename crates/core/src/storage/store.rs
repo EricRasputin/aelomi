@@ -397,8 +397,11 @@ impl Shared {
         }
         state.ydoc = Ydoc::Fresh(recovered.ydoc);
         state.corrupt.extend(recovered.corrupt);
-        if let Compaction::Running { rebuilt, .. } = &mut state.compaction {
-            *rebuilt = true;
+        if let Compaction::Running {
+            stale_when_done, ..
+        } = &mut state.compaction
+        {
+            *stale_when_done = true;
         }
         if recovered.needs_compaction {
             self.queue_compaction(doc, state);
@@ -511,12 +514,12 @@ impl Shared {
         let state = state.as_mut().expect("compaction runs on loaded docs");
         let Compaction::Running {
             asked_after_rotate,
-            rebuilt,
+            stale_when_done,
         } = std::mem::replace(&mut state.compaction, Compaction::Idle)
         else {
             return;
         };
-        if rebuilt {
+        if stale_when_done {
             state.ydoc = Ydoc::Stale;
         }
         if asked_after_rotate {

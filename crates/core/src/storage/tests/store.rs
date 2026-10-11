@@ -651,9 +651,7 @@ fn compaction_quarantines_damage_a_rebuild_finds_while_it_runs() {
     assert_doc(&env.open(), &a, &sent);
 }
 
-/// No store path leaves such a file since a doc rebuilt mid-compaction goes stale, so the test
-/// plants one to reach the check that keeps it.
-fn an_older_snapshot_the_loaded_doc_lacks(env: &Env) -> (Store, Vec<Vec<u8>>) {
+fn plant_an_older_snapshot_the_loaded_doc_lacks(env: &Env) -> (Store, Vec<Vec<u8>>) {
     let store = env.open();
     let a = doc("a");
     let sent = UpdateGen::new(31, 2).updates(10);
@@ -671,7 +669,7 @@ fn an_older_snapshot_the_loaded_doc_lacks(env: &Env) -> (Store, Vec<Vec<u8>>) {
 
 fn keep_a_snapshot_the_loaded_doc_lacks(env: &Env) -> (Store, Vec<Vec<u8>>) {
     let a = doc("a");
-    let (store, sent) = an_older_snapshot_the_loaded_doc_lacks(env);
+    let (store, sent) = plant_an_older_snapshot_the_loaded_doc_lacks(env);
     let older = env.path("docs/a/snapshot-0000000000.ysnap");
     let holding = env.fs.files()[&older].clone();
 
@@ -723,7 +721,7 @@ fn a_kept_snapshot_merges_back_without_reopening() {
 fn a_kept_snapshot_merges_back_even_if_a_sync_after_the_keep_fails() {
     let env = Env::manual();
     let a = doc("a");
-    let (store, sent) = an_older_snapshot_the_loaded_doc_lacks(&env);
+    let (store, sent) = plant_an_older_snapshot_the_loaded_doc_lacks(&env);
     let publish_then_retire = 1;
     env.fs.fail_at_after(
         OpKind::FullSync,

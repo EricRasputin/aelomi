@@ -71,11 +71,9 @@ impl DocState {
 pub(crate) enum Compaction {
     Idle,
     Queued,
-    /// A doc rebuilt while compaction runs can lack what the new snapshot holds, so it goes stale
-    /// when compaction ends.
     Running {
         asked_after_rotate: bool,
-        rebuilt: bool,
+        stale_when_done: bool,
     },
 }
 

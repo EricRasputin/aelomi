@@ -154,7 +154,7 @@ pub(crate) fn rotate(shared: &Shared, doc: &DocId) -> Option<Rotated> {
     };
     state.compaction = Compaction::Running {
         asked_after_rotate: false,
-        rebuilt: false,
+        stale_when_done: false,
     };
     let generation = state.log.segment.generation().next();
     state.log.segment = Segment::Next(generation, SegmentNo(0));
