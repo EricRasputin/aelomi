@@ -113,6 +113,24 @@ impl Ops {
         }
     }
 
+    /// Takes integrated blocks from yrs's plain encoding, since a client's blocks can start past
+    /// its state vector, and pending structs from the pending update itself, since yrs's
+    /// full-state encoding can renumber them. `None` if yrs can't decode its own encoding.
+    pub fn of_doc(txn: &impl ReadTxn) -> Option<Self> {
+        let integrated = Update::decode_v1(&txn.encode_diff_v1(&StateVector::default())).ok()?;
+        let mut ops = Self::of_update(&integrated);
+        let store = txn.store();
+        if let Some(pending) = store.pending_update() {
+            ops.inserted
+                .merge_with(pending.update.insertions(INCLUDE_DELETED));
+            ops.deleted.merge_with(pending.update.delete_set().clone());
+        }
+        if let Some(pending) = store.pending_ds() {
+            ops.deleted.merge_with(pending.clone());
+        }
+        Some(ops)
+    }
+
     pub fn contains(&self, other: &Self) -> bool {
         other.inserted.diff(&self.inserted).is_empty()
             && other.deleted.diff(&self.deleted).is_empty()

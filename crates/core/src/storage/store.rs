@@ -298,6 +298,16 @@ impl Store {
     }
 
     #[cfg(test)]
+    pub(crate) fn ops(&self, doc: &DocId) -> super::equality::Ops {
+        self.shared
+            .with_doc(doc, |ydoc, _| {
+                super::equality::Ops::of_doc(&ydoc.transact())
+            })
+            .expect("doc loads")
+            .expect("yrs decodes its own encoding")
+    }
+
+    #[cfg(test)]
     pub(crate) fn is_durable(&self, doc: &DocId, seq: Seq) -> bool {
         self.shared.pending_through(seq).binary_search(doc).is_err()
     }
