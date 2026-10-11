@@ -1,3 +1,4 @@
+use std::ffi::OsStr;
 use std::fmt;
 use std::io;
 use std::path::{Component, Path, PathBuf};
@@ -13,17 +14,34 @@ pub enum DataPathError {
 }
 
 /// Resolves every symlink in `path` and in each forbidden root, then refuses a path inside any
-/// root. Returns the resolved path. The path need not exist yet. Comparing paths the
-/// filesystem resolved, never raw strings, also handles APFS's case-insensitive names.
+/// root. Returns the resolved path. The path need not exist yet.
 pub fn check_data_path(path: &Path, forbidden_roots: &[PathBuf]) -> Result<PathBuf, DataPathError> {
     let resolved = canonicalize_allowing_missing(path)?;
     for root in forbidden_roots {
         let root = canonicalize_allowing_missing(root)?;
-        if resolved.starts_with(&root) {
+        if inside(&resolved, &root) {
             return Err(DataPathError::CloudFolder { resolved, root });
         }
     }
     Ok(resolved)
+}
+
+/// Ignores case, as APFS does by default. The filesystem fixes the case of parts that exist,
+/// but a root that doesn't exist yet keeps the case it was given.
+fn inside(path: &Path, root: &Path) -> bool {
+    let mut parts = path.components();
+    root.components().all(|r| {
+        parts
+            .next()
+            .is_some_and(|p| same_name(p.as_os_str(), r.as_os_str()))
+    })
+}
+
+fn same_name(a: &OsStr, b: &OsStr) -> bool {
+    match (a.to_str(), b.to_str()) {
+        (Some(a), Some(b)) => a.to_lowercase() == b.to_lowercase(),
+        _ => a == b,
+    }
 }
 
 fn canonicalize_allowing_missing(path: &Path) -> io::Result<PathBuf> {
@@ -245,6 +263,26 @@ mod tests {
         assert_eq!(
             home.check("local/missing/../other/data"),
             Ok(home.path("local/other/data"))
+        );
+    }
+
+    #[test]
+    fn a_forbidden_root_that_does_not_exist_yet_matches_any_case() {
+        let home = Home::new();
+        std::fs::remove_dir_all(home.path("Library/CloudStorage")).unwrap();
+        assert_eq!(
+            home.check("Library/cloudstorage/Aelomi"),
+            Err((
+                home.path("Library/cloudstorage/Aelomi"),
+                home.path("Library/CloudStorage")
+            ))
+        );
+        assert_eq!(
+            home.check("library/mobile documents/Aelomi"),
+            Err((
+                home.path("Library/Mobile Documents/Aelomi"),
+                home.path("Library/Mobile Documents")
+            ))
         );
     }
 
