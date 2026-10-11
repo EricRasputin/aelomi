@@ -50,5 +50,11 @@
       "value": 100,
       "why": "Keys 100 ms apart let the display link go idle between samples. Back-to-back keys measure vsync wait, not the app."
     }
+  },
+  "noise": {
+    "maxLoadPerCore": {
+      "value": 0.8,
+      "why": "1-minute load average per CPU core above which a run is labelled NOISY. CI's quiet-machine wait releases below a load of 2.5 on the 3-core macos-15 runner, which is 0.83 per core, so 0.8 is the same bar rounded down. The label is information: it never changes a verdict or an exit code, and nothing waits for the load to fall."
+    }
   }
 }
