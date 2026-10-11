@@ -6,10 +6,10 @@ use std::path::Path;
 use std::sync::atomic::Ordering;
 
 use yrs::updates::decoder::Decode;
-use yrs::{IdSet, ReadTxn, StateVector, Transact, Update};
+use yrs::{ReadTxn, StateVector, Transact, Update};
 
 use super::doc_id::DocId;
-use super::equality::Fingerprint;
+use super::equality::{Fingerprint, Ops};
 use super::fs::create_durable;
 use super::layout::{DocFile, Generation, SegmentNo};
 use super::log::{LogEnd, read_log};
@@ -124,7 +124,10 @@ fn retire_older(shared: &Shared, doc: &DocId, rotated: &Rotated) -> io::Result<(
     let (fs, layout) = (&*shared.fs, &shared.layout);
     let slot = shared.slot(doc);
     let dir = layout.doc_dir(doc);
-    let Some(held) = SnapshotIds::of(&rotated.state) else {
+    let Some(held) = Update::decode_v1(&rotated.state)
+        .ok()
+        .map(|update| Ops::of_update(&update))
+    else {
         eprintln!(
             "aelomi storage: kept every older file of {doc}, as yrs can't decode its snapshot"
         );
@@ -133,7 +136,7 @@ fn retire_older(shared: &Shared, doc: &DocId, rotated: &Rotated) -> io::Result<(
     let covered: Vec<(String, bool)> = read_older(shared, &slot, &dir, rotated.generation)?
         .into_iter()
         .map(|(name, file, bytes)| {
-            let covered = matches!(file, DocFile::SnapshotTmp(_)) || held.cover(file, &bytes);
+            let covered = matches!(file, DocFile::SnapshotTmp(_)) || covers(&held, file, &bytes);
             (name, covered)
         })
         .collect();
@@ -182,45 +185,22 @@ fn read_older(
     Ok(older)
 }
 
-const INCLUDE_DELETED: bool = true;
-
-pub(crate) struct SnapshotIds {
-    inserted: IdSet,
-    deleted: IdSet,
-}
-
-impl SnapshotIds {
-    pub fn of(payload: &[u8]) -> Option<Self> {
-        let update = Update::decode_v1(payload).ok()?;
-        Some(Self {
-            inserted: update.insertions(INCLUDE_DELETED),
-            deleted: update.delete_set().clone(),
+/// Compares IDs, not docs: yrs integrates pending structs differently when they arrive
+/// again, so a doc can change without gaining anything.
+pub(crate) fn covers(held: &Ops, file: DocFile, bytes: &[u8]) -> bool {
+    let records = match file {
+        DocFile::Snapshot(_) => read_snapshot(bytes).map(|payload| vec![payload]),
+        DocFile::Log(..) => {
+            let contents = read_log(bytes);
+            (contents.end != LogEnd::Corrupt).then_some(contents.records)
+        }
+        DocFile::SnapshotTmp(_) => None,
+    };
+    records.is_some_and(|records| {
+        records.iter().all(|record| {
+            Update::decode_v1(record).is_ok_and(|update| held.contains(&Ops::of_update(&update)))
         })
-    }
-
-    /// Compares IDs, not docs: yrs integrates pending structs differently when they arrive
-    /// again, so a doc can change without gaining anything.
-    pub fn cover(&self, file: DocFile, bytes: &[u8]) -> bool {
-        let records = match file {
-            DocFile::Snapshot(_) => read_snapshot(bytes).map(|payload| vec![payload]),
-            DocFile::Log(..) => {
-                let contents = read_log(bytes);
-                (contents.end != LogEnd::Corrupt).then_some(contents.records)
-            }
-            DocFile::SnapshotTmp(_) => None,
-        };
-        records.is_some_and(|records| {
-            records.iter().all(|record| {
-                Update::decode_v1(record).is_ok_and(|update| {
-                    update
-                        .insertions(INCLUDE_DELETED)
-                        .diff(&self.inserted)
-                        .is_empty()
-                        && update.delete_set().diff(&self.deleted).is_empty()
-                })
-            })
-        })
-    }
+    })
 }
 
 fn move_to_quarantine_unsynced(shared: &Shared, doc: &DocId, name: &str) -> io::Result<()> {

@@ -5,12 +5,15 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
 use super::clock::Clock;
-use super::compact::SnapshotIds;
+use super::compact::covers;
+use super::equality::Ops;
 use super::fs::{Fs, FsLock, LockError};
 use super::layout::DocFile;
 use super::recover::snapshot_doc;
 use super::snapshot::read_snapshot;
 use super::testkit::SplitMix64;
+use yrs::Update;
+use yrs::updates::decoder::Decode;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum OpKind {
@@ -456,8 +459,8 @@ impl Sim {
                 && matches!(&self.nodes[id], Node::File(f) if f.durable == f.data.len()
                     && read_snapshot(&f.data)
                         .filter(|payload| snapshot_doc(payload).is_some())
-                        .and_then(SnapshotIds::of)
-                        .is_some_and(|held| held.cover(file, bytes)))
+                        .and_then(|payload| Update::decode_v1(payload).ok())
+                        .is_some_and(|update| covers(&Ops::of_update(&update), file, bytes)))
         })
     }
 }

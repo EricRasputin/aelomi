@@ -94,3 +94,33 @@ fn branch(root: &Out) -> Option<BranchPtr> {
     };
     Some(BranchPtr::from(branch))
 }
+
+const INCLUDE_DELETED: bool = true;
+
+/// The operations an update or a doc holds: the ID of every block, deleted or not, and every
+/// deletion.
+#[derive(Debug)]
+pub(crate) struct Ops {
+    inserted: IdSet,
+    deleted: IdSet,
+}
+
+impl Ops {
+    pub fn of_update(update: &Update) -> Self {
+        Self {
+            inserted: update.insertions(INCLUDE_DELETED),
+            deleted: update.delete_set().clone(),
+        }
+    }
+
+    pub fn contains(&self, other: &Self) -> bool {
+        other.inserted.diff(&self.inserted).is_empty()
+            && other.deleted.diff(&self.deleted).is_empty()
+    }
+}
+
+impl PartialEq for Ops {
+    fn eq(&self, other: &Self) -> bool {
+        self.contains(other) && other.contains(self)
+    }
+}
