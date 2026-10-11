@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
 use super::{Env, assert_doc, doc, soon};
@@ -208,17 +208,15 @@ fn the_writer_thread_retries_on_its_own() {
     let store = env.open();
     let a = doc("a");
     let sent = UpdateGen::new(4, 2).updates(5);
+    let (changed, health) = mpsc::channel();
+    let changed = Mutex::new(changed);
+    store.subscribe_health(move |h| drop(changed.lock().unwrap().send(h.clone())));
     env.fs.fail(OpKind::Append, "/docs/a/", libc::EROFS);
     for update in &sent {
         store.append(&a, update).unwrap();
     }
-    let deadline = Instant::now() + Duration::from_secs(10);
-    while store.health() == Health::Healthy {
-        assert!(Instant::now() < deadline, "health turns Failing");
-        std::thread::sleep(ms(1));
-    }
-    let Health::Failing { reason, .. } = store.health() else {
-        unreachable!()
+    let Health::Failing { reason, .. } = health.recv().unwrap() else {
+        panic!("health turns Failing")
     };
     assert_eq!(reason, FailReason::ReadOnlyVolume);
     env.fs.clear_faults();

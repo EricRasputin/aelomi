@@ -185,9 +185,8 @@ fn a_docs_first_load_from_a_slow_disk_never_delays_another_docs_acknowledgement(
             store.run_writer_once();
             done.send(env.clock.now()).unwrap();
         });
-        let finished = writer_done.recv_timeout(Duration::from_secs(2));
+        let finished = writer_done.recv().unwrap();
         hold.release();
-        let finished = finished.unwrap_or_else(|_| writer_done.recv().unwrap());
         loading.join().unwrap();
         (store.is_durable(&a, seq), finished - start)
     });
