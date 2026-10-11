@@ -5,26 +5,8 @@ set -euo pipefail
 
 PSTACK_URL=https://github.com/backnotprop/pstack
 PSTACK_REF=3a604672c46cd8187d2b19980eae0a34f9f91138
-# Skills whose disable-model-invocation line is removed, so agents can call them: every
-# skill a pstack prompt sends an agent to. Still hidden: poteto-mode, which agents read by
-# path, and bro, correct, make-bot-ui, blast-radius, teach, recall, and poteto-help, which
-# only poteto-help's recipes for the user name.
-PSTACK_UNHIDE="
-  how why architect arena swarm interrogate reflect figure-it-out show-me-your-work
-  no-comments unslop technical-writing tdd benchmark-checklist typescript-best-practices
-  automate-me create-verification-skill maintain-verification-skill
-  principle-attack-the-premise principle-boundary-discipline principle-build-the-lever
-  principle-encode-lessons-in-structure principle-exhaust-the-design-space
-  principle-experience-first principle-explain-the-number principle-fix-root-causes
-  principle-foundational-thinking principle-guard-the-context-window
-  principle-laziness-protocol principle-make-operations-idempotent
-  principle-migrate-callers-then-delete-legacy-apis principle-minimize-reader-load
-  principle-model-the-domain principle-never-block-on-the-human
-  principle-outcome-oriented-execution principle-prove-it-works
-  principle-redesign-from-first-principles principle-separate-before-serializing-shared-state
-  principle-sequence-verifiable-units principle-subtract-before-you-add
-  principle-test-behavior-not-implementation principle-type-system-discipline
-"
+# Comment Sicko invokes these three; every other pstack skill keeps pstack's flag.
+PSTACK_UNHIDE="how why architect"
 
 EMIL_URL=https://github.com/emilkowalski/skill
 EMIL_REF=e8a175de22ae1e49370fc144c1f3bb9aeedf988d
@@ -75,8 +57,8 @@ fetch emil "$EMIL_URL" "$EMIL_REF"
 install pstack "$TMP/pstack/skills"
 install emil "$TMP/emil/skills" $EMIL_EXCLUDE
 
-# pstack hides every skill from the model, but its own prompts send agents to many of them.
-# Unhide those. install copies fresh files, so the line is always there.
+# pstack hides every skill from the model. Unhide PSTACK_UNHIDE.
+# install copies fresh files, so the line is always there.
 UNHIDE_LINE='disable-model-invocation: true'
 for skill in $PSTACK_UNHIDE; do
   file="$SKILLS/$skill/SKILL.md"
