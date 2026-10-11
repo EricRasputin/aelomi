@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { expect, test } from "vitest";
 import { readBudgets } from "./budgets.ts";
 import { median, percentile95 } from "./stats.ts";
@@ -16,10 +17,35 @@ test("p95 uses the nearest rank", () => {
   expect(percentile95([5])).toBe(5);
 });
 
-test("budgets.json holds every gate with a why", () => {
-  const budgets = readBudgets();
-  expect(budgets.coldStart.specMs.value).toBe(500);
-  expect(budgets.keystroke.p95Ms.value).toBe(16);
-  expect(budgets.coldStart.timedRuns.value).toBe(10);
-  expect(budgets.coldStart.hostedCiMs.why).not.toBe("");
+test("budgets.json holds every gate with a value and a why", () => {
+  const raw = JSON.parse(
+    readFileSync(new URL("./budgets.json", import.meta.url), "utf8"),
+  ) as Record<string, Record<string, { value?: unknown; why?: unknown }>>;
+  const entries = Object.entries(raw).flatMap(([section, gates]) =>
+    Object.entries(gates).map(([name, gate]) => ({
+      key: `${section}.${name}`,
+      ...gate,
+    })),
+  );
+  expect(entries.map((entry) => entry.key)).toEqual([
+    "coldStart.specMs",
+    "coldStart.hostedCiMs",
+    "coldStart.hostedNavToPaintMs",
+    "coldStart.warmupRuns",
+    "coldStart.timedRuns",
+    "keystroke.p95Ms",
+    "keystroke.hostedAppOwnedP95Ms",
+    "keystroke.gate",
+    "keystroke.pageLoads",
+    "keystroke.samplesPerLoad",
+    "keystroke.discardedPerLoad",
+    "keystroke.gapMs",
+  ]);
+  for (const entry of entries) {
+    expect(entry.why, `${entry.key} why`).toMatch(/\S/);
+    expect(typeof entry.value, `${entry.key} value`).toMatch(
+      /^(number|string)$/,
+    );
+  }
+  expect(readBudgets()).toEqual(raw);
 });
