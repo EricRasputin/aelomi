@@ -18,7 +18,7 @@ use super::fs::{Fs, FsLock, LockError, OsFs, create_durable};
 use super::health::{FailReason, Health};
 use super::layout::Layout;
 use super::recover::recover;
-use super::state::{DocSlot, DocState, Limits, Queued, Seq, Ydoc};
+use super::state::{Compaction, DocSlot, DocState, Limits, Queued, Seq, Ydoc};
 use super::writer;
 
 /// The durable store of Y.Docs in one data folder. See `ARCHITECTURE.md`, "Data model and storage".
@@ -255,10 +255,10 @@ impl Store {
 
     #[cfg(test)]
     pub(crate) fn begin_compaction(&self, doc: &DocId) -> io::Result<Option<compact::Rotated>> {
-        let queued = self.shared.with_doc(doc, |_, state| {
-            std::mem::replace(&mut state.compacting, true)
+        let was = self.shared.with_doc(doc, |_, state| {
+            std::mem::replace(&mut state.compaction, Compaction::Queued)
         })?;
-        if queued {
+        if was == Compaction::Queued {
             self.shared
                 .signal
                 .lock()
@@ -335,7 +335,7 @@ impl Shared {
                         log: recovered.log,
                         failure: None,
                         corrupt: recovered.corrupt,
-                        compacting: false,
+                        compaction: Compaction::Idle,
                     });
                     if recovered.needs_compaction {
                         self.queue_compaction(doc, state.as_mut().expect("loaded above"));
@@ -434,13 +434,28 @@ impl Shared {
     }
 
     pub fn queue_compaction(&self, doc: &DocId, state: &mut DocState) {
-        if !std::mem::replace(&mut state.compacting, true) {
-            self.signal
-                .lock()
-                .unwrap()
-                .compactions
-                .push_back(doc.clone());
-            self.wake_compactor.notify_one();
+        match state.compaction {
+            Compaction::Idle => {
+                state.compaction = Compaction::Queued;
+                self.signal
+                    .lock()
+                    .unwrap()
+                    .compactions
+                    .push_back(doc.clone());
+                self.wake_compactor.notify_one();
+            }
+            Compaction::Queued => {}
+            Compaction::Running { .. } => state.compaction = Compaction::Running { again: true },
+        }
+    }
+
+    pub fn compaction_ended(&self, doc: &DocId) {
+        let slot = self.slot(doc);
+        let mut state = slot.state.lock().unwrap();
+        let state = state.as_mut().expect("compaction runs on loaded docs");
+        let ended = std::mem::replace(&mut state.compaction, Compaction::Idle);
+        if ended == (Compaction::Running { again: true }) {
+            self.queue_compaction(doc, state);
         }
     }
 

@@ -23,7 +23,16 @@ pub(crate) struct DocState {
     pub log: LogState,
     pub failure: Option<Failure>,
     pub corrupt: BTreeSet<String>,
-    pub compacting: bool,
+    pub compaction: Compaction,
+}
+
+/// A request made while `Queued` is covered by the coming rotate. One made while `Running`
+/// came after the rotate took the doc's state, so it sets `again`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum Compaction {
+    Idle,
+    Queued,
+    Running { again: bool },
 }
 
 #[derive(Clone)]

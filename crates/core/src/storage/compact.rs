@@ -12,7 +12,7 @@ use super::fs::create_durable;
 use super::layout::{DocFile, Generation, SegmentNo};
 use super::recover::snapshot_doc;
 use super::snapshot::{encode_snapshot, read_snapshot};
-use super::state::{LogSize, Segment, Ydoc};
+use super::state::{Compaction, LogSize, Segment, Ydoc};
 use super::store::Shared;
 
 #[derive(Debug)]
@@ -40,9 +40,7 @@ pub(crate) fn finish(
     rotated: Option<Rotated>,
 ) -> Result<(), CompactError> {
     let result = rotated.map_or(Ok(()), |rotated| compact(shared, doc, rotated));
-    if let Some(state) = shared.slot(doc).state.lock().unwrap().as_mut() {
-        state.compacting = false;
-    }
+    shared.compaction_ended(doc);
     result
 }
 
@@ -70,6 +68,7 @@ pub(crate) fn rotate(shared: &Shared, doc: &DocId) -> Option<Rotated> {
     let Ydoc::Fresh(ydoc) = state.ydoc.clone() else {
         return None;
     };
+    state.compaction = Compaction::Running { again: false };
     let generation = state.log.segment.generation().next();
     state.log.segment = Segment::Next(generation, SegmentNo(0));
     state.log.unsnapshotted = LogSize::default();
