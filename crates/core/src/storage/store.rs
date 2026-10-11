@@ -249,6 +249,12 @@ impl Store {
 
     #[cfg(test)]
     pub(crate) fn compact(&self, doc: &DocId) -> Result<(), compact::CompactError> {
+        let rotated = self.begin_compaction(doc)?;
+        self.finish_compaction(doc, rotated)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn begin_compaction(&self, doc: &DocId) -> io::Result<Option<compact::Rotated>> {
         let queued = self.shared.with_doc(doc, |_, state| {
             std::mem::replace(&mut state.compacting, true)
         })?;
@@ -260,7 +266,16 @@ impl Store {
                 .compactions
                 .retain(|d| d != doc);
         }
-        compact::compact_queued(&self.shared, doc)
+        Ok(compact::rotate(&self.shared, doc))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn finish_compaction(
+        &self,
+        doc: &DocId,
+        rotated: Option<compact::Rotated>,
+    ) -> Result<(), compact::CompactError> {
+        compact::finish(&self.shared, doc, rotated)
     }
 
     #[cfg(test)]

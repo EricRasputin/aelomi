@@ -30,17 +30,23 @@ pub(crate) fn run(shared: &Shared) {
 }
 
 pub(crate) fn compact_queued(shared: &Shared, doc: &DocId) -> Result<(), CompactError> {
-    let result = compact(shared, doc);
+    let rotated = rotate(shared, doc);
+    finish(shared, doc, rotated)
+}
+
+pub(crate) fn finish(
+    shared: &Shared,
+    doc: &DocId,
+    rotated: Option<Rotated>,
+) -> Result<(), CompactError> {
+    let result = rotated.map_or(Ok(()), |rotated| compact(shared, doc, rotated));
     if let Some(state) = shared.slot(doc).state.lock().unwrap().as_mut() {
         state.compacting = false;
     }
     result
 }
 
-fn compact(shared: &Shared, doc: &DocId) -> Result<(), CompactError> {
-    let Some(rotated) = rotate(shared, doc) else {
-        return Ok(());
-    };
+fn compact(shared: &Shared, doc: &DocId, rotated: Rotated) -> Result<(), CompactError> {
     let tmp = shared
         .layout
         .doc_file(doc, DocFile::SnapshotTmp(rotated.generation));
@@ -51,14 +57,14 @@ fn compact(shared: &Shared, doc: &DocId) -> Result<(), CompactError> {
     Ok(())
 }
 
-struct Rotated {
+pub(crate) struct Rotated {
     generation: Generation,
     state: Vec<u8>,
     expected: Fingerprint,
     corrupt: BTreeSet<String>,
 }
 
-fn rotate(shared: &Shared, doc: &DocId) -> Option<Rotated> {
+pub(crate) fn rotate(shared: &Shared, doc: &DocId) -> Option<Rotated> {
     let slot = shared.slot(doc);
     let mut guard = slot.state.lock().unwrap();
     let state = guard.as_mut().expect("compaction runs on loaded docs");
