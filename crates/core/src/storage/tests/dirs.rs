@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use super::{Env, doc, soon};
+use super::{Env, assert_doc, doc, soon};
 use crate::storage::sim_fs::{Crash, OpKind};
 use crate::storage::testkit::{UpdateGen, doc_from, fingerprint};
 
@@ -33,4 +33,30 @@ fn a_retried_open_syncs_the_entries_a_failed_open_left_unsynced() {
             "{root}: acknowledged updates survive after syncing {failing} once failed"
         );
     }
+}
+
+#[test]
+fn a_doc_folder_an_earlier_session_left_unsynced_is_synced_before_an_acknowledgement() {
+    let env = Env::manual();
+    let a = doc("a");
+    let mut updates = UpdateGen::new(62, 2);
+    let (first, second) = (updates.next_update(), updates.next_update());
+
+    let store = env.open();
+    env.fs.fail_at(OpKind::Fsync, &env.path("docs"), libc::EIO);
+    store.append(&a, &first).unwrap();
+    assert_eq!(
+        store.flush(soon()),
+        std::slice::from_ref(&a),
+        "docs/ fails to sync"
+    );
+    drop(store);
+    env.fs.clear_faults();
+
+    let store = env.open();
+    store.append(&a, &second).unwrap();
+    assert_eq!(store.flush(soon()), []);
+    drop(store);
+    env.fs.crash(Crash::DropUnsynced);
+    assert_doc(&env.open(), &a, &[first, second]);
 }

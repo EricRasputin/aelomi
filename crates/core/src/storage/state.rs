@@ -46,7 +46,8 @@ pub(crate) struct LogState {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum DocDir {
     Missing,
-    Created,
+    /// The folder exists, but no batch this session has made its entry in `docs/` durable.
+    Unsynced,
     Durable,
 }
 
