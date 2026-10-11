@@ -7,7 +7,7 @@ Aelomi opens one window titled `Aelomi` with standard macOS window controls and 
 - `window-open` opens exactly one window titled `Aelomi`, 960 by 640 points by default.
 - `window-controls` shows the close, minimize, and full screen buttons.
 - `window-menu` shows the native menu bar with `Aelomi`, `File`, `Edit`, `View`, `Window`, and `Help`.
-- `window-content` shows the `Aelomi` header, the status line, and **Ping again**.
+- `window-content` shows the `Aelomi` header, the status line, and **Ping again**. Dev builds also show a **Storage probe** link to the dev-only `/dev/storage` route.
 
 ## How to get to it (user POV)
 
@@ -32,4 +32,4 @@ Preconditions:
 
 - `screenshot` fails with `No on-screen window for PID <pid>. Is it minimized?` while the window is minimized. Restore the window before you capture.
 - The window's close, minimize, and full screen buttons are in the accessibility tree of the window, not of the web content, so `tree` does not list them. Prove them from the screenshot.
-- `menus` lists the menu titles only. The default Tauri menu has no Aelomi commands yet.
+- `menus` lists the menu titles only. The menu is Tauri's default, except that **Quit Aelomi** (⌘Q) is the app's own item, so quitting flushes storage first.
