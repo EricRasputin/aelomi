@@ -191,5 +191,5 @@ pub(crate) fn doc_from<'a>(updates: impl IntoIterator<Item = &'a [u8]>) -> Doc {
 }
 
 pub(crate) fn fingerprint(doc: &Doc) -> Fingerprint {
-    Fingerprint::of(&doc.transact())
+    Fingerprint::of(&doc.transact()).expect("yrs settles the doc's pending structs")
 }

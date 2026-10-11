@@ -70,17 +70,23 @@ pub(crate) fn rotate(shared: &Shared, doc: &DocId) -> Option<Rotated> {
     let Ydoc::Fresh(ydoc) = state.ydoc.clone() else {
         return None;
     };
+    let txn = ydoc.transact();
+    state.log.unsnapshotted = LogSize::default();
+    let Some(expected) = Fingerprint::of(&txn) else {
+        eprintln!(
+            "aelomi storage: skipped compacting {doc}, as yrs can't apply its own encoding of it"
+        );
+        return None;
+    };
     state.compaction = Compaction::Running {
         asked_after_rotate: false,
     };
     let generation = state.log.segment.generation().next();
     state.log.segment = Segment::Next(generation, SegmentNo(0));
-    state.log.unsnapshotted = LogSize::default();
-    let txn = ydoc.transact();
     Some(Rotated {
         generation,
         state: txn.encode_state_as_update_v1(&StateVector::default()),
-        expected: Fingerprint::of(&txn),
+        expected,
     })
 }
 
@@ -88,7 +94,7 @@ fn verify(shared: &Shared, tmp: &Path, expected: &Fingerprint) -> Result<(), Com
     let written = shared.fs.read(tmp)?;
     let read_back = read_snapshot(&written).and_then(snapshot_doc);
     match read_back {
-        Some(doc) if Fingerprint::of(&doc.transact()) == *expected => Ok(()),
+        Some(doc) if Fingerprint::of(&doc.transact()).as_ref() == Some(expected) => Ok(()),
         _ => Err(CompactError::Mismatch),
     }
 }

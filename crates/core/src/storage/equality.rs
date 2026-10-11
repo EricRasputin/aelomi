@@ -31,7 +31,13 @@ struct PendingStructs {
 }
 
 impl Fingerprint {
-    pub fn of(txn: &impl ReadTxn) -> Self {
+    /// `None` when yrs can't apply its own encoding of the doc's pending structs.
+    pub fn of(txn: &impl ReadTxn) -> Option<Self> {
+        let pending = if txn.has_missing_updates() {
+            Some(settled_pending(txn)?)
+        } else {
+            None
+        };
         let roots = txn
             .root_refs()
             .filter_map(|(name, root)| {
@@ -42,27 +48,21 @@ impl Fingerprint {
                 (!empty).then(|| (name.to_owned(), Root { sequence, entries }))
             })
             .collect();
-        Self {
+        Some(Self {
             snapshot: txn.snapshot(),
             roots,
-            pending: pending(txn),
-        }
+            pending,
+        })
     }
 }
 
 /// How yrs records pending structs depends on the order and grouping they arrived in, but one
 /// encode and decode settles it, and another changes nothing. So they're compared settled.
-fn pending(txn: &impl ReadTxn) -> Option<PendingStructs> {
-    if !txn.has_missing_updates() {
-        return None;
-    }
+fn settled_pending(txn: &impl ReadTxn) -> Option<PendingStructs> {
     let state = txn.encode_state_as_update_v1(&StateVector::default());
     let settled = Doc::new();
-    let update = Update::decode_v1(&state).expect("yrs decodes its own encoding");
-    settled
-        .transact_mut()
-        .apply_update(update)
-        .expect("yrs applies its own encoding");
+    let update = Update::decode_v1(&state).ok()?;
+    settled.transact_mut().apply_update(update).ok()?;
     let txn = settled.transact();
     let store = txn.store();
     let (missing, inserts, deletes) = match store.pending_update() {
