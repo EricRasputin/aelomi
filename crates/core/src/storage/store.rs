@@ -64,7 +64,7 @@ pub(crate) struct Shared {
     driver: Driver,
     next_seq: AtomicU64,
     /// Whether `quarantine/` exists. It is never removed.
-    quarantine: AtomicBool,
+    pub quarantine: AtomicBool,
     docs: Mutex<BTreeMap<DocId, Arc<DocSlot>>>,
     signal: Mutex<Signal>,
     wake_writer: Condvar,
@@ -415,10 +415,6 @@ impl Shared {
         self.fs.fsync(&self.layout.doc_dir(doc))
     }
 
-    pub fn quarantine_created(&self) {
-        self.quarantine.store(true, Ordering::SeqCst);
-    }
-
     pub fn queue_compaction(&self, doc: &DocId, state: &mut DocState) {
         if !std::mem::replace(&mut state.compacting, true) {
             self.signal
@@ -487,7 +483,7 @@ fn prepare_folder(fs: &dyn Fs, layout: &Layout) -> Result<(FsLock, bool), OpenEr
     })?;
     let names = fs.list(root)?;
     let has = |name: &str| names.iter().any(|n| n == name);
-    let mut created = false;
+    let mut changed = false;
     if check_format(fs, layout, &names)? == Format::Missing {
         let tmp = layout.format_json_tmp();
         if has("format.json.tmp") {
@@ -495,14 +491,14 @@ fn prepare_folder(fs: &dyn Fs, layout: &Layout) -> Result<(FsLock, bool), OpenEr
         }
         create_durable(fs, &tmp, encode_format().as_bytes())?;
         fs.rename(&tmp, &layout.format_json())?;
-        created = true;
+        changed = true;
     }
     if !has("docs") {
         fs.create_dir(&layout.docs())?;
-        created = true;
+        changed = true;
     }
     fs.fsync(root)?;
-    if created {
+    if changed {
         fs.full_sync(root)?;
     }
     Ok((lock, has("quarantine")))

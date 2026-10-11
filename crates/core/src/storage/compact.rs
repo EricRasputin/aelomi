@@ -2,6 +2,7 @@ use std::collections::BTreeSet;
 use std::fmt;
 use std::io;
 use std::path::Path;
+use std::sync::atomic::Ordering;
 
 use yrs::{ReadTxn, StateVector, Transact};
 
@@ -125,7 +126,7 @@ fn retire_older(
 fn quarantine(shared: &Shared, doc: &DocId, name: &str) -> io::Result<()> {
     let (fs, layout) = (&*shared.fs, &shared.layout);
     let target_dir = layout.quarantine_dir(doc);
-    shared.quarantine_created();
+    shared.quarantine.store(true, Ordering::SeqCst);
     for dir in [layout.quarantine(), target_dir.clone()] {
         match fs.create_dir(&dir) {
             Err(e) if e.kind() != io::ErrorKind::AlreadyExists => return Err(e),
