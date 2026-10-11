@@ -12,14 +12,17 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 aelomi-core = { path = "../crates/core", version = "0.1.0" }
+base64 = "0.22"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 specta = { version = "=2.0.0-rc.25", features = ["derive", "function"] }
 tauri = { version = "2", features = ["specta"] }
-tauri-specta = { version = "=2.0.0-rc.25", features = ["typescript"] }
+tauri-specta = { version = "=2.0.0-rc.25", features = ["derive", "typescript"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 libc = "0.2"
 
 [dev-dependencies]
+aelomi-core = { path = "../crates/core", version = "0.1.0", features = ["test-support"] }
 specta-typescript = "=0.0.12"
+yrs = "0.28"

@@ -16,9 +16,13 @@ mod state;
 mod store;
 mod writer;
 
-#[cfg(test)]
+#[cfg(any(test, feature = "test-support"))]
+#[cfg_attr(not(test), allow(dead_code))]
 mod sim_fs;
-#[cfg(test)]
+#[cfg(feature = "test-support")]
+pub mod test_support;
+#[cfg(any(test, feature = "test-support"))]
+#[cfg_attr(not(test), allow(dead_code))]
 mod testkit;
 #[cfg(test)]
 mod tests;

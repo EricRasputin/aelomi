@@ -34,6 +34,8 @@ RUN=$($S/app.sh launch dev)
 
 `launch dev` runs `pnpm dev:app`, which prints `AELOMI_DEV_PORT=N` and runs `tauri dev` with the UI on port N. `launch` waits for the line `ping seq=1` in the shell log. The UI sends its first `ping` command when it mounts, and the Rust handler prints that line. So the line means the window, the UI, and the IPC round trip are up. `launch` then waits until the web content appears in the accessibility tree, and prints the run directory on stdout, for example `/tmp/aelomi-verify/20261011-064618-dev-ik2v`. Pass that directory to every other command.
 
+Each launch sets `AELOMI_DATA_DIR=<run dir>/data`, so every run, dev or release, keeps its data in its own folder and never touches `~/Library/Application Support`. The shell log's first storage line names the resolved folder, for example `storage status=Ready path=/private/tmp/aelomi-verify/<run>/data`. To launch on an existing folder, set the variable yourself. For example, `AELOMI_DATA_DIR=$OLD_RUN/data $S/app.sh launch dev` relaunches on an earlier run's data, or, while that run is still open, logs `storage status=Locked`. Debug builds also read `AELOMI_CLOUD_ROOTS`, a `:`-separated list that replaces `~/Library/Mobile Documents` and `~/Library/CloudStorage`. Point it at a fake folder to prove the cloud folder refusal without touching the real `~/Library`.
+
 The first build compiles about 350 crates and took 59 s on an Apple Silicon Mac. Later launches reuse it. `launch` waits up to 900 s. Change the limit with `--timeout S`. It fails early, and prints the end of the log, if the launch process exits, Rust fails to compile, or the app panics.
 
 Each `launch dev` serves the UI on its own free port and records it as `DEV_PORT` in `run.env`, so several dev instances can run at once, from one checkout or several. To choose the port, run `AELOMI_DEV_PORT=1500 $S/app.sh launch dev`. If that port is in use, Vite exits and the launch fails within seconds. The port is compiled into the app, so a launch on a new port relinks the `aelomi` crate, which took 5 to 7 s. Launches from one checkout share `target/`, so a second launch waits for the first build.
@@ -167,6 +169,7 @@ A real-app run directory holds these files:
 | `NAME.png` | The window, captured with `screencapture -l <window id>` |
 | `NAME.ax.txt` | The window ID, title, and bounds, and the accessibility tree when the screenshot was taken |
 | `run.env`, `pids` | The launch state that `doctor` and `cleanup` read |
+| `data/` | The run's data folder, unless the launch set `AELOMI_DATA_DIR` |
 
 `screencapture -l` captures the window itself, even when other windows cover it. On a Retina display the image is at 2x, so the 960 by 640 window gives a 1920 by 1280 PNG.
 
@@ -186,6 +189,8 @@ Hold every proof to these standards:
 ```bash
 $S/app.sh cleanup "$RUN"
 ```
+
+To quit the way a user does, run `$S/app.sh keys "$RUN" q command` and wait for the app PID to exit. The shell log then shows `quit flush via=ExitRequested pending=[]`. `cleanup` is not a quit: its SIGTERM skips that flush.
 
 `cleanup` stops every process the launch started: pnpm, the `dev:app` launcher, the Tauri CLI, Vite, and the app. It reads the process list that `launch` recorded, and it signals a PID only while that PID still runs the recorded command. It sends SIGTERM, and SIGKILL to anything left after 10 s. It keeps the run directory and lists its files. Running it twice is safe. Run it after every attempt, including a failed launch, before you launch again.
 

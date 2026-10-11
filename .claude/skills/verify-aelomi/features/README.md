@@ -7,7 +7,7 @@ This directory is the maintained source for verifying Aelomi's user-facing behav
 - Run commands from the repo root with `S=.claude/skills/verify-aelomi/scripts`.
 - Launch the real app with `RUN=$($S/app.sh launch dev)`, or with `launch app` after `pnpm tauri build --bundles app`.
 - Run `$S/app.sh doctor "$RUN"` and require every line to read `ok`.
-- The app has no stored data yet. Each launch starts with the status at `seq 1`.
+- Each launch stores its data in a new `<run dir>/data` folder (`AELOMI_DATA_DIR` in `../SKILL.md`), so it starts empty. The status line starts at `seq 1`.
 - Never drive an instance that this verification run did not start.
 
 ## Driving conventions

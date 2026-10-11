@@ -1,6 +1,16 @@
-import { commands as realCommands } from "./bindings";
+import { commands as realCommands, events as realEvents } from "./bindings";
 import { installMock } from "./mock";
 
-export const commands =
-  import.meta.env.MODE === "mock" ? installMock() : realCommands;
-export type { PingReply, PingRequest } from "./bindings";
+export const { commands, events } =
+  import.meta.env.MODE === "mock"
+    ? installMock()
+    : { commands: realCommands, events: realEvents };
+export type {
+  FailReason,
+  Health,
+  PingReply,
+  PingRequest,
+  QuitBlocked,
+  StorageError,
+  StorageStatus,
+} from "./bindings";
