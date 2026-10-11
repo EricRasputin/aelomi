@@ -397,6 +397,9 @@ impl Shared {
         }
         state.ydoc = Ydoc::Fresh(recovered.ydoc);
         state.corrupt.extend(recovered.corrupt);
+        if let Compaction::Running { rebuilt, .. } = &mut state.compaction {
+            *rebuilt = true;
+        }
         if recovered.needs_compaction {
             self.queue_compaction(doc, state);
         }
@@ -494,11 +497,10 @@ impl Shared {
                 self.wake_compactor.notify_one();
             }
             Compaction::Queued => {}
-            Compaction::Running { .. } => {
-                state.compaction = Compaction::Running {
-                    asked_after_rotate: true,
-                }
-            }
+            Compaction::Running {
+                ref mut asked_after_rotate,
+                ..
+            } => *asked_after_rotate = true,
         }
     }
 
@@ -506,13 +508,17 @@ impl Shared {
         let slot = self.slot(doc);
         let mut state = slot.state();
         let state = state.as_mut().expect("compaction runs on loaded docs");
-        let ended = std::mem::replace(&mut state.compaction, Compaction::Idle);
-        if matches!(
-            ended,
-            Compaction::Running {
-                asked_after_rotate: true
-            }
-        ) {
+        let Compaction::Running {
+            asked_after_rotate,
+            rebuilt,
+        } = std::mem::replace(&mut state.compaction, Compaction::Idle)
+        else {
+            return;
+        };
+        if rebuilt {
+            state.ydoc = Ydoc::Stale;
+        }
+        if asked_after_rotate {
             self.queue_compaction(doc, state);
         }
     }

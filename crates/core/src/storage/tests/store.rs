@@ -9,9 +9,10 @@ use super::{
 };
 use crate::storage::compact::CompactError;
 use crate::storage::sim_fs::{Crash, OpKind};
+use crate::storage::snapshot::encode_snapshot;
 use crate::storage::state::Limits;
 use crate::storage::store::{AppendError, Store};
-use crate::storage::testkit::{SplitMix64, UpdateGen, apply, fingerprint};
+use crate::storage::testkit::{SplitMix64, UpdateGen, apply, doc_from, fingerprint};
 use crate::storage::writer::Step;
 
 #[test]
@@ -602,47 +603,45 @@ fn compaction_quarantines_damage_a_rebuild_finds_while_it_runs() {
     assert_doc(&env.open(), &a, &sent);
 }
 
-fn rebuild_from_a_log_damaged_mid_compaction(env: &Env) -> (Store, Vec<Vec<u8>>) {
+/// No store path leaves such a file since a doc rebuilt mid-compaction goes stale, so the test
+/// plants one to reach the check that keeps it.
+fn an_older_snapshot_the_loaded_doc_lacks(env: &Env) -> (Store, Vec<Vec<u8>>) {
     let store = env.open();
     let a = doc("a");
-    let PartlyApplying { good, bad } = partly_applying_update();
-    let mut sent = vec![good];
-    sent.extend(UpdateGen::new(31, 2).updates(9));
-    for update in &sent {
+    let sent = UpdateGen::new(31, 2).updates(10);
+    for update in &sent[..5] {
         store.append(&a, update).unwrap();
     }
     assert_eq!(store.flush(soon()), []);
-    let rotated = store.begin_compaction(&a).unwrap();
-    let path = env.path("docs/a/log-0000000000-0000000000.ylog");
-    let sixth_record = 8 + sent[..5].iter().map(|u| 8 + u.len()).sum::<usize>();
-    env.fs.flip_bit(&path, sixth_record + 9);
-    assert!(store.append(&a, &bad).is_err());
-    assert_doc(&store, &a, &sent[..5]);
-    store.finish_compaction(&a, rotated).unwrap();
+    let all_ten = doc_from(sent.iter().map(Vec::as_slice))
+        .transact()
+        .encode_state_as_update_v1(&StateVector::default());
+    let older = env.path("docs/a/snapshot-0000000000.ysnap");
+    env.fs.put_durable(&older, &encode_snapshot(&all_ten));
     (store, sent)
 }
 
-fn keep_a_snapshot_the_rebuilt_doc_lacks(env: &Env) -> (Store, Vec<Vec<u8>>) {
+fn keep_a_snapshot_the_loaded_doc_lacks(env: &Env) -> (Store, Vec<Vec<u8>>) {
     let a = doc("a");
-    let (store, sent) = rebuild_from_a_log_damaged_mid_compaction(env);
-    let all_ten = env.path("docs/a/snapshot-0000000001.ysnap");
-    let holding = env.fs.files()[&all_ten].clone();
+    let (store, sent) = an_older_snapshot_the_loaded_doc_lacks(env);
+    let older = env.path("docs/a/snapshot-0000000000.ysnap");
+    let holding = env.fs.files()[&older].clone();
 
     store.compact(&a).unwrap();
     assert_eq!(
         env.doc_files(&a),
-        ["snapshot-0000000001.ysnap", "snapshot-0000000002.ysnap"],
-        "snapshot 2 lacks updates 6 to 10"
+        ["snapshot-0000000000.ysnap", "snapshot-0000000001.ysnap"],
+        "snapshot 1 lacks updates 6 to 10"
     );
-    assert_eq!(env.fs.files().get(&all_ten), Some(&holding));
+    assert_eq!(env.fs.files().get(&older), Some(&holding));
     (store, sent)
 }
 
 #[test]
-fn a_later_compaction_keeps_a_snapshot_the_rebuilt_doc_lacks() {
+fn a_later_compaction_keeps_a_snapshot_the_loaded_doc_lacks() {
     let env = Env::manual();
     let a = doc("a");
-    let (store, sent) = keep_a_snapshot_the_rebuilt_doc_lacks(&env);
+    let (store, sent) = keep_a_snapshot_the_loaded_doc_lacks(&env);
     drop(store);
 
     let store = env.open();
@@ -651,7 +650,7 @@ fn a_later_compaction_keeps_a_snapshot_the_rebuilt_doc_lacks() {
         .run_compactor_once()
         .expect("the older snapshot queues a compaction");
     compacted.unwrap();
-    assert_eq!(env.doc_files(&a), ["snapshot-0000000003.ysnap"]);
+    assert_eq!(env.doc_files(&a), ["snapshot-0000000002.ysnap"]);
     drop(store);
     assert_doc(&env.open(), &a, &sent);
 }
@@ -660,13 +659,13 @@ fn a_later_compaction_keeps_a_snapshot_the_rebuilt_doc_lacks() {
 fn a_kept_snapshot_merges_back_without_reopening() {
     let env = Env::manual();
     let a = doc("a");
-    let (store, sent) = keep_a_snapshot_the_rebuilt_doc_lacks(&env);
+    let (store, sent) = keep_a_snapshot_the_loaded_doc_lacks(&env);
     assert_doc(&store, &a, &sent);
     let (_, compacted) = store
         .run_compactor_once()
         .expect("the older snapshot queues a compaction");
     compacted.unwrap();
-    assert_eq!(env.doc_files(&a), ["snapshot-0000000003.ysnap"]);
+    assert_eq!(env.doc_files(&a), ["snapshot-0000000002.ysnap"]);
     assert_eq!(store.queued_compactions(), []);
     drop(store);
     assert_doc(&env.open(), &a, &sent);
@@ -676,7 +675,7 @@ fn a_kept_snapshot_merges_back_without_reopening() {
 fn a_kept_snapshot_merges_back_even_if_a_sync_after_the_keep_fails() {
     let env = Env::manual();
     let a = doc("a");
-    let (store, sent) = rebuild_from_a_log_damaged_mid_compaction(&env);
+    let (store, sent) = an_older_snapshot_the_loaded_doc_lacks(&env);
     let publish_then_retire = 1;
     env.fs.fail_at_after(
         OpKind::FullSync,
@@ -688,8 +687,8 @@ fn a_kept_snapshot_merges_back_even_if_a_sync_after_the_keep_fails() {
     env.fs.clear_faults();
     assert_eq!(
         env.doc_files(&a),
-        ["snapshot-0000000001.ysnap", "snapshot-0000000002.ysnap"],
-        "snapshot 2 lacks updates 6 to 10"
+        ["snapshot-0000000000.ysnap", "snapshot-0000000001.ysnap"],
+        "snapshot 1 lacks updates 6 to 10"
     );
     assert_doc(&store, &a, &sent);
     drop(store);
@@ -738,6 +737,7 @@ fn a_compaction_asked_for_while_one_runs_is_queued_once_when_it_ends() {
                 std::slice::from_ref(&a),
                 "asked by a rebuild and by the writer while it ran"
             );
+            assert_doc(&store, &a, &sent);
             let (_, compacted) = store.run_compactor_once().expect("a was queued");
             assert!(compacted.is_ok());
             assert_eq!(env.doc_files(&a), ["snapshot-0000000002.ysnap"]);
