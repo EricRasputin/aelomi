@@ -637,7 +637,7 @@ fn applies(payload: &[u8]) -> bool {
 mod tests {
     use super::*;
     use crate::storage::clock::ManualClock;
-    use crate::storage::log::{LOG_MAGIC, encode_record};
+    use crate::storage::log::encode_segment;
     use crate::storage::snapshot::encode_snapshot;
     use crate::storage::testkit::UpdateGen;
 
@@ -785,11 +785,7 @@ mod tests {
         }
 
         let held = UpdateGen::new(1, 1).next_update();
-        let log = |update: &[u8]| {
-            let mut bytes = LOG_MAGIC.to_vec();
-            encode_record(update, &mut bytes);
-            bytes
-        };
+        let log = |update: &[u8]| encode_segment(&[update]);
         for (name, log) in [
             (
                 "an update it lacks",

@@ -1,14 +1,51 @@
+use std::io;
+
 use yrs::Update;
 use yrs::updates::decoder::Decode;
 
-pub(crate) const LOG_MAGIC: [u8; 8] = *b"AELOG\0\0\x01";
+pub(crate) const LOG_MAGIC: [u8; 8] = *b"AELOG\0\0\x02";
+pub(crate) const SEGMENT_HEADER: usize = LOG_MAGIC.len() + 8;
 const RECORD_HEADER: usize = 8;
 
-pub(crate) fn encode_record(payload: &[u8], out: &mut Vec<u8>) {
+/// Every record's CRC covers its segment's random salt, so a resync never takes a record framed
+/// inside a payload, which can't know the salt, for a real one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Salt([u8; 8]);
+
+impl Salt {
+    pub fn random() -> io::Result<Self> {
+        let mut salt = [0; 8];
+        getrandom::fill(&mut salt)?;
+        Ok(Self(salt))
+    }
+
+    fn crc(self, payload: &[u8]) -> u32 {
+        let mut crc = crc32fast::Hasher::new();
+        crc.update(&self.0);
+        crc.update(payload);
+        crc.finalize()
+    }
+}
+
+pub(crate) fn segment_header(salt: Salt) -> Vec<u8> {
+    [&LOG_MAGIC[..], &salt.0].concat()
+}
+
+pub(crate) fn encode_record(salt: Salt, payload: &[u8], out: &mut Vec<u8>) {
     let len = u32::try_from(payload.len()).expect("append rejects an update over 4 GiB");
     out.extend_from_slice(&len.to_le_bytes());
-    out.extend_from_slice(&crc32fast::hash(payload).to_le_bytes());
+    out.extend_from_slice(&salt.crc(payload).to_le_bytes());
     out.extend_from_slice(payload);
+}
+
+#[cfg(test)]
+pub(crate) fn encode_segment<P: AsRef<[u8]>>(payloads: &[P]) -> Vec<u8> {
+    let salt = Salt::random().unwrap();
+    let mut out = segment_header(salt);
+    for payload in payloads {
+        encode_record(salt, payload.as_ref(), &mut out);
+    }
+    out
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -31,8 +68,9 @@ pub(crate) fn read_log(bytes: &[u8]) -> LogContents<'_> {
 const RESYNC_HASHED_PER_BYTE: usize = 1024;
 
 pub(crate) fn read_log_hashing(bytes: &[u8], mut budget: usize) -> LogContents<'_> {
-    if bytes.len() < LOG_MAGIC.len() {
-        let end = if LOG_MAGIC.starts_with(bytes) {
+    let Some(header) = bytes.get(..SEGMENT_HEADER) else {
+        let magic = &bytes[..bytes.len().min(LOG_MAGIC.len())];
+        let end = if LOG_MAGIC.starts_with(magic) {
             LogEnd::Torn
         } else {
             LogEnd::Corrupt
@@ -41,25 +79,26 @@ pub(crate) fn read_log_hashing(bytes: &[u8], mut budget: usize) -> LogContents<'
             records: Vec::new(),
             end,
         };
-    }
-    if bytes[..LOG_MAGIC.len()] != LOG_MAGIC {
+    };
+    if header[..LOG_MAGIC.len()] != LOG_MAGIC {
         return LogContents {
             records: Vec::new(),
             end: LogEnd::Corrupt,
         };
     }
+    let salt = Salt(header[LOG_MAGIC.len()..].try_into().unwrap());
     let mut contents = LogContents {
         records: Vec::new(),
         end: LogEnd::Clean,
     };
-    let mut at = LOG_MAGIC.len();
+    let mut at = SEGMENT_HEADER;
     while at < bytes.len() {
-        if let Some(payload) = record_at(bytes, at) {
+        if let Some(payload) = record_at(bytes, at, salt) {
             contents.records.push(payload);
             at += RECORD_HEADER + payload.len();
             continue;
         }
-        let scan = resync(bytes, at + 1, &mut budget);
+        let scan = resync(bytes, salt, at + 1, &mut budget);
         let torn = contents.end == LogEnd::Clean
             && a_torn_write_explains(bytes, at)
             && matches!(scan, Scan::NoRecord);
@@ -90,7 +129,7 @@ enum Scan {
     OverBudget,
 }
 
-fn resync(bytes: &[u8], from: usize, budget: &mut usize) -> Scan {
+fn resync(bytes: &[u8], salt: Salt, from: usize, budget: &mut usize) -> Scan {
     let mut scan = Scan::NoRecord;
     for at in from..bytes.len() {
         let Some((crc, payload)) = candidate_at(bytes, at) else {
@@ -101,7 +140,7 @@ fn resync(bytes: &[u8], from: usize, budget: &mut usize) -> Scan {
             continue;
         };
         *budget = left;
-        if crc32fast::hash(payload) != crc {
+        if salt.crc(payload) != crc {
             continue;
         }
         if Update::decode_v1(payload).is_ok() {
@@ -112,9 +151,9 @@ fn resync(bytes: &[u8], from: usize, budget: &mut usize) -> Scan {
     scan
 }
 
-fn record_at(bytes: &[u8], at: usize) -> Option<&[u8]> {
+fn record_at(bytes: &[u8], at: usize, salt: Salt) -> Option<&[u8]> {
     let (crc, payload) = candidate_at(bytes, at)?;
-    (crc32fast::hash(payload) == crc).then_some(payload)
+    (salt.crc(payload) == crc).then_some(payload)
 }
 
 /// The store never writes an empty payload, so a zero length is invalid. That keeps a
@@ -135,11 +174,19 @@ mod tests {
     use super::*;
     use crate::storage::testkit::UpdateGen;
 
+    const SALT: Salt = Salt(*b"testsalt");
+
     fn segment(payloads: &[&[u8]]) -> Vec<u8> {
-        let mut out = LOG_MAGIC.to_vec();
+        let mut out = segment_header(SALT);
         for p in payloads {
-            encode_record(p, &mut out);
+            encode_record(SALT, p, &mut out);
         }
+        out
+    }
+
+    fn record(payload: &[u8]) -> Vec<u8> {
+        let mut out = Vec::new();
+        encode_record(SALT, payload, &mut out);
         out
     }
 
@@ -153,8 +200,9 @@ mod tests {
                 end: LogEnd::Clean
             }
         );
-        assert_eq!(bytes.len(), 8 + (8 + 3) + (8 + 7) + (8 + 300));
-        assert_eq!(&bytes[8..16], &[3, 0, 0, 0, 241, 134, 108, 122]);
+        assert_eq!(bytes.len(), 16 + (8 + 3) + (8 + 7) + (8 + 300));
+        assert_eq!(&bytes[..16], b"AELOG\0\0\x02testsalt");
+        assert_eq!(&bytes[16..24], &[3, 0, 0, 0, 254, 219, 28, 208]);
     }
 
     #[test]
@@ -163,8 +211,8 @@ mod tests {
         let (alpha, beta, gamma) = (&updates[0][..], &updates[1][..], &updates[2][..]);
         let good = segment(&[alpha, beta]);
         let two = segment(&[alpha]).len();
-        let third = segment(&[gamma])[8..].to_vec();
-        let not_an_update = segment(&[b"not an update"])[8..].to_vec();
+        let third = record(gamma);
+        let not_an_update = record(b"not an update");
         let with = |tail: &[u8]| [good.as_slice(), tail].concat();
         let flip = |mut bytes: Vec<u8>, at: usize| {
             bytes[at] ^= 0x40;
@@ -184,7 +232,7 @@ mod tests {
             "a flipped 0x40 adds 64 to beta's length"
         );
         let skips_one = flip(
-            [good.as_slice(), &segment(&[&sixty_four])[8..], &third].concat(),
+            [good.as_slice(), &record(&sixty_four), &third].concat(),
             two,
         );
         let a: &[&[u8]] = &[alpha];
@@ -203,7 +251,20 @@ mod tests {
                 none,
                 LogEnd::Corrupt,
             ),
-            ("magic only", LOG_MAGIC.to_vec(), none, LogEnd::Clean),
+            ("magic only", LOG_MAGIC.to_vec(), none, LogEnd::Torn),
+            (
+                "part of the salt",
+                segment(&[])[..12].to_vec(),
+                none,
+                LogEnd::Torn,
+            ),
+            ("header only", segment(&[]), none, LogEnd::Clean),
+            (
+                "a record salted for another segment",
+                [&LOG_MAGIC[..], b"othersal", &record(alpha)].concat(),
+                none,
+                LogEnd::Torn,
+            ),
             ("short header at end", with(&third[..5]), ab, LogEnd::Torn),
             (
                 "short payload at end",
@@ -289,7 +350,7 @@ mod tests {
             bytes[two + 3] ^= 0x40;
             bytes
         };
-        let then_gamma = absurd_length(&segment(&[gamma])[8..]);
+        let then_gamma = absurd_length(&record(gamma));
         let then_junk = absurd_length(&[1, 0, 0, 0, 0, 0, 0, 0, 0xab]);
         let a: &[&[u8]] = &[alpha];
         let ac: &[&[u8]] = &[alpha, gamma];

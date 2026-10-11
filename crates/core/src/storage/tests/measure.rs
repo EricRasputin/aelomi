@@ -9,7 +9,7 @@ use crate::storage::clock::SystemClock;
 use crate::storage::equality::Ops;
 use crate::storage::fs::OsFs;
 use crate::storage::log::{
-    LOG_MAGIC, LogContents, LogEnd, encode_record, read_log, read_log_hashing,
+    LogContents, LogEnd, Salt, encode_record, read_log, read_log_hashing, segment_header,
 };
 use crate::storage::recover::merge;
 use crate::storage::snapshot::read_snapshot;
@@ -190,7 +190,8 @@ fn measure_merge_of_10_000_records() {
 fn realistic_log() -> (Vec<u8>, Vec<usize>, usize) {
     let mut typing = UpdateGen::new(77, 3);
     let mut rng = SplitMix64::new(5);
-    let mut bytes = LOG_MAGIC.to_vec();
+    let salt = Salt::random().unwrap();
+    let mut bytes = segment_header(salt);
     let (mut starts, mut big) = (Vec::new(), 0);
     while bytes.len() < 1_000_000 {
         let payload = match rng.below(300) {
@@ -215,7 +216,7 @@ fn realistic_log() -> (Vec<u8>, Vec<usize>, usize) {
         };
         big = big.max(payload.len());
         starts.push(bytes.len());
-        encode_record(&payload, &mut bytes);
+        encode_record(salt, &payload, &mut bytes);
     }
     (bytes, starts, big)
 }
@@ -230,14 +231,15 @@ fn timed(bytes: &[u8], read: impl Fn(&[u8]) -> LogContents<'_>) -> (Duration, Lo
 #[ignore = "a measurement"]
 fn measure_resync() {
     let mut rng = SplitMix64::new(9);
-    let mut random = LOG_MAGIC.to_vec();
+    let salt = Salt::random().unwrap();
+    let mut random = segment_header(salt);
     random.extend((0..1_000_000).map(|_| rng.next_u64() as u8));
     let (took, end, _) = timed(&random, read_log);
-    eprintln!("1 MB of random bytes after the magic: {took:.2?}, {end:?}");
+    eprintln!("1 MB of random bytes after the header: {took:.2?}, {end:?}");
 
     let first = UpdateGen::new(1, 1).next_update();
-    let mut adversarial = LOG_MAGIC.to_vec();
-    encode_record(&first, &mut adversarial);
+    let mut adversarial = segment_header(salt);
+    encode_record(salt, &first, &mut adversarial);
     let damaged = adversarial.len();
     adversarial.resize(1_000_000, 0);
     adversarial[damaged..damaged + 4].copy_from_slice(&u32::MAX.to_le_bytes());

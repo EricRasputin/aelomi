@@ -21,6 +21,7 @@ use yrs::{Text, Transact};
 use super::clock::{Clock, ManualClock, SystemClock};
 use super::doc_id::DocId;
 use super::equality::Ops;
+use super::log::SEGMENT_HEADER;
 use super::sim_fs::SimFs;
 use super::state::Limits;
 use super::store::{Driver, OpenError, Store};
@@ -192,7 +193,7 @@ pub(crate) fn without(updates: &[Vec<u8>], lost: &[usize]) -> Vec<Vec<u8>> {
 }
 
 pub(crate) fn record_at(updates: &[Vec<u8>], n: usize) -> usize {
-    8 + updates[..n].iter().map(|u| 8 + u.len()).sum::<usize>()
+    SEGMENT_HEADER + updates[..n].iter().map(|u| 8 + u.len()).sum::<usize>()
 }
 
 /// A doc can hold more deletions: yrs deletes what it integrates into a deleted parent.

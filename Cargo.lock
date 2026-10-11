@@ -34,6 +34,7 @@ name = "aelomi-core"
 version = "0.1.0"
 dependencies = [
  "crc32fast",
+ "getrandom 0.4.3",
  "libc",
  "proptest",
  "serde_json",

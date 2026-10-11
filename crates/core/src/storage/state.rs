@@ -6,6 +6,7 @@ use yrs::Doc;
 
 use super::health::{FailReason, retry_delay};
 use super::layout::{DocFile, Generation, SegmentNo};
+use super::log::Salt;
 
 /// An update's place in the order the store received updates.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -118,31 +119,23 @@ pub(crate) enum DocDir {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Segment {
     Next(Generation, SegmentNo),
-    Open(Generation, SegmentNo),
+    Open(Generation, SegmentNo, Salt),
 }
 
 impl Segment {
     pub fn file(self) -> DocFile {
         match self {
-            Self::Next(g, n) | Self::Open(g, n) => DocFile::Log(g, n),
+            Self::Next(g, n) | Self::Open(g, n, _) => DocFile::Log(g, n),
         }
     }
 
     pub fn generation(self) -> Generation {
-        match self {
-            Self::Next(g, _) | Self::Open(g, _) => g,
-        }
-    }
-
-    pub fn opened(self) -> Self {
-        match self {
-            Self::Next(g, n) | Self::Open(g, n) => Self::Open(g, n),
-        }
+        self.file().generation()
     }
 
     pub fn abandon(self) -> Self {
         match self {
-            Self::Next(g, n) | Self::Open(g, n) => Self::Next(g, n.next()),
+            Self::Next(g, n) | Self::Open(g, n, _) => Self::Next(g, n.next()),
         }
     }
 }

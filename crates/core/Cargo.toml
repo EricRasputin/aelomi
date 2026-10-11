@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 crc32fast = "1.5.2"
+getrandom = { version = "0.4.3", features = ["std"] }
 libc = "0.2.190"
 serde_json = "1.0.152"
 yrs = "0.28"

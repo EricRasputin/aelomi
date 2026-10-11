@@ -7,7 +7,7 @@ use super::{
 };
 use crate::storage::compact::CompactError;
 use crate::storage::equality::Ops;
-use crate::storage::log::{LOG_MAGIC, LogEnd, encode_record, read_log};
+use crate::storage::log::{LOG_MAGIC, LogEnd, encode_segment, read_log};
 use crate::storage::sim_fs::{Crash, OpKind};
 use crate::storage::snapshot::{encode_snapshot, read_snapshot};
 use crate::storage::state::Limits;
@@ -771,10 +771,7 @@ fn compaction_keeps_a_damaged_log_until_the_doc_holds_what_it_salvages() {
         store.append(&a, update).unwrap();
     }
     assert_eq!(store.flush(soon()), []);
-    let mut planted = LOG_MAGIC.to_vec();
-    for update in &sent[5..] {
-        encode_record(update, &mut planted);
-    }
+    let mut planted = encode_segment(&sent[5..]);
     planted[record_at(&sent[5..], 0) + 9] ^= 0x10;
     let name = "log-0000000000-0000000005.ylog";
     env.fs.put_durable(&env.path("docs/a").join(name), &planted);
@@ -823,10 +820,7 @@ fn compaction_keeps_a_log_a_merged_load_marked_corrupt_until_the_snapshot_holds_
     store.append(&a, &pending).unwrap();
     assert!(store.has_pending_structs(&a));
     let planted_updates = [typed(800, 2), typed(801, 3)];
-    let mut planted = LOG_MAGIC.to_vec();
-    for update in &planted_updates {
-        encode_record(update, &mut planted);
-    }
+    let mut planted = encode_segment(&planted_updates);
     planted[record_at(&planted_updates, 0) + 4] ^= 1;
     let name = "log-0000000000-0000000005.ylog";
     env.fs.put_durable(&env.path("docs/a").join(name), &planted);

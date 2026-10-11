@@ -10,7 +10,7 @@ use yrs::{Doc, Transact};
 use super::{Delivery, Env, applied, doc, ops_of_updates, out_of_order, soon};
 use crate::storage::doc_id::DocId;
 use crate::storage::equality::Ops;
-use crate::storage::log::{LogEnd, encode_record, read_log};
+use crate::storage::log::{LogEnd, read_log};
 use crate::storage::sim_fs::{Crash, OpKind};
 use crate::storage::state::{Limits, Seq};
 use crate::storage::testkit::{SplitMix64, UpdateGen, apply, doc_from, fingerprint};
@@ -320,11 +320,9 @@ fn every_acknowledged_update_survives_a_crash_at_any_point() {
 }
 
 fn assert_in_durable_layer(env: &Env, doc: &DocId, update: &[u8], reported_by: &str) {
-    let mut record = Vec::new();
-    encode_record(update, &mut record);
     let dir = env.path("docs").join(doc.as_str());
     let durable = env.fs.durable_files().into_iter().any(|(path, bytes)| {
-        path.parent() == Some(&dir) && bytes.windows(record.len()).any(|w| w == record)
+        path.parent() == Some(&dir) && read_log(&bytes).records.contains(&update)
     });
     assert!(
         durable,

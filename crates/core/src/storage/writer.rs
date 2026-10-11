@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use super::doc_id::DocId;
 use super::health::FailReason;
-use super::log::{LOG_MAGIC, encode_record};
+use super::log::{Salt, encode_record, segment_header};
 use super::state::{DocDir, DocSlot, LogSize, Segment, Seq};
 use super::store::Shared;
 
@@ -67,8 +67,7 @@ fn write_queued(shared: &Shared) -> Step {
 struct Queued {
     doc: DocId,
     slot: Arc<DocSlot>,
-    records: Vec<u8>,
-    count: u64,
+    updates: Vec<Arc<[u8]>>,
     through: Seq,
 }
 
@@ -90,15 +89,10 @@ fn collect(shared: &Shared, now: Duration, retry_failing: bool) -> (Vec<Queued>,
             retry_at = Some(retry_at.map_or(failure.retry_at, |at| at.min(failure.retry_at)));
             continue;
         }
-        let mut records = Vec::new();
-        for update in &state.queue {
-            encode_record(&update.update, &mut records);
-        }
         queued.push(Queued {
             doc,
             slot: slot.clone(),
-            records,
-            count: state.queue.len() as u64,
+            updates: state.queue.iter().map(|q| q.update.clone()).collect(),
             through: last.seq,
         });
     }
@@ -142,6 +136,7 @@ struct Job {
     segment: Segment,
     dir: DocDir,
     created_segment: bool,
+    written: u64,
     error: Option<FailReason>,
 }
 
@@ -161,6 +156,7 @@ impl Job {
             segment,
             dir,
             created_segment: false,
+            written: 0,
             error: None,
         }
     }
@@ -186,14 +182,21 @@ impl Job {
             }
         }
         let path = self.path(shared);
-        match self.segment {
-            Segment::Open(..) => fs.append(&path, &self.queued.records),
-            Segment::Next(..) => {
+        let (salt, mut bytes) = match self.segment {
+            Segment::Open(.., salt) => (salt, Vec::new()),
+            Segment::Next(generation, n) => {
+                let salt = Salt::random()?;
                 fs.create_new(&path)?;
+                self.segment = Segment::Open(generation, n, salt);
                 self.created_segment = true;
-                fs.append(&path, &[&LOG_MAGIC[..], &self.queued.records].concat())
+                (salt, segment_header(salt))
             }
+        };
+        for update in &self.queued.updates {
+            encode_record(salt, update, &mut bytes);
         }
+        self.written = bytes.len() as u64;
+        fs.append(&path, &bytes)
     }
 
     fn sync(&self, shared: &Shared) -> io::Result<()> {
@@ -205,14 +208,9 @@ impl Job {
     }
 
     fn size(&self) -> LogSize {
-        let magic = if self.created_segment {
-            LOG_MAGIC.len()
-        } else {
-            0
-        };
         LogSize {
-            bytes: (self.queued.records.len() + magic) as u64,
-            records: self.queued.count,
+            bytes: self.written,
+            records: self.queued.updates.len() as u64,
         }
     }
 }
@@ -223,7 +221,7 @@ fn commit(shared: &Shared, jobs: Vec<Job>) -> Option<FailReason> {
     for job in jobs {
         let mut state = job.queued.slot.state();
         let state = state.as_mut().expect("a doc with queued updates is loaded");
-        let current = state.log.segment == job.segment;
+        let current = state.log.segment.file() == job.segment.file();
         match job.error {
             None => {
                 while state
@@ -235,7 +233,7 @@ fn commit(shared: &Shared, jobs: Vec<Job>) -> Option<FailReason> {
                 }
                 state.log.dir = DocDir::Durable;
                 if current {
-                    state.log.segment = job.segment.opened();
+                    state.log.segment = job.segment;
                 }
                 if job.segment.generation() == state.log.segment.generation() {
                     state.log.unsnapshotted += job.size();
