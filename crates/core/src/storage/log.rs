@@ -352,6 +352,117 @@ mod tests {
     }
 
     #[test]
+    fn header_magic_damage_loads_every_record_as_corrupt() {
+        let updates = UpdateGen::new(5, 1).updates(4);
+        let records: Vec<&[u8]> = updates.iter().map(Vec::as_slice).collect();
+        let mut bytes = segment(&records);
+        bytes[0] ^= 1;
+        assert_eq!(
+            read_log(&bytes),
+            LogContents {
+                records,
+                end: LogEnd::Corrupt
+            }
+        );
+    }
+
+    #[test]
+    fn header_salt_damage_loads_every_record_as_corrupt() {
+        let updates = UpdateGen::new(5, 1).updates(4);
+        let records: Vec<&[u8]> = updates.iter().map(Vec::as_slice).collect();
+        let mut bytes = segment(&records);
+        bytes[10] ^= 1;
+        assert_eq!(
+            read_log(&bytes),
+            LogContents {
+                records,
+                end: LogEnd::Corrupt
+            }
+        );
+    }
+
+    #[test]
+    fn header_salt_damage_needs_two_agreeing_records() {
+        let updates = UpdateGen::new(5, 1).updates(2);
+        let alpha = &updates[0][..];
+        assert_eq!(
+            read_log(&segment(&[alpha])),
+            LogContents {
+                records: vec![alpha],
+                end: LogEnd::Clean
+            }
+        );
+        let mut single = segment(&[alpha]);
+        single[10] ^= 1;
+        assert_eq!(
+            read_log(&single),
+            LogContents {
+                records: vec![],
+                end: LogEnd::Torn
+            }
+        );
+
+        let mut disagree = single;
+        encode_record(Salt(*b"othersal"), &updates[1], &mut disagree);
+        assert_eq!(
+            read_log(&disagree),
+            LogContents {
+                records: vec![],
+                end: LogEnd::Corrupt
+            }
+        );
+    }
+
+    #[test]
+    fn header_salvage_checks_each_records_crc_and_decode() {
+        let updates = UpdateGen::new(5, 1).updates(4);
+        let (alpha, beta, gamma, delta) = (
+            &updates[0][..],
+            &updates[1][..],
+            &updates[2][..],
+            &updates[3][..],
+        );
+        let mut bytes = segment(&[alpha, beta, b"not an update", gamma, delta]);
+        bytes[10] ^= 1;
+        let damaged = segment(&[alpha]).len();
+        bytes[damaged + RECORD_HEADER + beta.len() - 1] ^= 1;
+        assert_eq!(
+            read_log(&bytes),
+            LogContents {
+                records: vec![alpha, gamma, delta],
+                end: LogEnd::Corrupt
+            }
+        );
+    }
+
+    proptest::proptest! {
+        #![proptest_config(proptest::test_runner::Config {
+            failure_persistence: None,
+            ..proptest::test_runner::Config::default()
+        })]
+
+        #[test]
+        fn header_random_bursts_load_every_record_with_two_confirmations(header in proptest::prelude::any::<[u8; 16]>()) {
+            for count in [2, 4, 6] {
+                let updates = UpdateGen::new(count, 1).updates(count as usize);
+                let records: Vec<&[u8]> = updates.iter().map(Vec::as_slice).collect();
+                let mut bytes = segment(&records);
+                for (byte, mask) in bytes[..SEGMENT_HEADER].iter_mut().zip(header) {
+                    *byte ^= mask;
+                }
+                let end = if header == [0; 16] { LogEnd::Clean } else { LogEnd::Corrupt };
+                proptest::prop_assert_eq!(read_log(&bytes), LogContents { records, end });
+            }
+            let update = typed(4);
+            let mut single = segment(&[&update]);
+            single[..SEGMENT_HEADER].copy_from_slice(&header);
+            if header[8..] != SALT.0 {
+                proptest::prop_assert_eq!(read_log(&single).records, Vec::<&[u8]>::new());
+            }
+        }
+    }
+
+    #[test]
     fn classifies_damaged_segments_and_reads_every_update_around_the_damage() {
         let updates = UpdateGen::new(5, 1).updates(3);
         let (alpha, beta, gamma) = (&updates[0][..], &updates[1][..], &updates[2][..]);

@@ -55,6 +55,13 @@ fn five_where_one_length_bit_reaches_eof(damaged: usize) -> LengthFlip {
 }
 
 #[test]
+fn header_salt_damage_preserves_every_saved_operation() {
+    let updates: Vec<Vec<u8>> = (1..=4).map(|client| typed(client, 4)).collect();
+    let held = load_after(&updates, |bytes| bytes[10] ^= 1);
+    assert_eq!(held, ops_of_updates(&updates));
+}
+
+#[test]
 fn a_flipped_length_bit_loads_every_record() {
     let updates: Vec<Vec<u8>> = (1..=4).map(|client| typed(client, 4)).collect();
     let held = load_after(&updates, |b| flip_length(b, record_at(&updates, 2), 0x40));
