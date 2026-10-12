@@ -4,7 +4,7 @@ use std::panic;
 
 use yrs::Update;
 use yrs::encoding::read::{Cursor, Error, Read};
-use yrs::updates::decoder::Decode;
+use yrs::updates::decoder::{Decode, DecoderV1};
 
 pub(crate) const STACK_SIZE: usize = 8 * 1024 * 1024;
 const STACK_RESERVE: usize = 2 * 1024 * 1024;
@@ -39,6 +39,16 @@ pub(crate) fn with_stack<R: Send>(f: impl FnOnce() -> R + Send) -> io::Result<R>
 pub(crate) fn update(bytes: &[u8]) -> std::result::Result<Update, Error> {
     check(bytes).map_err(|_| Error::UnexpectedValue)?;
     Update::decode_v1(bytes)
+}
+
+/// yrs stops reading at the end of an update, so a payload stretched over the records after it
+/// still decodes.
+pub(crate) fn decodes_exactly(bytes: &[u8]) -> bool {
+    if check(bytes).is_err() {
+        return false;
+    }
+    let mut decoder = DecoderV1::from(bytes);
+    Update::decode(&mut decoder).is_ok() && decoder.read_u8().is_err()
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -439,6 +449,19 @@ mod tests {
         let mut overlong_parent = item(8, &[1, 126]);
         overlong_parent.splice(5..6, [0x81, 0]);
         accepted(&overlong_parent);
+    }
+
+    #[test]
+    fn decode_guard_exact_decode_rejects_trailing_bytes() {
+        assert!(super::decodes_exactly(&[0, 0]));
+        for bytes in [
+            &[0][..],
+            &[0, 0, 0],
+            &[0, 0, 255],
+            &[0x80, 0x80, 0x80, 0x80, 1],
+        ] {
+            assert!(!super::decodes_exactly(bytes));
+        }
     }
 
     #[test]
