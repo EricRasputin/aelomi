@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 
 use super::{
     Delivery, Env, applied, assert_doc, doc, frames, log_name, ops_of_updates, out_of_order,
-    read_log_file, snapshot_name, soon, typed,
+    read_log_file, snapshot_name, soon, typed, v1_snapshot_name,
 };
 use crate::storage::doc_id::DocId;
 use crate::storage::health::{FailReason, Health};
@@ -548,7 +548,7 @@ fn a_segment_a_failed_write_tore_in_an_earlier_session_is_quarantined_not_delete
 
     let store = env.open();
     store.compact(&a).unwrap();
-    assert_eq!(env.doc_files(&a), [snapshot_name(1)]);
+    assert_eq!(env.doc_files(&a), [v1_snapshot_name(1)]);
     assert_eq!(
         env.quarantine(),
         [(env.path("quarantine/a").join(&name), torn)].into(),

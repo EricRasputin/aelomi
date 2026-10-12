@@ -63,7 +63,7 @@ fn compact_and_reopen(seed: u64, n: usize, case: Case) -> Outcome {
         return Outcome::Refused;
     }
     let stored = &env.fs.files()[&env.path("docs/a").join(&snapshot)];
-    let held = Ops::of_update(&Update::decode_v1(snapshot_payload(stored)).unwrap());
+    let held = Ops::of_update(&Update::decode_v1(snapshot_payload(&snapshot, stored)).unwrap());
     let union = ops_of_updates(&sent);
     // yrs's encoding of a doc whose pending structs all integrated also holds the deletions yrs
     // derived from them.

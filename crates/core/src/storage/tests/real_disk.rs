@@ -2,7 +2,10 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use super::{assert_doc, doc, frames, log_name, snapshot_name, soon, with_a_loner_sixth, without};
+use super::{
+    assert_doc, doc, frames, log_name, snapshot_name, soon, v1_snapshot_name, with_a_loner_sixth,
+    without,
+};
 use crate::storage::clock::SystemClock;
 use crate::storage::fs::OsFs;
 use crate::storage::state::Limits;
@@ -95,7 +98,7 @@ fn compaction_and_quarantine_work_on_a_real_disk() {
     let store = open();
     assert_doc(&store, &a, &intact);
     store.compact(&a).unwrap();
-    assert_eq!(files(&docs_a), [snapshot_name(2)]);
+    assert_eq!(files(&docs_a), [v1_snapshot_name(2)]);
     assert_eq!(
         std::fs::read(dir.path().join("quarantine/a").join(&name)).unwrap(),
         damaged,

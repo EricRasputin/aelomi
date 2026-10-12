@@ -6,7 +6,7 @@ use yrs::{Doc, Map, ReadTxn, StateVector, Text, TextPrelim, TextRef, Transact};
 
 use super::{
     Delivery, Env, applied, assert_doc, doc, frames, in_order, log_name, ops_of_updates,
-    out_of_order, snapshot_name, soon, typed, with_a_loner_sixth, without,
+    out_of_order, snapshot_name, soon, typed, v1_snapshot_name, with_a_loner_sixth, without,
 };
 use crate::storage::compact::CompactError;
 use crate::storage::log::encode_segment;
@@ -709,7 +709,7 @@ fn a_later_compaction_keeps_a_snapshot_the_loaded_doc_lacks() {
         .run_compactor_once()
         .expect("the older snapshot queues a compaction");
     compacted.unwrap();
-    assert_eq!(env.doc_files(&a), [snapshot_name(2)]);
+    assert_eq!(env.doc_files(&a), [v1_snapshot_name(2)]);
     drop(store);
     assert_doc(&env.open(), &a, &sent);
 }
@@ -828,7 +828,7 @@ fn a_kept_record_that_never_applies_costs_no_compaction_per_edit() {
     let store = env.open();
     store.load(&a).unwrap();
     store.compact(&a).unwrap();
-    assert_eq!(env.doc_files(&a), [name, snapshot_name(1).as_str()]);
+    assert_eq!(env.doc_files(&a), [name, v1_snapshot_name(1).as_str()]);
     let mut sent = vec![good];
     for client in 50..54 {
         sent.push(typed(client, 1));
@@ -840,7 +840,7 @@ fn a_kept_record_that_never_applies_costs_no_compaction_per_edit() {
     assert!(held.contains(&ops_of_updates(&sent)));
     assert_eq!(
         env.doc_files(&a),
-        [name, log_name(1, 0).as_str(), snapshot_name(1).as_str()]
+        [name, log_name(1, 0).as_str(), v1_snapshot_name(1).as_str()]
     );
 }
 

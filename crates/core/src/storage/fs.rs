@@ -23,6 +23,10 @@ pub(crate) trait Fs: Send + Sync {
 /// that points at bytes a crash could lose.
 pub(crate) fn create_durable(fs: &dyn Fs, path: &Path, bytes: &[u8]) -> io::Result<()> {
     fs.create_new(path)?;
+    fill_durable(fs, path, bytes)
+}
+
+pub(crate) fn fill_durable(fs: &dyn Fs, path: &Path, bytes: &[u8]) -> io::Result<()> {
     fs.append(path, bytes)?;
     fs.fsync(path)?;
     fs.full_sync(path)

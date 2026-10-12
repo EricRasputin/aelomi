@@ -198,10 +198,13 @@ pub(crate) fn without(updates: &[Vec<u8>], lost: &[usize]) -> Vec<Vec<u8>> {
     kept.map(|(_, update)| update.clone()).collect()
 }
 
-pub(crate) fn snapshot_payload(bytes: &[u8]) -> &[u8] {
-    match snapshot::read(SnapshotFormat::V1, bytes) {
+pub(crate) fn snapshot_payload<'a>(name: &str, bytes: &'a [u8]) -> &'a [u8] {
+    let Some(DocFile::Snapshot(_, format)) = DocFile::parse(name) else {
+        panic!("{name} is not a snapshot")
+    };
+    match snapshot::read(format, bytes) {
         Some((payload, Condition::Whole)) => payload,
-        read => panic!("not a whole snapshot: {read:?}"),
+        read => panic!("{name} is not a whole snapshot: {read:?}"),
     }
 }
 
@@ -230,12 +233,18 @@ pub(crate) fn v2_log(updates: &[impl AsRef<[u8]>]) -> Vec<u8> {
     out
 }
 
+/// What compaction writes once the store has written a segment this lifetime.
 pub(crate) fn snapshot_name(generation: u64) -> String {
+    DocFile::Snapshot(Generation(generation), SnapshotFormat::V2).name()
+}
+
+/// What compaction writes before the store's first segment of a lifetime.
+pub(crate) fn v1_snapshot_name(generation: u64) -> String {
     DocFile::Snapshot(Generation(generation), SnapshotFormat::V1).name()
 }
 
 pub(crate) fn snapshot_tmp_name(generation: u64) -> String {
-    DocFile::SnapshotTmp(Generation(generation), SnapshotFormat::V1).name()
+    DocFile::SnapshotTmp(Generation(generation), SnapshotFormat::V2).name()
 }
 
 pub(crate) struct Frame {
