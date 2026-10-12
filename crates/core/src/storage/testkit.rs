@@ -193,3 +193,38 @@ pub(crate) fn doc_from<'a>(updates: impl IntoIterator<Item = &'a [u8]>) -> Doc {
 pub(crate) fn fingerprint(doc: &Doc) -> Fingerprint {
     Fingerprint::of(&doc.transact()).expect("yrs settles the doc's pending structs")
 }
+
+#[cfg(test)]
+pub(crate) fn snapshot_with_forged_tail() -> (Vec<u8>, Vec<u8>) {
+    use yrs::Any;
+
+    use super::snapshot::encode_snapshot_v2;
+
+    let ghost = Doc::with_client_id(1);
+    let text = ghost.get_or_insert_text("t");
+    let mut txn = ghost.transact_mut();
+    text.insert(&mut txn, 0, &"x".repeat(4_053));
+    let planted = txn.encode_update_v1();
+    assert_eq!(planted.len(), 4_064);
+    let forged = encode_snapshot_v2(&planted);
+    assert_eq!(forged.len(), 12_288);
+
+    let encode_note = |note: &[u8]| {
+        let carrier = Doc::with_client_id(2);
+        let meta = carrier.get_or_insert_map("meta");
+        let mut txn = carrier.transact_mut();
+        meta.insert(&mut txn, "note", Any::Buffer(note.into()));
+        txn.encode_update_v1()
+    };
+    let mut note = vec![b'x'; 16_000];
+    let encoded = encode_note(&note);
+    let prefix = encoded.len() - note.len() - 1;
+    assert_eq!(&encoded[prefix..prefix + note.len()], note);
+    let at = 8_160 - prefix;
+    note[at..at + 4_064].copy_from_slice(&planted);
+    note[at + 4_064..at + 4_096].copy_from_slice(&forged[12_256..]);
+    let payload = encode_note(&note);
+    let snapshot = encode_snapshot_v2(&payload);
+    assert_eq!(&snapshot[8_192..12_288], &forged[8_192..]);
+    (payload, snapshot[..12_288].to_vec())
+}

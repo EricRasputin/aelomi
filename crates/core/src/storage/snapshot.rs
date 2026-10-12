@@ -106,20 +106,21 @@ impl Anchor {
 
 fn read_v2(bytes: &[u8]) -> Option<(&[u8], Condition)> {
     let head = Anchor::parse(bytes.get(..ANCHOR)?, HEAD_MAGIC);
-    let tail = Anchor::tail_agreeing_with_file_len(bytes);
-    let intact = |copy: usize| {
-        [head, tail].into_iter().flatten().find_map(|anchor| {
-            let payload = bytes.get(anchor.copies()?[copy].clone())?;
-            (CRC_64.checksum(payload) == anchor.crc).then_some(payload)
-        })
+    let anchor = head.or_else(|| Anchor::tail_agreeing_with_file_len(bytes))?;
+    let copies = anchor.copies()?;
+    let intact = |range: Range<usize>| {
+        let payload = bytes.get(range)?;
+        (CRC_64.checksum(payload) == anchor.crc).then_some(payload)
     };
-    let (a, b) = (intact(0), intact(1));
-    let zero_padding = |anchor: Anchor| {
-        let [a, b] = anchor.copies()?;
-        Some(bytes.get(a.end..b.start)?.iter().all(|&byte| byte == 0))
-    };
-    let whole =
-        head == tail && a.is_some() && b.is_some() && head.and_then(zero_padding) == Some(true);
+    let (a, b) = (intact(copies[0].clone()), intact(copies[1].clone()));
+    let whole = head.is_some()
+        && anchor.file_len() == Some(bytes.len())
+        && bytes.ends_with(&anchor.encode(TAIL_MAGIC))
+        && a.is_some()
+        && b.is_some()
+        && bytes[copies[0].end..copies[1].start]
+            .iter()
+            .all(|&byte| byte == 0);
     let condition = if whole {
         Condition::Whole
     } else {
@@ -128,7 +129,6 @@ fn read_v2(bytes: &[u8]) -> Option<(&[u8], Condition)> {
     Some((a.or(b)?, condition))
 }
 
-#[cfg(test)]
 impl Anchor {
     fn encode(self, magic: [u8; 8]) -> [u8; ANCHOR] {
         let mut out = [0; ANCHOR];
@@ -159,7 +159,7 @@ pub(crate) fn encode_snapshot_v2(payload: &[u8]) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::testkit::SplitMix64;
+    use crate::storage::testkit::{SplitMix64, snapshot_with_forged_tail};
 
     fn payload(len: usize) -> Vec<u8> {
         (0..len).map(|i| (i % 251) as u8 + 1).collect()
@@ -336,17 +336,16 @@ mod tests {
     }
 
     #[test]
-    fn a_tail_inside_a_cut_payload_is_not_an_anchor() {
-        let planted = b"ghost";
-        let forged = Anchor {
-            len: planted.len(),
-            crc: CRC_64.checksum(planted),
-        }
-        .encode(TAIL_MAGIC);
-        let note = [&planted[..], &[7; 95], &forged[..], &[7; 4_000]].concat();
-        let bytes = encode_snapshot_v2(&note);
-        let cut = zeroed(&bytes[..32 + 100 + 32], 0..32);
-        assert_eq!(read(SnapshotFormat::V2, &cut), None);
+    fn an_intact_head_rejects_a_forged_tail_after_a_block_aligned_cut() {
+        let (payload, cut) = snapshot_with_forged_tail();
+        assert_eq!(
+            read(SnapshotFormat::V2, &encode_snapshot_v2(&payload)),
+            Some((&payload[..], Condition::Whole))
+        );
+        assert_eq!(
+            read(SnapshotFormat::V2, &cut).map(|(payload, condition)| (payload.len(), condition)),
+            None
+        );
     }
 
     #[test]
