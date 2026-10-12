@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 
 use super::{
     Delivery, Env, applied, assert_doc, doc, frames, log_name, ops_of_updates, out_of_order,
-    read_log_file, snapshot_name, soon, typed,
+    read_log_file, soon, typed, v1_snapshot_name, v2_snapshot_name,
 };
 use crate::storage::doc_id::DocId;
 use crate::storage::health::{FailReason, Health};
@@ -519,7 +519,7 @@ fn compaction_deletes_the_segments_this_sessions_failed_writes_left_instead_of_q
     assert_eq!(env.doc_files(&a).len(), 22);
 
     store.compact(&a).unwrap();
-    assert_eq!(env.doc_files(&a), [snapshot_name(1)]);
+    assert_eq!(env.doc_files(&a), [v2_snapshot_name(1)]);
     let quarantined: Vec<PathBuf> = env.quarantine().into_keys().collect();
     assert_eq!(quarantined, Vec::<PathBuf>::new());
     drop(store);
@@ -548,7 +548,7 @@ fn a_segment_a_failed_write_tore_in_an_earlier_session_is_quarantined_not_delete
 
     let store = env.open();
     store.compact(&a).unwrap();
-    assert_eq!(env.doc_files(&a), [snapshot_name(1)]);
+    assert_eq!(env.doc_files(&a), [v1_snapshot_name(1)]);
     assert_eq!(
         env.quarantine(),
         [(env.path("quarantine/a").join(&name), torn)].into(),
@@ -576,7 +576,7 @@ fn a_damaged_head_in_a_segment_a_failed_write_tore_moves_it_to_quarantine_not_de
     let damaged = env.fs.files()[&path].clone();
 
     store.compact(&a).unwrap();
-    assert_eq!(env.doc_files(&a), [snapshot_name(1)]);
+    assert_eq!(env.doc_files(&a), [v2_snapshot_name(1)]);
     assert_eq!(
         env.quarantine(),
         [(env.path("quarantine/a").join(&name), damaged)].into(),

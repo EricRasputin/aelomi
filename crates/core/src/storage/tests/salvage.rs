@@ -5,7 +5,7 @@ use proptest::sample::Index;
 use yrs::{Any, Doc, Map, Text, Transact};
 
 use super::{
-    Env, applied, assert_doc, doc, ops_of_updates, snapshot_name, typed, v1_record_at, without,
+    Env, applied, assert_doc, doc, ops_of_updates, typed, v1_record_at, v1_snapshot_name, without,
 };
 use crate::storage::equality::Ops;
 use crate::storage::log::{
@@ -82,7 +82,7 @@ fn header_damage_is_quarantined_after_verified_compaction() {
         let store = env.open();
         assert_doc(&store, &a, &updates);
         store.compact(&a).unwrap();
-        assert_eq!(env.doc_files(&a), [snapshot_name(1)]);
+        assert_eq!(env.doc_files(&a), [v1_snapshot_name(1)]);
         assert_eq!(
             env.quarantine(),
             [(

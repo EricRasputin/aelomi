@@ -52,14 +52,23 @@ One data folder per storage format, so every migration test can open each one
 (SPEC section 1, "Migrations"). Never edit these by hand. Once a release ships
 a format, its folder stays exactly as that release wrote it.
 
-`format-1/` is written by `crates/core/src/storage/tests/fixture.rs` when
+Doc `page-1` has a snapshot, logs from two generations (a compaction rotated,
+then failed), and a torn tail in its newest log. Doc `workspace` has one log.
+Each folder's test opens a copy and checks each doc's exact contents. No
+`.lock` is committed.
+
+`format-1/` is frozen and is never regenerated. A format-1 build wrote it, and
+today's build writes format 2, so nothing in the repo can write it again.
+
+`format-2/` holds the same docs and history in format 2: `.ylog2` logs, a
+`.ysnap2` snapshot, and a `format.json` that says 2. `the_format_2_fixture_opens_with_its_exact_contents`
+in `crates/core/src/storage/tests/fixture.rs` rewrites it when
 `AELOMI_WRITE_FIXTURES=1` is set:
 
 ```sh
-AELOMI_WRITE_FIXTURES=1 cargo test -p aelomi-core fixture
+AELOMI_WRITE_FIXTURES=1 cargo test -p aelomi-core the_format_2_fixture_opens_with_its_exact_contents
 ```
 
-Doc `page-1` has a snapshot, logs from two generations (a compaction rotated,
-then failed), and a torn tail in its newest log. Doc `workspace` has one log.
-The test opens a copy of the folder and checks each doc's exact contents. No
-`.lock` is committed.
+Format 2 has no random salt, so this writes the same bytes every time, and a
+diff after running it means the writer changed. Once a release ships format 2,
+delete the regeneration path, as was done for format 1.

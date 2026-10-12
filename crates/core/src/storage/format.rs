@@ -61,6 +61,11 @@ impl FormatGate {
         }
     }
 
+    pub fn ready(&self) -> Option<Format2Ready> {
+        let state = lock_ignoring_poison(&self.state);
+        matches!(*state, GateState::Ready2).then_some(Format2Ready { _private: () })
+    }
+
     pub fn ensure_v2(&self, fs: &dyn Fs, layout: &Layout) -> io::Result<Format2Ready> {
         let mut state = lock_ignoring_poison(&self.state);
         match *state {

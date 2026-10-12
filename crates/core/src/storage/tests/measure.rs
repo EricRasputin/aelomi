@@ -5,8 +5,8 @@ use yrs::updates::decoder::Decode;
 use yrs::{Doc, ReadTxn, StateVector, Text, Transact, Update};
 
 use super::{
-    Delivery, Env, doc, in_order, ops_of_updates, out_of_order, snapshot_name, snapshot_payload,
-    soon,
+    Delivery, Env, doc, in_order, ops_of_updates, out_of_order, snapshot_payload, soon,
+    v2_snapshot_name,
 };
 use crate::storage::clock::SystemClock;
 use crate::storage::equality::Ops;
@@ -58,12 +58,12 @@ fn compact_and_reopen(seed: u64, n: usize, case: Case) -> Outcome {
     if !had_pending {
         return Outcome::NeverPending;
     }
-    let snapshot = snapshot_name(halves.len() as u64);
+    let snapshot = v2_snapshot_name(halves.len() as u64);
     if !compacted || env.doc_files(&a) != [snapshot.clone()] {
         return Outcome::Refused;
     }
     let stored = &env.fs.files()[&env.path("docs/a").join(&snapshot)];
-    let held = Ops::of_update(&Update::decode_v1(snapshot_payload(stored)).unwrap());
+    let held = Ops::of_update(&Update::decode_v1(snapshot_payload(&snapshot, stored)).unwrap());
     let union = ops_of_updates(&sent);
     // yrs's encoding of a doc whose pending structs all integrated also holds the deletions yrs
     // derived from them.

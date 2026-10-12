@@ -141,7 +141,6 @@ impl Anchor {
     }
 }
 
-#[cfg(test)]
 pub(crate) fn encode_snapshot_v2(payload: &[u8]) -> Vec<u8> {
     let anchor = Anchor {
         len: payload.len(),

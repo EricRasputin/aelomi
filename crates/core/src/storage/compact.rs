@@ -10,10 +10,10 @@ use yrs::{Doc, ReadTxn, StateVector, Transact};
 use super::decode;
 use super::doc_id::DocId;
 use super::equality::{Fingerprint, Ops};
-use super::fs::create_durable;
+use super::fs::fill_durable;
 use super::layout::{DocFile, Generation, SegmentNo};
 use super::log::{self, LogEnd, LogFormat};
-use super::snapshot::{self, Condition, SnapshotFormat, encode_snapshot};
+use super::snapshot::{self, Condition, SnapshotFormat, encode_snapshot, encode_snapshot_v2};
 use super::state::{Compaction, DocSlot, LogSize, Segment, Ydoc};
 use super::store::Shared;
 
@@ -61,13 +61,22 @@ fn compact(shared: &Shared, doc: &DocId, rotated: Rotated) -> Result<(), Compact
             None => return Ok(()),
         },
     };
-    let format = SnapshotFormat::V1;
+    let fs = &*shared.fs;
+    let ready = shared.format.ready();
+    let (format, bytes) = match ready {
+        Some(_) => (SnapshotFormat::V2, encode_snapshot_v2(&snapshot.payload)),
+        None => (SnapshotFormat::V1, encode_snapshot(&snapshot.payload)),
+    };
     let tmp = shared
         .layout
         .doc_file(doc, DocFile::SnapshotTmp(rotated.generation, format));
-    create_durable(&*shared.fs, &tmp, &encode_snapshot(&snapshot.payload))?;
+    match &ready {
+        Some(ready) => ready.create_new(fs, &tmp)?,
+        None => fs.create_new(&tmp)?,
+    }
+    fill_durable(fs, &tmp, &bytes)?;
     if let Err(e) = verify(shared, format, &tmp, &snapshot.expected) {
-        let _ = shared.fs.remove(&tmp);
+        let _ = fs.remove(&tmp);
         return Err(e);
     }
     publish(

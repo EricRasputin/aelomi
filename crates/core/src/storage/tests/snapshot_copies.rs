@@ -1,3 +1,5 @@
+use std::ops::Range;
+
 use yrs::{ReadTxn, StateVector, Transact};
 
 use super::{Delivery, Env, applied, assert_doc, doc, ops_of_updates, out_of_order, soon};
@@ -120,7 +122,7 @@ fn a_folder_mixing_snapshot_formats_loads_both_and_compacts_above_both() {
         .run_compactor_once()
         .expect("the older snapshot queues a compaction");
     compacted.unwrap();
-    assert_eq!(env.doc_files(&a), ["snapshot-0000000004.ysnap"]);
+    assert_eq!(env.doc_files(&a), ["snapshot-0000000004.ysnap2"]);
     assert_eq!(env.quarantine(), [].into());
     drop(store);
     assert_doc(&env.open(), &a, &all);
@@ -141,7 +143,7 @@ fn compaction_deletes_a_whole_format_2_snapshot_it_holds_and_quarantines_a_damag
         env.fs.put_durable(&env.path("docs/a").join(name), &planted);
 
         store.compact(&a).unwrap();
-        assert_eq!(env.doc_files(&a), ["snapshot-0000000001.ysnap"], "{case}");
+        assert_eq!(env.doc_files(&a), ["snapshot-0000000001.ysnap2"], "{case}");
         let quarantined = (case == "first copy zeroed")
             .then(|| (env.path("quarantine/a").join(name), planted.clone()));
         assert_eq!(
@@ -171,7 +173,7 @@ fn compaction_keeps_a_format_2_snapshot_holding_changes_it_lacks() {
         store.compact(&a).unwrap();
         assert_eq!(
             env.doc_files(&a),
-            ["snapshot-0000000000.ysnap2", "snapshot-0000000001.ysnap"],
+            ["snapshot-0000000000.ysnap2", "snapshot-0000000001.ysnap2"],
             "{case}: snapshot 1 lacks updates 6 to 10"
         );
         assert_eq!(env.fs.files().get(&path), Some(&planted), "{case}");
@@ -260,5 +262,71 @@ fn a_damaged_newest_snapshot_queues_compaction_and_keeps_its_bytes() {
         assert_doc(&env.open(), &a, &sent);
         assert_eq!(env.doc_files(&a), ["snapshot-0000000004.ysnap"], "{case}");
         assert_eq!(env.quarantine(), [(quarantine, planted)].into(), "{case}");
+    }
+}
+
+#[test]
+fn one_fault_in_a_compactor_written_format_2_snapshot_loses_no_update() {
+    let sent = UpdateGen::new(76, 2).updates(10);
+    let a = doc("a");
+    let name = "snapshot-0000000001.ysnap2";
+    let written_by_the_compactor = |env: &Env| {
+        let store = env.open();
+        for update in &sent {
+            store.append(&a, update).unwrap();
+        }
+        assert_eq!(store.flush(soon()), []);
+        store.compact(&a).unwrap();
+        assert_eq!(env.doc_files(&a), [name]);
+        env.fs.files()[&env.path("docs/a").join(name)].clone()
+    };
+    let written = written_by_the_compactor(&Env::manual());
+    let state = state_of(&sent);
+    let (len, eof) = (state.len(), written.len());
+    assert!(len < 4_064, "copy A shares block 0 with the head");
+    assert_eq!(
+        (&written[32..32 + len], &written[eof - 32 - len..eof - 32]),
+        (&state[..], &state[..]),
+        "the compactor writes the doc's state as both copies"
+    );
+    let flipped = |at: usize| {
+        let mut bytes = written.clone();
+        bytes[at] ^= 0x10;
+        bytes
+    };
+    let zeroed = |range: Range<usize>| {
+        let mut bytes = written.clone();
+        bytes[range].fill(0);
+        bytes
+    };
+    let copy_b = eof - 32 - len;
+    for (case, damaged) in [
+        ("a bit in the head", flipped(12)),
+        ("a bit in copy A", flipped(32 + len / 2)),
+        ("a bit in copy B", flipped(copy_b + len / 2)),
+        ("a bit in the tail", flipped(eof - 12)),
+        ("the block holding copy A zeroed", zeroed(0..4_096)),
+        ("the block holding copy B zeroed", zeroed(copy_b..eof)),
+    ] {
+        let env = Env::manual();
+        assert_eq!(written_by_the_compactor(&env), written, "{case}");
+        let path = env.path("docs/a").join(name);
+        env.fs.put_durable(&path, &damaged);
+
+        let store = env.open();
+        assert_doc(&store, &a, &sent);
+        let (compacted, result) = store
+            .run_compactor_once()
+            .unwrap_or_else(|| panic!("{case}: a damaged newest snapshot queues compaction"));
+        assert_eq!(compacted, a, "{case}");
+        result.unwrap();
+        assert_eq!(
+            env.quarantine(),
+            [(env.path("quarantine/a").join(name), damaged)].into(),
+            "{case}"
+        );
+        drop(store);
+        env.fs.crash(Crash::DropUnsynced);
+        assert_doc(&env.open(), &a, &sent);
     }
 }

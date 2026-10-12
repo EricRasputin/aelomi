@@ -6,7 +6,7 @@ use yrs::{Doc, Map, ReadTxn, StateVector, Text, TextPrelim, TextRef, Transact};
 
 use super::{
     Delivery, Env, applied, assert_doc, doc, frames, in_order, log_name, ops_of_updates,
-    out_of_order, snapshot_name, soon, typed, with_a_loner_sixth, without,
+    out_of_order, soon, typed, v1_snapshot_name, v2_snapshot_name, with_a_loner_sixth, without,
 };
 use crate::storage::compact::CompactError;
 use crate::storage::log::encode_segment;
@@ -405,7 +405,7 @@ fn a_doc_that_fails_to_rebuild_stays_stale_until_a_rebuild_succeeds() {
     env.fs.clear_faults();
     assert_doc(&store, &a, &[good.clone(), later.clone()]);
     store.compact(&a).unwrap();
-    assert_eq!(env.doc_files(&a), [snapshot_name(1)]);
+    assert_eq!(env.doc_files(&a), [v2_snapshot_name(1)]);
     drop(store);
     assert_doc(&env.open(), &a, &[good, later]);
 }
@@ -433,7 +433,7 @@ fn a_rebuild_keeps_damage_it_finds_for_quarantine() {
     ));
     assert_doc(&store, &a, &without(&sent, &[5]));
     store.compact(&a).unwrap();
-    assert_eq!(env.doc_files(&a), [snapshot_name(1)]);
+    assert_eq!(env.doc_files(&a), [v2_snapshot_name(1)]);
     assert_eq!(
         env.fs.files().get(&env.path("quarantine/a").join(&name)),
         Some(&damaged),
@@ -577,7 +577,7 @@ fn the_next_compaction_quarantines_damage_a_pending_doc_load_reads() {
 
     store.load(&a).unwrap();
     store.compact(&a).unwrap();
-    assert_eq!(env.doc_files(&a), [snapshot_name(1)]);
+    assert_eq!(env.doc_files(&a), [v2_snapshot_name(1)]);
     assert_eq!(
         env.fs.files().get(&env.path("quarantine/a").join(&name)),
         Some(&damaged),
@@ -622,7 +622,7 @@ fn a_rebuild_queues_the_compaction_a_stale_doc_skipped() {
         );
         let (_, compacted) = store.run_compactor_once().expect("a was queued");
         assert!(compacted.is_ok());
-        assert_eq!(env.doc_files(&a), [snapshot_name(1)]);
+        assert_eq!(env.doc_files(&a), [v2_snapshot_name(1)]);
         assert_eq!(store.flush(soon()), []);
         drop(store);
         assert_doc(&env.open(), &a, &sent);
@@ -654,7 +654,7 @@ fn compaction_quarantines_damage_a_rebuild_finds_while_it_runs() {
 
     store.finish_compaction(&a, rotated).unwrap();
     assert_doc(&store, &a, &sent);
-    assert_eq!(env.doc_files(&a), [snapshot_name(1)]);
+    assert_eq!(env.doc_files(&a), [v2_snapshot_name(1)]);
     assert_eq!(
         env.fs.files().get(&env.path("quarantine/a").join(&name)),
         Some(&damaged),
@@ -689,7 +689,7 @@ fn keep_a_snapshot_the_loaded_doc_lacks(env: &Env) -> (Store, Vec<Vec<u8>>) {
     store.compact(&a).unwrap();
     assert_eq!(
         env.doc_files(&a),
-        ["snapshot-0000000000.ysnap", snapshot_name(1).as_str()],
+        ["snapshot-0000000000.ysnap", v2_snapshot_name(1).as_str()],
         "snapshot 1 lacks updates 6 to 10"
     );
     assert_eq!(env.fs.files().get(&older), Some(&holding));
@@ -709,7 +709,7 @@ fn a_later_compaction_keeps_a_snapshot_the_loaded_doc_lacks() {
         .run_compactor_once()
         .expect("the older snapshot queues a compaction");
     compacted.unwrap();
-    assert_eq!(env.doc_files(&a), [snapshot_name(2)]);
+    assert_eq!(env.doc_files(&a), [v1_snapshot_name(2)]);
     drop(store);
     assert_doc(&env.open(), &a, &sent);
 }
@@ -724,7 +724,7 @@ fn a_kept_snapshot_merges_back_without_reopening() {
         .run_compactor_once()
         .expect("the older snapshot queues a compaction");
     compacted.unwrap();
-    assert_eq!(env.doc_files(&a), [snapshot_name(2)]);
+    assert_eq!(env.doc_files(&a), [v2_snapshot_name(2)]);
     assert_eq!(store.queued_compactions(), []);
     drop(store);
     assert_doc(&env.open(), &a, &sent);
@@ -746,7 +746,7 @@ fn a_kept_snapshot_merges_back_even_if_a_sync_after_the_keep_fails() {
     env.fs.clear_faults();
     assert_eq!(
         env.doc_files(&a),
-        ["snapshot-0000000000.ysnap", snapshot_name(1).as_str()],
+        ["snapshot-0000000000.ysnap", v2_snapshot_name(1).as_str()],
         "snapshot 1 lacks updates 6 to 10"
     );
     assert_doc(&store, &a, &sent);
@@ -799,9 +799,9 @@ fn a_compaction_asked_for_while_one_runs_is_queued_once_when_it_ends() {
             assert_doc(&store, &a, &sent);
             let (_, compacted) = store.run_compactor_once().expect("a was queued");
             assert!(compacted.is_ok());
-            assert_eq!(env.doc_files(&a), [snapshot_name(2)]);
+            assert_eq!(env.doc_files(&a), [v2_snapshot_name(2)]);
         } else {
-            assert_eq!(env.doc_files(&a), [snapshot_name(1)]);
+            assert_eq!(env.doc_files(&a), [v2_snapshot_name(1)]);
         }
         assert_eq!(
             store.queued_compactions(),
@@ -828,7 +828,7 @@ fn a_kept_record_that_never_applies_costs_no_compaction_per_edit() {
     let store = env.open();
     store.load(&a).unwrap();
     store.compact(&a).unwrap();
-    assert_eq!(env.doc_files(&a), [name, snapshot_name(1).as_str()]);
+    assert_eq!(env.doc_files(&a), [name, v1_snapshot_name(1).as_str()]);
     let mut sent = vec![good];
     for client in 50..54 {
         sent.push(typed(client, 1));
@@ -840,7 +840,7 @@ fn a_kept_record_that_never_applies_costs_no_compaction_per_edit() {
     assert!(held.contains(&ops_of_updates(&sent)));
     assert_eq!(
         env.doc_files(&a),
-        [name, log_name(1, 0).as_str(), snapshot_name(1).as_str()]
+        [name, log_name(1, 0).as_str(), v1_snapshot_name(1).as_str()]
     );
 }
 
