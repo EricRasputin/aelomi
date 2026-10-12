@@ -233,17 +233,15 @@ pub(crate) fn v2_log(updates: &[impl AsRef<[u8]>]) -> Vec<u8> {
     out
 }
 
-/// What compaction writes once the store has written a segment this lifetime.
-pub(crate) fn snapshot_name(generation: u64) -> String {
+pub(crate) fn v2_snapshot_name(generation: u64) -> String {
     DocFile::Snapshot(Generation(generation), SnapshotFormat::V2).name()
 }
 
-/// What compaction writes before the store's first segment of a lifetime.
 pub(crate) fn v1_snapshot_name(generation: u64) -> String {
     DocFile::Snapshot(Generation(generation), SnapshotFormat::V1).name()
 }
 
-pub(crate) fn snapshot_tmp_name(generation: u64) -> String {
+pub(crate) fn v2_snapshot_tmp_name(generation: u64) -> String {
     DocFile::SnapshotTmp(Generation(generation), SnapshotFormat::V2).name()
 }
 

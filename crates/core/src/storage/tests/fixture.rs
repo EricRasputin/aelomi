@@ -111,8 +111,6 @@ impl Editor {
     }
 }
 
-/// Writes the same docs and history as `format-1/`. Format 2 has no random salt, so it
-/// writes the same bytes every time.
 fn write_format_2_fixture(target: &Path) {
     let env = Env::manual();
     let store = env.open();
