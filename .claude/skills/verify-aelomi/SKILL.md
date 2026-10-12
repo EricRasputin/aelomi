@@ -214,6 +214,7 @@ Never kill Aelomi, Vite, or node by name. Another agent or the maintainer may be
 - The first accessibility query after launch can find no web content. `launch` retries until the status region appears.
 - `src/main.tsx` wraps the app in `StrictMode`, which runs effects twice in dev. The ping store ignores a ping while one is pending, so the dev log still starts with one `ping seq=1`.
 - A native quit can block the main thread for its 2 s flush. Accessibility can report no window during that interval. Wait with `wait-dialog` before capturing a blocked quit.
+- Accessibility can also report no window when Aelomi is on another Space or behind another app's window, even though `screencapture` still finds it. `screenshot` and `keys` then fail. Bring Aelomi to the front on the current Space and rerun `tree` until it prints the web content before you drive. This is not a product failure.
 - `pnpm build:mock` empties `dist-mock/` before it writes the new build. Do not pass `--rebuild` while another mock run in the same checkout is serving `dist-mock/`.
 - The mock browser renders the light theme, Playwright's default color scheme. The real app follows the macOS appearance, which was dark in this repo's proof run.
 - An accessibility query takes 1 to 2 s, because each element read is a separate System Events call. Expect `tree` to slow down as pages grow.
