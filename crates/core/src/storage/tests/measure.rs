@@ -256,9 +256,23 @@ fn measure_resync() {
     let (took, end, _) = timed(&adversarial, |b| read_log_hashing(b, usize::MAX));
     eprintln!("  the same without a budget: {took:.2?}, {end:?}");
 
+    let mut unfit = segment_header(salt);
+    while unfit.len() < 1_000_000 {
+        unfit.extend([0xff, 0xff, 0xff, 0x7f, 0, 0, 0, 0]);
+        encode_record(salt, &first, &mut unfit);
+    }
+    let (took, end, records) = timed(&unfit, read_log);
+    eprintln!(
+        "1 MB where every record follows a header that fits no record: {took:.2?}, {end:?}, \
+         {records} records"
+    );
+
     let (log, starts, big) = realistic_log();
     let (last, others) = starts.split_last().unwrap();
-    for (name, in_payload) in [("a length bit", false), ("a payload bit", true)] {
+    for (name, in_payload, kept) in [
+        ("a length bit", false, starts.len()),
+        ("a payload bit", true, others.len()),
+    ] {
         let (mut worst, mut salvaged) = (Duration::ZERO, 0);
         for (i, &start) in others.iter().enumerate() {
             let payload = starts[i + 1] - start - 8;
@@ -271,11 +285,11 @@ fn measure_resync() {
             damaged[at] ^= 0x10;
             let (took, end, records) = timed(&damaged, read_log);
             worst = worst.max(took);
-            salvaged += usize::from(end == LogEnd::Corrupt && records == others.len());
+            salvaged += usize::from(end == LogEnd::Corrupt && records == kept);
         }
         eprintln!(
             "{} B log of {} records up to {big} B, {name} flipped in each but the last: \
-             every other record read in {salvaged} of {} cases, slowest {worst:.2?}",
+             {kept} records read in {salvaged} of {} cases, slowest {worst:.2?}",
             log.len(),
             starts.len(),
             others.len()
@@ -285,5 +299,9 @@ fn measure_resync() {
     let mut damaged = log.clone();
     damaged[last + 2] ^= 0x10;
     let (_, end, records) = timed(&damaged, read_log);
-    assert_eq!((end, records), (LogEnd::Torn, others.len()), "in the last");
+    assert_eq!(
+        (end, records),
+        (LogEnd::Corrupt, starts.len()),
+        "in the last"
+    );
 }

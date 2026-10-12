@@ -597,9 +597,15 @@ fn a_damaged_log_loads_every_record_around_the_damage_and_is_quarantined_not_del
             "a high bit in the sixth length",
             vec![sixth + 2],
             false,
-            vec![5],
+            vec![],
         ),
-        ("a low bit in the sixth length", vec![sixth], false, vec![5]),
+        ("a low bit in the sixth length", vec![sixth], false, vec![]),
+        (
+            "a high bit in the last length",
+            vec![record_at(&sent, 10) + 2],
+            false,
+            vec![],
+        ),
         (
             "a bit in each of the last two records",
             vec![record_at(&sent, 9) + 9, record_at(&sent, 10) + 9],
@@ -657,12 +663,7 @@ fn a_torn_log_is_quarantined_at_compaction_not_deleted() {
     let planted = "log-0000000000-0000000001.ylog";
     for (damage, name, flip, lost) in [
         ("a bit in the last payload", logged, Some(last + 9), vec![9]),
-        (
-            "a high bit in the last length",
-            logged,
-            Some(last + 2),
-            vec![9],
-        ),
+        ("a bit in the last CRC", logged, Some(last + 4), vec![9]),
         ("garbage right after the log header", planted, None, vec![]),
     ] {
         let env = Env::manual();
