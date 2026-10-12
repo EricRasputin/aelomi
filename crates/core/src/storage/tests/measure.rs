@@ -11,7 +11,9 @@ use super::{
 use crate::storage::clock::SystemClock;
 use crate::storage::equality::Ops;
 use crate::storage::fs::OsFs;
-use crate::storage::log::{LogContents, LogEnd, Salt, encode_record, read_log, segment_header};
+use crate::storage::log::{
+    self, LogContents, LogEnd, LogFormat, Salt, encode_record, segment_header,
+};
 use crate::storage::recover::merge;
 use crate::storage::state::Limits;
 use crate::storage::store::{Driver, Store};
@@ -221,7 +223,7 @@ fn realistic_log() -> (Vec<u8>, Vec<usize>, usize) {
     (bytes, starts, big)
 }
 
-fn timed(bytes: &[u8], read: impl Fn(&[u8]) -> LogContents<'_>) -> (Duration, LogEnd, usize) {
+fn timed(bytes: &[u8], read: impl Fn(&[u8]) -> LogContents) -> (Duration, LogEnd, usize) {
     let started = Instant::now();
     let contents = read(bytes);
     (started.elapsed(), contents.end, contents.records.len())
@@ -234,7 +236,7 @@ fn measure_resync() {
     let salt = Salt::random().unwrap();
     let mut random = segment_header(salt);
     random.extend((0..1_000_000).map(|_| rng.next_u64() as u8));
-    let (took, end, _) = timed(&random, read_log);
+    let (took, end, _) = timed(&random, |b| log::read(LogFormat::V1, b));
     eprintln!("1 MB of random bytes after the header: {took:.2?}, {end:?}");
 
     let first = UpdateGen::new(1, 1).next_update();
@@ -249,7 +251,7 @@ fn measure_resync() {
         adversarial[at..at + 4].copy_from_slice(&to_the_end.to_le_bytes());
         adversarial[at + 4..at + 8].copy_from_slice(&0xdead_beef_u32.to_le_bytes());
     }
-    let (took, end, records) = timed(&adversarial, read_log);
+    let (took, end, records) = timed(&adversarial, |b| log::read(LogFormat::V1, b));
     eprintln!(
         "1 MB where every 4th offset reads as a record to the end: {took:.2?}, {end:?}, {records} record"
     );
@@ -259,7 +261,7 @@ fn measure_resync() {
         unfit.extend([0xff, 0xff, 0xff, 0x7f, 0, 0, 0, 0]);
         encode_record(salt, &first, &mut unfit);
     }
-    let (took, end, records) = timed(&unfit, read_log);
+    let (took, end, records) = timed(&unfit, |b| log::read(LogFormat::V1, b));
     eprintln!(
         "1 MB where every record follows a header that fits no record: {took:.2?}, {end:?}, \
          {records} records"
@@ -281,7 +283,7 @@ fn measure_resync() {
             };
             let mut damaged = log.clone();
             damaged[at] ^= 0x10;
-            let (took, end, records) = timed(&damaged, read_log);
+            let (took, end, records) = timed(&damaged, |b| log::read(LogFormat::V1, b));
             worst = worst.max(took);
             salvaged += usize::from(end == LogEnd::Corrupt && records == kept);
         }
@@ -296,7 +298,7 @@ fn measure_resync() {
     }
     let mut damaged = log.clone();
     damaged[last + 2] ^= 0x10;
-    let (_, end, records) = timed(&damaged, read_log);
+    let (_, end, records) = timed(&damaged, |b| log::read(LogFormat::V1, b));
     assert_eq!(
         (end, records),
         (LogEnd::Corrupt, starts.len()),

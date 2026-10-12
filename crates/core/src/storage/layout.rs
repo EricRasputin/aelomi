@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use super::doc_id::DocId;
+use super::log::LogFormat;
 use super::snapshot::SnapshotFormat;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -25,13 +26,13 @@ impl SegmentNo {
 pub(crate) enum DocFile {
     Snapshot(Generation, SnapshotFormat),
     SnapshotTmp(Generation, SnapshotFormat),
-    Log(Generation, SegmentNo),
+    Log(Generation, SegmentNo, LogFormat),
 }
 
 impl DocFile {
     pub fn generation(self) -> Generation {
         match self {
-            Self::Snapshot(g, _) | Self::SnapshotTmp(g, _) | Self::Log(g, _) => g,
+            Self::Snapshot(g, _) | Self::SnapshotTmp(g, _) | Self::Log(g, ..) => g,
         }
     }
 
@@ -39,7 +40,7 @@ impl DocFile {
         match self {
             Self::Snapshot(g, f) => format!("snapshot-{:010}.{}", g.0, f.extension()),
             Self::SnapshotTmp(g, f) => format!("snapshot-{:010}.{}.tmp", g.0, f.extension()),
-            Self::Log(g, s) => format!("log-{:010}-{:010}.ylog", g.0, s.0),
+            Self::Log(g, s, f) => format!("log-{:010}-{:010}.{}", g.0, s.0, f.extension()),
         }
     }
 
@@ -57,9 +58,13 @@ impl DocFile {
                 Self::Snapshot(g, f)
             });
         }
-        let rest = name.strip_prefix("log-")?.strip_suffix(".ylog")?;
-        let (g, s) = rest.split_once('-')?;
-        Some(Self::Log(Generation(number(g)?), SegmentNo(number(s)?)))
+        let (numbers, extension) = name.strip_prefix("log-")?.split_once('.')?;
+        let (g, s) = numbers.split_once('-')?;
+        Some(Self::Log(
+            Generation(number(g)?),
+            SegmentNo(number(s)?),
+            LogFormat::from_extension(extension)?,
+        ))
     }
 }
 
@@ -131,8 +136,8 @@ mod tests {
             DocFile::SnapshotTmp(Generation(7), SnapshotFormat::V1),
             DocFile::Snapshot(Generation(8), SnapshotFormat::V2),
             DocFile::SnapshotTmp(Generation(8), SnapshotFormat::V2),
-            DocFile::Log(Generation(7), SegmentNo(12)),
-            DocFile::Log(Generation(9_999_999_999), SegmentNo(0)),
+            DocFile::Log(Generation(7), SegmentNo(12), LogFormat::V1),
+            DocFile::Log(Generation(9_999_999_999), SegmentNo(0), LogFormat::V1),
         ];
         let names: Vec<String> = files.iter().map(|f| f.name()).collect();
         assert_eq!(

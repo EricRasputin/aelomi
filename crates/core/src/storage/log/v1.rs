@@ -2,7 +2,8 @@ use std::cell::OnceCell;
 use std::collections::BTreeMap;
 use std::io;
 
-use super::decode;
+use super::LogEnd;
+use crate::storage::decode;
 
 pub(crate) const LOG_MAGIC: [u8; 8] = *b"AELOG\0\0\x02";
 pub(crate) const SEGMENT_HEADER: usize = LOG_MAGIC.len() + 8;
@@ -108,13 +109,6 @@ pub(crate) fn encode_segment<P: AsRef<[u8]>>(payloads: &[P]) -> Vec<u8> {
         encode_record(salt, payload.as_ref(), &mut out);
     }
     out
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum LogEnd {
-    Clean,
-    Torn,
-    Corrupt,
 }
 
 #[derive(Debug, PartialEq, Eq)]

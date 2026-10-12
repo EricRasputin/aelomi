@@ -25,7 +25,7 @@ use super::clock::{Clock, ManualClock, SystemClock};
 use super::doc_id::DocId;
 use super::equality::Ops;
 use super::layout::{DocFile, Generation, SegmentNo};
-use super::log::SEGMENT_HEADER;
+use super::log::{self, LogContents, LogFormat, SEGMENT_HEADER};
 use super::sim_fs::SimFs;
 use super::snapshot::{self, Condition, SnapshotFormat};
 use super::state::Limits;
@@ -205,7 +205,20 @@ pub(crate) fn snapshot_payload(bytes: &[u8]) -> &[u8] {
 }
 
 pub(crate) fn log_name(generation: u64, segment: u64) -> String {
-    DocFile::Log(Generation(generation), SegmentNo(segment)).name()
+    DocFile::Log(
+        Generation(generation),
+        SegmentNo(segment),
+        LogFormat::WRITTEN,
+    )
+    .name()
+}
+
+pub(crate) fn read_log_file(path: &Path, bytes: &[u8]) -> LogContents {
+    let name = name(path);
+    let Some(DocFile::Log(.., format)) = DocFile::parse(&name) else {
+        panic!("{name} is not a log")
+    };
+    log::read(format, bytes)
 }
 
 pub(crate) fn snapshot_name(generation: u64) -> String {

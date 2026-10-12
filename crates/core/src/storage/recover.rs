@@ -9,7 +9,7 @@ use super::doc_id::DocId;
 use super::equality::Ops;
 use super::fs::Fs;
 use super::layout::{DocFile, Generation, Layout, SegmentNo};
-use super::log::{LogEnd, read_log};
+use super::log::{self, LogEnd};
 use super::snapshot::{self, Condition};
 use super::state::{DocDir, Limits, LogSize, LogState, Segment};
 
@@ -49,7 +49,7 @@ pub(crate) fn recover(
         };
         let bytes = fs.read(&layout.doc_file(doc, *file))?;
         let read = snapshot::read(format, &bytes);
-        let applied = read.filter(|(payload, _)| apply_records(&ydoc, &[payload]));
+        let applied = read.filter(|(payload, _)| apply_records(&ydoc, [*payload]));
         if let Some((_, condition)) = applied {
             base.get_or_insert((generation, condition));
         }
@@ -61,12 +61,12 @@ pub(crate) fn recover(
 
     let mut unsnapshotted = LogSize::default();
     for file in &files {
-        let DocFile::Log(generation, _) = *file else {
+        let DocFile::Log(generation, _, format) = *file else {
             continue;
         };
         let bytes = fs.read(&layout.doc_file(doc, *file))?;
-        let contents = read_log(&bytes);
-        let applied = apply_records(&ydoc, &contents.records);
+        let contents = log::read(format, &bytes);
+        let applied = apply_records(&ydoc, contents.records.iter().map(Vec::as_slice));
         if contents.end == LogEnd::Corrupt || !applied {
             eprintln!("aelomi storage: {doc}/{} is corrupt", file.name());
             corrupt.insert(file.name());
@@ -88,7 +88,7 @@ pub(crate) fn recover(
     let next = files
         .iter()
         .filter_map(|f| match f {
-            DocFile::Log(g, n) if *g == newest => Some(n.next()),
+            DocFile::Log(g, n, _) if *g == newest => Some(n.next()),
             _ => None,
         })
         .max()
@@ -136,16 +136,16 @@ pub(crate) fn stored_updates(fs: &dyn Fs, layout: &Layout, doc: &DocId) -> io::R
     }
     let mut unclean_logs = BTreeSet::new();
     for file in &files {
-        if let DocFile::Log(..) = file {
+        if let DocFile::Log(.., format) = *file {
             let bytes = fs.read(&layout.doc_file(doc, *file))?;
-            let contents = read_log(&bytes);
+            let contents = log::read(format, &bytes);
             if contents.end != LogEnd::Clean {
                 unclean_logs.insert(*file);
             }
             if contents.end == LogEnd::Corrupt {
                 corrupt.insert(file.name());
             }
-            updates.extend(contents.records.into_iter().map(<[u8]>::to_vec));
+            updates.extend(contents.records);
         }
     }
     Ok(Stored {
@@ -196,7 +196,7 @@ fn sorted_doc_files(fs: &dyn Fs, layout: &Layout, doc: &DocId) -> io::Result<Opt
     Ok(Some(files))
 }
 
-fn apply_records(ydoc: &Doc, records: &[&[u8]]) -> bool {
+fn apply_records<'a>(ydoc: &Doc, records: impl IntoIterator<Item = &'a [u8]>) -> bool {
     let mut txn = ydoc.transact_mut();
     let mut applied = true;
     for record in records {
