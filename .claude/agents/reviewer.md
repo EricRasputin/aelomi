@@ -34,7 +34,7 @@ The agent that opens or updates a PR runs a fresh reviewer after CI is green on 
    - **No GPL code.** No `@blocknote/xl-*` package. Every new dependency's license is in the allow list in `deny.toml` (Rust) or `scripts/check-licenses.mjs` (npm). A new entry or exception in either file needs a stated reason in the PR. Any GPL, LGPL, AGPL, or SSPL license is a blocker.
    - **Local-first.** The only network calls allowed are opt-out telemetry, optional AI features, sync, and update checks. The MVP makes none (SHELL-13). Look for new HTTP clients, `fetch` calls, WebSockets, remote URLs, and new origins in the CSP in `src-tauri/tauri.conf.json`.
    - **Telemetry never contains user content.** No note text, titles, page names, or file paths in any event.
-   - **macOS only, isolated.** Code that works only on macOS lives in `src-tauri/src/macos.rs`. `src-tauri/src/lib.rs` only declares that module and calls `macos::setup`. Mac-only code anywhere else is a finding.
+   - **macOS only, isolated.** Code that works only on macOS lives in `src-tauri/src/macos.rs`. `src-tauri/src/lib.rs` only declares that module and calls into it behind `#[cfg(target_os = "macos")]`. Mac-only code anywhere else is a finding.
    - **The decided stack wins.** A dependency that replaces a layer of CLAUDE.md's stack table is a blocker unless the maintainer approved a proposal. Examples are another router, state library, linter, formatter, test runner, or package manager, and file-based route codegen.
    - **Ruled-out options stay out.** Check the "Ruled out" list in CLAUDE.md.
    - **Nothing in iCloud Drive.** No data path may resolve into `~/Library/Mobile Documents` or `~/Library/CloudStorage`.

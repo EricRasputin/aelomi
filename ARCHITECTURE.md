@@ -62,7 +62,7 @@ The workspace has two crates. Both use the version, edition, and license from `[
 
 ## macOS-specific code lives in one module
 
-`src-tauri/src/macos.rs` holds all code that works only on macOS. `src-tauri/src/lib.rs` declares it with `#[cfg(target_os = "macos")] mod macos;` and calls `macos::setup(app)` under the same `cfg`. Today `setup` installs the default native menu with its own Quit item, `data_location` supplies the data folder and the cloud folders it must not resolve into, and `process_start_us` reads the kernel's process start time for the cold-start probe. A port to another platform replaces this one module. The `bundle.macOS` block in `src-tauri/tauri.conf.json` sets the macOS 14 minimum and ad-hoc signing.
+`src-tauri/src/macos.rs` holds all code that works only on macOS. `src-tauri/src/lib.rs` declares it with `#[cfg(target_os = "macos")] mod macos;` and calls `macos::setup(app)` under the same `cfg`. Today `setup` installs the default native menu with its own Quit item and adds `applicationShouldTerminate:` to tao's app delegate, `data_location` supplies the data folder and the cloud folders it must not resolve into, and `process_start_us` reads the kernel's process start time for the cold-start probe. A port to another platform replaces this one module. The `bundle.macOS` block in `src-tauri/tauri.conf.json` sets the macOS 14 minimum and ad-hoc signing.
 
 ## A command call goes from a store to the shell and back
 
@@ -221,8 +221,10 @@ Appends, the keystroke path, cost the same in every encoding. Base64 loads 3 tim
 |---|---|---|
 | ⌘Q, or **Quit Aelomi** in the app menu | `ExitRequested`, `Exit` | Yes |
 | ⌘W, or the window's close button | `CloseRequested`, `ExitRequested`, `Exit` | Yes |
-| Logout, or **Quit** in the Dock | `Exit` | No |
+| Logout, **Quit** in the Dock, or AppleScript `quit` | `applicationShouldTerminate:`, `Exit` | Yes |
 | `perf_report` calling `app.exit(0)` | `ExitRequested`, `Exit` | Yes |
 
-The default menu's Quit item sends `terminate:`, which tao reports only as `RunEvent::Exit`. So `macos.rs` replaces it with an item that calls `app.exit(0)`, which reaches `ExitRequested`. Logout and the Dock send the quit Apple event, which also ends in `terminate:`. The logout row comes from sending that event, with the logout reason, to the app's PID, not from a real logout.
+Logout, the Dock, and AppleScript send the quit Apple event, which AppKit turns into `terminate:`. tao's app delegate has no `applicationShouldTerminate:`, so `terminate:` would go straight to `RunEvent::Exit`. `macos.rs` adds that method to the delegate's class at setup, and it runs the same flush (`via=Terminate`). With updates pending it answers `NSTerminateCancel`, which also cancels a logout. It flushes on the main thread, as ⌘Q does. `NSTerminateLater` would free the thread, but while AppKit waits for the reply it handles no input and drops key presses. The logout row comes from sending the quit event, with the logout reason, to the app's PID, not from a real logout. The default menu's Quit item also sends `terminate:`. `macos.rs` still replaces it with an item that calls `app.exit(0)`.
+
+`on_run_event` in `lib.rs` handles `CloseRequested`, `ExitRequested`, and `Exit`, and is generic over the runtime. Its tests run Tauri's `MockRuntime` over a `SimDisk` whose appends fail, and check that the window stays open and `QuitBlocked` names the pending doc. The mock runtime calls only the run callback, never window listeners, so `CloseRequested` is handled there too.
 
