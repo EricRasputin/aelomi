@@ -1,6 +1,6 @@
 use yrs::updates::decoder::Decode;
 use yrs::{
-    Any, Doc, Map, MapRef, ReadTxn, Text, TextRef, Transact, Update, XmlElementPrelim, XmlFragment,
+    Doc, Map, MapRef, ReadTxn, Text, TextRef, Transact, Update, XmlElementPrelim, XmlFragment,
     XmlFragmentRef, XmlOut, XmlTextPrelim,
 };
 
@@ -194,7 +194,10 @@ pub(crate) fn fingerprint(doc: &Doc) -> Fingerprint {
     Fingerprint::of(&doc.transact()).expect("yrs settles the doc's pending structs")
 }
 
+#[cfg(test)]
 pub(crate) fn snapshot_with_forged_tail() -> (Vec<u8>, Vec<u8>) {
+    use yrs::Any;
+
     use super::snapshot::encode_snapshot_v2;
 
     let ghost = Doc::with_client_id(1);
