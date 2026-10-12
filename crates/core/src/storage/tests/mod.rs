@@ -1,6 +1,7 @@
 mod ack;
 mod compaction;
 mod crash;
+mod decode_guard;
 mod dirs;
 mod failures;
 mod fixture;
