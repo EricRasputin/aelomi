@@ -797,6 +797,54 @@ fn compaction_quarantines_damage_no_load_read_when_the_snapshot_holds_every_reco
 }
 
 #[test]
+fn compaction_keeps_a_deletion_only_log_until_the_snapshot_holds_the_deletion() {
+    let env = Env::manual();
+    let store = env.open();
+    let a = doc("a");
+    let client = Doc::with_client_id(77);
+    let text = client.get_or_insert_text("text");
+    let inserted = {
+        let mut txn = client.transact_mut();
+        text.insert(&mut txn, 0, "keep gone");
+        txn.encode_update_v1()
+    };
+    let deleted = {
+        let mut txn = client.transact_mut();
+        text.remove_range(&mut txn, 5, 4);
+        txn.encode_update_v1()
+    };
+    store.append(&a, &inserted).unwrap();
+    assert_eq!(store.flush(soon()), []);
+    let name = "log-0000000000-0000000005.ylog";
+    let path = env.path("docs/a").join(name);
+    let planted = encode_segment(&[deleted]);
+    env.fs.put_durable(&path, &planted);
+
+    store.compact(&a).unwrap();
+    assert_eq!(env.doc_files(&a), [name, "snapshot-0000000001.ysnap"]);
+    assert_eq!(env.fs.files().get(&path), Some(&planted));
+    let loaded = doc_from([store.load(&a).unwrap().as_slice()]);
+    assert_eq!(
+        loaded
+            .get_or_insert_text("text")
+            .get_string(&loaded.transact()),
+        "keep "
+    );
+
+    store.run_compactor_once().unwrap().1.unwrap();
+    assert_eq!(env.doc_files(&a), ["snapshot-0000000002.ysnap"]);
+    drop(store);
+    let reopened = env.open();
+    let loaded = doc_from([reopened.load(&a).unwrap().as_slice()]);
+    assert_eq!(
+        loaded
+            .get_or_insert_text("text")
+            .get_string(&loaded.transact()),
+        "keep "
+    );
+}
+
+#[test]
 fn compaction_keeps_a_damaged_log_until_the_doc_holds_what_it_salvages() {
     let env = Env::manual();
     let store = env.open();
