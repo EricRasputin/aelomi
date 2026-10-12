@@ -9,6 +9,7 @@ export const commands = {
 	perfReport: (marks: ColdStartMarks) => __TAURI_INVOKE<void>("perf_report", { marks }),
 	storageStatus: () => __TAURI_INVOKE<StorageStatus>("storage_status"),
 	storageHealth: () => __TAURI_INVOKE<Health>("storage_health"),
+	quitAnyway: () => __TAURI_INVOKE<void>("quit_anyway"),
 	/**  Returns the doc's full state as base64. */
 	docLoad: (docId: string) => typedError<string, StorageError>(__TAURI_INVOKE("doc_load", { docId })),
 	/**

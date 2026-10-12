@@ -2,6 +2,7 @@ import type { EventCallback } from "@tauri-apps/api/event";
 import * as Y from "yjs";
 import { fromBase64, toBase64 } from "./base64";
 import type {
+  FailReason,
   commands as generatedCommands,
   events as generatedEvents,
   Health,
@@ -23,13 +24,22 @@ const calls: MockCall[] = [];
 
 type MockDoc = { doc: Y.Doc; updates: Uint8Array[]; pending: boolean };
 
-const storage = {
-  status: "Ready" as StorageStatus,
+const storage: {
+  status: StorageStatus;
+  failWrites: boolean;
+  docs: Map<string, MockDoc>;
+  seq: number;
+  health: Health;
+  reason: FailReason;
+} = {
+  status: "Ready",
   failWrites: false,
   docs: new Map<string, MockDoc>(),
   seq: 0,
-  health: "Healthy" as Health,
+  health: "Healthy",
+  reason: { Io: "mock write failure" },
 };
+let exited = false;
 
 const listeners = new Map<string, Set<EventCallback<unknown>>>();
 let eventId = 0;
@@ -74,7 +84,7 @@ function refreshHealth() {
       ? "Healthy"
       : {
           Failing: {
-            reason: { Io: "mock write failure" },
+            reason: storage.reason,
             pending_docs: pending,
           },
         };
@@ -113,6 +123,10 @@ export const commands = {
   storageHealth: async () => {
     calls.push({ command: "storageHealth", args: [] });
     return storage.health;
+  },
+  quitAnyway: async () => {
+    calls.push({ command: "quitAnyway", args: [] });
+    exited = true;
   },
   docLoad: async (docId) => {
     calls.push({ command: "docLoad", args: [docId] });
@@ -155,13 +169,49 @@ const control = {
     storage.docs.clear();
     storage.seq = 0;
     storage.health = "Healthy";
+    storage.reason = { Io: "mock write failure" };
+    exited = false;
+  },
+  quit: {
+    get exited() {
+      return exited;
+    },
+    request() {
+      if (exited) return;
+      const pending_docs = [...storage.docs]
+        .filter(([, doc]) => doc.pending)
+        .map(([id]) => id);
+      if (pending_docs.length === 0) exited = true;
+      else void events.quitBlocked.emit({ pending_docs });
+    },
   },
   storage: {
     /** While on, appends stay pending and health reports the failure. */
-    failWrites(on: boolean) {
+    failWrites(on: boolean, reason: FailReason = { Io: "mock write failure" }) {
       storage.failWrites = on;
+      storage.reason = reason;
       if (!on) for (const doc of storage.docs.values()) doc.pending = false;
       refreshHealth();
+    },
+    async type(docId: string, text: string) {
+      const loaded = await commands.docLoad(docId);
+      if (loaded.status === "error") return loaded;
+      const doc = new Y.Doc();
+      try {
+        Y.applyUpdate(doc, fromBase64(loaded.data));
+        const before = Y.encodeStateVector(doc);
+        const body = doc.getText("body");
+        body.insert(body.length, text);
+        return await commands.docAppend(
+          docId,
+          toBase64(Y.encodeStateAsUpdate(doc, before)),
+        );
+      } finally {
+        doc.destroy();
+      }
+    },
+    text(docId: string): string {
+      return storage.docs.get(docId)?.doc.getText("body").toString() ?? "";
     },
     setStatus(status: StorageStatus) {
       storage.status = status;

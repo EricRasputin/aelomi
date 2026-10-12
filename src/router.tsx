@@ -8,6 +8,10 @@ import {
   Outlet,
 } from "@tanstack/react-router";
 import { useEffect, useLayoutEffect } from "react";
+import {
+  QuitConfirmation,
+  SaveFailureBanner,
+} from "./components/storage-notices";
 import { formatPingReply } from "./ipc/format-ping";
 import { markIndexCommit } from "./perf/cold-start";
 import { usePingStore } from "./stores/ping";
@@ -19,9 +23,14 @@ function RootLayout() {
         <header className="border-b border-[var(--border)] px-8 py-5 text-sm font-medium">
           Aelomi
         </header>
-        <main className="flex flex-1 items-center justify-center px-8 py-12">
+        <SaveFailureBanner />
+        <main
+          tabIndex={-1}
+          className="flex flex-1 items-center justify-center px-8 py-12"
+        >
           <Outlet />
         </main>
+        <QuitConfirmation />
       </div>
     </Tooltip.Provider>
   );

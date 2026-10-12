@@ -57,6 +57,19 @@ pub fn storage_health(storage: State<'_, Storage>) -> Health {
     storage.health()
 }
 
+#[tauri::command]
+#[specta::specta]
+pub fn quit_anyway(app: tauri::AppHandle, storage: State<'_, Storage>) {
+    quit_anyway_with(&storage, || app.exit(0));
+}
+
+pub(crate) fn quit_anyway_with(storage: &Storage, exit: impl FnOnce()) {
+    if storage.confirm_quit() {
+        println!("quit confirmed");
+        exit();
+    }
+}
+
 /// Returns the doc's full state as base64.
 #[tauri::command]
 #[specta::specta]
@@ -95,6 +108,7 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
             perf_report,
             storage_status,
             storage_health,
+            quit_anyway,
             doc_load,
             doc_append,
             dev_probe_log,

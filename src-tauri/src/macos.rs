@@ -157,6 +157,7 @@ mod tests {
     use objc2::rc::Retained;
     use objc2::runtime::{ClassBuilder, NSObject};
     use objc2::{ClassType, msg_send};
+    use tauri::Manager;
 
     use super::*;
 
@@ -205,6 +206,29 @@ mod tests {
         );
 
         disk.clear_faults();
+        assert_eq!(
+            terminate_reply(app.handle()),
+            NSApplicationTerminateReply::TerminateNow
+        );
+        assert_eq!(
+            *quit_events.lock().unwrap(),
+            [r#"quit-blocked {"pending_docs":["page"]}"#]
+        );
+    }
+
+    #[test]
+    fn confirming_after_cancel_allows_terminate_while_writes_still_fail() {
+        let disk = SimDisk::default();
+        let crate::tests::BlockedApp {
+            app, quit_events, ..
+        } = crate::tests::app_with_page_pending(&disk);
+        assert_eq!(
+            terminate_reply(app.handle()),
+            NSApplicationTerminateReply::TerminateCancel
+        );
+        let mut exits = 0;
+        crate::commands::quit_anyway_with(&app.state::<crate::storage::Storage>(), || exits += 1);
+        assert_eq!(exits, 1);
         assert_eq!(
             terminate_reply(app.handle()),
             NSApplicationTerminateReply::TerminateNow
