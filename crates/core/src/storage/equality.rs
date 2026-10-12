@@ -1,8 +1,9 @@
 use std::collections::BTreeMap;
 
+use super::decode;
+
 use yrs::branch::{Branch, BranchPtr};
 use yrs::types::ToJson;
-use yrs::updates::decoder::Decode;
 use yrs::{
     Any, ArrayRef, Doc, IdSet, MapRef, Out, ReadTxn, Snapshot, StateVector, Transact, Update,
 };
@@ -61,7 +62,7 @@ impl Fingerprint {
 fn settled_pending(txn: &impl ReadTxn) -> Option<PendingStructs> {
     let state = txn.encode_state_as_update_v1(&StateVector::default());
     let settled = Doc::new();
-    let update = Update::decode_v1(&state).ok()?;
+    let update = decode::update(&state).ok()?;
     settled.transact_mut().apply_update(update).ok()?;
     let txn = settled.transact();
     let store = txn.store();
@@ -115,7 +116,7 @@ impl Ops {
     /// its state vector, and pending structs from the pending update itself, since yrs's
     /// full-state encoding can renumber them.
     pub fn of_doc(txn: &impl ReadTxn) -> Option<Self> {
-        let integrated = Update::decode_v1(&txn.encode_diff_v1(&StateVector::default())).ok()?;
+        let integrated = decode::update(&txn.encode_diff_v1(&StateVector::default())).ok()?;
         let mut ops = Self::of_update(&integrated);
         let store = txn.store();
         if let Some(pending) = store.pending_update() {

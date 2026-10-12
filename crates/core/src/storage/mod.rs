@@ -3,6 +3,7 @@
 mod clock;
 mod compact;
 mod data_path;
+mod decode;
 mod doc_id;
 mod equality;
 mod format;

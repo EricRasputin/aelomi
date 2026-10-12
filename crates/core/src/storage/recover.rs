@@ -1,10 +1,10 @@
 use std::collections::BTreeSet;
 use std::io;
 
-use yrs::updates::decoder::Decode;
 use yrs::updates::encoder::Encode;
 use yrs::{Doc, Transact, Update};
 
+use super::decode;
 use super::doc_id::DocId;
 use super::equality::Ops;
 use super::fs::Fs;
@@ -152,7 +152,7 @@ pub(crate) fn merge<'a>(updates: impl IntoIterator<Item = &'a [u8]>) -> Merged {
     let mut ops = Ops::default();
     let mut level: Vec<Update> = updates
         .into_iter()
-        .filter_map(|bytes| Update::decode_v1(bytes).ok())
+        .filter_map(|bytes| decode::update(bytes).ok())
         .inspect(|update| ops.merge(Ops::of_update(update)))
         .collect();
     while level.len() > 1 {
@@ -193,7 +193,7 @@ fn apply_records(ydoc: &Doc, records: &[&[u8]]) -> bool {
     let mut txn = ydoc.transact_mut();
     let mut applied = true;
     for record in records {
-        let update = Update::decode_v1(record);
+        let update = decode::update(record);
         applied &= update.is_ok_and(|u| txn.apply_update(u).is_ok());
     }
     applied

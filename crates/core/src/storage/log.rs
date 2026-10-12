@@ -1,8 +1,6 @@
 use std::io;
 
-use yrs::Update;
-use yrs::encoding::read::Read;
-use yrs::updates::decoder::{Decode, DecoderV1};
+use super::decode;
 
 pub(crate) const LOG_MAGIC: [u8; 8] = *b"AELOG\0\0\x02";
 pub(crate) const SEGMENT_HEADER: usize = LOG_MAGIC.len() + 8;
@@ -154,8 +152,10 @@ fn resync(bytes: &[u8], salt: Salt, from: usize, budget: &mut usize) -> Scan {
         if salt.crc(payload) != crc {
             continue;
         }
-        if Update::decode_v1(payload).is_ok() {
-            return Scan::ResumeAt(at);
+        match decode::check(payload) {
+            Err(decode::Rejected::TooDeep) => return Scan::ResumeAt(at),
+            Ok(()) if decode::update(payload).is_ok() => return Scan::ResumeAt(at),
+            _ => {}
         }
         scan = Scan::NoUpdate;
     }
@@ -186,19 +186,12 @@ fn recover_length<'a>(
         let payload = &bytes[start..end];
         spend(payload.len())?;
         let next_passes =
-            || record_at(bytes, end, salt).is_some_and(|next| Update::decode_v1(next).is_ok());
-        if decodes_exactly(payload) && (end == bytes.len() || next_passes()) {
+            || record_at(bytes, end, salt).is_some_and(|next| decode::update(next).is_ok());
+        if decode::decodes_exactly(payload) && (end == bytes.len() || next_passes()) {
             return Some(payload);
         }
     }
     None
-}
-
-/// yrs stops reading at the end of an update, so a payload stretched over the records after it
-/// still decodes.
-fn decodes_exactly(payload: &[u8]) -> bool {
-    let mut decoder = DecoderV1::from(payload);
-    Update::decode(&mut decoder).is_ok() && decoder.read_u8().is_err()
 }
 
 fn record_at(bytes: &[u8], at: usize, salt: Salt) -> Option<&[u8]> {
