@@ -87,6 +87,11 @@ fn decode_guard_overdeep_disk_records_survive_recovery_and_compaction() {
 }
 
 #[test]
+fn decode_guard_resync_keeps_an_overdeep_record_without_decoding_it() {
+    child("resync");
+}
+
+#[test]
 fn decode_guard_small_caller_stack_survives_the_boundary() {
     child("small-stack");
 }
@@ -170,14 +175,18 @@ fn decode_guard_child() {
                     assert_eq!(held, expected);
                 }
                 assert_eq!(loaded, nested);
-            } else if case == "disk" {
+            } else if case == "disk" || case == "resync" {
                 let good = typed(7, 3);
                 let deep = nested_update(6000);
                 store.append(&a, &good).unwrap();
                 assert_eq!(store.flush(soon()), []);
                 store.close(soon()).unwrap();
+                let mut log = encode_segment(&[&deep]);
+                if case == "resync" {
+                    log.insert(crate::storage::log::SEGMENT_HEADER, 0xf0);
+                }
                 for (name, bytes) in [
-                    ("log-0000000000-0000000001.ylog", encode_segment(&[&deep])),
+                    ("log-0000000000-0000000001.ylog", log),
                     ("snapshot-0000000000.ysnap", encode_snapshot(&deep)),
                 ] {
                     env.fs.put_durable(&env.path("docs/a").join(name), &bytes);
