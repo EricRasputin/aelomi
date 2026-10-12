@@ -162,10 +162,6 @@ fn resync(bytes: &[u8], salt: Salt, from: usize, budget: &mut usize) -> Scan {
     scan
 }
 
-/// Only a record's true length decodes exactly, so this never returns a payload stretched over
-/// the records after it. `budget` counts every byte hashed or decoded, since a payload that knows
-/// the salt can plant a frame or a CRC match every few bytes. Once it runs out, recovery stops
-/// for the rest of the file.
 fn recover_length<'a>(
     bytes: &'a [u8],
     at: usize,
@@ -464,9 +460,6 @@ mod tests {
         );
     }
 
-    /// The CRC-32 of any bytes followed by their own CRC, little-endian.
-    const CRC_RESIDUE: u32 = 0x2144_df1c;
-
     #[test]
     fn crafted_files_exhaust_length_recovery_and_every_intact_record_still_loads() {
         let updates = UpdateGen::new(5, 1).updates(403);
@@ -487,12 +480,13 @@ mod tests {
             then_a_damaged_length(bytes)
         };
         let long = typed(4_000);
+        let long_and_its_crc = [&long[..], &SALT.crc(&long).to_le_bytes()].concat();
+        let crc_after_its_own_crc = SALT.crc(&long_and_its_crc).to_le_bytes();
         let mut planted = segment(&[alpha]);
         planted.extend(u32::MAX.to_le_bytes());
-        planted.extend(CRC_RESIDUE.to_le_bytes());
-        planted.extend(&long);
-        planted.extend(SALT.crc(&long).to_le_bytes());
-        planted.extend(CRC_RESIDUE.to_le_bytes().repeat(2_000));
+        planted.extend(crc_after_its_own_crc);
+        planted.extend(&long_and_its_crc);
+        planted.extend(crc_after_its_own_crc.repeat(2_000));
         planted.extend(record(gamma));
         let two: Vec<&[u8]> = vec![&intact[0], &intact[1], beta];
         let four_hundred: Vec<&[u8]> = intact.iter().map(Vec::as_slice).collect();
