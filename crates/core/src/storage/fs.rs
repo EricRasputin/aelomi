@@ -12,6 +12,11 @@ pub(crate) trait Fs: Send + Sync {
     /// `F_FULLFSYNC`: `fsync`, then the drive flushes its whole cache to permanent storage.
     fn full_sync(&self, path: &Path) -> io::Result<()>;
     fn rename(&self, from: &Path, to: &Path) -> io::Result<()>;
+    #[allow(
+        dead_code,
+        reason = "the format-2 publication gate lands in a later PR"
+    )]
+    fn replace_format(&self, root: &Path) -> io::Result<()>;
     fn remove(&self, path: &Path) -> io::Result<()>;
     fn list(&self, dir: &Path) -> io::Result<Vec<String>>;
     fn read(&self, path: &Path) -> io::Result<Vec<u8>>;
@@ -25,6 +30,17 @@ pub(crate) fn create_durable(fs: &dyn Fs, path: &Path, bytes: &[u8]) -> io::Resu
     fs.append(path, bytes)?;
     fs.fsync(path)?;
     fs.full_sync(path)
+}
+
+pub(crate) fn validate_format_marker(bytes: &[u8]) -> io::Result<()> {
+    if super::format::parse_format(bytes).is_some_and(|version| version > 0) {
+        Ok(())
+    } else {
+        Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "invalid format marker",
+        ))
+    }
 }
 
 pub(crate) struct FsLock {
@@ -85,7 +101,21 @@ impl Fs for OsFs {
     }
 
     fn rename(&self, from: &Path, to: &Path) -> io::Result<()> {
+        // Store's folder lock serializes publishers. A dangling symlink is also an entry.
+        match std::fs::symlink_metadata(to) {
+            Ok(_) => return Err(io::ErrorKind::AlreadyExists.into()),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error),
+        }
         std::fs::rename(from, to)
+    }
+
+    fn replace_format(&self, root: &Path) -> io::Result<()> {
+        let from = root.join("format.json.tmp");
+        validate_format_marker(&self.read(&from)?)?;
+        // The OS cannot report prior durability, so establish it before publishing the name.
+        self.full_sync(&from)?;
+        std::fs::rename(from, root.join("format.json"))
     }
 
     fn remove(&self, path: &Path) -> io::Result<()> {
@@ -117,5 +147,58 @@ impl Fs for OsFs {
             Err(TryLockError::WouldBlock) => Err(LockError::Held),
             Err(TryLockError::Error(e)) => Err(LockError::Io(e)),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn format_publication_os_replace_publishes_a_complete_marker() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        std::fs::write(root.join("format.json"), br#"{"format":1}"#).unwrap();
+        create_durable(&OsFs, &root.join("format.json.tmp"), br#"{"format":2}"#).unwrap();
+        OsFs.replace_format(root).unwrap();
+        OsFs.fsync(root).unwrap();
+        OsFs.full_sync(root).unwrap();
+        assert_eq!(
+            OsFs.read(&root.join("format.json")).unwrap(),
+            br#"{"format":2}"#
+        );
+        assert_eq!(OsFs.list(root).unwrap(), ["format.json"]);
+    }
+
+    #[test]
+    fn format_publication_os_replace_preserves_the_old_marker_on_invalid_source() {
+        for bytes in [&b"{\"format\":2"[..], br#"{"format":0}"#, b"{}"] {
+            let dir = tempfile::tempdir().unwrap();
+            let root = dir.path();
+            std::fs::write(root.join("format.json"), br#"{"format":1}"#).unwrap();
+            create_durable(&OsFs, &root.join("format.json.tmp"), bytes).unwrap();
+            assert_eq!(
+                OsFs.replace_format(root).unwrap_err().kind(),
+                io::ErrorKind::InvalidData
+            );
+            assert_eq!(
+                OsFs.read(&root.join("format.json")).unwrap(),
+                br#"{"format":1}"#
+            );
+            assert_eq!(OsFs.read(&root.join("format.json.tmp")).unwrap(), bytes);
+        }
+    }
+
+    #[test]
+    fn format_publication_os_plain_rename_preserves_existing_entries() {
+        let dir = tempfile::tempdir().unwrap();
+        let from = dir.path().join("format.json.tmp");
+        let to = dir.path().join("format.json");
+        std::fs::write(&from, br#"{"format":2}"#).unwrap();
+        std::fs::write(&to, br#"{"format":1}"#).unwrap();
+        let error = OsFs.rename(&from, &to).unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::AlreadyExists);
+        assert_eq!(std::fs::read(&from).unwrap(), br#"{"format":2}"#);
+        assert_eq!(std::fs::read(&to).unwrap(), br#"{"format":1}"#);
     }
 }

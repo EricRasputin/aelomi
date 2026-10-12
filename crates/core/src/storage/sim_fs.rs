@@ -5,7 +5,8 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::Duration;
 
 use super::clock::Clock;
-use super::fs::{Fs, FsLock, LockError};
+use super::format::parse_format;
+use super::fs::{Fs, FsLock, LockError, validate_format_marker};
 use super::layout::DocFile;
 use super::log::{LogEnd, SEGMENT_HEADER, read_log};
 use super::snapshot::read_snapshot;
@@ -21,6 +22,7 @@ pub(crate) enum OpKind {
     Fsync,
     FullSync,
     Rename,
+    ReplaceFormat,
     Remove,
     List,
     Read,
@@ -157,6 +159,7 @@ struct DirNode {
     live: BTreeMap<String, usize>,
     synced: BTreeMap<String, usize>,
     durable: BTreeMap<String, usize>,
+    format_replacements: Vec<usize>,
 }
 
 const ROOT: usize = 0;
@@ -257,6 +260,13 @@ impl SimFs {
         for node in &mut sim.nodes {
             match node {
                 Node::Dir(dir) => {
+                    for &id in &dir.format_replacements {
+                        if rng.as_mut().is_some_and(|rng| rng.below(2) == 1) {
+                            dir.durable.remove("format.json.tmp");
+                            dir.durable.insert("format.json".into(), id);
+                        }
+                    }
+                    dir.format_replacements.clear();
                     dir.live = dir.durable.clone();
                     dir.synced = dir.durable.clone();
                 }
@@ -446,6 +456,17 @@ impl Sim {
         Some(id)
     }
 
+    fn lookup_durable(&self, path: &Path) -> Option<usize> {
+        let mut id = ROOT;
+        for name in names(path) {
+            let Node::Dir(dir) = &self.nodes[id] else {
+                return None;
+            };
+            id = *dir.durable.get(&name)?;
+        }
+        Some(id)
+    }
+
     fn parent(&self, path: &Path) -> io::Result<(usize, String)> {
         let parent = path.parent().ok_or_else(not_found)?;
         match self.lookup(parent) {
@@ -490,6 +511,9 @@ impl Sim {
     }
 
     fn check(&mut self, kind: OpKind, path: &Path, to: Option<&Path>) {
+        if kind == OpKind::Create {
+            self.check_format_2_creation(path);
+        }
         let Some(id) = self.lookup(path) else { return };
         match kind {
             OpKind::Append => {
@@ -534,6 +558,31 @@ impl Sim {
                 }
             }
             _ => {}
+        }
+    }
+
+    fn check_format_2_creation(&mut self, path: &Path) {
+        let name = file_name(path);
+        if !name.ends_with(".ylog2") && !name.ends_with(".ysnap2") && !name.ends_with(".ysnap2.tmp")
+        {
+            return;
+        }
+        let Some(root) = path
+            .parent()
+            .and_then(Path::parent)
+            .filter(|docs| docs.file_name().is_some_and(|name| name == "docs"))
+            .and_then(Path::parent)
+        else {
+            return;
+        };
+        let ready = self
+            .lookup_durable(&root.join("format.json"))
+            .is_some_and(|id| {
+                matches!(&self.nodes[id], Node::File(file)
+                if parse_format(&file.data[..file.durable]) == Some(2))
+            });
+        if !ready {
+            self.violation(format!("create {path:?} before durable format.json says 2"));
         }
     }
 
@@ -616,7 +665,16 @@ impl Fs for SimFs {
             for node in &mut sim.nodes {
                 match node {
                     Node::File(file) => file.durable = file.synced,
-                    Node::Dir(dir) => dir.durable = dir.synced.clone(),
+                    Node::Dir(dir) => {
+                        dir.durable = dir.synced.clone();
+                        if let Some(published) = dir
+                            .format_replacements
+                            .iter()
+                            .rposition(|id| dir.durable.get("format.json") == Some(id))
+                        {
+                            dir.format_replacements.drain(..=published);
+                        }
+                    }
                 }
             }
             Ok(())
@@ -634,6 +692,27 @@ impl Fs for SimFs {
                 .ok_or_else(not_found)?;
             sim.dir_mut(from_dir).live.remove(&from_name);
             sim.dir_mut(to_dir).live.insert(to_name, id);
+            Ok(())
+        })
+    }
+
+    fn replace_format(&self, root: &Path) -> io::Result<()> {
+        let from = root.join("format.json.tmp");
+        let to = root.join("format.json");
+        self.run(OpKind::ReplaceFormat, &from, Some(&to), &[], |sim| {
+            let (id, file) = sim.file(&from)?;
+            validate_format_marker(&file.data)?;
+            if file.durable != file.data.len() {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "format marker is not durable",
+                ));
+            }
+            let (dir, name) = sim.parent(&from)?;
+            let dir = sim.dir_mut(dir);
+            dir.live.remove(&name);
+            dir.live.insert("format.json".into(), id);
+            dir.format_replacements.push(id);
             Ok(())
         })
     }
@@ -792,6 +871,161 @@ mod tests {
 
     fn p(path: &str) -> PathBuf {
         PathBuf::from(path)
+    }
+
+    #[test]
+    fn format_publication_plain_rename_still_rejects_overwrite() {
+        let fs = sim();
+        fs.put_durable(&p("/data/format.json"), br#"{"format":1}"#);
+        fs.put_durable(&p("/data/format.json.tmp"), br#"{"format":2}"#);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            fs.rename(&p("/data/format.json.tmp"), &p("/data/format.json"))
+        }));
+        assert!(result.is_err());
+        assert_eq!(
+            fs.violations(),
+            [r#"rename "/data/format.json.tmp" onto existing "/data/format.json""#]
+        );
+        assert_eq!(
+            fs.read(&p("/data/format.json")).unwrap(),
+            br#"{"format":1}"#
+        );
+        assert_eq!(
+            fs.read(&p("/data/format.json.tmp")).unwrap(),
+            br#"{"format":2}"#
+        );
+    }
+
+    #[test]
+    fn format_publication_checks_format_2_at_create() {
+        for name in [
+            "log-0000000000-0000000000.ylog2",
+            "snapshot-0000000000.ysnap2",
+            "snapshot-0000000000.ysnap2.tmp",
+        ] {
+            let fs = sim();
+            fs.put_durable(&p("/data/format.json"), br#"{"format":1}"#);
+            fs.put_durable(&p("/data/docs/a/.keep"), b"");
+            let path = p("/data/docs/a").join(name);
+            let result =
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| fs.create_new(&path)));
+            assert!(result.is_err(), "{path:?} must fail at create");
+            assert_eq!(
+                fs.violations(),
+                [format!("create {path:?} before durable format.json says 2")]
+            );
+            assert_eq!(fs.list(&p("/data/docs/a")).unwrap(), [".keep"]);
+            fs.put_durable(&p("/data/format.json"), br#"{"format":2}"#);
+            fs.create_new(&path).unwrap();
+            assert_eq!(fs.read(&path).unwrap(), b"");
+            assert_eq!(fs.list(&p("/data/docs/a")).unwrap(), [".keep", name]);
+        }
+    }
+
+    #[test]
+    fn format_publication_replace_survives_every_crash_step() {
+        let mut before_directory_sync = std::collections::BTreeSet::new();
+        for step in 0..=7 {
+            for crash in
+                std::iter::once(Crash::DropUnsynced).chain((0..64).map(Crash::KeepTornPrefix))
+            {
+                let fs = sim();
+                fs.put_durable(&p("/data/format.json"), br#"{"format":1}"#);
+                fs.die_after(step);
+                let publish = || -> io::Result<()> {
+                    fs.create_new(&p("/data/format.json.tmp"))?;
+                    fs.append(&p("/data/format.json.tmp"), br#"{"format":2}"#)?;
+                    fs.fsync(&p("/data/format.json.tmp"))?;
+                    fs.full_sync(&p("/data/format.json.tmp"))?;
+                    fs.replace_format(&p("/data"))?;
+                    fs.fsync(&p("/data"))?;
+                    fs.full_sync(&p("/data"))
+                };
+                assert_eq!(publish().is_ok(), step == 7);
+                fs.crash(crash);
+                let bytes = fs.read(&p("/data/format.json")).unwrap();
+                let version = parse_format(&bytes).unwrap();
+                assert!(matches!(version, 1 | 2), "step {step}, {crash:?}");
+                assert_eq!(
+                    bytes,
+                    if version == 1 {
+                        br#"{"format":1}"#
+                    } else {
+                        br#"{"format":2}"#
+                    }
+                );
+                if step < 5 {
+                    assert_eq!(version, 1);
+                } else if step == 7 {
+                    assert_eq!(version, 2);
+                } else {
+                    before_directory_sync.insert(version);
+                }
+                assert_eq!(fs.violations(), Vec::<String>::new());
+            }
+        }
+        assert_eq!(
+            before_directory_sync,
+            std::collections::BTreeSet::from([1, 2])
+        );
+    }
+
+    #[test]
+    fn format_publication_replace_refuses_invalid_or_unsynced_sources() {
+        for (bytes, sync, error) in [
+            (&b"{\"format\":2"[..], true, io::ErrorKind::InvalidData),
+            (&b"{\"format\":0}"[..], true, io::ErrorKind::InvalidData),
+            (&b"{\"format\":2}"[..], false, io::ErrorKind::InvalidInput),
+        ] {
+            let fs = sim();
+            fs.put_durable(&p("/data/format.json"), br#"{"format":1}"#);
+            fs.create_new(&p("/data/format.json.tmp")).unwrap();
+            fs.append(&p("/data/format.json.tmp"), bytes).unwrap();
+            fs.fsync(&p("/data/format.json.tmp")).unwrap();
+            if sync {
+                fs.full_sync(&p("/data/format.json.tmp")).unwrap();
+            }
+            assert_eq!(fs.replace_format(&p("/data")).unwrap_err().kind(), error);
+            assert_eq!(
+                fs.read(&p("/data/format.json")).unwrap(),
+                br#"{"format":1}"#
+            );
+            assert_eq!(fs.read(&p("/data/format.json.tmp")).unwrap(), bytes);
+            fs.crash(Crash::DropUnsynced);
+            assert_eq!(
+                fs.read(&p("/data/format.json")).unwrap(),
+                br#"{"format":1}"#
+            );
+        }
+    }
+
+    #[test]
+    fn format_publication_create_waits_for_the_directory_barrier() {
+        for sync_root in [false, true] {
+            let fs = sim();
+            fs.put_durable(&p("/data/format.json"), br#"{"format":1}"#);
+            fs.put_durable(&p("/data/docs/a/.keep"), b"");
+            fs.put_durable(&p("/data/format.json.tmp"), br#"{"format":2}"#);
+            fs.replace_format(&p("/data")).unwrap();
+            if sync_root {
+                fs.fsync(&p("/data")).unwrap();
+            }
+            let path = p("/data/docs/a/log-0000000000-0000000000.ylog2");
+            let result =
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| fs.create_new(&path)));
+            assert!(result.is_err());
+            assert_eq!(
+                fs.violations(),
+                [
+                    r#"create "/data/docs/a/log-0000000000-0000000000.ylog2" before durable format.json says 2"#
+                ]
+            );
+            assert_eq!(fs.list(&p("/data/docs/a")).unwrap(), [".keep"]);
+            fs.fsync(&p("/data")).unwrap();
+            fs.full_sync(&p("/data")).unwrap();
+            fs.create_new(&path).unwrap();
+            assert_eq!(fs.read(&path).unwrap(), b"");
+        }
     }
 
     #[test]
