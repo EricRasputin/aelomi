@@ -14,7 +14,7 @@ use super::clock::{Clock, SystemClock};
 use super::compact;
 use super::decode;
 use super::doc_id::DocId;
-use super::format::{FORMAT_VERSION, encode_format, parse_format};
+use super::format::{FORMAT_VERSION, FolderVersion, FormatGate, encode_format, parse_format};
 use super::fs::{Fs, FsLock, LockError, OsFs, create_durable};
 use super::health::{FailReason, Health};
 use super::layout::Layout;
@@ -65,6 +65,7 @@ pub(crate) struct Shared {
     pub clock: Arc<dyn Clock>,
     pub layout: Layout,
     pub limits: Limits,
+    pub format: FormatGate,
     driver: Driver,
     next_seq: AtomicU64,
     pub quarantine_exists: AtomicBool,
@@ -103,12 +104,13 @@ impl Store {
         limits: Limits,
     ) -> Result<Self, OpenError> {
         let layout = Layout::new(root);
-        let (lock, quarantine_exists) = prepare_folder(&*fs, &layout)?;
+        let (lock, version, quarantine_exists) = prepare_folder(&*fs, &layout)?;
         let shared = Arc::new(Shared {
             fs,
             clock,
             layout,
             limits,
+            format: FormatGate::new(version),
             driver,
             next_seq: AtomicU64::new(1),
             quarantine_exists: AtomicBool::new(quarantine_exists),
@@ -601,9 +603,12 @@ impl Shared {
     }
 }
 
-fn prepare_folder(fs: &dyn Fs, layout: &Layout) -> Result<(FsLock, bool), OpenError> {
+fn prepare_folder(
+    fs: &dyn Fs,
+    layout: &Layout,
+) -> Result<(FsLock, FolderVersion, bool), OpenError> {
     let root = layout.root();
-    refuse_before_writing(fs, layout)?;
+    refuse_before_writing(fs, layout, FORMAT_VERSION)?;
     create_dir_all_synced(fs, root)?;
     let lock = fs.lock(&layout.lock()).map_err(|e| match e {
         LockError::Held => OpenError::Locked,
@@ -612,15 +617,20 @@ fn prepare_folder(fs: &dyn Fs, layout: &Layout) -> Result<(FsLock, bool), OpenEr
     let names = fs.list(root)?;
     let has = |name: &str| names.iter().any(|n| n == name);
     let mut changed = false;
-    if check_format(fs, layout, &names)? == Format::Missing {
-        let tmp = layout.format_json_tmp();
-        if has("format.json.tmp") {
-            fs.remove(&tmp)?;
+    let version = match check_format(fs, layout, &names, FORMAT_VERSION)? {
+        Some(version) => version,
+        None => {
+            let tmp = layout.format_json_tmp();
+            if has("format.json.tmp") {
+                fs.remove(&tmp)?;
+            }
+            let marker = encode_format(FolderVersion::Legacy1);
+            create_durable(fs, &tmp, marker.as_bytes())?;
+            fs.rename(&tmp, &layout.format_json())?;
+            changed = true;
+            FolderVersion::Legacy1
         }
-        create_durable(fs, &tmp, encode_format().as_bytes())?;
-        fs.rename(&tmp, &layout.format_json())?;
-        changed = true;
-    }
+    };
     if !has("docs") {
         fs.create_dir(&layout.docs())?;
         changed = true;
@@ -629,40 +639,41 @@ fn prepare_folder(fs: &dyn Fs, layout: &Layout) -> Result<(FsLock, bool), OpenEr
     if changed {
         fs.full_sync(root)?;
     }
-    Ok((lock, has("quarantine")))
+    Ok((lock, version, has("quarantine")))
 }
 
-/// Refuses a folder this build can't handle before anything, even `.lock`, is written to it.
-fn refuse_before_writing(fs: &dyn Fs, layout: &Layout) -> Result<(), OpenError> {
+pub(super) fn refuse_before_writing(
+    fs: &dyn Fs,
+    layout: &Layout,
+    supported: u64,
+) -> Result<(), OpenError> {
     match fs.list(layout.root()) {
-        Ok(names) => check_format(fs, layout, &names).map(drop),
+        Ok(names) => check_format(fs, layout, &names, supported).map(drop),
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
         Err(e) => Err(e.into()),
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
-enum Format {
-    Current,
-    Missing,
-}
-
-fn check_format(fs: &dyn Fs, layout: &Layout, names: &[String]) -> Result<Format, OpenError> {
+fn check_format(
+    fs: &dyn Fs,
+    layout: &Layout,
+    names: &[String],
+    supported: u64,
+) -> Result<Option<FolderVersion>, OpenError> {
     let has = |name: &str| names.iter().any(|n| n == name);
     if !has("format.json") {
         return if has("docs") {
             Err(OpenError::UnknownFormat)
         } else {
-            Ok(Format::Missing)
+            Ok(None)
         };
     }
     match parse_format(&fs.read(&layout.format_json())?) {
-        Some(FORMAT_VERSION) => Ok(Format::Current),
-        Some(found) if found > FORMAT_VERSION => Err(OpenError::NewerFormat {
-            found,
-            supported: FORMAT_VERSION,
-        }),
-        _ => Err(OpenError::UnknownFormat),
+        Some(found) if found > supported => Err(OpenError::NewerFormat { found, supported }),
+        found => match found.and_then(FolderVersion::of) {
+            Some(version) => Ok(Some(version)),
+            None => Err(OpenError::UnknownFormat),
+        },
     }
 }
 

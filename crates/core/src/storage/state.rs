@@ -6,7 +6,7 @@ use yrs::Doc;
 
 use super::health::{FailReason, retry_delay};
 use super::layout::{DocFile, Generation, SegmentNo};
-use super::log::{LogFormat, Salt};
+use super::log::LogFormat;
 use super::store::Shared;
 
 /// An update's place in the order the store received updates.
@@ -162,7 +162,6 @@ pub(crate) enum Segment {
     Open {
         generation: Generation,
         n: SegmentNo,
-        salt: Salt,
         written: u64,
     },
 }

@@ -5,8 +5,10 @@ use std::sync::{Arc, MutexGuard};
 use std::time::Duration;
 
 use super::doc_id::DocId;
+use super::format::Format2Ready;
 use super::health::FailReason;
-use super::log::{Salt, encode_record, segment_header};
+use super::layout::{Generation, SegmentNo};
+use super::log::encode_frame;
 use super::state::{DocDir, DocSlot, LogSize, Segment, Seq};
 use super::store::Shared;
 
@@ -115,8 +117,22 @@ fn collect(
 fn write(shared: &Shared, queued: Vec<Queued<'_>>) -> Option<FailReason> {
     let mut jobs: Vec<Job> = queued.into_iter().map(Job::new).collect();
 
+    let mut gate = None;
     for job in &mut jobs {
-        let result = job.write(shared);
+        let result = match job.segment {
+            Segment::Open { .. } => job.append(shared),
+            Segment::Next(generation, n) => {
+                let ready = gate
+                    .get_or_insert_with(|| shared.format.ensure_v2(&*shared.fs, &shared.layout));
+                match ready {
+                    Ok(ready) => job.start_segment(shared, ready, generation, n),
+                    Err(e) => {
+                        job.error = Some(FailReason::from(&*e));
+                        continue;
+                    }
+                }
+            }
+        };
         job.fail_on(result);
     }
     for job in jobs.iter_mut().filter(|job| job.error.is_none()) {
@@ -186,7 +202,13 @@ impl<'a> Job<'a> {
         }
     }
 
-    fn write(&mut self, shared: &Shared) -> io::Result<()> {
+    fn start_segment(
+        &mut self,
+        shared: &Shared,
+        ready: &Format2Ready,
+        generation: Generation,
+        n: SegmentNo,
+    ) -> io::Result<()> {
         let fs = &*shared.fs;
         if self.dir == DocDir::Missing {
             match fs.create_dir(&shared.layout.doc_dir(self.queued.doc)) {
@@ -194,27 +216,23 @@ impl<'a> Job<'a> {
                 _ => self.dir = DocDir::UnsyncedThisSession,
             }
         }
-        let path = self.path(shared);
-        let (salt, mut bytes) = match self.segment {
-            Segment::Open { salt, .. } => (salt, Vec::new()),
-            Segment::Next(generation, n) => {
-                let salt = Salt::random()?;
-                fs.create_new(&path)?;
-                self.segment = Segment::Open {
-                    generation,
-                    n,
-                    salt,
-                    written: 0,
-                };
-                self.created_segment = true;
-                (salt, segment_header(salt))
-            }
+        ready.create_new(fs, &self.path(shared))?;
+        self.segment = Segment::Open {
+            generation,
+            n,
+            written: 0,
         };
+        self.created_segment = true;
+        self.append(shared)
+    }
+
+    fn append(&mut self, shared: &Shared) -> io::Result<()> {
+        let mut bytes = Vec::new();
         for update in &self.queued.updates {
-            encode_record(salt, update, &mut bytes);
+            encode_frame(update, &mut bytes);
         }
         self.written = bytes.len() as u64;
-        fs.append(&path, &bytes)?;
+        shared.fs.append(&self.path(shared), &bytes)?;
         if let Segment::Open { written, .. } = &mut self.segment {
             *written += self.written;
         }

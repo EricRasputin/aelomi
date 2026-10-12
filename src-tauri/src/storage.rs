@@ -296,7 +296,7 @@ pub(crate) mod tests {
     #[test]
     fn opening_a_newer_format_is_refused() {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("format.json"), r#"{"format": 2}"#).unwrap();
+        std::fs::write(dir.path().join("format.json"), r#"{"format": 3}"#).unwrap();
         let location = DataLocation {
             path: dir.path().to_path_buf(),
             cloud_roots: vec![],

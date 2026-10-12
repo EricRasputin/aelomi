@@ -1,9 +1,9 @@
 mod v1;
 mod v2;
 
+pub(crate) use v1::SEGMENT_HEADER;
 #[cfg(test)]
-pub(crate) use v1::{LOG_MAGIC, encode_segment};
-pub(crate) use v1::{SEGMENT_HEADER, Salt, encode_record, segment_header};
+pub(crate) use v1::{LOG_MAGIC, Salt, encode_record, encode_segment, segment_header};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) enum LogFormat {
@@ -12,7 +12,7 @@ pub(crate) enum LogFormat {
 }
 
 impl LogFormat {
-    pub const WRITTEN: Self = Self::V1;
+    pub const WRITTEN: Self = Self::V2;
     const ALL: [Self; 2] = [Self::V1, Self::V2];
 
     pub fn extension(self) -> &'static str {
@@ -60,7 +60,6 @@ pub(crate) fn read(format: LogFormat, bytes: &[u8]) -> LogContents {
     }
 }
 
-#[cfg(test)]
 pub(crate) fn encode_frame(update: &[u8], out: &mut Vec<u8>) {
     v2::encode(update, out)
 }

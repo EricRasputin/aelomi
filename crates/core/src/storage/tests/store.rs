@@ -6,7 +6,7 @@ use yrs::{Doc, Map, ReadTxn, StateVector, Text, TextPrelim, TextRef, Transact};
 
 use super::{
     Delivery, Env, applied, assert_doc, doc, frames, in_order, log_name, ops_of_updates,
-    out_of_order, snapshot_name, soon, typed, v2_log, with_a_loner_sixth, without,
+    out_of_order, snapshot_name, soon, typed, with_a_loner_sixth, without,
 };
 use crate::storage::compact::CompactError;
 use crate::storage::log::encode_segment;
@@ -57,7 +57,25 @@ fn a_batch_makes_one_full_sync_after_fsyncing_every_file_and_new_entry() {
             .collect();
         let before = env.fs.ops().len();
         assert!(matches!(store.run_writer_once(), Step::Wrote), "{round}");
-        let ops = env.fs.ops()[before..].to_vec();
+        let mut ops = env.fs.ops()[before..].to_vec();
+        if round == "new docs" {
+            let publication: Vec<(OpKind, PathBuf)> =
+                ops.drain(..7).map(|op| (op.kind, op.path)).collect();
+            let tmp = env.path("format.json.tmp");
+            assert_eq!(
+                publication,
+                [
+                    (OpKind::Create, tmp.clone()),
+                    (OpKind::Append, tmp.clone()),
+                    (OpKind::Fsync, tmp.clone()),
+                    (OpKind::FullSync, tmp.clone()),
+                    (OpKind::ReplaceFormat, tmp),
+                    (OpKind::Fsync, env.root().to_path_buf()),
+                    (OpKind::FullSync, env.root().to_path_buf()),
+                ],
+                "the folder says 2 durably before the first .ylog2"
+            );
+        }
 
         let paths = |kinds: &[OpKind]| -> BTreeSet<PathBuf> {
             ops.iter()
@@ -831,29 +849,37 @@ fn a_doc_with_both_log_formats_loads_every_update_and_continues_numbering() {
     let env = Env::manual();
     let a = doc("a");
     let updates = UpdateGen::new(43, 2).updates(4);
+    drop(env.open());
+    let planted = env.path("docs/a/log-0000000000-0000000000.ylog");
+    let format_1 = encode_segment(&updates[..2]);
+    env.fs.put_durable(&planted, &format_1);
+
     let store = env.open();
-    for update in &updates[..2] {
-        store.append(&a, update).unwrap();
-    }
+    assert_doc(&store, &a, &updates[..2]);
+    store.append(&a, &updates[2]).unwrap();
     assert_eq!(store.flush(soon()), []);
     drop(store);
-    let planted = env.path("docs/a/log-0000000000-0000000001.ylog2");
-    let format_2 = v2_log(&updates[2..3]);
-    env.fs.put_durable(&planted, &format_2);
-
     let store = env.open();
     assert_doc(&store, &a, &updates[..3]);
     store.append(&a, &updates[3]).unwrap();
     assert_eq!(store.flush(soon()), []);
+    let files = env.fs.files();
     assert_eq!(
-        env.doc_files(&a),
-        [
-            "log-0000000000-0000000000.ylog",
-            "log-0000000000-0000000001.ylog2",
-            "log-0000000000-0000000002.ylog",
-        ]
+        (
+            env.doc_files(&a),
+            &files[&planted],
+            &files[&env.path("format.json")]
+        ),
+        (
+            vec![
+                "log-0000000000-0000000000.ylog".to_owned(),
+                "log-0000000000-0000000001.ylog2".to_owned(),
+                "log-0000000000-0000000002.ylog2".to_owned(),
+            ],
+            &format_1,
+            &b"{\n  \"format\": 2\n}\n".to_vec()
+        )
     );
-    assert_eq!(env.fs.files()[&planted], format_2);
     drop(store);
     assert_doc(&env.open(), &a, &updates);
 }

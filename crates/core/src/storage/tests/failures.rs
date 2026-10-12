@@ -511,9 +511,9 @@ fn compaction_deletes_the_segments_this_sessions_failed_writes_left_instead_of_q
         (0..=20).map(segment).collect::<Vec<_>>(),
         "the first attempt and 20 retries each tore a segment"
     );
-    assert_eq!(torn[0].1, 3 + 4, "the first holds 3 acknowledged records");
+    assert_eq!(torn[0].1, 3 + 5, "the first holds 3 acknowledged records");
     assert!(
-        torn[1..].iter().all(|(_, records)| *records == 4),
+        torn[1..].iter().all(|(_, records)| *records == 5),
         "each retry wrote records before it failed: {torn:?}"
     );
     assert_eq!(env.doc_files(&a).len(), 22);
@@ -559,7 +559,7 @@ fn a_segment_a_failed_write_tore_in_an_earlier_session_is_quarantined_not_delete
 }
 
 #[test]
-fn a_length_recovered_in_a_segment_a_failed_write_tore_moves_it_to_quarantine_not_deletion() {
+fn a_damaged_head_in_a_segment_a_failed_write_tore_moves_it_to_quarantine_not_deletion() {
     let env = Env::manual();
     let store = env.open();
     let a = doc("a");

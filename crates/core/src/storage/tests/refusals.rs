@@ -1,9 +1,11 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use super::Env;
+use super::{Env, assert_doc, doc, soon, v2_log};
+use crate::storage::layout::Layout;
 use crate::storage::sim_fs::OpKind;
-use crate::storage::store::{OpenError, Store};
+use crate::storage::store::{OpenError, Store, refuse_before_writing};
+use crate::storage::testkit::UpdateGen;
 
 fn tree(dir: &Path) -> BTreeMap<PathBuf, Option<Vec<u8>>> {
     let mut out = BTreeMap::new();
@@ -43,7 +45,7 @@ fn a_newer_format_is_refused_and_the_folder_is_left_byte_for_byte_unchanged() {
     let dir = folder(&[
         (
             "format.json",
-            b"{\"format\": 2, \"migrated\": {\"from\": [1]}}",
+            b"{\"format\": 3, \"migrated\": {\"from\": [2]}}",
         ),
         (
             "docs/a/log-0000000000-0000000000.ylog",
@@ -57,8 +59,8 @@ fn a_newer_format_is_refused_and_the_folder_is_left_byte_for_byte_unchanged() {
         matches!(
             refused,
             Err(OpenError::NewerFormat {
-                found: 2,
-                supported: 1
+                found: 3,
+                supported: 2
             })
         ),
         "{refused:?}"
@@ -73,7 +75,7 @@ fn a_newer_format_is_refused_and_the_folder_is_left_byte_for_byte_unchanged() {
         env.try_open(),
         Err(OpenError::NewerFormat {
             found: 3,
-            supported: 1
+            supported: 2
         })
     ));
     let kinds: Vec<OpKind> = env.fs.ops()[before..].iter().map(|op| op.kind).collect();
@@ -90,7 +92,7 @@ fn a_format_above_u32_max_is_refused_as_newer_and_the_folder_is_left_byte_for_by
     let refused = Store::open(dir.path()).map(drop).map_err(|e| e.to_string());
     assert_eq!(
         refused,
-        Err("the data folder has format 4294967296, newer than this build's format 1".into())
+        Err("the data folder has format 4294967296, newer than this build's format 2".into())
     );
     assert_eq!(tree(dir.path()), before, "not even a .lock");
 }
@@ -149,4 +151,83 @@ fn a_format_json_left_half_written_by_a_crash_is_redone() {
         Some(&b"{\n  \"format\": 1\n}\n"[..])
     );
     assert!(!files.contains_key(&env.path("format.json.tmp")));
+}
+
+#[test]
+fn a_format_2_folder_opens_and_loads_without_a_write() {
+    let env = Env::manual();
+    let a = doc("a");
+    let updates = UpdateGen::new(9, 2).updates(3);
+    env.fs
+        .put_durable(&env.path("format.json"), b"{\n  \"format\": 2\n}\n");
+    env.fs.put_durable(
+        &env.path("docs/a/log-0000000000-0000000000.ylog2"),
+        &v2_log(&updates),
+    );
+    let (before, ops_before) = (env.fs.files(), env.fs.ops().len());
+    let store = env.open();
+    assert_doc(&store, &a, &updates);
+    let ops: Vec<(OpKind, PathBuf, bool)> = env.fs.ops()[ops_before..]
+        .iter()
+        .map(|op| (op.kind, op.path.clone(), op.ok))
+        .collect();
+    assert_eq!(
+        ops,
+        [
+            (OpKind::List, env.root().to_path_buf(), true),
+            (OpKind::Read, env.path("format.json"), true),
+            (OpKind::CreateDir, env.root().to_path_buf(), false),
+            (OpKind::Fsync, PathBuf::from("/"), true),
+            (OpKind::Lock, env.path(".lock"), true),
+            (OpKind::List, env.root().to_path_buf(), true),
+            (OpKind::Read, env.path("format.json"), true),
+            (OpKind::Fsync, env.root().to_path_buf(), true),
+            (OpKind::List, env.path("docs/a"), true),
+            (
+                OpKind::Read,
+                env.path("docs/a/log-0000000000-0000000000.ylog2"),
+                true
+            ),
+        ]
+    );
+    let mut after = env.fs.files();
+    assert!(after.remove(&env.path(".lock")).is_some());
+    assert_eq!(after, before);
+}
+
+#[test]
+fn a_format_1_build_refuses_a_folder_the_writer_moved_to_format_2_before_any_write() {
+    let env = Env::manual();
+    let a = doc("a");
+    let store = env.open();
+    store
+        .append(&a, &UpdateGen::new(10, 2).next_update())
+        .unwrap();
+    assert_eq!(store.flush(soon()), []);
+    drop(store);
+    let (files, before) = (env.fs.files(), env.fs.ops().len());
+
+    let refused = refuse_before_writing(&*env.fs, &Layout::new(env.root()), 1);
+    assert!(
+        matches!(
+            refused,
+            Err(OpenError::NewerFormat {
+                found: 2,
+                supported: 1
+            })
+        ),
+        "{refused:?}"
+    );
+    let ops: Vec<(OpKind, PathBuf)> = env.fs.ops()[before..]
+        .iter()
+        .map(|op| (op.kind, op.path.clone()))
+        .collect();
+    assert_eq!(
+        ops,
+        [
+            (OpKind::List, env.root().to_path_buf()),
+            (OpKind::Read, env.path("format.json")),
+        ]
+    );
+    assert_eq!(env.fs.files(), files, "byte for byte unchanged");
 }

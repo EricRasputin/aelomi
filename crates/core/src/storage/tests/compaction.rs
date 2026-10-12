@@ -233,13 +233,9 @@ fn passing_1_mb_of_logs_triggers_compaction() {
     let store = env.open();
     let a = doc("a");
     let sent = typing(1_000, 1_000);
-    let mut bytes = 8;
-    let within = sent
+    let within = frames(&sent)
         .iter()
-        .take_while(|u| {
-            bytes += 8 + u.len();
-            bytes <= 1_000_000
-        })
+        .take_while(|frame| frame.tail.end <= 1_000_000)
         .count();
     assert!(within < 10_000, "the byte limit comes first");
     for update in &sent[..within] {
@@ -647,27 +643,45 @@ fn a_damaged_log_loads_every_record_around_the_damage_and_is_quarantined_not_del
 }
 
 #[test]
-fn a_torn_log_is_quarantined_at_compaction_not_deleted() {
+fn a_log_damaged_at_its_end_is_quarantined_at_compaction_not_deleted() {
     let a = doc("a");
     let sent = UpdateGen::new(31, 2).updates(10);
     let frames = frames(&sent);
     let last = &frames[9];
     let logged = log_name(0, 0);
     let planted = "log-0000000000-0000000001.ylog";
-    for (damage, name, flip, lost) in [
+    type Edit = Box<dyn Fn(&mut Vec<u8>)>;
+    let flip = |at: usize| -> Edit { Box::new(move |b| b[at] ^= 0x10) };
+    let zero_from = |at: usize| -> Edit { Box::new(move |b| b[at..].fill(0)) };
+    for (damage, name, edit, end, lost) in [
         (
             "a bit in the last payload",
             logged.as_str(),
-            Some(last.body.start + 1),
+            flip(last.body.start + 1),
+            LogEnd::Corrupt,
             vec![9],
         ),
         (
             "a bit in the last CRC",
             logged.as_str(),
-            Some(last.crc_byte(0)),
-            vec![9],
+            flip(last.crc_byte(0)),
+            LogEnd::Corrupt,
+            vec![],
         ),
-        ("garbage right after the log header", planted, None, vec![]),
+        (
+            "zeros over the end of the last tail",
+            logged.as_str(),
+            zero_from(last.tail.end - 4),
+            LogEnd::Torn,
+            vec![],
+        ),
+        (
+            "garbage right after the log header",
+            planted,
+            Box::new(|b: &mut Vec<u8>| *b = [&LOG_MAGIC[..], b"not a record"].concat()),
+            LogEnd::Torn,
+            vec![],
+        ),
     ] {
         let env = Env::manual();
         let store = env.open();
@@ -678,15 +692,9 @@ fn a_torn_log_is_quarantined_at_compaction_not_deleted() {
         drop(store);
 
         let path = env.path("docs/a").join(name);
-        let damaged = match flip {
-            Some(at) => {
-                let mut bytes = env.fs.files()[&path].clone();
-                bytes[at] ^= 0x10;
-                bytes
-            }
-            None => [&LOG_MAGIC[..], b"not a record"].concat(),
-        };
-        assert_eq!(read_log_file(&path, &damaged).end, LogEnd::Torn, "{damage}");
+        let mut damaged = env.fs.files().remove(&path).unwrap_or_default();
+        edit(&mut damaged);
+        assert_eq!(read_log_file(&path, &damaged).end, end, "{damage}");
         env.fs.put_durable(&path, &damaged);
 
         let store = env.open();
@@ -697,7 +705,7 @@ fn a_torn_log_is_quarantined_at_compaction_not_deleted() {
         assert_eq!(
             env.quarantine(),
             [(env.path("quarantine/a").join(name), damaged)].into(),
-            "{damage}: only the torn file moved, byte for byte"
+            "{damage}: only the damaged file moved, byte for byte"
         );
         drop(store);
         assert_doc(&env.open(), &a, &expected);
@@ -804,9 +812,10 @@ fn a_torn_tail_left_by_a_crash_is_quarantined_at_compaction() {
             env.fs.crash(Crash::KeepTornPrefix(seed));
             let path = env.path("docs/a").join(&name);
             let bytes = env.fs.files()[&path].clone();
-            (read_log_file(&path, &bytes).end == LogEnd::Torn).then_some((env, bytes))
+            let read = read_log_file(&path, &bytes);
+            (read.end == LogEnd::Torn && read.records.len() == 3).then_some((env, bytes))
         })
-        .expect("a seed that keeps part of the fourth record");
+        .expect("a seed that keeps part of the fourth record, too little to load it");
     let path = env.path("docs/a").join(&name);
     assert_eq!(read_log_file(&path, &torn).records.len(), 3);
 

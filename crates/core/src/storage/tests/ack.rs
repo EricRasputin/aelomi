@@ -93,8 +93,8 @@ fn single_appends_are_acknowledged_within_100_ms() {
     assert_eq!(latencies.len(), 20);
     assert_eq!(
         latencies[0],
-        Duration::from_micros(7_500),
-        "a new doc's first batch: 3 fsyncs, 1 full sync"
+        Duration::from_micros(20_500),
+        "publishing format 2: 2 fsyncs, 2 full syncs; a new doc's first batch: 3 fsyncs, 1 full sync"
     );
     assert!(
         latencies[1..]
@@ -194,8 +194,9 @@ fn a_docs_first_load_from_a_slow_disk_never_delays_another_docs_acknowledgement(
     assert!(acked, "a is acknowledged");
     assert_eq!(
         latency,
-        Duration::from_micros(7_500),
-        "a's first batch waits on no read of b's: 3 fsyncs, 1 full sync"
+        Duration::from_micros(14_500),
+        "a's first batch waits on no read of b's: confirming format 2, 2 fsyncs, 1 full sync; \
+         the batch, 3 fsyncs, 1 full sync"
     );
     assert_doc(store, &b, &on_b);
 }
