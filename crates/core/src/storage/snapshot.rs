@@ -159,7 +159,7 @@ pub(crate) fn encode_snapshot_v2(payload: &[u8]) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::storage::testkit::SplitMix64;
+    use crate::storage::testkit::{SplitMix64, snapshot_with_forged_tail};
 
     fn payload(len: usize) -> Vec<u8> {
         (0..len).map(|i| (i % 251) as u8 + 1).collect()
@@ -336,17 +336,16 @@ mod tests {
     }
 
     #[test]
-    fn a_tail_inside_a_cut_payload_is_not_an_anchor() {
-        let planted = b"ghost";
-        let forged = Anchor {
-            len: planted.len(),
-            crc: CRC_64.checksum(planted),
-        }
-        .encode(TAIL_MAGIC);
-        let note = [&planted[..], &[7; 95], &forged[..], &[7; 4_000]].concat();
-        let bytes = encode_snapshot_v2(&note);
-        let cut = zeroed(&bytes[..32 + 100 + 32], 0..32);
-        assert_eq!(read(SnapshotFormat::V2, &cut), None);
+    fn an_intact_head_rejects_a_forged_tail_after_a_block_aligned_cut() {
+        let (payload, cut) = snapshot_with_forged_tail();
+        assert_eq!(
+            read(SnapshotFormat::V2, &encode_snapshot_v2(&payload)),
+            Some((&payload[..], Condition::Whole))
+        );
+        assert_eq!(
+            read(SnapshotFormat::V2, &cut).map(|(payload, condition)| (payload.len(), condition)),
+            None
+        );
     }
 
     #[test]
