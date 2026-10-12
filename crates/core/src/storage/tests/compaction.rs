@@ -1003,9 +1003,10 @@ fn compaction_runs_beside_the_writer_without_losing_updates() {
         ..Limits::DATA_6
     };
     let (a, b) = (doc("a"), doc("b"));
-    let sent_a = UpdateGen::new(41, 3).updates(41 + 3 * 5);
+    let over_the_limit = env.limits.records as usize + 1;
+    let sent_a = UpdateGen::new(41, 3).updates(over_the_limit + 3 * 5);
     let sent_b = UpdateGen::new(42, 3).updates(5 * 5);
-    let (before_rotation, after_rotation) = sent_a.split_at(41);
+    let (before_rotation, after_rotation) = sent_a.split_at(over_the_limit);
     let (mut on_a, mut on_b) = (after_rotation.chunks(5), sent_b.chunks(5));
     let (old_log, new_log) = (
         "log-0000000000-0000000000.ylog",
@@ -1053,7 +1054,7 @@ fn compaction_runs_beside_the_writer_without_losing_updates() {
     assert_eq!(
         env.doc_files(&a),
         [old_log, new_log, snapshot],
-        "the snapshot is published, and b's appends land while a's files are locked"
+        "the snapshot is published"
     );
     retiring.release();
 
@@ -1064,7 +1065,7 @@ fn compaction_runs_beside_the_writer_without_losing_updates() {
     assert_eq!(
         env.doc_files(&a),
         [new_log, snapshot],
-        "a's next batch waited for its old log to retire"
+        "the old log is gone once a's next batch is durable"
     );
     store.close(soon()).unwrap();
 
