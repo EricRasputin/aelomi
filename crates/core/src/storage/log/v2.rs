@@ -46,7 +46,6 @@ impl Anchor {
         }
     }
 
-    #[cfg(test)]
     fn encode(self, kind: Kind) -> [u8; ANCHOR] {
         let mut fields = [0; FIELDS];
         fields[0] = kind.tag();
@@ -85,7 +84,6 @@ impl Anchor {
     }
 }
 
-#[cfg(test)]
 fn pack(update: &[u8], out: &mut Vec<u8>) {
     for group in update.chunks(7) {
         let mut high = 0;
@@ -97,8 +95,6 @@ fn pack(update: &[u8], out: &mut Vec<u8>) {
     }
 }
 
-/// Also says whether the unused bits of the last high-bits byte are zero, as the writer leaves
-/// them.
 fn unpack(body: &[u8], n: usize) -> (Vec<u8>, bool) {
     debug_assert_eq!(body.len(), body_len(n));
     let mut update = Vec::with_capacity(n);
@@ -124,6 +120,7 @@ pub(super) fn encode(update: &[u8], out: &mut Vec<u8>) {
 struct Found {
     body: Range<usize>,
     update: Vec<u8>,
+    anchor: Anchor,
     head_intact: bool,
     tail_intact: bool,
     canonical: bool,
@@ -133,7 +130,6 @@ pub(super) fn read(bytes: &[u8]) -> LogContents {
     read_counting(bytes).0
 }
 
-/// Also returns how many body bytes it unpacked and hashed.
 fn read_counting(bytes: &[u8]) -> (LogContents, usize) {
     let mut found = Vec::new();
     let mut hashed = 0;
@@ -171,6 +167,7 @@ fn read_counting(bytes: &[u8]) -> (LogContents, usize) {
                     tail_intact: body.end == run.end && tail == Some(head),
                     body,
                     update,
+                    anchor: head,
                     head_intact: true,
                     canonical,
                 });
@@ -187,6 +184,7 @@ fn read_counting(bytes: &[u8]) -> (LogContents, usize) {
                         head_intact: body.start == run.start && head == Some(tail),
                         body,
                         update,
+                        anchor: tail,
                         tail_intact: true,
                         canonical,
                     });
@@ -208,12 +206,10 @@ fn classify(bytes: &[u8], found: &[Found]) -> LogEnd {
         damaged |= !frame.head_intact || !frame.canonical;
         let tail_end = frame.body.end + ANCHOR;
         if !frame.tail_intact {
-            let tail = &bytes[frame.body.end..bytes.len().min(tail_end)];
+            let rest = without_trailing_zeros(&bytes[frame.body.end..]);
             let only_tear = k == found.len() - 1
-                && tail_end >= bytes.len()
-                && without_trailing_zeros(tail)
-                    .iter()
-                    .all(|&byte| is_high(byte));
+                && rest.len() < ANCHOR
+                && *rest == frame.anchor.encode(Kind::Tail)[..rest.len()];
             if only_tear {
                 torn = true;
             } else {
@@ -238,7 +234,6 @@ fn classify(bytes: &[u8], found: &[Found]) -> LogEnd {
     }
 }
 
-/// A torn write leaves a prefix of the frames it appended, possibly followed by zeros.
 fn torn_shaped(rest: &[u8]) -> bool {
     let rest = without_trailing_zeros(rest);
     if rest.len() < ANCHOR {
@@ -311,7 +306,6 @@ mod tests {
         }
     }
 
-    /// Whether `img` equals a prefix of `orig` followed only by zeros, as a torn write leaves it.
     fn tear_image(img: &[u8], orig: &[u8]) -> bool {
         let zeros_from = without_trailing_zeros(img).len();
         zeros_from < orig.len() && img[..zeros_from] == orig[..zeros_from]
@@ -399,9 +393,6 @@ mod tests {
         within(log.head(k)) || within(log.tail(k))
     }
 
-    /// One damage turns `log` into `img`. Every record is an appended update, in order. Every
-    /// update whose frame changed only inside one of its anchors loads. The end follows the
-    /// tear-image oracle.
     fn assert_read_after_one_damage(log: &Log, img: &[u8], damage: &str) {
         let (contents, hashed) = read_counting(img);
         assert!(
@@ -448,7 +439,6 @@ mod tests {
         text_update(424_242, "planted")
     }
 
-    /// An update whose packed body holds `image` with bit 7 cleared on every byte.
     fn carrier(image: &[u8]) -> Vec<u8> {
         let mut packed = vec![b'n'; 13];
         packed.extend(image.iter().map(|b| b & 0x7f));
@@ -466,8 +456,6 @@ mod tests {
             .expect("a lead that starts the image at a 7-byte group")
     }
 
-    /// `[k0, k1, carrier, paste, buffer, k2]`, where the carrier's body holds a framed ghost
-    /// with bit 7 cleared.
     fn planted_log() -> Log {
         let keys = UpdateGen::new(11, 1).updates(3);
         let updates = vec![
@@ -551,7 +539,7 @@ mod tests {
     }
 
     #[test]
-    fn the_only_damage_that_loads_a_planted_frame_forces_bit_7_on_twenty_author_chosen_bytes() {
+    fn forcing_bit_7_on_twenty_author_chosen_anchor_bytes_can_load_a_planted_frame() {
         let log = planted_log();
         let ghost = ghost();
         let image = frame(&ghost);
@@ -576,6 +564,7 @@ mod tests {
         let tail = planted.end - ANCHOR..planted.end;
         for (damages, records) in [
             (&[head.clone()][..], with_ghost.clone()),
+            (&[tail.clone()][..], with_ghost.clone()),
             (&[head, tail], with_ghost),
             (&[planted], vec![k0, k1, paste, buffer, k2]),
         ] {
