@@ -193,7 +193,7 @@ pub struct QuitBlocked {
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use std::path::Path;
 
     use aelomi_core::storage::test_support::SimDisk;
@@ -398,14 +398,14 @@ mod tests {
         assert_eq!(names, [OsString::from("data")]);
     }
 
-    fn open_on(disk: &SimDisk) -> Storage {
+    pub(crate) fn open_on(disk: &SimDisk) -> Storage {
         Storage {
             opened: Ok(disk.open(Path::new("/data")).expect("opens")),
             path: "/data".into(),
         }
     }
 
-    fn update(text: &str) -> Vec<u8> {
+    pub(crate) fn update(text: &str) -> Vec<u8> {
         use yrs::{Text, Transact};
         let doc = yrs::Doc::new();
         let body = doc.get_or_insert_text("body");

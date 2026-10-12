@@ -7,7 +7,7 @@ mod storage;
 use aelomi_core::storage::DocId;
 use storage::{QUIT_FLUSH_TIMEOUT, QuitBlocked, Storage, StorageHealthChanged};
 use tauri::webview::PageLoadEvent;
-use tauri::{AppHandle, Manager, RunEvent, WindowEvent};
+use tauri::{AppHandle, Manager, RunEvent, Runtime, WindowEvent};
 use tauri_specta::Event;
 
 pub fn run() {
@@ -18,13 +18,6 @@ pub fn run() {
         .on_page_load(|_, payload| match payload.event() {
             PageLoadEvent::Started => perf::stamp(&perf::PAGE_START_US),
             PageLoadEvent::Finished => perf::stamp(&perf::PAGE_DONE_US),
-        })
-        .on_window_event(|window, event| {
-            if let WindowEvent::CloseRequested { api, .. } = event
-                && !flush_then_allow_quit(window.app_handle(), "CloseRequested")
-            {
-                api.prevent_close();
-            }
         })
         .setup(move |app| {
             perf::stamp(&perf::SETUP_US);
@@ -44,18 +37,30 @@ pub fn run() {
     builder
         .build(tauri::generate_context!())
         .expect("failed to build Aelomi")
-        .run(|app, event| match event {
-            RunEvent::ExitRequested { api, .. } => {
-                if !flush_then_allow_quit(app, "ExitRequested") {
-                    api.prevent_exit();
-                }
+        .run(on_run_event);
+}
+
+fn on_run_event<R: Runtime>(app: &AppHandle<R>, event: RunEvent) {
+    match event {
+        RunEvent::WindowEvent {
+            event: WindowEvent::CloseRequested { api, .. },
+            ..
+        } => {
+            if !flush_then_allow_quit(app, "CloseRequested") {
+                api.prevent_close();
             }
-            // Logout and the Dock's Quit end here, where the exit can no longer be stopped.
-            RunEvent::Exit => {
-                let _ = flush_before_quit(app, "Exit");
+        }
+        RunEvent::ExitRequested { api, .. } => {
+            if !flush_then_allow_quit(app, "ExitRequested") {
+                api.prevent_exit();
             }
-            _ => {}
-        });
+        }
+        // Logout and the Dock's Quit end here, where the exit can no longer be stopped.
+        RunEvent::Exit => {
+            let _ = flush_before_quit(app, "Exit");
+        }
+        _ => {}
+    }
 }
 
 fn open_storage(app: &tauri::App) {
@@ -82,7 +87,7 @@ fn open_storage(app: &tauri::App) {
     app.manage(storage);
 }
 
-fn flush_then_allow_quit(app: &AppHandle, via: &str) -> bool {
+fn flush_then_allow_quit<R: Runtime>(app: &AppHandle<R>, via: &str) -> bool {
     let Err(pending) = flush_before_quit(app, via) else {
         return true;
     };
@@ -91,7 +96,7 @@ fn flush_then_allow_quit(app: &AppHandle, via: &str) -> bool {
     false
 }
 
-fn flush_before_quit(app: &AppHandle, via: &str) -> Result<(), Vec<DocId>> {
+fn flush_before_quit<R: Runtime>(app: &AppHandle<R>, via: &str) -> Result<(), Vec<DocId>> {
     let Some(storage) = app.try_state::<Storage>() else {
         return Ok(());
     };
@@ -101,4 +106,171 @@ fn flush_before_quit(app: &AppHandle, via: &str) -> Result<(), Vec<DocId>> {
         result.as_ref().err().map_or(&[][..], Vec::as_slice)
     );
     result
+}
+
+#[cfg(test)]
+pub(crate) mod tests {
+    use std::sync::{Arc, Mutex, mpsc};
+    use std::thread;
+    use std::time::{Duration, Instant};
+
+    use aelomi_core::storage::test_support::SimDisk;
+    use tauri::test::{MockRuntime, mock_builder, mock_context, noop_assets};
+    use tauri::{App, Listener, WebviewUrl, WebviewWindowBuilder};
+
+    use super::*;
+
+    pub(crate) type Seen = Arc<Mutex<Vec<String>>>;
+
+    pub(crate) struct BlockedApp {
+        pub app: App<MockRuntime>,
+        pub quit_events: Seen,
+        pub quit_blocked: mpsc::Receiver<()>,
+    }
+
+    pub(crate) fn app_with_page_pending(disk: &SimDisk) -> BlockedApp {
+        let app = mock_builder()
+            .build(mock_context(noop_assets()))
+            .expect("builds the mock app");
+        tauri_specta::Builder::<MockRuntime>::new()
+            .events(tauri_specta::collect_events![QuitBlocked])
+            .mount_events(&app);
+        let storage = storage::tests::open_on(disk);
+        disk.fail_appends("docs/page/");
+        storage
+            .store()
+            .unwrap()
+            .append(
+                &DocId::new("page").unwrap(),
+                &storage::tests::update("unsaved"),
+            )
+            .unwrap();
+        app.manage(storage);
+        let quit_events = Seen::default();
+        let (blocked_tx, quit_blocked) = mpsc::channel();
+        let record = quit_events.clone();
+        app.listen_any("quit-blocked", move |event| {
+            record
+                .lock()
+                .unwrap()
+                .push(format!("quit-blocked {}", event.payload()));
+            let _ = blocked_tx.send(());
+        });
+        BlockedApp {
+            app,
+            quit_events,
+            quit_blocked,
+        }
+    }
+
+    /// `ready` waits for the loop to start, because the mock runtime removes a window closed
+    /// before then without sending `CloseRequested`.
+    fn run_recording(
+        app: App<MockRuntime>,
+        quit_events: Seen,
+        ready: impl FnOnce(&AppHandle<MockRuntime>) + 'static,
+    ) {
+        let started = Instant::now();
+        let mut ready = Some(ready);
+        app.run(move |app, event| {
+            let name = match &event {
+                RunEvent::Ready => {
+                    ready.take().unwrap()(app);
+                    None
+                }
+                RunEvent::WindowEvent {
+                    event: WindowEvent::CloseRequested { .. },
+                    ..
+                } => Some("CloseRequested"),
+                RunEvent::ExitRequested { .. } => Some("ExitRequested"),
+                RunEvent::Exit => Some("Exit"),
+                _ => None,
+            };
+            if let Some(name) = name {
+                quit_events.lock().unwrap().push(name.to_owned());
+            }
+            assert!(
+                started.elapsed() < Duration::from_secs(30),
+                "the app never quit: {:?}",
+                quit_events.lock().unwrap()
+            );
+            on_run_event(app, event);
+        });
+    }
+
+    #[test]
+    fn closing_the_last_window_waits_until_pending_updates_are_written() {
+        let disk = Arc::new(SimDisk::default());
+        let BlockedApp {
+            app,
+            quit_events,
+            quit_blocked,
+        } = app_with_page_pending(&disk);
+        WebviewWindowBuilder::new(&app, "main", WebviewUrl::default())
+            .build()
+            .unwrap();
+
+        run_recording(app, quit_events.clone(), move |app| {
+            let window = app.get_webview_window("main").unwrap();
+            thread::spawn(move || {
+                window.close().unwrap();
+                let _ = quit_blocked.recv_timeout(Duration::from_secs(10));
+                disk.clear_faults();
+                window.close().unwrap();
+            });
+        });
+
+        assert_eq!(
+            *quit_events.lock().unwrap(),
+            [
+                "CloseRequested",
+                r#"quit-blocked {"pending_docs":["page"]}"#,
+                "CloseRequested",
+                "ExitRequested",
+                "Exit",
+            ]
+        );
+    }
+
+    #[test]
+    fn exiting_waits_until_pending_updates_are_written() {
+        let disk = Arc::new(SimDisk::default());
+        let BlockedApp {
+            app,
+            quit_events,
+            quit_blocked,
+        } = app_with_page_pending(&disk);
+        WebviewWindowBuilder::new(&app, "main", WebviewUrl::default())
+            .build()
+            .unwrap();
+
+        run_recording(app, quit_events.clone(), move |app| {
+            let app = app.clone();
+            thread::spawn(move || {
+                app.get_webview_window("main").unwrap().destroy().unwrap();
+                let _ = quit_blocked.recv_timeout(Duration::from_secs(10));
+                disk.clear_faults();
+                let (built_tx, built) = mpsc::channel();
+                let handle = app.clone();
+                app.run_on_main_thread(move || {
+                    let window = WebviewWindowBuilder::new(&handle, "again", WebviewUrl::default())
+                        .build()
+                        .unwrap();
+                    built_tx.send(window).unwrap();
+                })
+                .unwrap();
+                built.recv().unwrap().destroy().unwrap();
+            });
+        });
+
+        assert_eq!(
+            *quit_events.lock().unwrap(),
+            [
+                "ExitRequested",
+                r#"quit-blocked {"pending_docs":["page"]}"#,
+                "ExitRequested",
+                "Exit",
+            ]
+        );
+    }
 }
