@@ -5,8 +5,8 @@ use std::time::Duration;
 use yrs::{Doc, Map, ReadTxn, StateVector, Text, TextPrelim, TextRef, Transact};
 
 use super::{
-    Delivery, Env, applied, assert_doc, doc, in_order, ops_of_updates, out_of_order, record_at,
-    soon, typed, with_a_loner_sixth, without,
+    Delivery, Env, applied, assert_doc, doc, frames, in_order, log_name, ops_of_updates,
+    out_of_order, snapshot_name, soon, typed, with_a_loner_sixth, without,
 };
 use crate::storage::compact::CompactError;
 use crate::storage::log::encode_segment;
@@ -261,13 +261,7 @@ fn loading_writes_nothing_and_the_first_append_starts_a_new_segment() {
     let second = updates.next_update();
     store.append(&doc("a"), &second).unwrap();
     assert_eq!(store.flush(soon()), []);
-    assert_eq!(
-        env.doc_files(&doc("a")),
-        [
-            "log-0000000000-0000000000.ylog",
-            "log-0000000000-0000000001.ylog"
-        ]
-    );
+    assert_eq!(env.doc_files(&doc("a")), [log_name(0, 0), log_name(0, 1)]);
     drop(store);
     assert_doc(&env.open(), &doc("a"), &[first, second]);
 }
@@ -385,7 +379,7 @@ fn a_doc_that_fails_to_rebuild_stays_stale_until_a_rebuild_succeeds() {
     assert!(compacted.is_ok());
     assert_eq!(
         env.doc_files(&a),
-        ["log-0000000000-0000000000.ylog"],
+        [log_name(0, 0)],
         "compaction skips a stale doc"
     );
     assert_eq!(store.flush(soon()), [], "its queue is still written");
@@ -393,7 +387,7 @@ fn a_doc_that_fails_to_rebuild_stays_stale_until_a_rebuild_succeeds() {
     env.fs.clear_faults();
     assert_doc(&store, &a, &[good.clone(), later.clone()]);
     store.compact(&a).unwrap();
-    assert_eq!(env.doc_files(&a), ["snapshot-0000000001.ysnap"]);
+    assert_eq!(env.doc_files(&a), [snapshot_name(1)]);
     drop(store);
     assert_doc(&env.open(), &a, &[good, later]);
 }
@@ -410,9 +404,9 @@ fn a_rebuild_keeps_damage_it_finds_for_quarantine() {
     }
     assert_eq!(store.flush(soon()), []);
 
-    let name = "log-0000000000-0000000000.ylog";
-    let path = env.path("docs/a").join(name);
-    env.fs.flip_bit(&path, record_at(&sent, 5) + 9);
+    let name = log_name(0, 0);
+    let path = env.path("docs/a").join(&name);
+    env.fs.flip_bit(&path, frames(&sent)[5].body.start + 1);
     let damaged = env.fs.files()[&path].clone();
 
     assert!(matches!(
@@ -421,9 +415,9 @@ fn a_rebuild_keeps_damage_it_finds_for_quarantine() {
     ));
     assert_doc(&store, &a, &without(&sent, &[5]));
     store.compact(&a).unwrap();
-    assert_eq!(env.doc_files(&a), ["snapshot-0000000001.ysnap"]);
+    assert_eq!(env.doc_files(&a), [snapshot_name(1)]);
     assert_eq!(
-        env.fs.files().get(&env.path("quarantine/a").join(name)),
+        env.fs.files().get(&env.path("quarantine/a").join(&name)),
         Some(&damaged),
         "moved byte for byte"
     );
@@ -444,8 +438,8 @@ fn an_update_after_a_rebuild_survives_damage_the_rebuild_read_in_the_open_segmen
             store.append(&a, update).unwrap();
         }
         assert_eq!(store.flush(soon()), []);
-        let open = env.path("docs/a/log-0000000000-0000000000.ylog");
-        env.fs.flip_bit(&open, record_at(&sent, 5) + 9);
+        let open = env.path("docs/a").join(log_name(0, 0));
+        env.fs.flip_bit(&open, frames(&sent)[5].body.start + 1);
 
         if poisoned {
             store.panic_while_applying(&a, &UpdateGen::new(42, 1).next_update());
@@ -474,8 +468,8 @@ fn a_queue_written_while_a_rebuild_fails_survives_damage_in_the_open_segment() {
         store.append(&a, update).unwrap();
     }
     assert_eq!(store.flush(soon()), []);
-    let open = env.path("docs/a/log-0000000000-0000000000.ylog");
-    env.fs.flip_bit(&open, record_at(&sent, 5) + 9);
+    let open = env.path("docs/a").join(log_name(0, 0));
+    env.fs.flip_bit(&open, frames(&sent)[5].body.start + 1);
 
     let later = UpdateGen::new(41, 1).next_update();
     store.append(&a, &later).unwrap();
@@ -501,15 +495,15 @@ fn an_update_written_behind_damage_in_the_open_segment_survives_a_crash() {
         store.append(&a, update).unwrap();
     }
     assert_eq!(store.flush(soon()), []);
-    let open = env.path("docs/a/log-0000000000-0000000000.ylog");
-    env.fs.flip_bit(&open, record_at(&sent, 5) + 9);
+    let open = env.path("docs/a").join(log_name(0, 0));
+    env.fs.flip_bit(&open, frames(&sent)[5].body.start + 1);
 
     let later = UpdateGen::new(41, 1).next_update();
     store.append(&a, &later).unwrap();
     assert_eq!(store.flush(soon()), []);
     assert_eq!(
         env.doc_files(&a),
-        ["log-0000000000-0000000000.ylog"],
+        [log_name(0, 0)],
         "written behind the damage"
     );
     drop(store);
@@ -532,8 +526,8 @@ fn an_update_after_a_pending_doc_loads_survives_damage_the_load_read_in_the_open
         }
         assert!(store.has_pending_structs(&a));
         assert_eq!(store.flush(soon()), []);
-        let open = env.path("docs/a/log-0000000000-0000000000.ylog");
-        env.fs.flip_bit(&open, record_at(&sent, intact) + 9);
+        let open = env.path("docs/a").join(log_name(0, 0));
+        env.fs.flip_bit(&open, frames(&sent)[intact].body.start + 1);
 
         store.load(&a).unwrap();
         store.append(&a, &later).unwrap();
@@ -558,16 +552,16 @@ fn the_next_compaction_quarantines_damage_a_pending_doc_load_reads() {
     }
     assert!(store.has_pending_structs(&a));
     assert_eq!(store.flush(soon()), []);
-    let name = "log-0000000000-0000000000.ylog";
-    let path = env.path("docs/a").join(name);
-    env.fs.flip_bit(&path, record_at(&sent, 9) + 9);
+    let name = log_name(0, 0);
+    let path = env.path("docs/a").join(&name);
+    env.fs.flip_bit(&path, frames(&sent)[9].body.start + 1);
     let damaged = env.fs.files()[&path].clone();
 
     store.load(&a).unwrap();
     store.compact(&a).unwrap();
-    assert_eq!(env.doc_files(&a), ["snapshot-0000000001.ysnap"]);
+    assert_eq!(env.doc_files(&a), [snapshot_name(1)]);
     assert_eq!(
-        env.fs.files().get(&env.path("quarantine/a").join(name)),
+        env.fs.files().get(&env.path("quarantine/a").join(&name)),
         Some(&damaged),
         "moved byte for byte"
     );
@@ -610,7 +604,7 @@ fn a_rebuild_queues_the_compaction_a_stale_doc_skipped() {
         );
         let (_, compacted) = store.run_compactor_once().expect("a was queued");
         assert!(compacted.is_ok());
-        assert_eq!(env.doc_files(&a), ["snapshot-0000000001.ysnap"]);
+        assert_eq!(env.doc_files(&a), [snapshot_name(1)]);
         assert_eq!(store.flush(soon()), []);
         drop(store);
         assert_doc(&env.open(), &a, &sent);
@@ -630,9 +624,9 @@ fn compaction_quarantines_damage_a_rebuild_finds_while_it_runs() {
     assert_eq!(store.flush(soon()), []);
     let rotated = store.begin_compaction(&a).unwrap();
 
-    let name = "log-0000000000-0000000000.ylog";
-    let path = env.path("docs/a").join(name);
-    env.fs.flip_bit(&path, record_at(&sent, 5) + 9);
+    let name = log_name(0, 0);
+    let path = env.path("docs/a").join(&name);
+    env.fs.flip_bit(&path, frames(&sent)[5].body.start + 1);
     let damaged = env.fs.files()[&path].clone();
     assert!(matches!(
         store.append(&a, &bad),
@@ -642,9 +636,9 @@ fn compaction_quarantines_damage_a_rebuild_finds_while_it_runs() {
 
     store.finish_compaction(&a, rotated).unwrap();
     assert_doc(&store, &a, &sent);
-    assert_eq!(env.doc_files(&a), ["snapshot-0000000001.ysnap"]);
+    assert_eq!(env.doc_files(&a), [snapshot_name(1)]);
     assert_eq!(
-        env.fs.files().get(&env.path("quarantine/a").join(name)),
+        env.fs.files().get(&env.path("quarantine/a").join(&name)),
         Some(&damaged),
         "moved byte for byte"
     );
@@ -677,7 +671,7 @@ fn keep_a_snapshot_the_loaded_doc_lacks(env: &Env) -> (Store, Vec<Vec<u8>>) {
     store.compact(&a).unwrap();
     assert_eq!(
         env.doc_files(&a),
-        ["snapshot-0000000000.ysnap", "snapshot-0000000001.ysnap"],
+        ["snapshot-0000000000.ysnap", snapshot_name(1).as_str()],
         "snapshot 1 lacks updates 6 to 10"
     );
     assert_eq!(env.fs.files().get(&older), Some(&holding));
@@ -697,7 +691,7 @@ fn a_later_compaction_keeps_a_snapshot_the_loaded_doc_lacks() {
         .run_compactor_once()
         .expect("the older snapshot queues a compaction");
     compacted.unwrap();
-    assert_eq!(env.doc_files(&a), ["snapshot-0000000002.ysnap"]);
+    assert_eq!(env.doc_files(&a), [snapshot_name(2)]);
     drop(store);
     assert_doc(&env.open(), &a, &sent);
 }
@@ -712,7 +706,7 @@ fn a_kept_snapshot_merges_back_without_reopening() {
         .run_compactor_once()
         .expect("the older snapshot queues a compaction");
     compacted.unwrap();
-    assert_eq!(env.doc_files(&a), ["snapshot-0000000002.ysnap"]);
+    assert_eq!(env.doc_files(&a), [snapshot_name(2)]);
     assert_eq!(store.queued_compactions(), []);
     drop(store);
     assert_doc(&env.open(), &a, &sent);
@@ -734,7 +728,7 @@ fn a_kept_snapshot_merges_back_even_if_a_sync_after_the_keep_fails() {
     env.fs.clear_faults();
     assert_eq!(
         env.doc_files(&a),
-        ["snapshot-0000000000.ysnap", "snapshot-0000000001.ysnap"],
+        ["snapshot-0000000000.ysnap", snapshot_name(1).as_str()],
         "snapshot 1 lacks updates 6 to 10"
     );
     assert_doc(&store, &a, &sent);
@@ -787,9 +781,9 @@ fn a_compaction_asked_for_while_one_runs_is_queued_once_when_it_ends() {
             assert_doc(&store, &a, &sent);
             let (_, compacted) = store.run_compactor_once().expect("a was queued");
             assert!(compacted.is_ok());
-            assert_eq!(env.doc_files(&a), ["snapshot-0000000002.ysnap"]);
+            assert_eq!(env.doc_files(&a), [snapshot_name(2)]);
         } else {
-            assert_eq!(env.doc_files(&a), ["snapshot-0000000001.ysnap"]);
+            assert_eq!(env.doc_files(&a), [snapshot_name(1)]);
         }
         assert_eq!(
             store.queued_compactions(),
@@ -816,7 +810,7 @@ fn a_kept_record_that_never_applies_costs_no_compaction_per_edit() {
     let store = env.open();
     store.load(&a).unwrap();
     store.compact(&a).unwrap();
-    assert_eq!(env.doc_files(&a), [name, "snapshot-0000000001.ysnap"]);
+    assert_eq!(env.doc_files(&a), [name, snapshot_name(1).as_str()]);
     let mut sent = vec![good];
     for client in 50..54 {
         sent.push(typed(client, 1));
@@ -828,10 +822,6 @@ fn a_kept_record_that_never_applies_costs_no_compaction_per_edit() {
     assert!(held.contains(&ops_of_updates(&sent)));
     assert_eq!(
         env.doc_files(&a),
-        [
-            name,
-            "log-0000000001-0000000000.ylog",
-            "snapshot-0000000001.ysnap"
-        ]
+        [name, log_name(1, 0).as_str(), snapshot_name(1).as_str()]
     );
 }

@@ -4,9 +4,12 @@ use proptest::prelude::*;
 use proptest::sample::Index;
 use yrs::{Any, Doc, Map, Text, Transact};
 
-use super::{Env, applied, assert_doc, doc, ops_of_updates, record_at, soon, typed, without};
+use super::{
+    Env, applied, assert_doc, doc, frames, log_name, ops_of_updates, snapshot_name, soon, typed,
+    without,
+};
 use crate::storage::equality::Ops;
-use crate::storage::log::LOG_MAGIC;
+use crate::storage::log::{LOG_MAGIC, SEGMENT_HEADER};
 use crate::storage::sim_fs::Crash;
 use crate::storage::testkit::UpdateGen;
 
@@ -19,7 +22,7 @@ fn load_after(updates: &[Vec<u8>], damage: impl FnOnce(&mut [u8])) -> Ops {
     }
     assert_eq!(store.flush(soon()), []);
     drop(store);
-    let path = env.path("docs/a/log-0000000000-0000000000.ylog");
+    let path = env.path("docs/a").join(log_name(0, 0));
     let mut bytes = env.fs.files()[&path].clone();
     damage(&mut bytes);
     env.fs.put_durable(&path, &bytes);
@@ -74,8 +77,8 @@ fn header_damage_is_quarantined_after_verified_compaction() {
         }
         assert_eq!(store.flush(soon()), []);
         drop(store);
-        let name = "log-0000000000-0000000000.ylog";
-        let path = env.path("docs/a").join(name);
+        let name = log_name(0, 0);
+        let path = env.path("docs/a").join(&name);
         let mut bytes = env.fs.files()[&path].clone();
         bytes[at] ^= 1;
         env.fs.put_durable(&path, &bytes);
@@ -83,10 +86,10 @@ fn header_damage_is_quarantined_after_verified_compaction() {
         let store = env.open();
         assert_doc(&store, &a, &updates);
         store.compact(&a).unwrap();
-        assert_eq!(env.doc_files(&a), ["snapshot-0000000001.ysnap"]);
+        assert_eq!(env.doc_files(&a), [snapshot_name(1)]);
         assert_eq!(
             env.quarantine(),
-            [(env.path("quarantine/a").join(name), bytes)].into()
+            [(env.path("quarantine/a").join(&name), bytes)].into()
         );
         drop(store);
         env.fs.crash(Crash::DropUnsynced);
@@ -97,7 +100,9 @@ fn header_damage_is_quarantined_after_verified_compaction() {
 #[test]
 fn a_flipped_length_bit_loads_every_record() {
     let updates: Vec<Vec<u8>> = (1..=4).map(|client| typed(client, 4)).collect();
-    let held = load_after(&updates, |b| flip_length(b, record_at(&updates, 2), 0x40));
+    let held = load_after(&updates, |b| {
+        flip_length(b, frames(&updates)[2].head.start, 0x40)
+    });
     assert_eq!(held, ops_of_updates(&updates));
 }
 
@@ -111,7 +116,7 @@ fn a_length_flip_that_reaches_eof_loads_its_own_record() {
     assert_eq!(first.len() & 64, 0, "the flip adds 64 to the first length");
     let updates = [first, second];
     let held = load_after(&updates, |bytes| {
-        flip_length(bytes, record_at(&updates, 0), 64);
+        flip_length(bytes, frames(&updates)[0].head.start, 64);
     });
     assert_eq!(held, ops_of_updates(&updates));
 }
@@ -136,7 +141,7 @@ fn a_length_flip_loads_its_own_record_wherever_the_new_length_ends() {
         ("the second of five, far past EOF", 1, past_eof),
     ] {
         let held = load_after(&flip.records, |bytes| {
-            flip_length(bytes, record_at(&flip.records, damaged), flip.mask);
+            flip_length(bytes, frames(&flip.records)[damaged].head.start, flip.mask);
         });
         assert_eq!(held, ops_of_updates(&flip.records), "{case}");
     }
@@ -164,7 +169,9 @@ fn note_holding_a_frame(writer: u64) -> Vec<u8> {
 #[test]
 fn a_record_written_inside_note_text_never_loads_after_damage() {
     let updates = [note_holding_a_frame(300), typed(400, 3)];
-    let held = load_after(&updates, |bytes| bytes[record_at(&updates, 0) + 4] ^= 1);
+    let held = load_after(&updates, |bytes| {
+        bytes[frames(&updates)[0].crc_byte(0)] ^= 1
+    });
     assert_eq!(held, ops_of_updates(&updates[1..]));
 }
 
@@ -177,8 +184,8 @@ fn a_frame_the_unsalted_format_accepts_never_loads_after_damage_whatever_the_sal
             typed(2_000 + writer, 3),
         ];
         let held = load_after(&updates, |bytes| {
-            salts.insert(bytes[LOG_MAGIC.len()..record_at(&[], 0)].to_vec());
-            bytes[record_at(&updates, 0) + 4] ^= 1;
+            salts.insert(bytes[LOG_MAGIC.len()..SEGMENT_HEADER].to_vec());
+            bytes[frames(&updates)[0].crc_byte(0)] ^= 1;
         });
         assert_eq!(held, ops_of_updates(&updates[1..]), "writer {writer}");
     }
@@ -201,8 +208,8 @@ fn a_frame_salted_by_an_author_who_read_the_segment_never_loads_after_damage() {
     let first = typed(1, 4);
     store.append(&a, &first).unwrap();
     assert_eq!(store.flush(soon()), []);
-    let path = env.path("docs/a/log-0000000000-0000000000.ylog");
-    let salt = env.fs.files()[&path][LOG_MAGIC.len()..record_at(&[], 0)].to_vec();
+    let path = env.path("docs/a").join(log_name(0, 0));
+    let salt = env.fs.files()[&path][LOG_MAGIC.len()..SEGMENT_HEADER].to_vec();
     let ghost = typed(NEVER_WROTE, 3);
     let len = u32::try_from(ghost.len()).unwrap().to_le_bytes();
     let crc = crc32fast::hash(&[&salt[..], &ghost].concat()).to_le_bytes();
@@ -216,7 +223,7 @@ fn a_frame_salted_by_an_author_who_read_the_segment_never_loads_after_damage() {
     }
     assert_eq!(store.flush(soon()), []);
     drop(store);
-    env.fs.flip_bit(&path, record_at(&updates, 1) + 4);
+    env.fs.flip_bit(&path, frames(&updates)[1].crc_byte(0));
     let (held, _) = applied(&env.open().load(&a).unwrap(), "reopened");
     assert_eq!(held, ops_of_updates(&without(&updates, &[1])));
 }
@@ -242,9 +249,10 @@ proptest! {
             flipped = at.index(bytes.len());
             bytes[flipped] ^= 1 << bit;
         });
-        let damaged = (0..updates.len())
-            .find(|&k| (record_at(&updates, k)..record_at(&updates, k + 1)).contains(&flipped));
-        let in_length = |k| (record_at(&updates, k)..record_at(&updates, k) + 4).contains(&flipped);
+        let frames = frames(&updates);
+        let damaged = frames.iter()
+            .position(|frame| (frame.head.start..frame.tail.end).contains(&flipped));
+        let in_length = |k: usize| (frames[k].length_byte(0)..frames[k].length_byte(0) + 4).contains(&flipped);
         let expected = match damaged {
             Some(k) if in_length(k) => ops_of_updates(&updates),
             Some(k) => ops_of_updates(&without(&updates, &[k])),

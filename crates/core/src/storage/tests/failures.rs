@@ -4,7 +4,8 @@ use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
 use super::{
-    Delivery, Env, applied, assert_doc, doc, ops_of_updates, out_of_order, record_at, soon, typed,
+    Delivery, Env, applied, assert_doc, doc, frames, log_name, ops_of_updates, out_of_order,
+    snapshot_name, soon, typed,
 };
 use crate::storage::doc_id::DocId;
 use crate::storage::health::{FailReason, Health};
@@ -110,9 +111,7 @@ fn a_failing_doc_stays_pending_while_other_docs_are_acknowledged() {
 
     assert_eq!(
         env.doc_files(&a),
-        (0..=5)
-            .map(|n| format!("log-0000000000-{n:010}.ylog"))
-            .collect::<Vec<_>>(),
+        (0..=5).map(|n| log_name(0, n)).collect::<Vec<_>>(),
         "each attempt wrote a new segment"
     );
     drop(store);
@@ -438,10 +437,7 @@ fn a_panic_in_a_writer_step_leaves_every_update_queued_for_the_retry() {
     assert_eq!(*seen.lock().unwrap(), [failing, Health::Healthy]);
     assert_eq!(
         env.doc_files(&a),
-        [
-            "log-0000000000-0000000000.ylog",
-            "log-0000000000-0000000001.ylog"
-        ],
+        [log_name(0, 0), log_name(0, 1)],
         "the retry writes to a new segment"
     );
     drop(store);
@@ -506,7 +502,7 @@ fn compaction_deletes_the_segments_this_sessions_failed_writes_left_instead_of_q
     let sent = UpdateGen::new(17, 2).updates(13);
     fail_then_recover(&env, &store, &a, &sent, 21);
     let torn = torn_logs(&env, &a);
-    let segment = |n: usize| format!("log-0000000000-{n:010}.ylog");
+    let segment = |n: usize| log_name(0, n as u64);
     assert_eq!(
         torn.iter()
             .map(|(name, _)| name.clone())
@@ -522,7 +518,7 @@ fn compaction_deletes_the_segments_this_sessions_failed_writes_left_instead_of_q
     assert_eq!(env.doc_files(&a).len(), 22);
 
     store.compact(&a).unwrap();
-    assert_eq!(env.doc_files(&a), ["snapshot-0000000001.ysnap"]);
+    assert_eq!(env.doc_files(&a), [snapshot_name(1)]);
     let quarantined: Vec<PathBuf> = env.quarantine().into_keys().collect();
     assert_eq!(quarantined, Vec::<PathBuf>::new());
     drop(store);
@@ -533,7 +529,7 @@ fn compaction_deletes_the_segments_this_sessions_failed_writes_left_instead_of_q
 fn a_segment_a_failed_write_tore_in_an_earlier_session_is_quarantined_not_deleted() {
     let a = doc("a");
     let sent = UpdateGen::new(17, 2).updates(13);
-    let name = "log-0000000000-0000000000.ylog";
+    let name = log_name(0, 0);
     let (env, torn) = (0..64)
         .find_map(|seed| {
             let env = Env::manual();
@@ -541,7 +537,7 @@ fn a_segment_a_failed_write_tore_in_an_earlier_session_is_quarantined_not_delete
             fail_then_recover(&env, &store, &a, &sent, 1);
             drop(store);
             env.fs.crash(Crash::KeepTornPrefix(seed));
-            let bytes = env.fs.files()[&env.path("docs/a").join(name)].clone();
+            let bytes = env.fs.files()[&env.path("docs/a").join(&name)].clone();
             let contents = read_log(&bytes);
             let kept_a_failed_record = contents.records.len() > 3;
             (contents.end == LogEnd::Torn && kept_a_failed_record).then_some((env, bytes))
@@ -550,10 +546,10 @@ fn a_segment_a_failed_write_tore_in_an_earlier_session_is_quarantined_not_delete
 
     let store = env.open();
     store.compact(&a).unwrap();
-    assert_eq!(env.doc_files(&a), ["snapshot-0000000001.ysnap"]);
+    assert_eq!(env.doc_files(&a), [snapshot_name(1)]);
     assert_eq!(
         env.quarantine(),
-        [(env.path("quarantine/a").join(name), torn)].into(),
+        [(env.path("quarantine/a").join(&name), torn)].into(),
         "moved byte for byte"
     );
     drop(store);
@@ -567,21 +563,21 @@ fn a_length_recovered_in_a_segment_a_failed_write_tore_moves_it_to_quarantine_no
     let a = doc("a");
     let sent: Vec<Vec<u8>> = (1..=5).map(|client| typed(client, 4)).collect();
     fail_then_recover(&env, &store, &a, &sent, 1);
-    let name = "log-0000000000-0000000000.ylog";
-    let path = env.path("docs/a").join(name);
+    let name = log_name(0, 0);
+    let path = env.path("docs/a").join(&name);
     assert_eq!(
         read_log(&env.fs.files()[&path]).records.len(),
         4,
         "the failed write kept half its bytes, the whole fourth record"
     );
-    env.fs.flip_bit(&path, record_at(&sent, 3) + 2);
+    env.fs.flip_bit(&path, frames(&sent)[3].length_byte(2));
     let damaged = env.fs.files()[&path].clone();
 
     store.compact(&a).unwrap();
-    assert_eq!(env.doc_files(&a), ["snapshot-0000000001.ysnap"]);
+    assert_eq!(env.doc_files(&a), [snapshot_name(1)]);
     assert_eq!(
         env.quarantine(),
-        [(env.path("quarantine/a").join(name), damaged)].into(),
+        [(env.path("quarantine/a").join(&name), damaged)].into(),
         "moved byte for byte"
     );
     drop(store);
