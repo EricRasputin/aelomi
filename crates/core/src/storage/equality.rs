@@ -1,5 +1,7 @@
 use std::collections::BTreeMap;
 
+use super::decode;
+
 use yrs::branch::{Branch, BranchPtr};
 use yrs::types::ToJson;
 use yrs::{

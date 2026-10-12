@@ -4,6 +4,8 @@ use yrs::Update;
 use yrs::encoding::read::Read;
 use yrs::updates::decoder::{Decode, DecoderV1};
 
+use super::decode;
+
 pub(crate) const LOG_MAGIC: [u8; 8] = *b"AELOG\0\0\x02";
 pub(crate) const SEGMENT_HEADER: usize = LOG_MAGIC.len() + 8;
 const RECORD_HEADER: usize = 8;
@@ -223,7 +225,6 @@ fn candidate_at(bytes: &[u8], at: usize) -> Option<(u32, &[u8])> {
 mod tests {
     use yrs::{Doc, Text, Transact};
 
-    use super::decode;
     use super::*;
     use crate::storage::testkit::UpdateGen;
 
