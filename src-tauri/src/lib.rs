@@ -55,7 +55,6 @@ fn on_run_event<R: Runtime>(app: &AppHandle<R>, event: RunEvent) {
                 api.prevent_exit();
             }
         }
-        // Logout and the Dock's Quit end here, where the exit can no longer be stopped.
         RunEvent::Exit => {
             let _ = flush_before_quit(app, "Exit");
         }

@@ -21,6 +21,8 @@ dependencies = [
  "aelomi-core",
  "base64 0.22.1",
  "libc",
+ "objc2",
+ "objc2-app-kit",
  "serde",
  "serde_json",
  "specta",
