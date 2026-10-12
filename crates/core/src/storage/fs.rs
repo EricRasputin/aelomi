@@ -12,10 +12,6 @@ pub(crate) trait Fs: Send + Sync {
     /// `F_FULLFSYNC`: `fsync`, then the drive flushes its whole cache to permanent storage.
     fn full_sync(&self, path: &Path) -> io::Result<()>;
     fn rename(&self, from: &Path, to: &Path) -> io::Result<()>;
-    #[allow(
-        dead_code,
-        reason = "the format-2 publication gate lands in a later PR"
-    )]
     fn replace_format(&self, root: &Path) -> io::Result<()>;
     fn remove(&self, path: &Path) -> io::Result<()>;
     fn list(&self, dir: &Path) -> io::Result<Vec<String>>;

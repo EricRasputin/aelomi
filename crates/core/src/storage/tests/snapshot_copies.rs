@@ -110,7 +110,7 @@ fn a_folder_mixing_snapshot_formats_loads_both_and_compacts_above_both() {
     assert_eq!(
         env.doc_files(&a),
         [
-            "log-0000000003-0000000000.ylog",
+            "log-0000000003-0000000000.ylog2",
             "snapshot-0000000002.ysnap",
             "snapshot-0000000003.ysnap2",
         ]

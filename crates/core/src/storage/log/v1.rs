@@ -1,5 +1,6 @@
 use std::cell::OnceCell;
 use std::collections::BTreeMap;
+#[cfg(test)]
 use std::io;
 
 use super::LogEnd;
@@ -9,9 +10,11 @@ pub(crate) const LOG_MAGIC: [u8; 8] = *b"AELOG\0\0\x02";
 pub(crate) const SEGMENT_HEADER: usize = LOG_MAGIC.len() + 8;
 const RECORD_HEADER: usize = 8;
 
+#[cfg(test)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) struct Salt([u8; 8]);
 
+#[cfg(test)]
 impl Salt {
     pub fn random() -> io::Result<Self> {
         let mut salt = [0; 8];
@@ -90,10 +93,12 @@ fn confirmed_crc_state(bytes: &[u8]) -> Option<CrcState> {
     (count >= 2).then_some(CrcState(state))
 }
 
+#[cfg(test)]
 pub(crate) fn segment_header(salt: Salt) -> Vec<u8> {
     [&LOG_MAGIC[..], &salt.0].concat()
 }
 
+#[cfg(test)]
 pub(crate) fn encode_record(salt: Salt, payload: &[u8], out: &mut Vec<u8>) {
     let len = u32::try_from(payload.len()).expect("append rejects an update over 4 GiB");
     out.extend_from_slice(&len.to_le_bytes());

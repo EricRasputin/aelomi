@@ -5,29 +5,34 @@ use proptest::sample::Index;
 use yrs::{Any, Doc, Map, Text, Transact};
 
 use super::{
-    Env, applied, assert_doc, doc, frames, log_name, ops_of_updates, snapshot_name, soon, typed,
-    without,
+    Env, applied, assert_doc, doc, ops_of_updates, snapshot_name, typed, v1_record_at, without,
 };
 use crate::storage::equality::Ops;
-use crate::storage::log::{LOG_MAGIC, SEGMENT_HEADER};
+use crate::storage::log::{
+    LOG_MAGIC, SEGMENT_HEADER, Salt, encode_record, encode_segment, segment_header,
+};
 use crate::storage::sim_fs::Crash;
 use crate::storage::testkit::UpdateGen;
 
-fn load_after(updates: &[Vec<u8>], damage: impl FnOnce(&mut [u8])) -> Ops {
+const V1_LOG: &str = "docs/a/log-0000000000-0000000000.ylog";
+
+fn env_with_v1_log(bytes: &[u8]) -> Env {
     let env = Env::manual();
-    let a = doc("a");
-    let store = env.open();
-    for update in updates {
-        store.append(&a, update).unwrap();
-    }
-    assert_eq!(store.flush(soon()), []);
-    drop(store);
-    let path = env.path("docs/a").join(log_name(0, 0));
-    let mut bytes = env.fs.files()[&path].clone();
-    damage(&mut bytes);
-    env.fs.put_durable(&path, &bytes);
-    let (held, _) = applied(&env.open().load(&a).unwrap(), "reopened");
+    drop(env.open());
+    env.fs.put_durable(&env.path(V1_LOG), bytes);
+    env
+}
+
+fn load_v1(bytes: &[u8]) -> Ops {
+    let env = env_with_v1_log(bytes);
+    let (held, _) = applied(&env.open().load(&doc("a")).unwrap(), "reopened");
     held
+}
+
+fn load_v1_after(updates: &[Vec<u8>], damage: impl FnOnce(&mut [u8])) -> Ops {
+    let mut bytes = encode_segment(updates);
+    damage(&mut bytes);
+    load_v1(&bytes)
 }
 
 fn flip_length(bytes: &mut [u8], record: usize, mask: usize) {
@@ -61,27 +66,18 @@ fn five_where_one_length_bit_reaches_eof(damaged: usize) -> LengthFlip {
 #[test]
 fn header_salt_damage_preserves_every_saved_operation() {
     let updates: Vec<Vec<u8>> = (1..=4).map(|client| typed(client, 4)).collect();
-    let held = load_after(&updates, |bytes| bytes[10] ^= 1);
+    let held = load_v1_after(&updates, |bytes| bytes[10] ^= 1);
     assert_eq!(held, ops_of_updates(&updates));
 }
 
 #[test]
 fn header_damage_is_quarantined_after_verified_compaction() {
     for at in [0, 10] {
-        let env = Env::manual();
         let a = doc("a");
         let updates: Vec<Vec<u8>> = (1..=4).map(|client| typed(client, 4)).collect();
-        let store = env.open();
-        for update in &updates {
-            store.append(&a, update).unwrap();
-        }
-        assert_eq!(store.flush(soon()), []);
-        drop(store);
-        let name = log_name(0, 0);
-        let path = env.path("docs/a").join(&name);
-        let mut bytes = env.fs.files()[&path].clone();
+        let mut bytes = encode_segment(&updates);
         bytes[at] ^= 1;
-        env.fs.put_durable(&path, &bytes);
+        let env = env_with_v1_log(&bytes);
 
         let store = env.open();
         assert_doc(&store, &a, &updates);
@@ -89,7 +85,11 @@ fn header_damage_is_quarantined_after_verified_compaction() {
         assert_eq!(env.doc_files(&a), [snapshot_name(1)]);
         assert_eq!(
             env.quarantine(),
-            [(env.path("quarantine/a").join(&name), bytes)].into()
+            [(
+                env.path("quarantine/a/log-0000000000-0000000000.ylog"),
+                bytes
+            )]
+            .into()
         );
         drop(store);
         env.fs.crash(Crash::DropUnsynced);
@@ -100,8 +100,8 @@ fn header_damage_is_quarantined_after_verified_compaction() {
 #[test]
 fn a_flipped_length_bit_loads_every_record() {
     let updates: Vec<Vec<u8>> = (1..=4).map(|client| typed(client, 4)).collect();
-    let held = load_after(&updates, |b| {
-        flip_length(b, frames(&updates)[2].head.start, 0x40)
+    let held = load_v1_after(&updates, |b| {
+        flip_length(b, v1_record_at(&updates, 2), 0x40)
     });
     assert_eq!(held, ops_of_updates(&updates));
 }
@@ -115,8 +115,8 @@ fn a_length_flip_that_reaches_eof_loads_its_own_record() {
         .unwrap();
     assert_eq!(first.len() & 64, 0, "the flip adds 64 to the first length");
     let updates = [first, second];
-    let held = load_after(&updates, |bytes| {
-        flip_length(bytes, frames(&updates)[0].head.start, 64);
+    let held = load_v1_after(&updates, |bytes| {
+        flip_length(bytes, v1_record_at(&updates, 0), 64);
     });
     assert_eq!(held, ops_of_updates(&updates));
 }
@@ -140,8 +140,8 @@ fn a_length_flip_loads_its_own_record_wherever_the_new_length_ends() {
         ),
         ("the second of five, far past EOF", 1, past_eof),
     ] {
-        let held = load_after(&flip.records, |bytes| {
-            flip_length(bytes, frames(&flip.records)[damaged].head.start, flip.mask);
+        let held = load_v1_after(&flip.records, |bytes| {
+            flip_length(bytes, v1_record_at(&flip.records, damaged), flip.mask);
         });
         assert_eq!(held, ops_of_updates(&flip.records), "{case}");
     }
@@ -168,10 +168,8 @@ fn note_holding_a_frame(writer: u64) -> Vec<u8> {
 
 #[test]
 fn a_record_written_inside_note_text_never_loads_after_damage() {
-    let updates = [note_holding_a_frame(300), typed(400, 3)];
-    let held = load_after(&updates, |bytes| {
-        bytes[frames(&updates)[0].crc_byte(0)] ^= 1
-    });
+    let updates = vec![note_holding_a_frame(300), typed(400, 3)];
+    let held = load_v1_after(&updates, |bytes| bytes[v1_record_at(&updates, 0) + 4] ^= 1);
     assert_eq!(held, ops_of_updates(&updates[1..]));
 }
 
@@ -179,13 +177,13 @@ fn a_record_written_inside_note_text_never_loads_after_damage() {
 fn a_frame_the_unsalted_format_accepts_never_loads_after_damage_whatever_the_salt() {
     let mut salts = BTreeSet::new();
     for writer in 0..64 {
-        let updates = [
+        let updates = vec![
             note_holding_a_frame(1_000 + writer),
             typed(2_000 + writer, 3),
         ];
-        let held = load_after(&updates, |bytes| {
+        let held = load_v1_after(&updates, |bytes| {
             salts.insert(bytes[LOG_MAGIC.len()..SEGMENT_HEADER].to_vec());
-            bytes[frames(&updates)[0].crc_byte(0)] ^= 1;
+            bytes[v1_record_at(&updates, 0) + 4] ^= 1;
         });
         assert_eq!(held, ops_of_updates(&updates[1..]), "writer {writer}");
     }
@@ -202,29 +200,22 @@ fn carrying(writer: u64, frame: Vec<u8>) -> Vec<u8> {
 
 #[test]
 fn a_frame_salted_by_an_author_who_read_the_segment_never_loads_after_damage() {
-    let env = Env::manual();
-    let a = doc("a");
-    let store = env.open();
-    let first = typed(1, 4);
-    store.append(&a, &first).unwrap();
-    assert_eq!(store.flush(soon()), []);
-    let path = env.path("docs/a").join(log_name(0, 0));
-    let salt = env.fs.files()[&path][LOG_MAGIC.len()..SEGMENT_HEADER].to_vec();
+    let salt = Salt::random().unwrap();
+    let mut bytes = segment_header(salt);
+    let salt_bytes = bytes[LOG_MAGIC.len()..].to_vec();
     let ghost = typed(NEVER_WROTE, 3);
     let len = u32::try_from(ghost.len()).unwrap().to_le_bytes();
-    let crc = crc32fast::hash(&[&salt[..], &ghost].concat()).to_le_bytes();
-    let updates = [
-        first,
+    let crc = crc32fast::hash(&[&salt_bytes[..], &ghost].concat()).to_le_bytes();
+    let updates = vec![
+        typed(1, 4),
         carrying(300, [&len[..], &crc, &ghost].concat()),
         typed(400, 3),
     ];
-    for update in &updates[1..] {
-        store.append(&a, update).unwrap();
+    for update in &updates {
+        encode_record(salt, update, &mut bytes);
     }
-    assert_eq!(store.flush(soon()), []);
-    drop(store);
-    env.fs.flip_bit(&path, frames(&updates)[1].crc_byte(0));
-    let (held, _) = applied(&env.open().load(&a).unwrap(), "reopened");
+    bytes[v1_record_at(&updates, 1) + 4] ^= 0x10;
+    let held = load_v1(&bytes);
     assert_eq!(held, ops_of_updates(&without(&updates, &[1])));
 }
 
@@ -245,14 +236,13 @@ proptest! {
             .map(|k| carrying(900_000_000 + k as u64, unsalted_frame(&ghosts[k])))
             .collect();
         let mut flipped = 0;
-        let held = load_after(&updates, |bytes| {
+        let held = load_v1_after(&updates, |bytes| {
             flipped = at.index(bytes.len());
             bytes[flipped] ^= 1 << bit;
         });
-        let frames = frames(&updates);
-        let damaged = frames.iter()
-            .position(|frame| (frame.head.start..frame.tail.end).contains(&flipped));
-        let in_length = |k: usize| (frames[k].length_byte(0)..frames[k].length_byte(0) + 4).contains(&flipped);
+        let damaged = (0..updates.len())
+            .position(|k| (v1_record_at(&updates, k)..v1_record_at(&updates, k + 1)).contains(&flipped));
+        let in_length = |k: usize| (v1_record_at(&updates, k)..v1_record_at(&updates, k) + 4).contains(&flipped);
         let expected = match damaged {
             Some(k) if in_length(k) => ops_of_updates(&updates),
             Some(k) => ops_of_updates(&without(&updates, &[k])),

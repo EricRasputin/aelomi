@@ -244,14 +244,17 @@ pub(crate) struct Frame {
     pub tail: Range<usize>,
 }
 
+/// Where the writer puts each update: a 20-byte head, the update packed 7 bytes to 8, and a
+/// 20-byte tail.
 pub(crate) fn frames(updates: &[impl AsRef<[u8]>]) -> Vec<Frame> {
-    let mut at = SEGMENT_HEADER;
+    let mut at = 0;
     updates
         .iter()
         .map(|update| {
-            let head = at..at + 8;
-            let body = head.end..head.end + update.as_ref().len();
-            let tail = body.end..body.end;
+            let n = update.as_ref().len();
+            let head = at..at + 20;
+            let body = head.end..head.end + n + n.div_ceil(7);
+            let tail = body.end..body.end + 20;
             at = tail.end;
             Frame { head, body, tail }
         })
@@ -259,12 +262,17 @@ pub(crate) fn frames(updates: &[impl AsRef<[u8]>]) -> Vec<Frame> {
 }
 
 impl Frame {
+    /// The head packs a tag, the update's length, its CRC-64, and a CRC-32, 7 bytes to 8.
+    fn head_field(&self, byte: usize) -> usize {
+        self.head.start + byte + byte / 7
+    }
+
     pub fn length_byte(&self, byte: usize) -> usize {
-        self.head.start + byte
+        self.head_field(1 + byte)
     }
 
     pub fn crc_byte(&self, byte: usize) -> usize {
-        self.head.start + 4 + byte
+        self.head_field(5 + byte)
     }
 }
 

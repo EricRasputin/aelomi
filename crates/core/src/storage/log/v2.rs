@@ -38,7 +38,6 @@ struct Anchor {
 }
 
 impl Anchor {
-    #[cfg(test)]
     fn of(update: &[u8]) -> Self {
         Self {
             len: u32::try_from(update.len()).expect("append rejects an update over 4 GiB"),
@@ -109,7 +108,6 @@ fn unpack(body: &[u8], n: usize) -> (Vec<u8>, bool) {
     (update, canonical)
 }
 
-#[cfg(test)]
 pub(super) fn encode(update: &[u8], out: &mut Vec<u8>) {
     let anchor = Anchor::of(update);
     out.extend_from_slice(&anchor.encode(Kind::Head));
