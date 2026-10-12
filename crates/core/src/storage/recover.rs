@@ -49,11 +49,11 @@ pub(crate) fn recover(
         };
         let bytes = fs.read(&layout.doc_file(doc, *file))?;
         let read = snapshot::read(format, &bytes);
-        let applied = read.is_some_and(|(payload, _)| apply_records(&ydoc, &[payload]));
-        if applied {
-            base.get_or_insert(generation);
+        let applied = read.filter(|(payload, _)| apply_records(&ydoc, &[payload]));
+        if let Some((_, condition)) = applied {
+            base.get_or_insert((generation, condition));
         }
-        if read.map(|(_, condition)| condition) != Some(Condition::Whole) || !applied {
+        if read.map(|(_, condition)| condition) != Some(Condition::Whole) || applied.is_none() {
             eprintln!("aelomi storage: {doc}/{} is corrupt", file.name());
             corrupt.insert(file.name());
         }
@@ -71,7 +71,7 @@ pub(crate) fn recover(
             eprintln!("aelomi storage: {doc}/{} is corrupt", file.name());
             corrupt.insert(file.name());
         }
-        if Some(generation) >= base {
+        if Some(generation) >= base.map(|(generation, _)| generation) {
             let records = contents.records.len() as u64;
             unsnapshotted += LogSize {
                 bytes: bytes.len() as u64,
@@ -93,15 +93,17 @@ pub(crate) fn recover(
         })
         .max()
         .unwrap_or(SegmentNo(0));
-    let interrupted = files
-        .iter()
-        .any(|f| matches!(f, DocFile::SnapshotTmp(..)) || base.is_some_and(|b| f.generation() < b));
+    let interrupted = files.iter().any(|f| {
+        matches!(f, DocFile::SnapshotTmp(..)) || base.is_some_and(|(b, _)| f.generation() < b)
+    });
     let log = LogState {
         dir: DocDir::UnsyncedThisSession,
         segment: Segment::Next(newest, next),
         unsnapshotted,
     };
-    let needs_compaction = interrupted || unsnapshotted.exceeds(limits);
+    let needs_compaction = interrupted
+        || base.is_some_and(|(_, condition)| condition == Condition::Damaged)
+        || unsnapshotted.exceeds(limits);
     Ok(Recovered {
         ydoc,
         log,

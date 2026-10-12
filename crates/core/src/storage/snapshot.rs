@@ -106,20 +106,21 @@ impl Anchor {
 
 fn read_v2(bytes: &[u8]) -> Option<(&[u8], Condition)> {
     let head = Anchor::parse(bytes.get(..ANCHOR)?, HEAD_MAGIC);
-    let tail = Anchor::tail_agreeing_with_file_len(bytes);
-    let intact = |copy: usize| {
-        [head, tail].into_iter().flatten().find_map(|anchor| {
-            let payload = bytes.get(anchor.copies()?[copy].clone())?;
-            (CRC_64.checksum(payload) == anchor.crc).then_some(payload)
-        })
+    let anchor = head.or_else(|| Anchor::tail_agreeing_with_file_len(bytes))?;
+    let copies = anchor.copies()?;
+    let intact = |range: Range<usize>| {
+        let payload = bytes.get(range)?;
+        (CRC_64.checksum(payload) == anchor.crc).then_some(payload)
     };
-    let (a, b) = (intact(0), intact(1));
-    let zero_padding = |anchor: Anchor| {
-        let [a, b] = anchor.copies()?;
-        Some(bytes.get(a.end..b.start)?.iter().all(|&byte| byte == 0))
-    };
-    let whole =
-        head == tail && a.is_some() && b.is_some() && head.and_then(zero_padding) == Some(true);
+    let (a, b) = (intact(copies[0].clone()), intact(copies[1].clone()));
+    let whole = head.is_some()
+        && anchor.file_len() == Some(bytes.len())
+        && bytes.ends_with(&anchor.encode(TAIL_MAGIC))
+        && a.is_some()
+        && b.is_some()
+        && bytes[copies[0].end..copies[1].start]
+            .iter()
+            .all(|&byte| byte == 0);
     let condition = if whole {
         Condition::Whole
     } else {
@@ -128,7 +129,6 @@ fn read_v2(bytes: &[u8]) -> Option<(&[u8], Condition)> {
     Some((a.or(b)?, condition))
 }
 
-#[cfg(test)]
 impl Anchor {
     fn encode(self, magic: [u8; 8]) -> [u8; ANCHOR] {
         let mut out = [0; ANCHOR];
