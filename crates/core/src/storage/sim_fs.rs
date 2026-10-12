@@ -5,13 +5,13 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::Duration;
 
 use super::clock::Clock;
+use super::decode;
 use super::format::parse_format;
 use super::fs::{Fs, FsLock, LockError, validate_format_marker};
 use super::layout::DocFile;
 use super::log::{LogEnd, SEGMENT_HEADER, read_log};
 use super::snapshot::read_snapshot;
 use super::testkit::SplitMix64;
-use yrs::updates::decoder::Decode;
 use yrs::{Doc, IdSet, Transact, Update};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -625,7 +625,7 @@ impl Sim {
                 && matches!(&self.nodes[id], Node::File(f) if f.durable == f.data.len()
                 && read_snapshot(&f.data)
                     .filter(|payload| applies(payload))
-                    .and_then(|payload| Update::decode_v1(payload).ok())
+                    .and_then(|payload| decode::update(payload).ok())
                     .is_some_and(|update| {
                         enough(file_coverage(&update, file, bytes))
                     }))
@@ -819,7 +819,7 @@ fn file_coverage(snapshot: &Update, file: DocFile, bytes: &[u8]) -> FileCoverage
     };
     let blocks = snapshot.insertions(true);
     for record in records {
-        let Ok(update) = Update::decode_v1(record) else {
+        let Ok(update) = decode::update(record) else {
             return FileCoverage::Uncovered;
         };
         if !every_id_is_present(&blocks, &update.insertions(true))
@@ -852,7 +852,7 @@ fn every_id_is_present(held: &IdSet, needed: &IdSet) -> bool {
 }
 
 fn applies(payload: &[u8]) -> bool {
-    Update::decode_v1(payload)
+    decode::update(payload)
         .is_ok_and(|update| Doc::new().transact_mut().apply_update(update).is_ok())
 }
 

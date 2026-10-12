@@ -87,6 +87,16 @@ fn decode_guard_overdeep_disk_records_survive_recovery_and_compaction() {
 }
 
 #[test]
+fn decode_guard_small_caller_stack_survives_the_boundary() {
+    child("small-stack");
+}
+
+#[test]
+fn decode_guard_threaded_compactor_survives_the_boundary() {
+    child("threaded");
+}
+
+#[test]
 fn decode_guard_child() {
     let Ok(case) = std::env::var("AELOMI_DECODE_GUARD_CASE") else {
         return;
@@ -100,6 +110,7 @@ fn decode_guard_child() {
             Err(AppendError::InvalidUpdate)
         ));
         let growth = max_rss().saturating_sub(before);
+        eprintln!("append maximum RSS growth: {growth} bytes");
         assert!(
             growth < 32 * 1024 * 1024,
             "append increased maximum RSS by {growth} bytes"
@@ -107,11 +118,22 @@ fn decode_guard_child() {
         assert_eq!(env.doc_files(&doc("a")), Vec::<String>::new());
         return;
     }
-    // Main can accept the original payload; the compactor still has its default stack.
+    let stack_size = if case == "small-stack" {
+        2 * 1024 * 1024
+    } else {
+        32 * 1024 * 1024
+    };
     std::thread::Builder::new()
-        .stack_size(32 * 1024 * 1024)
+        .stack_size(stack_size)
         .spawn(move || {
-            let env = Env::manual();
+            let mut env = if case == "threaded" {
+                Env::threaded()
+            } else {
+                Env::manual()
+            };
+            if case == "threaded" {
+                env.limits.records = 0;
+            }
             let a = doc("a");
             let store = env.open();
             if case == "above" {
@@ -120,20 +142,33 @@ fn decode_guard_child() {
                     Err(AppendError::InvalidUpdate)
                 ));
                 assert_eq!(env.doc_files(&a), Vec::<String>::new());
-            } else if case == "boundary" {
+            } else if case == "boundary" || case == "small-stack" || case == "threaded" {
                 let nested = nested_update(NESTING_LIMIT);
                 store.append(&a, &nested).unwrap();
                 assert_eq!(store.flush(soon()), []);
-                std::thread::scope(|scope| {
-                    scope.spawn(|| store.compact(&a).unwrap()).join().unwrap();
-                });
+                if case == "threaded" {
+                    let deadline = Instant::now() + Duration::from_secs(10);
+                    while env.doc_files(&a) != ["snapshot-0000000001.ysnap"] {
+                        assert!(
+                            Instant::now() < deadline,
+                            "background compaction did not finish"
+                        );
+                        std::thread::sleep(Duration::from_millis(10));
+                    }
+                } else {
+                    std::thread::scope(|scope| {
+                        scope.spawn(|| store.compact(&a).unwrap()).join().unwrap();
+                    });
+                }
                 assert_eq!(env.doc_files(&a), ["snapshot-0000000001.ysnap"]);
                 store.close(soon()).unwrap();
                 let store = env.open();
                 let loaded = store.load(&a).unwrap();
-                let (held, _) = applied(&loaded, "reopened boundary");
-                let (expected, _) = applied(&nested, "sent boundary");
-                assert_eq!(held, expected);
+                if case != "small-stack" {
+                    let (held, _) = applied(&loaded, "reopened boundary");
+                    let (expected, _) = applied(&nested, "sent boundary");
+                    assert_eq!(held, expected);
+                }
                 assert_eq!(loaded, nested);
             } else if case == "disk" {
                 let good = typed(7, 3);

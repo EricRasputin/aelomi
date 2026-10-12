@@ -5,9 +5,9 @@ use std::panic::{self, AssertUnwindSafe};
 use std::path::Path;
 use std::sync::atomic::Ordering;
 
-use yrs::updates::decoder::Decode;
-use yrs::{Doc, ReadTxn, StateVector, Transact, Update};
+use yrs::{Doc, ReadTxn, StateVector, Transact};
 
+use super::decode;
 use super::doc_id::DocId;
 use super::equality::{Fingerprint, Ops};
 use super::fs::create_durable;
@@ -183,7 +183,7 @@ fn too_large(shared: &Shared, doc: &DocId, payload: &[u8]) -> bool {
 fn verify(shared: &Shared, tmp: &Path, expected: &Expected) -> Result<(), CompactError> {
     let written = shared.fs.read(tmp)?;
     let verified = read_snapshot(&written)
-        .and_then(|payload| Update::decode_v1(payload).ok())
+        .and_then(|payload| decode::update(payload).ok())
         .is_some_and(|update| {
             let held = Ops::of_update(&update);
             let loaded = Doc::new();
@@ -311,7 +311,7 @@ pub(crate) fn coverage(held: &Ops, file: DocFile, bytes: &[u8]) -> Coverage {
     }
     let (records, damaged) = records(file, bytes);
     let holds = records.iter().all(|record| {
-        Update::decode_v1(record).is_ok_and(|update| held.contains(&Ops::of_update(&update)))
+        decode::update(record).is_ok_and(|update| held.contains(&Ops::of_update(&update)))
     });
     if holds {
         Coverage::Full { damaged }
@@ -350,12 +350,12 @@ fn records(file: DocFile, bytes: &[u8]) -> (Vec<&[u8]>, bool) {
 fn adds_to<'a>(snapshot: &[u8], records: impl IntoIterator<Item = &'a [u8]>) -> bool {
     let doc = Doc::new();
     let mut txn = doc.transact_mut();
-    if let Ok(update) = Update::decode_v1(snapshot) {
+    if let Ok(update) = decode::update(snapshot) {
         let _ = txn.apply_update(update);
     }
     let before = Ops::of_doc(&txn);
     for record in records {
-        if let Ok(update) = Update::decode_v1(record) {
+        if let Ok(update) = decode::update(record) {
             let _ = txn.apply_update(update);
         }
     }
@@ -398,10 +398,9 @@ impl fmt::Display for CompactError {
 
 #[cfg(test)]
 mod tests {
-    use yrs::updates::decoder::Decode;
-    use yrs::{Transact, Update};
+    use yrs::Transact;
 
-    use super::Expected;
+    use super::{Expected, decode};
     use crate::storage::equality::Ops;
     use crate::storage::recover::merge;
     use crate::storage::testkit::{UpdateGen, doc_from};
@@ -414,7 +413,7 @@ mod tests {
         let (one_less, one_more) = (merged(19).payload, merged(21).payload);
         let expected = Expected::Merged(all.ops);
         let verifies = |held: &[u8], loaded: &[u8]| {
-            let held = Ops::of_update(&Update::decode_v1(held).unwrap());
+            let held = Ops::of_update(&decode::update(held).unwrap());
             expected.met_by(&held, &doc_from([loaded]).transact())
         };
         assert!(verifies(&all.payload, &all.payload));

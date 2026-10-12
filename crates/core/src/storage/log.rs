@@ -154,8 +154,10 @@ fn resync(bytes: &[u8], salt: Salt, from: usize, budget: &mut usize) -> Scan {
         if salt.crc(payload) != crc {
             continue;
         }
-        if Update::decode_v1(payload).is_ok() {
-            return Scan::ResumeAt(at);
+        match decode::check(payload) {
+            Err(decode::Rejected::TooDeep) => return Scan::ResumeAt(at),
+            Ok(()) if decode::update(payload).is_ok() => return Scan::ResumeAt(at),
+            _ => {}
         }
         scan = Scan::NoUpdate;
     }
@@ -221,6 +223,7 @@ fn candidate_at(bytes: &[u8], at: usize) -> Option<(u32, &[u8])> {
 mod tests {
     use yrs::{Doc, Text, Transact};
 
+    use super::decode;
     use super::*;
     use crate::storage::testkit::UpdateGen;
 

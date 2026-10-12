@@ -8,11 +8,11 @@ use std::sync::{Arc, Condvar, Mutex, PoisonError};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
-use yrs::updates::decoder::Decode;
-use yrs::{Doc, ReadTxn, StateVector, Transact, Update};
+use yrs::{Doc, ReadTxn, StateVector, Transact};
 
 use super::clock::{Clock, SystemClock};
 use super::compact;
+use super::decode;
 use super::doc_id::DocId;
 use super::format::{FORMAT_VERSION, encode_format, parse_format};
 use super::fs::{Fs, FsLock, LockError, OsFs, create_durable};
@@ -125,7 +125,10 @@ impl Store {
             let writer = shared.clone();
             let compactor = shared.clone();
             let spawn = |name: &str, f: Box<dyn FnOnce() + Send>| {
-                std::thread::Builder::new().name(name.into()).spawn(f)
+                std::thread::Builder::new()
+                    .name(name.into())
+                    .stack_size(decode::STACK_SIZE)
+                    .spawn(move || decode::on_stack(f))
             };
             threads.push(spawn(
                 "aelomi-storage-writer",
@@ -149,6 +152,10 @@ impl Store {
     /// yrs's encoding of a doc with pending structs can fail to apply or renumber them, so such a
     /// doc loads as the merge of every update the store holds for it.
     pub fn load(&self, doc: &DocId) -> io::Result<Vec<u8>> {
+        decode::with_stack(|| self.load_on_stack(doc))?
+    }
+
+    fn load_on_stack(&self, doc: &DocId) -> io::Result<Vec<u8>> {
         let encoded = self.shared.with_doc(doc, |ydoc, _| {
             let txn = ydoc.transact();
             (!txn.has_missing_updates())
@@ -169,7 +176,11 @@ impl Store {
         if update.len() > self.shared.limits.max_payload as usize {
             return Err(AppendError::InvalidUpdate);
         }
-        let decoded = Update::decode_v1(update).map_err(|_| AppendError::InvalidUpdate)?;
+        decode::with_stack(|| self.append_on_stack(doc, update))?
+    }
+
+    fn append_on_stack(&self, doc: &DocId, update: &[u8]) -> Result<Seq, AppendError> {
+        let decoded = decode::update(update).map_err(|_| AppendError::InvalidUpdate)?;
         let seq = self.shared.with_doc(doc, |ydoc, state| {
             if ydoc.transact_mut().apply_update(decoded).is_err() {
                 state.ydoc = Ydoc::Stale;
@@ -264,8 +275,10 @@ impl Store {
 
     #[cfg(test)]
     pub(crate) fn compact(&self, doc: &DocId) -> Result<(), compact::CompactError> {
-        let rotated = self.begin_compaction(doc)?;
-        self.finish_compaction(doc, rotated)
+        decode::with_stack(|| {
+            let rotated = self.begin_compaction(doc)?;
+            self.finish_compaction(doc, rotated)
+        })?
     }
 
     #[cfg(test)]
@@ -297,7 +310,7 @@ impl Store {
         let _ = std::thread::spawn(move || {
             let state = slot.state();
             if let Some(Ydoc::Fresh(ydoc)) = state.as_ref().map(|s| &s.ydoc) {
-                let update = Update::decode_v1(&update).expect("a valid update");
+                let update = decode::update(&update).expect("a valid update");
                 ydoc.transact_mut().apply_update(update).unwrap();
             }
             panic!("yrs panicked while applying an update");
@@ -387,7 +400,7 @@ impl Shared {
             }),
             Some(state) => {
                 for queued in &state.queue {
-                    let update = Update::decode_v1(&queued.update).expect("queued updates decode");
+                    let update = decode::update(&queued.update).expect("queued updates decode");
                     let _ = recovered.ydoc.transact_mut().apply_update(update);
                 }
                 state.ydoc = Ydoc::Fresh(recovered.ydoc);
