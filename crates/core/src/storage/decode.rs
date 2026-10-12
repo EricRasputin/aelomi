@@ -378,7 +378,11 @@ mod tests {
                 let file = file.unwrap();
                 let bytes = std::fs::read(file.path()).unwrap();
                 if file.path().extension().unwrap() == "ysnap" {
-                    accepted(crate::storage::snapshot::read_snapshot(&bytes).unwrap());
+                    let snapshot = crate::storage::snapshot::read(
+                        crate::storage::snapshot::SnapshotFormat::V1,
+                        &bytes,
+                    );
+                    accepted(snapshot.unwrap().0);
                     count += 1;
                 } else {
                     let records = crate::storage::log::read_log(&bytes);

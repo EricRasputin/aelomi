@@ -10,7 +10,7 @@ use super::format::parse_format;
 use super::fs::{Fs, FsLock, LockError, validate_format_marker};
 use super::layout::DocFile;
 use super::log::{LogEnd, SEGMENT_HEADER, read_log};
-use super::snapshot::read_snapshot;
+use super::snapshot::{self, Condition};
 use super::testkit::SplitMix64;
 use yrs::{Doc, IdSet, Transact, Update};
 
@@ -591,7 +591,7 @@ impl Sim {
             return true;
         };
         match DocFile::parse(&name) {
-            Some(DocFile::SnapshotTmp(_)) => true,
+            Some(DocFile::SnapshotTmp(..)) => true,
             Some(file) => self.durable_snapshot_covers(dir, file, &leaving.data, enough),
             None => name.ends_with(".tmp"),
         }
@@ -619,13 +619,14 @@ impl Sim {
         enough: impl Fn(FileCoverage) -> bool,
     ) -> bool {
         self.dir(dir).durable.iter().any(|(name, &id)| {
-            let newer =
-                matches!(DocFile::parse(name), Some(DocFile::Snapshot(g)) if g > file.generation());
-            newer
+            let Some(DocFile::Snapshot(g, format)) = DocFile::parse(name) else {
+                return false;
+            };
+            g > file.generation()
                 && matches!(&self.nodes[id], Node::File(f) if f.durable == f.data.len()
-                && read_snapshot(&f.data)
-                    .filter(|payload| applies(payload))
-                    .and_then(|payload| decode::update(payload).ok())
+                && snapshot::read(format, &f.data)
+                    .filter(|(payload, _)| applies(payload))
+                    .and_then(|(payload, _)| decode::update(payload).ok())
                     .is_some_and(|update| {
                         enough(file_coverage(&update, file, bytes))
                     }))
@@ -811,11 +812,11 @@ fn file_coverage(snapshot: &Update, file: DocFile, bytes: &[u8]) -> FileCoverage
                 || (log.end == LogEnd::Torn && bytes.len() <= SEGMENT_HEADER);
             (log.records, deletable)
         }
-        DocFile::Snapshot(_) => match read_snapshot(bytes) {
-            Some(payload) => (vec![payload], true),
+        DocFile::Snapshot(_, format) => match snapshot::read(format, bytes) {
+            Some((payload, condition)) => (vec![payload], condition == Condition::Whole),
             None => (Vec::new(), false),
         },
-        DocFile::SnapshotTmp(_) => return FileCoverage::Uncovered,
+        DocFile::SnapshotTmp(..) => return FileCoverage::Uncovered,
     };
     let blocks = snapshot.insertions(true);
     for record in records {
@@ -862,7 +863,7 @@ mod tests {
     use crate::storage::clock::ManualClock;
     use crate::storage::log::{LOG_MAGIC, LogEnd, SEGMENT_HEADER, encode_segment, read_log};
     use crate::storage::recover::merge;
-    use crate::storage::snapshot::encode_snapshot;
+    use crate::storage::snapshot::{encode_snapshot, encode_snapshot_v2};
     use crate::storage::testkit::UpdateGen;
 
     fn sim() -> Arc<SimFs> {
@@ -1220,6 +1221,75 @@ mod tests {
         .unwrap();
         fs.remove(&p("/d/log-0000000001-0000000000.ylog")).unwrap();
         fs.remove(&p("/d/snapshot-0000000003.ysnap.tmp")).unwrap();
+        assert_eq!(fs.list(&p("/d")).unwrap(), ["snapshot-0000000002.ysnap"]);
+        assert_eq!(fs.violations(), Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_format_2_snapshot_covers_through_either_copy_and_leaves_only_whole() {
+        let caught = |f: &dyn Fn(&SimFs)| {
+            let fs = sim();
+            let fs2 = fs.clone();
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(&fs2)));
+            assert!(result.is_err());
+            fs.violations()
+        };
+        let held = UpdateGen::new(1, 1).next_update();
+        let log = encode_segment(&[&held]);
+        let whole = encode_snapshot_v2(&held);
+        let mut damaged = whole.clone();
+        damaged[32] ^= 1;
+        let mut unreadable = damaged.clone();
+        unreadable[whole.len() - 33] ^= 1;
+
+        for (name, newer) in [("whole", &whole), ("damaged", &damaged)] {
+            let fs = sim();
+            fs.put_durable(&p("/d/log-0000000001-0000000000.ylog"), &log);
+            fs.put_durable(&p("/d/snapshot-0000000002.ysnap2"), newer);
+            fs.remove(&p("/d/log-0000000001-0000000000.ylog")).unwrap();
+            assert_eq!(
+                fs.violations(),
+                Vec::<String>::new(),
+                "a {name} snapshot covers"
+            );
+        }
+        let msgs = caught(&|fs| {
+            fs.put_durable(&p("/d/log-0000000001-0000000000.ylog"), &log);
+            fs.put_durable(&p("/d/snapshot-0000000002.ysnap2"), &unreadable);
+            fs.remove(&p("/d/log-0000000001-0000000000.ylog")).unwrap();
+        });
+        assert_eq!(
+            msgs,
+            [
+                r#"remove "/d/log-0000000001-0000000000.ylog", not a .tmp or covered by a durable snapshot"#
+            ]
+        );
+
+        let msgs = caught(&|fs| {
+            fs.put_durable(&p("/d/snapshot-0000000001.ysnap2"), &damaged);
+            fs.put_durable(&p("/d/snapshot-0000000002.ysnap"), &encode_snapshot(&held));
+            fs.remove(&p("/d/snapshot-0000000001.ysnap2")).unwrap();
+        });
+        assert_eq!(
+            msgs,
+            [
+                r#"remove "/d/snapshot-0000000001.ysnap2", not a .tmp or covered by a durable snapshot"#
+            ]
+        );
+
+        let fs = sim();
+        fs.put_durable(&p("/d/snapshot-0000000000.ysnap2"), &whole);
+        fs.put_durable(&p("/d/snapshot-0000000001.ysnap2"), &damaged);
+        fs.put_durable(&p("/d/snapshot-0000000002.ysnap"), &encode_snapshot(&held));
+        fs.put_durable(&p("/d/snapshot-0000000003.ysnap2.tmp"), b"z");
+        fs.create_dir(&p("/q")).unwrap();
+        fs.rename(
+            &p("/d/snapshot-0000000001.ysnap2"),
+            &p("/q/snapshot-0000000001.ysnap2"),
+        )
+        .unwrap();
+        fs.remove(&p("/d/snapshot-0000000000.ysnap2")).unwrap();
+        fs.remove(&p("/d/snapshot-0000000003.ysnap2.tmp")).unwrap();
         assert_eq!(fs.list(&p("/d")).unwrap(), ["snapshot-0000000002.ysnap"]);
         assert_eq!(fs.violations(), Vec::<String>::new());
     }

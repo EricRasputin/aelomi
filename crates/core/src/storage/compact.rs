@@ -13,7 +13,7 @@ use super::equality::{Fingerprint, Ops};
 use super::fs::create_durable;
 use super::layout::{DocFile, Generation, SegmentNo};
 use super::log::{LogEnd, SEGMENT_HEADER, read_log};
-use super::snapshot::{encode_snapshot, read_snapshot};
+use super::snapshot::{self, Condition, SnapshotFormat, encode_snapshot};
 use super::state::{Compaction, DocSlot, LogSize, Segment, Ydoc};
 use super::store::Shared;
 
@@ -61,15 +61,21 @@ fn compact(shared: &Shared, doc: &DocId, rotated: Rotated) -> Result<(), Compact
             None => return Ok(()),
         },
     };
+    let format = SnapshotFormat::V1;
     let tmp = shared
         .layout
-        .doc_file(doc, DocFile::SnapshotTmp(rotated.generation));
+        .doc_file(doc, DocFile::SnapshotTmp(rotated.generation, format));
     create_durable(&*shared.fs, &tmp, &encode_snapshot(&snapshot.payload))?;
-    if let Err(e) = verify(shared, &tmp, &snapshot.expected) {
+    if let Err(e) = verify(shared, format, &tmp, &snapshot.expected) {
         let _ = shared.fs.remove(&tmp);
         return Err(e);
     }
-    publish(shared, doc, &tmp, rotated.generation)?;
+    publish(
+        shared,
+        doc,
+        &tmp,
+        DocFile::Snapshot(rotated.generation, format),
+    )?;
     retire_older(shared, doc, &snapshot, rotated.generation)?;
     Ok(())
 }
@@ -180,10 +186,16 @@ fn too_large(shared: &Shared, doc: &DocId, payload: &[u8]) -> bool {
     too_large
 }
 
-fn verify(shared: &Shared, tmp: &Path, expected: &Expected) -> Result<(), CompactError> {
+fn verify(
+    shared: &Shared,
+    format: SnapshotFormat,
+    tmp: &Path,
+    expected: &Expected,
+) -> Result<(), CompactError> {
     let written = shared.fs.read(tmp)?;
-    let verified = read_snapshot(&written)
-        .and_then(|payload| decode::update(payload).ok())
+    let verified = snapshot::read(format, &written)
+        .filter(|(_, condition)| *condition == Condition::Whole)
+        .and_then(|(payload, _)| decode::update(payload).ok())
         .is_some_and(|update| {
             let held = Ops::of_update(&update);
             let loaded = Doc::new();
@@ -197,9 +209,9 @@ fn verify(shared: &Shared, tmp: &Path, expected: &Expected) -> Result<(), Compac
     }
 }
 
-fn publish(shared: &Shared, doc: &DocId, tmp: &Path, generation: Generation) -> io::Result<()> {
+fn publish(shared: &Shared, doc: &DocId, tmp: &Path, published: DocFile) -> io::Result<()> {
     let (fs, layout) = (&*shared.fs, &shared.layout);
-    fs.rename(tmp, &layout.doc_file(doc, DocFile::Snapshot(generation)))?;
+    fs.rename(tmp, &layout.doc_file(doc, published))?;
     shared.sync_quarantine_then_doc_dir(doc)?;
     fs.full_sync(&layout.doc_dir(doc))
 }
@@ -217,7 +229,7 @@ fn retire_older(
     let coverage: Vec<Coverage> = older
         .iter()
         .map(|(_, file, bytes)| match file {
-            DocFile::SnapshotTmp(_) => Coverage::Full { damaged: false },
+            DocFile::SnapshotTmp(..) => Coverage::Full { damaged: false },
             _ => coverage(snapshot.expected.ops(), *file, bytes),
         })
         .collect();
@@ -289,7 +301,7 @@ fn read_older(
             continue;
         };
         let bytes = match file {
-            DocFile::SnapshotTmp(_) => Vec::new(),
+            DocFile::SnapshotTmp(..) => Vec::new(),
             _ => fs.read(&dir.join(&name))?,
         };
         older.push((name, file, bytes));
@@ -306,7 +318,7 @@ pub(crate) enum Coverage {
 /// Compares IDs, not docs: yrs integrates pending structs differently when they arrive
 /// again, so a doc can change without gaining anything.
 pub(crate) fn coverage(held: &Ops, file: DocFile, bytes: &[u8]) -> Coverage {
-    if let DocFile::SnapshotTmp(_) = file {
+    if let DocFile::SnapshotTmp(..) = file {
         return Coverage::Lacking;
     }
     let (records, damaged) = records(file, bytes);
@@ -329,8 +341,8 @@ pub(crate) fn torn_after(acknowledged: u64, bytes: &[u8]) -> bool {
 
 fn records(file: DocFile, bytes: &[u8]) -> (Vec<&[u8]>, bool) {
     match file {
-        DocFile::Snapshot(_) => match read_snapshot(bytes) {
-            Some(payload) => (vec![payload], false),
+        DocFile::Snapshot(_, format) => match snapshot::read(format, bytes) {
+            Some((payload, condition)) => (vec![payload], condition == Condition::Damaged),
             None => (Vec::new(), true),
         },
         DocFile::Log(..) => {
@@ -343,7 +355,7 @@ fn records(file: DocFile, bytes: &[u8]) -> (Vec<&[u8]>, bool) {
             };
             (contents.records, damaged)
         }
-        DocFile::SnapshotTmp(_) => (Vec::new(), false),
+        DocFile::SnapshotTmp(..) => (Vec::new(), false),
     }
 }
 

@@ -171,11 +171,12 @@ Aelomi/
   .lock                             exclusive lock while a Store has the folder open
   docs/<doc-id>/
     snapshot-<gen>.ysnap            the doc's full state when generation <gen> began
+    snapshot-<gen>.ysnap2           the same state held twice; read, not yet written
     log-<gen>-<seg>.ylog            updates appended during generation <gen>
   quarantine/<doc-id>/              files that failed validation, never deleted
 ```
 
-`<gen>` and `<seg>` are 10-digit zero-padded numbers. A log is the 8-byte magic `AELOG\0\0\x02`, a random 8-byte salt, then records of a `u32` length, a `u32` CRC-32 of the salt and the payload, and the payload, one Yjs v1 update. The salt stops a record framed inside a payload, in note text say, from passing for a real record, unless its author read the salt from the file. A snapshot is a magic header, length, CRC-32 of the payload, and the doc's state as one update.
+`<gen>` and `<seg>` are 10-digit zero-padded numbers. A log is the 8-byte magic `AELOG\0\0\x02`, a random 8-byte salt, then records of a `u32` length, a `u32` CRC-32 of the salt and the payload, and the payload, one Yjs v1 update. The salt stops a record framed inside a payload, in note text say, from passing for a real record, unless its author read the salt from the file. A snapshot is a magic header, length, CRC-32 of the payload, and the doc's state as one update. A `.ysnap2` holds that state twice, between a 32-byte head at offset 0 and a 32-byte tail at the end of the file, each naming the length and a CRC-64/NVME of the payload. Copy A follows the head. Copy B starts one aligned 4 KiB block past the block where copy A ends, so no 4 KiB block holds bytes of both. Reading takes the first copy, A then B, that passes its CRC-64 under either valid anchor, and never searches for an anchor inside the file. A `.ysnap2` that loads with an anchor, a copy, or its padding damaged counts as corrupt, as a damaged log does. Generation numbers are unique across both snapshot formats. The compactor still writes `.ysnap`.
 
 **Refusals.** `Store::open` returns `Locked` if another process holds `.lock`, `NewerFormat` if the `format` in `format.json` is newer than this build, whatever other keys it has (checked before anything is written), and `UnknownFormat` if there is data but no readable `format.json`. Opening does no per-doc work.
 
