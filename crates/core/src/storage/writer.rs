@@ -97,8 +97,7 @@ fn collect(
         }
         let Some(files) = slot.try_files() else {
             if let Some(failure) = &mut state.failure {
-                // A flush's retry, whatever the backoff, still applies once the files free.
-                failure.retry_at = failure.retry_at.min(now);
+                failure.retry_no_later_than(now);
             }
             continue;
         };

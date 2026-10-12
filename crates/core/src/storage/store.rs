@@ -367,7 +367,7 @@ impl Shared {
     }
 
     fn read_files(&self, slot: &DocSlot, doc: &DocId) -> io::Result<()> {
-        let _io = slot.files(self);
+        let _io = slot.files_waking_writer(self);
         match slot.state().as_mut() {
             Some(state) if matches!(state.ydoc, Ydoc::Fresh(_)) => return Ok(()),
             Some(state) => state.log.leave_open_segment(),
@@ -409,7 +409,7 @@ impl Shared {
 
     pub fn merge_held(&self, doc: &DocId) -> io::Result<Merged> {
         let slot = self.slot(doc);
-        let files = slot.files(self);
+        let files = slot.files_waking_writer(self);
         let stored = stored_updates(&*self.fs, &self.layout, doc)?;
         let queued: Vec<Arc<[u8]>> = match slot.state().as_mut() {
             Some(state) => {

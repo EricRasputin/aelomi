@@ -229,7 +229,7 @@ fn retire_older(
         .collect();
     let kept_files_add = !lacking.is_empty() && adds_to(&snapshot.payload, lacking);
 
-    let _files = slot.files(shared);
+    let _files = slot.files_waking_writer(shared);
     let (corrupt, acknowledged_before_failure) = {
         let state = slot.state();
         let state = state.as_ref().expect("still loaded");
@@ -282,7 +282,7 @@ fn read_older(
     generation: Generation,
 ) -> io::Result<Vec<(String, DocFile, Vec<u8>)>> {
     let fs = &*shared.fs;
-    let _files = slot.files(shared);
+    let _files = slot.files_waking_writer(shared);
     let mut older = Vec::new();
     for name in fs.list(dir)? {
         let Some(file) = DocFile::parse(&name).filter(|f| f.generation() < generation) else {

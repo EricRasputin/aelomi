@@ -42,8 +42,8 @@ impl DocSlot {
         state
     }
 
-    pub fn files<'a>(&'a self, shared: &'a Shared) -> Files<'a> {
-        Files {
+    pub fn files_waking_writer<'a>(&'a self, shared: &'a Shared) -> FilesWakingWriter<'a> {
+        FilesWakingWriter {
             held: Some(lock_ignoring_poison(&self.files)),
             slot: self,
             shared,
@@ -59,15 +59,13 @@ impl DocSlot {
     }
 }
 
-/// A doc's file lock, held by anything but the writer. The writer may have skipped the doc
-/// while it was held, so releasing it wakes the writer if the doc has updates queued.
-pub(crate) struct Files<'a> {
+pub(crate) struct FilesWakingWriter<'a> {
     held: Option<MutexGuard<'a, ()>>,
     slot: &'a DocSlot,
     shared: &'a Shared,
 }
 
-impl Drop for Files<'_> {
+impl Drop for FilesWakingWriter<'_> {
     fn drop(&mut self) {
         self.held = None;
         if self
@@ -124,6 +122,12 @@ pub(crate) struct Failure {
     pub reason: FailReason,
     pub attempts: u32,
     pub retry_at: Duration,
+}
+
+impl Failure {
+    pub fn retry_no_later_than(&mut self, at: Duration) {
+        self.retry_at = self.retry_at.min(at);
+    }
 }
 
 pub(crate) struct Queued {
