@@ -244,8 +244,6 @@ pub(crate) struct Frame {
     pub tail: Range<usize>,
 }
 
-/// Where the writer puts each update: a 20-byte head, the update packed 7 bytes to 8, and a
-/// 20-byte tail.
 pub(crate) fn frames(updates: &[impl AsRef<[u8]>]) -> Vec<Frame> {
     let mut at = 0;
     updates
@@ -262,7 +260,6 @@ pub(crate) fn frames(updates: &[impl AsRef<[u8]>]) -> Vec<Frame> {
 }
 
 impl Frame {
-    /// The head packs a tag, the update's length, its CRC-64, and a CRC-32, 7 bytes to 8.
     fn head_field(&self, byte: usize) -> usize {
         self.head.start + byte + byte / 7
     }

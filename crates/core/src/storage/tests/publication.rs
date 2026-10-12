@@ -8,7 +8,6 @@ use crate::storage::testkit::UpdateGen;
 const MARKER_1: &str = "{\n  \"format\": 1\n}\n";
 const MARKER_2: &str = "{\n  \"format\": 2\n}\n";
 
-/// `format.json` as the process sees it, then as it would survive a power loss.
 fn markers(env: &Env) -> (String, String) {
     let marker = env.path("format.json");
     let live = env.fs.files().remove(&marker).unwrap();
@@ -54,7 +53,6 @@ const REPLACE_TMP: [&str; 2] = [
     "Remove /data/format.json.tmp",
 ];
 
-/// A batch that writes doc a's first segment, `log`, in a new doc folder.
 fn first_segment(log: &str) -> Vec<String> {
     let log = format!("/data/docs/a/{log}");
     vec![

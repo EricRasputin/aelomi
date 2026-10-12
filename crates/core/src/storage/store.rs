@@ -642,8 +642,6 @@ fn prepare_folder(
     Ok((lock, version, has("quarantine")))
 }
 
-/// Refuses a folder a build that reads formats up to `supported` can't handle, before
-/// anything, even `.lock`, is written to it. This build passes `FORMAT_VERSION`.
 pub(super) fn refuse_before_writing(
     fs: &dyn Fs,
     layout: &Layout,
@@ -656,7 +654,6 @@ pub(super) fn refuse_before_writing(
     }
 }
 
-/// `None` for a folder with neither `format.json` nor `docs`.
 fn check_format(
     fs: &dyn Fs,
     layout: &Layout,

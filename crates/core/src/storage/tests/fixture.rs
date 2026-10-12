@@ -77,7 +77,6 @@ impl Contents {
         Self::with(&[], 1)
     }
 
-    /// The fixture with `paragraphs` added to page-1 and `pages` set in the workspace.
     fn with(paragraphs: &[&str], pages: u32) -> Self {
         let added: String = paragraphs
             .iter()
@@ -128,7 +127,6 @@ fn set_pages(state: &[u8], client: u64, pages: u32) -> Vec<u8> {
     txn.encode_update_v1()
 }
 
-/// Every file under `root` by its relative path, without `.lock`.
 fn tree(root: &Path) -> BTreeMap<String, Vec<u8>> {
     fn walk(dir: &Path, root: &Path, out: &mut BTreeMap<String, Vec<u8>>) {
         for entry in std::fs::read_dir(dir).unwrap() {
@@ -216,9 +214,6 @@ fn durable_tree(env: &Env) -> BTreeMap<String, Vec<u8>> {
         .collect()
 }
 
-/// Loads both fixture docs, then appends one update to each and runs the writer once, dying
-/// after `die_after` operations of that write. Returns which updates were acknowledged and
-/// how many operations the write ran.
 fn first_write(env: &Env, die_after: usize) -> ([bool; 2], usize) {
     let docs = [doc("page-1"), DocId::workspace()];
     let store = env.open();

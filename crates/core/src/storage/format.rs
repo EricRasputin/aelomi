@@ -6,11 +6,8 @@ use super::fs::{Fs, create_durable};
 use super::layout::Layout;
 use super::state::lock_ignoring_poison;
 
-/// The newest `format.json` this build reads and writes.
 pub(crate) const FORMAT_VERSION: u64 = 2;
 
-/// What a folder's `format.json` says. Opening writes 1 into a new folder and never bumps
-/// it. The writer's first new segment moves a folder from 1 to 2.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum FolderVersion {
     Legacy1 = 1,
@@ -36,8 +33,6 @@ pub(crate) fn parse_format(bytes: &[u8]) -> Option<u64> {
     json.get("format")?.as_u64()
 }
 
-/// Whether this store lifetime has seen `format.json` durably say 2. Never taken while a
-/// doc's state lock is held.
 pub(crate) struct FormatGate {
     state: Mutex<GateState>,
 }
@@ -49,7 +44,6 @@ enum GateState {
     Ready2,
 }
 
-/// Proof that `format.json` durably says 2, the only way to create a format-2 file.
 pub(crate) struct Format2Ready {
     _private: (),
 }
@@ -67,9 +61,6 @@ impl FormatGate {
         }
     }
 
-    /// Makes `format.json` durably say 2. A folder at 1 gets a durable `format.json.tmp`
-    /// renamed over its marker. A folder at 2 has its marker and the data folder synced
-    /// again. A failure leaves the gate unconfirmed, so the next call redoes the syncs.
     pub fn ensure_v2(&self, fs: &dyn Fs, layout: &Layout) -> io::Result<Format2Ready> {
         let mut state = lock_ignoring_poison(&self.state);
         match *state {
