@@ -1,4 +1,5 @@
 use std::cell::OnceCell;
+use std::collections::BTreeMap;
 use std::io;
 
 use super::decode;
@@ -28,6 +29,64 @@ impl Salt {
         crc.update(payload);
         crc.finalize()
     }
+}
+
+#[derive(Clone, Copy)]
+struct CrcState(u32);
+
+impl CrcState {
+    fn hasher(self) -> crc32fast::Hasher {
+        crc32fast::Hasher::new_with_initial_len(self.0, 8)
+    }
+
+    fn crc(self, payload: &[u8]) -> u32 {
+        let mut hasher = self.hasher();
+        hasher.update(payload);
+        hasher.finalize()
+    }
+
+    fn from_record(stored: u32, payload: &[u8]) -> Option<Self> {
+        let suffix = crc32fast::Hasher::new_with_initial_len(0, payload.len() as u64);
+        let mut columns: [(u32, u32); 32] = std::array::from_fn(|bit| {
+            let state = 1 << bit;
+            let mut shifted = crc32fast::Hasher::new_with_initial(state);
+            shifted.combine(&suffix);
+            (shifted.finalize(), state)
+        });
+        let mut target = stored ^ crc32fast::hash(payload);
+        let mut state = 0;
+        // combine gives CRC(salt || payload) = shift(CRC(salt), len) ^ CRC(payload).
+        for bit in 0..32 {
+            let mask = 1 << bit;
+            let pivot = (bit..32).find(|&column| columns[column].0 & mask != 0)?;
+            columns.swap(bit, pivot);
+            let (shifted, original) = columns[bit];
+            for column in &mut columns[bit + 1..] {
+                if column.0 & mask != 0 {
+                    column.0 ^= shifted;
+                    column.1 ^= original;
+                }
+            }
+            if target & mask != 0 {
+                target ^= shifted;
+                state ^= original;
+            }
+        }
+        (target == 0).then_some(Self(state))
+    }
+}
+
+fn confirmed_crc_state(bytes: &[u8]) -> Option<CrcState> {
+    let mut votes = BTreeMap::<u32, usize>::new();
+    let mut at = SEGMENT_HEADER;
+    while let Some((stored, payload)) = candidate_at(bytes, at) {
+        if let Some(state) = CrcState::from_record(stored, payload) {
+            *votes.entry(state.0).or_default() += 1;
+        }
+        at += RECORD_HEADER + payload.len();
+    }
+    let (state, count) = votes.into_iter().max_by_key(|(_, count)| *count)?;
+    (count >= 2).then_some(CrcState(state))
 }
 
 pub(crate) fn segment_header(salt: Salt) -> Vec<u8> {
@@ -71,7 +130,7 @@ pub(crate) fn read_log(bytes: &[u8]) -> LogContents<'_> {
 const SCAN_DECODED_PER_BYTE: usize = 64;
 const RECOVERY_WORK_PER_BYTE: usize = 64;
 
-pub(crate) fn read_log_decoding(bytes: &[u8], mut decode_budget: usize) -> LogContents<'_> {
+pub(crate) fn read_log_decoding(bytes: &[u8], decode_budget: usize) -> LogContents<'_> {
     let Some(header) = bytes.get(..SEGMENT_HEADER) else {
         let magic = &bytes[..bytes.len().min(LOG_MAGIC.len())];
         let end = if LOG_MAGIC.starts_with(magic) {
@@ -84,34 +143,51 @@ pub(crate) fn read_log_decoding(bytes: &[u8], mut decode_budget: usize) -> LogCo
             end,
         };
     };
-    if header[..LOG_MAGIC.len()] != LOG_MAGIC {
-        return LogContents {
-            records: Vec::new(),
-            end: LogEnd::Corrupt,
-        };
+    let magic_damaged = header[..LOG_MAGIC.len()] != LOG_MAGIC;
+    let state = CrcState(crc32fast::hash(&header[LOG_MAGIC.len()..]));
+    let mut contents = read_records(bytes, state, decode_budget, magic_damaged);
+    if contents.records.is_empty()
+        && let Some(confirmed) = confirmed_crc_state(bytes)
+        && confirmed.0 != state.0
+    {
+        contents = read_records(bytes, confirmed, decode_budget, true);
+        contents.end = LogEnd::Corrupt;
     }
-    let salt = Salt(header[LOG_MAGIC.len()..].try_into().unwrap());
+    if magic_damaged {
+        contents.end = LogEnd::Corrupt;
+    }
+    contents
+}
+
+fn read_records(
+    bytes: &[u8],
+    state: CrcState,
+    mut decode_budget: usize,
+    validate_updates: bool,
+) -> LogContents<'_> {
     let mut contents = LogContents {
         records: Vec::new(),
         end: LogEnd::Clean,
     };
     let mut recovery = bytes.len().saturating_mul(RECOVERY_WORK_PER_BYTE);
     let crcs = OnceCell::new();
-    let crcs = || crcs.get_or_init(|| PrefixCrcs::new(bytes, salt));
+    let crcs = || crcs.get_or_init(|| PrefixCrcs::new(bytes, state));
     let mut at = SEGMENT_HEADER;
     while at < bytes.len() {
-        if let Some(payload) = record_at(bytes, at, salt) {
+        if let Some(payload) = record_at(bytes, at, state)
+            && (!validate_updates || decode::update(payload).is_ok())
+        {
             contents.records.push(payload);
             at += RECORD_HEADER + payload.len();
             continue;
         }
-        if let Some(payload) = recover_length(bytes, at, salt, &mut recovery) {
+        if let Some(payload) = recover_length(bytes, at, state, &mut recovery) {
             contents.records.push(payload);
             contents.end = LogEnd::Corrupt;
             at += RECORD_HEADER + payload.len();
             continue;
         }
-        let stated_end = stated_end(bytes, at, salt);
+        let stated_end = stated_end(bytes, at, state);
         let scan = match stated_end {
             Some(end) if decode::decodes_exactly(&bytes[at + RECORD_HEADER..end]) => Scan::NoRecord,
             Some(end) => resync(crcs().records_chaining_to(at + 1, end), &mut decode_budget),
@@ -164,25 +240,25 @@ fn resync<'a>(candidates: impl Iterator<Item = (usize, &'a [u8])>, budget: &mut 
     scan
 }
 
-fn stated_end(bytes: &[u8], at: usize, salt: Salt) -> Option<usize> {
+fn stated_end(bytes: &[u8], at: usize, state: CrcState) -> Option<usize> {
     let (_, payload) = candidate_at(bytes, at)?;
     let end = at + RECORD_HEADER + payload.len();
-    boundary_at(bytes, end, salt).then_some(end)
+    boundary_at(bytes, end, state).then_some(end)
 }
 
-fn boundary_at(bytes: &[u8], at: usize, salt: Salt) -> bool {
+fn boundary_at(bytes: &[u8], at: usize, state: CrcState) -> bool {
     at == bytes.len()
-        || record_at(bytes, at, salt).is_some_and(|record| decode::update(record).is_ok())
+        || record_at(bytes, at, state).is_some_and(|record| decode::update(record).is_ok())
 }
 
 struct PrefixCrcs<'a> {
     bytes: &'a [u8],
-    salt: u32,
+    state: CrcState,
     every_64: Vec<u32>,
 }
 
 impl<'a> PrefixCrcs<'a> {
-    fn new(bytes: &'a [u8], salt: Salt) -> Self {
+    fn new(bytes: &'a [u8], state: CrcState) -> Self {
         let mut crc = crc32fast::Hasher::new();
         let mut every_64 = vec![crc.clone().finalize()];
         for chunk in bytes.chunks(64) {
@@ -191,7 +267,7 @@ impl<'a> PrefixCrcs<'a> {
         }
         Self {
             bytes,
-            salt: crc32fast::hash(&salt.0),
+            state,
             every_64,
         }
     }
@@ -227,7 +303,7 @@ impl<'a> PrefixCrcs<'a> {
     fn salted_crc(&self, start: usize, end: usize) -> u32 {
         let len = end - start;
         let range = self.prefix(end) ^ combine(self.prefix(start), 0, len);
-        combine(self.salt, range, len)
+        combine(self.state.0, range, len)
     }
 
     fn prefix(&self, end: usize) -> u32 {
@@ -247,7 +323,7 @@ fn combine(crc: u32, then: u32, len: usize) -> u32 {
 fn recover_length<'a>(
     bytes: &'a [u8],
     at: usize,
-    salt: Salt,
+    state: CrcState,
     budget: &mut usize,
 ) -> Option<&'a [u8]> {
     let header = bytes.get(at..at + RECORD_HEADER)?;
@@ -258,7 +334,7 @@ fn recover_length<'a>(
         *budget = left.unwrap_or(0);
         left.map(|_| ())
     };
-    let mut hasher = salt.hasher();
+    let mut hasher = state.hasher();
     for end in start + 1..=bytes.len() {
         spend(1)?;
         hasher.update(&bytes[end - 1..end]);
@@ -267,16 +343,16 @@ fn recover_length<'a>(
         }
         let payload = &bytes[start..end];
         spend(payload.len())?;
-        if decode::decodes_exactly(payload) && boundary_at(bytes, end, salt) {
+        if decode::decodes_exactly(payload) && boundary_at(bytes, end, state) {
             return Some(payload);
         }
     }
     None
 }
 
-fn record_at(bytes: &[u8], at: usize, salt: Salt) -> Option<&[u8]> {
+fn record_at(bytes: &[u8], at: usize, state: CrcState) -> Option<&[u8]> {
     let (crc, payload) = candidate_at(bytes, at)?;
-    (salt.crc(payload) == crc).then_some(payload)
+    (state.crc(payload) == crc).then_some(payload)
 }
 
 /// The store never writes an empty payload, so a zero length is invalid. That keeps a
@@ -352,6 +428,148 @@ mod tests {
     }
 
     #[test]
+    fn header_magic_damage_loads_every_record_as_corrupt() {
+        let updates = UpdateGen::new(5, 1).updates(4);
+        let records: Vec<&[u8]> = updates.iter().map(Vec::as_slice).collect();
+        let mut bytes = segment(&records);
+        bytes[0] ^= 1;
+        assert_eq!(
+            read_log(&bytes),
+            LogContents {
+                records,
+                end: LogEnd::Corrupt
+            }
+        );
+    }
+
+    #[test]
+    fn header_salt_damage_loads_every_record_as_corrupt() {
+        let updates = UpdateGen::new(5, 1).updates(4);
+        let records: Vec<&[u8]> = updates.iter().map(Vec::as_slice).collect();
+        let mut bytes = segment(&records);
+        bytes[10] ^= 1;
+        assert_eq!(
+            read_log(&bytes),
+            LogContents {
+                records,
+                end: LogEnd::Corrupt
+            }
+        );
+    }
+
+    #[test]
+    fn header_salt_damage_needs_two_agreeing_records() {
+        let updates = UpdateGen::new(5, 1).updates(2);
+        let alpha = &updates[0][..];
+        assert_eq!(
+            read_log(&segment(&[alpha])),
+            LogContents {
+                records: vec![alpha],
+                end: LogEnd::Clean
+            }
+        );
+        let mut single = segment(&[alpha]);
+        single[10] ^= 1;
+        assert_eq!(
+            read_log(&single),
+            LogContents {
+                records: vec![],
+                end: LogEnd::Torn
+            }
+        );
+
+        let mut disagree = single;
+        encode_record(Salt(*b"othersal"), &updates[1], &mut disagree);
+        assert_eq!(
+            read_log(&disagree),
+            LogContents {
+                records: vec![],
+                end: LogEnd::Corrupt
+            }
+        );
+    }
+
+    #[test]
+    fn header_salt_recovery_handles_varied_record_lengths() {
+        for salt in [Salt([0; 8]), Salt([255; 8]), SALT] {
+            for len in [1, 31, 64, 255, 256, 4_096, 70_000] {
+                let update = typed(len);
+                let tail = typed(2);
+                let mut bytes = segment_header(salt);
+                encode_record(salt, &update, &mut bytes);
+                encode_record(salt, &tail, &mut bytes);
+                bytes[10] ^= 1;
+                assert_eq!(
+                    read_log(&bytes),
+                    LogContents {
+                        records: vec![&update, &tail],
+                        end: LogEnd::Corrupt
+                    },
+                    "length {len}, salt {salt:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn header_salvage_checks_each_records_crc_and_decode() {
+        let updates = UpdateGen::new(5, 1).updates(4);
+        let (alpha, beta, gamma, delta) = (
+            &updates[0][..],
+            &updates[1][..],
+            &updates[2][..],
+            &updates[3][..],
+        );
+        for at in [0, 10] {
+            let mut bytes = segment(&[alpha, beta, b"not an update", gamma, delta]);
+            bytes[at] ^= 1;
+            let damaged = segment(&[alpha]).len();
+            bytes[damaged + RECORD_HEADER + beta.len() - 1] ^= 1;
+            assert_eq!(
+                read_log(&bytes),
+                LogContents {
+                    records: vec![alpha, gamma, delta],
+                    end: LogEnd::Corrupt
+                }
+            );
+        }
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig {
+            failure_persistence: None,
+            ..ProptestConfig::default()
+        })]
+
+        #[test]
+        fn header_random_bursts_load_every_record_with_two_confirmations(
+            header in any::<[u8; 16]>(),
+            salt in any::<[u8; 8]>(),
+        ) {
+            for count in [2, 4, 6] {
+                let updates = UpdateGen::new(count, 1).updates(count as usize);
+                let records: Vec<&[u8]> = updates.iter().map(Vec::as_slice).collect();
+                let mut bytes = segment_header(Salt(salt));
+                for payload in &records {
+                    encode_record(Salt(salt), payload, &mut bytes);
+                }
+                for (byte, mask) in bytes[..SEGMENT_HEADER].iter_mut().zip(header) {
+                    *byte ^= mask;
+                }
+                let same_state = crc32fast::hash(&bytes[8..SEGMENT_HEADER]) == crc32fast::hash(&salt);
+                let end = if header[..8] == [0; 8] && same_state { LogEnd::Clean } else { LogEnd::Corrupt };
+                prop_assert_eq!(read_log(&bytes), LogContents { records, end });
+            }
+            let update = typed(4);
+            let mut single = segment(&[&update]);
+            single[..SEGMENT_HEADER].copy_from_slice(&header);
+            if crc32fast::hash(&header[8..]) != SALT.hasher().finalize() {
+                prop_assert_eq!(read_log(&single).records, Vec::<&[u8]>::new());
+            }
+        }
+    }
+
+    #[test]
     fn classifies_damaged_segments_and_reads_every_update_around_the_damage() {
         let updates = UpdateGen::new(5, 1).updates(3);
         let (alpha, beta, gamma) = (&updates[0][..], &updates[1][..], &updates[2][..]);
@@ -386,6 +604,12 @@ mod tests {
             ("partial magic", LOG_MAGIC[..5].to_vec(), none, LogEnd::Torn),
             ("wrong magic", b"NOTALOG!".to_vec(), none, LogEnd::Corrupt),
             (
+                "wrong magic in a complete log",
+                flip(good.clone(), 0),
+                ab,
+                LogEnd::Corrupt,
+            ),
+            (
                 "short magic, not a prefix",
                 b"AEX".to_vec(),
                 none,
@@ -404,6 +628,12 @@ mod tests {
                 [&LOG_MAGIC[..], b"othersal", &record(alpha)].concat(),
                 none,
                 LogEnd::Torn,
+            ),
+            (
+                "two records salted for another segment",
+                [&LOG_MAGIC[..], b"othersal", &good[SEGMENT_HEADER..]].concat(),
+                ab,
+                LogEnd::Corrupt,
             ),
             ("short header at end", with(&third[..5]), ab, LogEnd::Torn),
             (
@@ -545,7 +775,7 @@ mod tests {
             let (start, end) = (start.index(bytes.len() + 1), end.index(bytes.len() + 1));
             let (start, end) = (start.min(end), start.max(end));
             prop_assert_eq!(
-                PrefixCrcs::new(&bytes, SALT).salted_crc(start, end),
+                PrefixCrcs::new(&bytes, CrcState(SALT.hasher().finalize())).salted_crc(start, end),
                 SALT.crc(&bytes[start..end]),
                 "bytes {}..{} of {}", start, end, bytes.len()
             );
