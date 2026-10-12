@@ -1,7 +1,8 @@
 use std::io;
 
 use yrs::Update;
-use yrs::updates::decoder::Decode;
+use yrs::encoding::read::Read;
+use yrs::updates::decoder::{Decode, DecoderV1};
 
 pub(crate) const LOG_MAGIC: [u8; 8] = *b"AELOG\0\0\x02";
 pub(crate) const SEGMENT_HEADER: usize = LOG_MAGIC.len() + 8;
@@ -17,9 +18,14 @@ impl Salt {
         Ok(Self(salt))
     }
 
-    fn crc(self, payload: &[u8]) -> u32 {
+    fn hasher(self) -> crc32fast::Hasher {
         let mut crc = crc32fast::Hasher::new();
         crc.update(&self.0);
+        crc
+    }
+
+    fn crc(self, payload: &[u8]) -> u32 {
+        let mut crc = self.hasher();
         crc.update(payload);
         crc.finalize()
     }
@@ -64,6 +70,7 @@ pub(crate) fn read_log(bytes: &[u8]) -> LogContents<'_> {
 }
 
 const RESYNC_HASHED_PER_BYTE: usize = 1024;
+const RECOVERY_WORK_PER_BYTE: usize = 64;
 
 pub(crate) fn read_log_hashing(bytes: &[u8], mut budget: usize) -> LogContents<'_> {
     let Some(header) = bytes.get(..SEGMENT_HEADER) else {
@@ -89,10 +96,17 @@ pub(crate) fn read_log_hashing(bytes: &[u8], mut budget: usize) -> LogContents<'
         records: Vec::new(),
         end: LogEnd::Clean,
     };
+    let mut recovery = bytes.len().saturating_mul(RECOVERY_WORK_PER_BYTE);
     let mut at = SEGMENT_HEADER;
     while at < bytes.len() {
         if let Some(payload) = record_at(bytes, at, salt) {
             contents.records.push(payload);
+            at += RECORD_HEADER + payload.len();
+            continue;
+        }
+        if let Some(payload) = recover_length(bytes, at, salt, &mut recovery) {
+            contents.records.push(payload);
+            contents.end = LogEnd::Corrupt;
             at += RECORD_HEADER + payload.len();
             continue;
         }
@@ -146,6 +160,49 @@ fn resync(bytes: &[u8], salt: Salt, from: usize, budget: &mut usize) -> Scan {
         scan = Scan::NoUpdate;
     }
     scan
+}
+
+/// Only a record's true length decodes exactly, so this never returns a payload stretched over
+/// the records after it. `budget` counts every byte hashed or decoded, since a payload that knows
+/// the salt can plant a frame or a CRC match every few bytes. Once it runs out, recovery stops
+/// for the rest of the file.
+fn recover_length<'a>(
+    bytes: &'a [u8],
+    at: usize,
+    salt: Salt,
+    budget: &mut usize,
+) -> Option<&'a [u8]> {
+    let header = bytes.get(at..at + RECORD_HEADER)?;
+    let crc = u32::from_le_bytes(header[4..].try_into().unwrap());
+    let start = at + RECORD_HEADER;
+    let mut spend = |work: usize| {
+        let left = budget.checked_sub(work);
+        *budget = left.unwrap_or(0);
+        left.map(|_| ())
+    };
+    let mut hasher = salt.hasher();
+    for end in start + 1..=bytes.len() {
+        spend(1)?;
+        hasher.update(&bytes[end - 1..end]);
+        if hasher.clone().finalize() != crc {
+            continue;
+        }
+        let payload = &bytes[start..end];
+        spend(payload.len())?;
+        let next_passes =
+            || record_at(bytes, end, salt).is_some_and(|next| Update::decode_v1(next).is_ok());
+        if decodes_exactly(payload) && (end == bytes.len() || next_passes()) {
+            return Some(payload);
+        }
+    }
+    None
+}
+
+/// yrs stops reading at the end of an update, so a payload stretched over the records after it
+/// still decodes.
+fn decodes_exactly(payload: &[u8]) -> bool {
+    let mut decoder = DecoderV1::from(payload);
+    Update::decode(&mut decoder).is_ok() && decoder.read_u8().is_err()
 }
 
 fn record_at(bytes: &[u8], at: usize, salt: Salt) -> Option<&[u8]> {
