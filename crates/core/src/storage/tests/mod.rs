@@ -9,6 +9,7 @@ mod measure;
 mod real_disk;
 mod refusals;
 mod salvage;
+mod snapshot_copies;
 mod store;
 
 use std::collections::BTreeMap;

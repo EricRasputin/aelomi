@@ -129,6 +129,8 @@ mod tests {
         let files = [
             DocFile::Snapshot(Generation(7), SnapshotFormat::V1),
             DocFile::SnapshotTmp(Generation(7), SnapshotFormat::V1),
+            DocFile::Snapshot(Generation(8), SnapshotFormat::V2),
+            DocFile::SnapshotTmp(Generation(8), SnapshotFormat::V2),
             DocFile::Log(Generation(7), SegmentNo(12)),
             DocFile::Log(Generation(9_999_999_999), SegmentNo(0)),
         ];
@@ -138,6 +140,8 @@ mod tests {
             [
                 "snapshot-0000000007.ysnap",
                 "snapshot-0000000007.ysnap.tmp",
+                "snapshot-0000000008.ysnap2",
+                "snapshot-0000000008.ysnap2.tmp",
                 "log-0000000007-0000000012.ylog",
                 "log-9999999999-0000000000.ylog",
             ]
@@ -153,6 +157,14 @@ mod tests {
         for name in [
             "snapshot-7.ysnap",
             "snapshot-000000000a.ysnap",
+            "snapshot-7.ysnap2",
+            "snapshot-0000000007",
+            "snapshot-0000000007.",
+            "snapshot-0000000007.ysnap3",
+            "snapshot-0000000007.ysnap2x",
+            "snapshot-0000000007.ysnap.ysnap2",
+            "snapshot-0000000007.ysnap2.tmp.tmp",
+            "snapshot-0000000007.tmp",
             "log-0000000001.ylog",
             "log-0000000001-0000000001.ylog.tmp",
             "notes.txt",

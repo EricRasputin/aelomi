@@ -863,7 +863,7 @@ mod tests {
     use crate::storage::clock::ManualClock;
     use crate::storage::log::{LOG_MAGIC, LogEnd, SEGMENT_HEADER, encode_segment, read_log};
     use crate::storage::recover::merge;
-    use crate::storage::snapshot::encode_snapshot;
+    use crate::storage::snapshot::{encode_snapshot, encode_snapshot_v2};
     use crate::storage::testkit::UpdateGen;
 
     fn sim() -> Arc<SimFs> {
@@ -1221,6 +1221,75 @@ mod tests {
         .unwrap();
         fs.remove(&p("/d/log-0000000001-0000000000.ylog")).unwrap();
         fs.remove(&p("/d/snapshot-0000000003.ysnap.tmp")).unwrap();
+        assert_eq!(fs.list(&p("/d")).unwrap(), ["snapshot-0000000002.ysnap"]);
+        assert_eq!(fs.violations(), Vec::<String>::new());
+    }
+
+    #[test]
+    fn a_format_2_snapshot_covers_through_either_copy_and_leaves_only_whole() {
+        let caught = |f: &dyn Fn(&SimFs)| {
+            let fs = sim();
+            let fs2 = fs.clone();
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(&fs2)));
+            assert!(result.is_err());
+            fs.violations()
+        };
+        let held = UpdateGen::new(1, 1).next_update();
+        let log = encode_segment(&[&held]);
+        let whole = encode_snapshot_v2(&held);
+        let mut damaged = whole.clone();
+        damaged[32] ^= 1;
+        let mut unreadable = damaged.clone();
+        unreadable[whole.len() - 33] ^= 1;
+
+        for (name, newer) in [("whole", &whole), ("damaged", &damaged)] {
+            let fs = sim();
+            fs.put_durable(&p("/d/log-0000000001-0000000000.ylog"), &log);
+            fs.put_durable(&p("/d/snapshot-0000000002.ysnap2"), newer);
+            fs.remove(&p("/d/log-0000000001-0000000000.ylog")).unwrap();
+            assert_eq!(
+                fs.violations(),
+                Vec::<String>::new(),
+                "a {name} snapshot covers"
+            );
+        }
+        let msgs = caught(&|fs| {
+            fs.put_durable(&p("/d/log-0000000001-0000000000.ylog"), &log);
+            fs.put_durable(&p("/d/snapshot-0000000002.ysnap2"), &unreadable);
+            fs.remove(&p("/d/log-0000000001-0000000000.ylog")).unwrap();
+        });
+        assert_eq!(
+            msgs,
+            [
+                r#"remove "/d/log-0000000001-0000000000.ylog", not a .tmp or covered by a durable snapshot"#
+            ]
+        );
+
+        let msgs = caught(&|fs| {
+            fs.put_durable(&p("/d/snapshot-0000000001.ysnap2"), &damaged);
+            fs.put_durable(&p("/d/snapshot-0000000002.ysnap"), &encode_snapshot(&held));
+            fs.remove(&p("/d/snapshot-0000000001.ysnap2")).unwrap();
+        });
+        assert_eq!(
+            msgs,
+            [
+                r#"remove "/d/snapshot-0000000001.ysnap2", not a .tmp or covered by a durable snapshot"#
+            ]
+        );
+
+        let fs = sim();
+        fs.put_durable(&p("/d/snapshot-0000000000.ysnap2"), &whole);
+        fs.put_durable(&p("/d/snapshot-0000000001.ysnap2"), &damaged);
+        fs.put_durable(&p("/d/snapshot-0000000002.ysnap"), &encode_snapshot(&held));
+        fs.put_durable(&p("/d/snapshot-0000000003.ysnap2.tmp"), b"z");
+        fs.create_dir(&p("/q")).unwrap();
+        fs.rename(
+            &p("/d/snapshot-0000000001.ysnap2"),
+            &p("/q/snapshot-0000000001.ysnap2"),
+        )
+        .unwrap();
+        fs.remove(&p("/d/snapshot-0000000000.ysnap2")).unwrap();
+        fs.remove(&p("/d/snapshot-0000000003.ysnap2.tmp")).unwrap();
         assert_eq!(fs.list(&p("/d")).unwrap(), ["snapshot-0000000002.ysnap"]);
         assert_eq!(fs.violations(), Vec::<String>::new());
     }
