@@ -8,7 +8,7 @@ use yrs::{
 
 use super::{Env, doc, soon};
 use crate::storage::doc_id::DocId;
-use crate::storage::log::{LogEnd, read_log};
+use crate::storage::log::{self, LogEnd, LogFormat};
 use crate::storage::sim_fs::OpKind;
 use crate::storage::store::Store;
 use crate::storage::testkit::doc_from;
@@ -144,7 +144,7 @@ fn the_format_1_fixture_opens_with_its_exact_contents() {
     );
     let torn = std::fs::read(page_dir.join("log-0000000002-0000000000.ylog")).unwrap();
     assert_eq!(
-        read_log(&torn).end,
+        log::read(LogFormat::V1, &torn).end,
         LogEnd::Torn,
         "the fixture keeps its torn tail"
     );

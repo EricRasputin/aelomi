@@ -5,7 +5,7 @@ use yrs::encoding::write::Write;
 use yrs::updates::encoder::{Encoder, EncoderV1};
 
 use super::{Env, applied, doc, snapshot_name, soon, typed};
-use crate::storage::log::{LogContents, LogEnd, SEGMENT_HEADER, encode_segment, read_log};
+use crate::storage::log::{self, LogContents, LogEnd, LogFormat, SEGMENT_HEADER, encode_segment};
 use crate::storage::snapshot::encode_snapshot;
 use crate::storage::store::AppendError;
 
@@ -149,7 +149,7 @@ fn decode_guard_child() {
         let mut bytes = encode_segment(&payloads);
         bytes[SEGMENT_HEADER..SEGMENT_HEADER + 4].copy_from_slice(&u32::MAX.to_le_bytes());
         let before = max_rss();
-        let contents = read_log(&bytes);
+        let contents = log::read(LogFormat::V1, &bytes);
         let growth = max_rss().saturating_sub(before);
         eprintln!("{case} maximum RSS growth: {growth} bytes");
         assert!(
@@ -159,7 +159,7 @@ fn decode_guard_child() {
         assert_eq!(
             contents,
             LogContents {
-                records: vec![good.as_slice()],
+                records: vec![good.clone()],
                 end: LogEnd::Corrupt,
             }
         );

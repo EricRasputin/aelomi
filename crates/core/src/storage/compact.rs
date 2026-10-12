@@ -12,7 +12,7 @@ use super::doc_id::DocId;
 use super::equality::{Fingerprint, Ops};
 use super::fs::create_durable;
 use super::layout::{DocFile, Generation, SegmentNo};
-use super::log::{LogEnd, SEGMENT_HEADER, read_log};
+use super::log::{self, LogEnd, LogFormat};
 use super::snapshot::{self, Condition, SnapshotFormat, encode_snapshot};
 use super::state::{Compaction, DocSlot, LogSize, Segment, Ydoc};
 use super::store::Shared;
@@ -233,13 +233,14 @@ fn retire_older(
             _ => coverage(snapshot.expected.ops(), *file, bytes),
         })
         .collect();
-    let lacking: Vec<&[u8]> = older
+    let lacking: Vec<Vec<u8>> = older
         .iter()
         .zip(&coverage)
         .filter(|(_, coverage)| **coverage == Coverage::Lacking)
         .flat_map(|((_, file, bytes), _)| records(*file, bytes).0)
         .collect();
-    let kept_files_add = !lacking.is_empty() && adds_to(&snapshot.payload, lacking);
+    let kept_files_add =
+        !lacking.is_empty() && adds_to(&snapshot.payload, lacking.iter().map(Vec::as_slice));
 
     let _files = slot.files_waking_writer(shared);
     let (corrupt, acknowledged_before_failure) = {
@@ -251,11 +252,14 @@ fn retire_older(
         )
     };
     let mut retired = BTreeSet::new();
-    for ((name, _, bytes), coverage) in older.iter().zip(coverage) {
+    for ((name, file, bytes), coverage) in older.iter().zip(coverage) {
         let torn_by_a_failed_write = || {
+            let DocFile::Log(.., format) = *file else {
+                return false;
+            };
             acknowledged_before_failure
                 .get(name)
-                .is_some_and(|&acknowledged| torn_after(acknowledged, bytes))
+                .is_some_and(|&acknowledged| torn_after(format, acknowledged, bytes))
         };
         match coverage {
             Coverage::Lacking => {
@@ -332,22 +336,24 @@ pub(crate) fn coverage(held: &Ops, file: DocFile, bytes: &[u8]) -> Coverage {
     }
 }
 
-pub(crate) fn torn_after(acknowledged: u64, bytes: &[u8]) -> bool {
+pub(crate) fn torn_after(format: LogFormat, acknowledged: u64, bytes: &[u8]) -> bool {
     let acknowledged = acknowledged as usize;
-    let before = bytes.get(..acknowledged).map(read_log);
-    read_log(bytes).end == LogEnd::Torn
+    let before = bytes
+        .get(..acknowledged)
+        .map(|before| log::read(format, before));
+    log::read(format, bytes).end == LogEnd::Torn
         && (acknowledged == 0 || before.is_some_and(|before| before.end == LogEnd::Clean))
 }
 
-fn records(file: DocFile, bytes: &[u8]) -> (Vec<&[u8]>, bool) {
+fn records(file: DocFile, bytes: &[u8]) -> (Vec<Vec<u8>>, bool) {
     match file {
         DocFile::Snapshot(_, format) => match snapshot::read(format, bytes) {
-            Some((payload, condition)) => (vec![payload], condition == Condition::Damaged),
+            Some((payload, condition)) => (vec![payload.to_vec()], condition == Condition::Damaged),
             None => (Vec::new(), true),
         },
-        DocFile::Log(..) => {
-            let contents = read_log(bytes);
-            let holds_record_bytes = bytes.len() > SEGMENT_HEADER;
+        DocFile::Log(.., format) => {
+            let contents = log::read(format, bytes);
+            let holds_record_bytes = bytes.len() > format.file_header_len();
             let damaged = match contents.end {
                 LogEnd::Clean => false,
                 LogEnd::Torn => holds_record_bytes,

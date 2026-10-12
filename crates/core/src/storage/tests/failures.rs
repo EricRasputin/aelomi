@@ -5,11 +5,11 @@ use std::time::{Duration, Instant};
 
 use super::{
     Delivery, Env, applied, assert_doc, doc, frames, log_name, ops_of_updates, out_of_order,
-    snapshot_name, soon, typed,
+    read_log_file, snapshot_name, soon, typed,
 };
 use crate::storage::doc_id::DocId;
 use crate::storage::health::{FailReason, Health};
-use crate::storage::log::{LogEnd, read_log};
+use crate::storage::log::LogEnd;
 use crate::storage::sim_fs::{Crash, OpKind};
 use crate::storage::store::Store;
 use crate::storage::testkit::UpdateGen;
@@ -154,8 +154,8 @@ fn queued_updates_reach_disk_in_order_once_writes_recover() {
         .doc_files(&a)
         .iter()
         .map(|name| {
-            let bytes = &env.fs.files()[&env.path("docs/a").join(name)];
-            read_log(bytes).records.iter().map(|r| r.to_vec()).collect()
+            let path = env.path("docs/a").join(name);
+            read_log_file(&path, &env.fs.files()[&path]).records
         })
         .collect();
     assert_eq!(segments.len(), 2, "the failed segment, then the retry's");
@@ -488,7 +488,8 @@ fn torn_logs(env: &Env, a: &DocId) -> Vec<(String, usize)> {
     env.doc_files(a)
         .into_iter()
         .filter_map(|name| {
-            let contents = read_log(&files[&env.path("docs/a").join(&name)]);
+            let path = env.path("docs/a").join(&name);
+            let contents = read_log_file(&path, &files[&path]);
             (contents.end == LogEnd::Torn).then_some((name, contents.records.len()))
         })
         .collect()
@@ -537,8 +538,9 @@ fn a_segment_a_failed_write_tore_in_an_earlier_session_is_quarantined_not_delete
             fail_then_recover(&env, &store, &a, &sent, 1);
             drop(store);
             env.fs.crash(Crash::KeepTornPrefix(seed));
-            let bytes = env.fs.files()[&env.path("docs/a").join(&name)].clone();
-            let contents = read_log(&bytes);
+            let path = env.path("docs/a").join(&name);
+            let bytes = env.fs.files()[&path].clone();
+            let contents = read_log_file(&path, &bytes);
             let kept_a_failed_record = contents.records.len() > 3;
             (contents.end == LogEnd::Torn && kept_a_failed_record).then_some((env, bytes))
         })
@@ -566,7 +568,7 @@ fn a_length_recovered_in_a_segment_a_failed_write_tore_moves_it_to_quarantine_no
     let name = log_name(0, 0);
     let path = env.path("docs/a").join(&name);
     assert_eq!(
-        read_log(&env.fs.files()[&path]).records.len(),
+        read_log_file(&path, &env.fs.files()[&path]).records.len(),
         4,
         "the failed write kept half its bytes, the whole fourth record"
     );

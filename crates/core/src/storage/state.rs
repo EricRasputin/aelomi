@@ -6,7 +6,7 @@ use yrs::Doc;
 
 use super::health::{FailReason, retry_delay};
 use super::layout::{DocFile, Generation, SegmentNo};
-use super::log::Salt;
+use super::log::{LogFormat, Salt};
 use super::store::Shared;
 
 /// An update's place in the order the store received updates.
@@ -171,7 +171,7 @@ impl Segment {
     pub fn file(self) -> DocFile {
         match self {
             Self::Next(generation, n) | Self::Open { generation, n, .. } => {
-                DocFile::Log(generation, n)
+                DocFile::Log(generation, n, LogFormat::WRITTEN)
             }
         }
     }

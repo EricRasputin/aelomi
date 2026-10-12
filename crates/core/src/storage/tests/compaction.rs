@@ -5,13 +5,13 @@ use yrs::{Doc, GetString, ReadTxn, StateVector, Text, Transact, Update};
 
 use super::{
     Delivery, Env, applied, assert_doc, doc, frames, in_order, log_name, ops_of_updates,
-    out_of_order, snapshot_name, snapshot_payload, snapshot_tmp_name, soon, typed, v1_record_at,
-    with_a_loner_sixth, without,
+    out_of_order, read_log_file, snapshot_name, snapshot_payload, snapshot_tmp_name, soon, typed,
+    v1_record_at, v2_log, with_a_loner_sixth, without,
 };
 use crate::storage::compact::CompactError;
 use crate::storage::doc_id::DocId;
 use crate::storage::equality::Ops;
-use crate::storage::log::{LOG_MAGIC, LogEnd, encode_segment, read_log};
+use crate::storage::log::{LOG_MAGIC, LogEnd, encode_segment};
 use crate::storage::sim_fs::{Crash, OpKind};
 use crate::storage::snapshot::encode_snapshot;
 use crate::storage::state::Limits;
@@ -507,8 +507,11 @@ fn a_doc_whose_snapshot_passes_the_payload_limit_skips_compaction_and_keeps_writ
         [],
         "a skipped doc waits for another 3 records"
     );
-    let bytes = &env.fs.durable_files()[&env.path("docs/a").join(&log)];
-    assert_eq!(read_log(bytes).records, sent);
+    let path = env.path("docs/a").join(&log);
+    assert_eq!(
+        read_log_file(&path, &env.fs.durable_files()[&path]).records,
+        sent
+    );
     drop(store);
     assert_doc(&env.open(), &a, &sent);
 }
@@ -683,7 +686,7 @@ fn a_torn_log_is_quarantined_at_compaction_not_deleted() {
             }
             None => [&LOG_MAGIC[..], b"not a record"].concat(),
         };
-        assert_eq!(read_log(&damaged).end, LogEnd::Torn, "{damage}");
+        assert_eq!(read_log_file(&path, &damaged).end, LogEnd::Torn, "{damage}");
         env.fs.put_durable(&path, &damaged);
 
         let store = env.open();
@@ -748,6 +751,40 @@ fn compaction_deletes_a_log_holding_no_record_bytes_but_quarantines_a_short_corr
 }
 
 #[test]
+fn a_damaged_format_2_log_moves_to_quarantine_byte_for_byte_and_loses_nothing() {
+    let env = Env::manual();
+    let a = doc("a");
+    let updates = UpdateGen::new(47, 2).updates(5);
+    let store = env.open();
+    for update in &updates[..2] {
+        store.append(&a, update).unwrap();
+    }
+    assert_eq!(store.flush(soon()), []);
+    drop(store);
+    let dir = env.path("docs/a");
+    env.fs.put_durable(
+        &dir.join("log-0000000000-0000000001.ylog2"),
+        &v2_log(&updates[2..3]),
+    );
+    let name = "log-0000000000-0000000002.ylog2";
+    let mut damaged = v2_log(&updates[3..]);
+    damaged[3] ^= 1;
+    env.fs.put_durable(&dir.join(name), &damaged);
+
+    let store = env.open();
+    assert_doc(&store, &a, &updates);
+    store.compact(&a).unwrap();
+    assert_eq!(env.doc_files(&a), [snapshot_name(1)]);
+    assert_eq!(
+        env.quarantine(),
+        [(env.path("quarantine/a").join(name), damaged)].into(),
+        "only the damaged file moved, byte for byte"
+    );
+    drop(store);
+    assert_doc(&env.open(), &a, &updates);
+}
+
+#[test]
 fn a_torn_tail_left_by_a_crash_is_quarantined_at_compaction() {
     let a = doc("a");
     let sent = UpdateGen::new(41, 2).updates(4);
@@ -765,11 +802,13 @@ fn a_torn_tail_left_by_a_crash_is_quarantined_at_compaction() {
             store.run_writer_once();
             drop(store);
             env.fs.crash(Crash::KeepTornPrefix(seed));
-            let bytes = env.fs.files()[&env.path("docs/a").join(&name)].clone();
-            (read_log(&bytes).end == LogEnd::Torn).then_some((env, bytes))
+            let path = env.path("docs/a").join(&name);
+            let bytes = env.fs.files()[&path].clone();
+            (read_log_file(&path, &bytes).end == LogEnd::Torn).then_some((env, bytes))
         })
         .expect("a seed that keeps part of the fourth record");
-    assert_eq!(read_log(&torn).records.len(), 3);
+    let path = env.path("docs/a").join(&name);
+    assert_eq!(read_log_file(&path, &torn).records.len(), 3);
 
     let store = env.open();
     assert_doc(&store, &a, &sent[..3]);
@@ -1088,8 +1127,9 @@ fn compaction_runs_beside_the_writer_without_losing_updates() {
     let dir = env.path("docs/a");
     let held = Update::decode_v1(snapshot_payload(&files[&dir.join(&snapshot)])).unwrap();
     assert_eq!(Ops::of_update(&held), ops_of_updates(before_rotation));
+    let new_log = dir.join(&new_log);
     assert_eq!(
-        read_log(&files[&dir.join(&new_log)]).records,
+        read_log_file(&new_log, &files[&new_log]).records,
         after_rotation
     );
     let store = env.open();

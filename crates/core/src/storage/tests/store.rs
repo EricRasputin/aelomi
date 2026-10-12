@@ -6,7 +6,7 @@ use yrs::{Doc, Map, ReadTxn, StateVector, Text, TextPrelim, TextRef, Transact};
 
 use super::{
     Delivery, Env, applied, assert_doc, doc, frames, in_order, log_name, ops_of_updates,
-    out_of_order, snapshot_name, soon, typed, with_a_loner_sixth, without,
+    out_of_order, snapshot_name, soon, typed, v2_log, with_a_loner_sixth, without,
 };
 use crate::storage::compact::CompactError;
 use crate::storage::log::encode_segment;
@@ -824,4 +824,36 @@ fn a_kept_record_that_never_applies_costs_no_compaction_per_edit() {
         env.doc_files(&a),
         [name, log_name(1, 0).as_str(), snapshot_name(1).as_str()]
     );
+}
+
+#[test]
+fn a_doc_with_both_log_formats_loads_every_update_and_continues_numbering() {
+    let env = Env::manual();
+    let a = doc("a");
+    let updates = UpdateGen::new(43, 2).updates(4);
+    let store = env.open();
+    for update in &updates[..2] {
+        store.append(&a, update).unwrap();
+    }
+    assert_eq!(store.flush(soon()), []);
+    drop(store);
+    let planted = env.path("docs/a/log-0000000000-0000000001.ylog2");
+    let format_2 = v2_log(&updates[2..3]);
+    env.fs.put_durable(&planted, &format_2);
+
+    let store = env.open();
+    assert_doc(&store, &a, &updates[..3]);
+    store.append(&a, &updates[3]).unwrap();
+    assert_eq!(store.flush(soon()), []);
+    assert_eq!(
+        env.doc_files(&a),
+        [
+            "log-0000000000-0000000000.ylog",
+            "log-0000000000-0000000001.ylog2",
+            "log-0000000000-0000000002.ylog",
+        ]
+    );
+    assert_eq!(env.fs.files()[&planted], format_2);
+    drop(store);
+    assert_doc(&env.open(), &a, &updates);
 }

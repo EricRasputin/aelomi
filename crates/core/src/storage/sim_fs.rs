@@ -9,7 +9,7 @@ use super::decode;
 use super::format::parse_format;
 use super::fs::{Fs, FsLock, LockError, validate_format_marker};
 use super::layout::DocFile;
-use super::log::{LogEnd, SEGMENT_HEADER, read_log};
+use super::log::{self, LogEnd};
 use super::snapshot::{self, Condition};
 use super::testkit::SplitMix64;
 use yrs::{Doc, IdSet, Transact, Update};
@@ -542,11 +542,16 @@ impl Sim {
                 let torn_by_a_failed_write =
                     match (&self.nodes[id], self.durable_at_failure.get(&id)) {
                         (Node::File(file), Some(&durable)) => {
-                            matches!(DocFile::parse(&file_name(path)), Some(DocFile::Log(..)))
-                                && read_log(&file.data).end == LogEnd::Torn
-                                && file.data.get(..durable).is_some_and(|before| {
-                                    durable == 0 || read_log(before).end == LogEnd::Clean
-                                })
+                            match DocFile::parse(&file_name(path)) {
+                                Some(DocFile::Log(.., format)) => {
+                                    log::read(format, &file.data).end == LogEnd::Torn
+                                        && file.data.get(..durable).is_some_and(|before| {
+                                            durable == 0
+                                                || log::read(format, before).end == LogEnd::Clean
+                                        })
+                                }
+                                _ => false,
+                            }
                         }
                         _ => false,
                     };
@@ -806,21 +811,21 @@ enum FileCoverage {
 
 fn file_coverage(snapshot: &Update, file: DocFile, bytes: &[u8]) -> FileCoverage {
     let (records, deletable) = match file {
-        DocFile::Log(..) => {
-            let log = read_log(bytes);
+        DocFile::Log(.., format) => {
+            let log = log::read(format, bytes);
             let deletable = log.end == LogEnd::Clean
-                || (log.end == LogEnd::Torn && bytes.len() <= SEGMENT_HEADER);
+                || (log.end == LogEnd::Torn && bytes.len() <= format.file_header_len());
             (log.records, deletable)
         }
         DocFile::Snapshot(_, format) => match snapshot::read(format, bytes) {
-            Some((payload, condition)) => (vec![payload], condition == Condition::Whole),
+            Some((payload, condition)) => (vec![payload.to_vec()], condition == Condition::Whole),
             None => (Vec::new(), false),
         },
         DocFile::SnapshotTmp(..) => return FileCoverage::Uncovered,
     };
     let blocks = snapshot.insertions(true);
     for record in records {
-        let Ok(update) = decode::update(record) else {
+        let Ok(update) = decode::update(&record) else {
             return FileCoverage::Uncovered;
         };
         if !every_id_is_present(&blocks, &update.insertions(true))
@@ -861,7 +866,7 @@ fn applies(payload: &[u8]) -> bool {
 mod tests {
     use super::*;
     use crate::storage::clock::ManualClock;
-    use crate::storage::log::{LOG_MAGIC, LogEnd, SEGMENT_HEADER, encode_segment, read_log};
+    use crate::storage::log::{LOG_MAGIC, LogEnd, LogFormat, SEGMENT_HEADER, encode_segment};
     use crate::storage::recover::merge;
     use crate::storage::snapshot::{encode_snapshot, encode_snapshot_v2};
     use crate::storage::testkit::UpdateGen;
@@ -1335,7 +1340,10 @@ mod tests {
 
         let fs = sim();
         tear(&fs);
-        assert_eq!(read_log(&fs.files()[&log]).end, LogEnd::Torn);
+        assert_eq!(
+            log::read(LogFormat::V1, &fs.files()[&log]).end,
+            LogEnd::Torn
+        );
         fs.remove(&log).unwrap();
         assert_eq!(fs.violations(), Vec::<String>::new());
 

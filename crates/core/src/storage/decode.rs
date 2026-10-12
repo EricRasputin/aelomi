@@ -385,9 +385,10 @@ mod tests {
                     accepted(snapshot.unwrap().0);
                     count += 1;
                 } else {
-                    let records = crate::storage::log::read_log(&bytes);
+                    let records =
+                        crate::storage::log::read(crate::storage::log::LogFormat::V1, &bytes);
                     for update in records.records {
-                        accepted(update);
+                        accepted(&update);
                         count += 1;
                     }
                 }
