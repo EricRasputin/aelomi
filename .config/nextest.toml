@@ -1,0 +1,6 @@
+[profile.default]
+slow-timeout = { period = "30s", terminate-after = 2 }
+
+[[profile.default.overrides]]
+filter = 'package(aelomi-core) & test(storage::tests::measure::)'
+slow-timeout = { period = "60s", terminate-after = 10 }

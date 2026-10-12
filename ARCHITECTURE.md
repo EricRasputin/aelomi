@@ -123,6 +123,8 @@ To add a command:
 | Keystroke-to-paint | Playwright, `perf` project | `tests/playwright/perf/` | `keystroke` |
 | Cold start | Node harness on the built `.app` | `perf/cold-start.ts` | `cold-start` |
 
+`.config/nextest.toml` terminates tests after 60 s and gives the ignored storage measurements 10 minutes.
+
 Acceptance tests import `test` from `e2e/fixtures.ts`, and Playwright tests import `test` and `expect` from `tests/playwright/fixtures.ts`. Both fixtures fail a test that makes a non-local request (SHELL-13). Biome rejects a test file that imports `test` from the library directly. There are no React component unit tests. `e2e` covers components.
 
 ## CI jobs
