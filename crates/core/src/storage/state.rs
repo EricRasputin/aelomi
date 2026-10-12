@@ -1,5 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError, TryLockError};
 use std::time::Duration;
 
 use yrs::Doc;
@@ -7,6 +7,7 @@ use yrs::Doc;
 use super::health::{FailReason, retry_delay};
 use super::layout::{DocFile, Generation, SegmentNo};
 use super::log::Salt;
+use super::store::Shared;
 
 /// An update's place in the order the store received updates.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -41,8 +42,40 @@ impl DocSlot {
         state
     }
 
-    pub fn files(&self) -> MutexGuard<'_, ()> {
-        lock_ignoring_poison(&self.files)
+    pub fn files_waking_writer<'a>(&'a self, shared: &'a Shared) -> FilesWakingWriter<'a> {
+        FilesWakingWriter {
+            held: Some(lock_ignoring_poison(&self.files)),
+            slot: self,
+            shared,
+        }
+    }
+
+    pub fn try_files(&self) -> Option<MutexGuard<'_, ()>> {
+        match self.files.try_lock() {
+            Ok(held) => Some(held),
+            Err(TryLockError::Poisoned(poisoned)) => Some(poisoned.into_inner()),
+            Err(TryLockError::WouldBlock) => None,
+        }
+    }
+}
+
+pub(crate) struct FilesWakingWriter<'a> {
+    held: Option<MutexGuard<'a, ()>>,
+    slot: &'a DocSlot,
+    shared: &'a Shared,
+}
+
+impl Drop for FilesWakingWriter<'_> {
+    fn drop(&mut self) {
+        self.held = None;
+        if self
+            .slot
+            .state()
+            .as_ref()
+            .is_some_and(|s| !s.queue.is_empty())
+        {
+            self.shared.notify_writer();
+        }
     }
 }
 
@@ -89,6 +122,12 @@ pub(crate) struct Failure {
     pub reason: FailReason,
     pub attempts: u32,
     pub retry_at: Duration,
+}
+
+impl Failure {
+    pub fn retry_no_later_than(&mut self, at: Duration) {
+        self.retry_at = self.retry_at.min(at);
+    }
 }
 
 pub(crate) struct Queued {

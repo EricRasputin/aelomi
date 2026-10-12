@@ -367,7 +367,7 @@ impl Shared {
     }
 
     fn read_files(&self, slot: &DocSlot, doc: &DocId) -> io::Result<()> {
-        let _io = slot.files();
+        let _io = slot.files_waking_writer(self);
         match slot.state().as_mut() {
             Some(state) if matches!(state.ydoc, Ydoc::Fresh(_)) => return Ok(()),
             Some(state) => state.log.leave_open_segment(),
@@ -409,7 +409,7 @@ impl Shared {
 
     pub fn merge_held(&self, doc: &DocId) -> io::Result<Merged> {
         let slot = self.slot(doc);
-        let writer_waits = slot.files();
+        let files = slot.files_waking_writer(self);
         let stored = stored_updates(&*self.fs, &self.layout, doc)?;
         let queued: Vec<Arc<[u8]>> = match slot.state().as_mut() {
             Some(state) => {
@@ -421,7 +421,7 @@ impl Shared {
             }
             None => Vec::new(),
         };
-        drop(writer_waits);
+        drop(files);
         let updates = stored.updates.iter().map(Vec::as_slice);
         Ok(merge(updates.chain(queued.iter().map(|update| &**update))))
     }
@@ -545,7 +545,7 @@ impl Shared {
         lock_ignoring_poison(&self.signal).shutdown
     }
 
-    fn notify_writer(&self) {
+    pub fn notify_writer(&self) {
         lock_ignoring_poison(&self.signal).work = true;
         self.wake_writer.notify_one();
     }

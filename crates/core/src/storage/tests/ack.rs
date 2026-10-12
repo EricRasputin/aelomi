@@ -1,10 +1,10 @@
 use std::sync::mpsc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
-use super::{Env, assert_doc, doc, soon};
+use super::{Delivery, Env, applied, assert_doc, doc, ops_of_updates, out_of_order, soon};
 use crate::storage::clock::Clock;
 use crate::storage::doc_id::DocId;
-use crate::storage::sim_fs::OpKind;
+use crate::storage::sim_fs::{Crash, OpKind};
 use crate::storage::state::Limits;
 use crate::storage::store::Store;
 use crate::storage::testkit::UpdateGen;
@@ -198,4 +198,128 @@ fn a_docs_first_load_from_a_slow_disk_never_delays_another_docs_acknowledgement(
         "a's first batch waits on no read of b's: 3 fsyncs, 1 full sync"
     );
     assert_doc(store, &b, &on_b);
+}
+
+#[test]
+fn a_doc_whose_files_are_busy_never_delays_another_docs_acknowledgement() {
+    let env = slow_disk();
+    let (a, b) = (doc("a"), doc("b"));
+    let on_a = UpdateGen::new(7, 2).next_update();
+    let on_b = out_of_order(8, 40, Delivery::OneWithheld);
+    let (last, stored) = on_b.split_last().unwrap();
+    let store = env.open();
+    for update in stored {
+        store.append(&b, update).unwrap();
+    }
+    assert_eq!(store.flush(soon()), []);
+    let queued_on_b = store.append(&b, last).unwrap();
+    assert!(store.has_pending_structs(&b), "b's load merges its files");
+
+    let hold = env
+        .fs
+        .hold_once(OpKind::Read, "/docs/b/", Duration::from_millis(500));
+    let (store, env) = (&store, &env);
+    let (steps, latency, queued_on_a) = std::thread::scope(|s| {
+        let loading = s.spawn(|| store.load(&b).unwrap());
+        hold.wait_until_reached();
+        let start = env.clock.now();
+        let seq = store.append(&a, &on_a).unwrap();
+        let (done, writer_done) = mpsc::channel();
+        s.spawn(move || {
+            let first = store.run_writer_once();
+            let finished = env.clock.now();
+            done.send((first, finished, store.run_writer_once()))
+                .unwrap();
+        });
+        let wrote = writer_done.recv_timeout(Duration::from_secs(5));
+        hold.release();
+        loading.join().unwrap();
+        let (first, finished, second) = wrote
+            .or_else(|_| writer_done.recv_timeout(Duration::from_secs(10)))
+            .expect("the writer finishes once b's read is released");
+        ((first, second), finished - start, seq)
+    });
+    assert_eq!(
+        latency,
+        Duration::from_micros(7_500),
+        "a's batch skips b's busy files: 3 fsyncs, 1 full sync"
+    );
+    assert!(matches!(steps.0, Step::Wrote));
+    assert!(
+        matches!(steps.1, Step::Idle { retry_at: None }),
+        "with b's files busy the writer sleeps until woken: {:?}",
+        steps.1
+    );
+    assert!(store.is_durable(&a, queued_on_a));
+    assert!(
+        !store.is_durable(&b, queued_on_b),
+        "b's update stays queued"
+    );
+
+    assert!(matches!(store.run_writer_once(), Step::Wrote));
+    assert!(
+        store.is_durable(&b, queued_on_b),
+        "b's freed files go in the next batch"
+    );
+    env.fs.crash(Crash::DropUnsynced);
+    let store = env.open();
+    assert_doc(&store, &a, &[on_a]);
+    let (held, _) = applied(&store.load(&b).unwrap(), "b");
+    assert_eq!(held, ops_of_updates(&on_b));
+}
+
+fn within_5_s(done: impl Fn() -> bool) -> bool {
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while !done() {
+        if Instant::now() > deadline {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    true
+}
+
+#[test]
+fn the_writer_thread_writes_a_skipped_doc_once_its_files_free() {
+    let env = Env::threaded();
+    let (a, b) = (doc("a"), doc("b"));
+    let on_a = UpdateGen::new(9, 2).next_update();
+    let on_b = out_of_order(10, 40, Delivery::OneWithheld);
+    let (last, stored) = on_b.split_last().unwrap();
+    let store = env.open();
+    for update in stored {
+        store.append(&b, update).unwrap();
+    }
+    assert_eq!(store.flush(soon()), []);
+    assert!(store.has_pending_structs(&b), "b's load merges its files");
+
+    let hold = env.fs.hold_once(OpKind::Read, "/docs/b/", Duration::ZERO);
+    let (a_acked, pending, b_acked) = std::thread::scope(|s| {
+        let loading = s.spawn(|| store.load(&b).unwrap());
+        hold.wait_until_reached();
+        let queued_on_b = store.append(&b, last).unwrap();
+        let queued_on_a = store.append(&a, &on_a).unwrap();
+        let a_acked = within_5_s(|| store.is_durable(&a, queued_on_a));
+        let pending = store.flush(Instant::now() + Duration::from_millis(100));
+        hold.release();
+        loading.join().unwrap();
+        let b_acked = within_5_s(|| store.is_durable(&b, queued_on_b));
+        (a_acked, pending, b_acked)
+    });
+    assert!(a_acked, "a is acknowledged while b's files are busy");
+    assert_eq!(
+        pending,
+        std::slice::from_ref(&b),
+        "flush reports b at its deadline"
+    );
+    assert!(
+        b_acked,
+        "b is written once its files free, with no append or flush"
+    );
+    store.close(soon()).unwrap();
+    env.fs.crash(Crash::DropUnsynced);
+    let store = env.open();
+    assert_doc(&store, &a, &[on_a]);
+    let (held, _) = applied(&store.load(&b).unwrap(), "b");
+    assert_eq!(held, ops_of_updates(&on_b));
 }
