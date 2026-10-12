@@ -8,9 +8,7 @@ use super::{Delivery, Env, doc, in_order, ops_of_updates, out_of_order, soon};
 use crate::storage::clock::SystemClock;
 use crate::storage::equality::Ops;
 use crate::storage::fs::OsFs;
-use crate::storage::log::{
-    LogContents, LogEnd, Salt, encode_record, read_log, read_log_hashing, segment_header,
-};
+use crate::storage::log::{LogContents, LogEnd, Salt, encode_record, read_log, segment_header};
 use crate::storage::recover::merge;
 use crate::storage::snapshot::read_snapshot;
 use crate::storage::state::Limits;
@@ -253,8 +251,6 @@ fn measure_resync() {
     eprintln!(
         "1 MB where every 4th offset reads as a record to the end: {took:.2?}, {end:?}, {records} record"
     );
-    let (took, end, _) = timed(&adversarial, |b| read_log_hashing(b, usize::MAX));
-    eprintln!("  the same without a budget: {took:.2?}, {end:?}");
 
     let mut unfit = segment_header(salt);
     while unfit.len() < 1_000_000 {

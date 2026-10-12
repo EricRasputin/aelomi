@@ -1,3 +1,4 @@
+use std::cell::OnceCell;
 use std::io;
 
 use super::decode;
@@ -64,13 +65,13 @@ pub(crate) struct LogContents<'a> {
 }
 
 pub(crate) fn read_log(bytes: &[u8]) -> LogContents<'_> {
-    read_log_hashing(bytes, bytes.len().saturating_mul(RESYNC_HASHED_PER_BYTE))
+    read_log_decoding(bytes, bytes.len().saturating_mul(SCAN_DECODED_PER_BYTE))
 }
 
-const RESYNC_HASHED_PER_BYTE: usize = 1024;
+const SCAN_DECODED_PER_BYTE: usize = 64;
 const RECOVERY_WORK_PER_BYTE: usize = 64;
 
-pub(crate) fn read_log_hashing(bytes: &[u8], mut budget: usize) -> LogContents<'_> {
+pub(crate) fn read_log_decoding(bytes: &[u8], mut decode_budget: usize) -> LogContents<'_> {
     let Some(header) = bytes.get(..SEGMENT_HEADER) else {
         let magic = &bytes[..bytes.len().min(LOG_MAGIC.len())];
         let end = if LOG_MAGIC.starts_with(magic) {
@@ -95,6 +96,8 @@ pub(crate) fn read_log_hashing(bytes: &[u8], mut budget: usize) -> LogContents<'
         end: LogEnd::Clean,
     };
     let mut recovery = bytes.len().saturating_mul(RECOVERY_WORK_PER_BYTE);
+    let crcs = OnceCell::new();
+    let crcs = || crcs.get_or_init(|| PrefixCrcs::new(bytes, salt));
     let mut at = SEGMENT_HEADER;
     while at < bytes.len() {
         if let Some(payload) = record_at(bytes, at, salt) {
@@ -108,15 +111,20 @@ pub(crate) fn read_log_hashing(bytes: &[u8], mut budget: usize) -> LogContents<'
             at += RECORD_HEADER + payload.len();
             continue;
         }
-        let scan = resync(bytes, salt, at + 1, &mut budget);
+        let stated_end = stated_end(bytes, at, salt);
+        let scan = match stated_end {
+            Some(end) if decode::decodes_exactly(&bytes[at + RECORD_HEADER..end]) => Scan::NoRecord,
+            Some(end) => resync(crcs().records_chaining_to(at + 1, end), &mut decode_budget),
+            None => resync(crcs().records_from(at + 1), &mut decode_budget),
+        };
         let torn = contents.end == LogEnd::Clean
             && a_torn_write_explains(bytes, at)
             && matches!(scan, Scan::NoRecord);
         contents.end = if torn { LogEnd::Torn } else { LogEnd::Corrupt };
-        let Scan::ResumeAt(next) = scan else {
-            break;
+        at = match (scan, stated_end) {
+            (Scan::ResumeAt(next), _) | (_, Some(next)) => next,
+            _ => break,
         };
-        at = next;
     }
     contents
 }
@@ -138,20 +146,14 @@ enum Scan {
     OverBudget,
 }
 
-fn resync(bytes: &[u8], salt: Salt, from: usize, budget: &mut usize) -> Scan {
+fn resync<'a>(candidates: impl Iterator<Item = (usize, &'a [u8])>, budget: &mut usize) -> Scan {
     let mut scan = Scan::NoRecord;
-    for at in from..bytes.len() {
-        let Some((crc, payload)) = candidate_at(bytes, at) else {
-            continue;
-        };
+    for (at, payload) in candidates {
         let Some(left) = budget.checked_sub(payload.len()) else {
             scan = Scan::OverBudget;
             continue;
         };
         *budget = left;
-        if salt.crc(payload) != crc {
-            continue;
-        }
         match decode::check(payload) {
             Err(decode::Rejected::TooDeep) => return Scan::ResumeAt(at),
             Ok(()) if decode::update(payload).is_ok() => return Scan::ResumeAt(at),
@@ -160,6 +162,86 @@ fn resync(bytes: &[u8], salt: Salt, from: usize, budget: &mut usize) -> Scan {
         scan = Scan::NoUpdate;
     }
     scan
+}
+
+fn stated_end(bytes: &[u8], at: usize, salt: Salt) -> Option<usize> {
+    let (_, payload) = candidate_at(bytes, at)?;
+    let end = at + RECORD_HEADER + payload.len();
+    boundary_at(bytes, end, salt).then_some(end)
+}
+
+fn boundary_at(bytes: &[u8], at: usize, salt: Salt) -> bool {
+    at == bytes.len()
+        || record_at(bytes, at, salt).is_some_and(|record| decode::update(record).is_ok())
+}
+
+struct PrefixCrcs<'a> {
+    bytes: &'a [u8],
+    salt: u32,
+    every_64: Vec<u32>,
+}
+
+impl<'a> PrefixCrcs<'a> {
+    fn new(bytes: &'a [u8], salt: Salt) -> Self {
+        let mut crc = crc32fast::Hasher::new();
+        let mut every_64 = vec![crc.clone().finalize()];
+        for chunk in bytes.chunks(64) {
+            crc.update(chunk);
+            every_64.push(crc.clone().finalize());
+        }
+        Self {
+            bytes,
+            salt: crc32fast::hash(&salt.0),
+            every_64,
+        }
+    }
+
+    fn records_from(&self, from: usize) -> impl Iterator<Item = (usize, &'a [u8])> {
+        let end = self.bytes.len();
+        (from..end).filter_map(move |at| Some((at, self.record_at(at, end)?)))
+    }
+
+    fn records_chaining_to(
+        &self,
+        from: usize,
+        end: usize,
+    ) -> impl Iterator<Item = (usize, &'a [u8])> {
+        let mut chains = vec![false; end - from];
+        for at in (from..end).rev() {
+            chains[at - from] = self.record_at(at, end).is_some_and(|payload| {
+                let next = at + RECORD_HEADER + payload.len();
+                next == end || chains[next - from]
+            });
+        }
+        let bytes = &self.bytes[..end];
+        let chaining = (from..end).filter(move |&at| chains[at - from]);
+        chaining.filter_map(move |at| Some((at, candidate_at(bytes, at)?.1)))
+    }
+
+    fn record_at(&self, at: usize, end: usize) -> Option<&'a [u8]> {
+        let (crc, payload) = candidate_at(&self.bytes[..end], at)?;
+        let start = at + RECORD_HEADER;
+        (self.salted_crc(start, start + payload.len()) == crc).then_some(payload)
+    }
+
+    fn salted_crc(&self, start: usize, end: usize) -> u32 {
+        let len = end - start;
+        let range = self.prefix(end) ^ combine(self.prefix(start), 0, len);
+        combine(self.salt, range, len)
+    }
+
+    fn prefix(&self, end: usize) -> u32 {
+        let chunk = end / 64;
+        let mut crc = crc32fast::Hasher::new_with_initial(self.every_64[chunk]);
+        crc.update(&self.bytes[chunk * 64..end]);
+        crc.finalize()
+    }
+}
+
+fn combine(crc: u32, then: u32, len: usize) -> u32 {
+    let mut combined = crc32fast::Hasher::new_with_initial(crc);
+    combined.combine(&crc32fast::Hasher::new_with_initial_len(then, len as u64));
+    combined.finalize()
 }
 
 fn recover_length<'a>(
@@ -185,9 +267,7 @@ fn recover_length<'a>(
         }
         let payload = &bytes[start..end];
         spend(payload.len())?;
-        let next_passes =
-            || record_at(bytes, end, salt).is_some_and(|next| decode::update(next).is_ok());
-        if decode::decodes_exactly(payload) && (end == bytes.len() || next_passes()) {
+        if decode::decodes_exactly(payload) && boundary_at(bytes, end, salt) {
             return Some(payload);
         }
     }
@@ -212,7 +292,10 @@ fn candidate_at(bytes: &[u8], at: usize) -> Option<(u32, &[u8])> {
 
 #[cfg(test)]
 mod tests {
-    use yrs::{Doc, Text, Transact};
+    use proptest::collection::vec;
+    use proptest::prelude::*;
+    use proptest::sample::Index;
+    use yrs::{Any, Doc, Map, Text, Transact};
 
     use super::*;
     use crate::storage::testkit::UpdateGen;
@@ -234,10 +317,22 @@ mod tests {
     }
 
     fn typed(n: usize) -> Vec<u8> {
-        let client = Doc::with_client_id(7);
-        let text = client.get_or_insert_text("t");
+        note(7, &"x".repeat(n))
+    }
+
+    fn note(writer: u64, text: &str) -> Vec<u8> {
+        let client = Doc::with_client_id(writer);
+        let t = client.get_or_insert_text("t");
         let mut txn = client.transact_mut();
-        text.insert(&mut txn, 0, &"x".repeat(n));
+        t.insert(&mut txn, 0, text);
+        txn.encode_update_v1()
+    }
+
+    fn carrying(writer: u64, blob: &[u8]) -> Vec<u8> {
+        let client = Doc::with_client_id(writer);
+        let blobs = client.get_or_insert_map("blobs");
+        let mut txn = client.transact_mut();
+        blobs.insert(&mut txn, "blob", Any::Buffer(blob.into()));
         txn.encode_update_v1()
     }
 
@@ -392,7 +487,7 @@ mod tests {
     }
 
     #[test]
-    fn a_resync_skips_records_too_long_for_its_budget_and_never_calls_that_torn() {
+    fn a_resync_skips_records_it_cannot_afford_to_decode_and_never_calls_that_torn() {
         let updates = UpdateGen::new(5, 1).updates(3);
         let (alpha, beta, gamma) = (&updates[0][..], &updates[1][..], &updates[2][..]);
         let two = segment(&[alpha]).len();
@@ -422,16 +517,181 @@ mod tests {
                 LogEnd::Corrupt,
             ),
             ("then junk", &then_junk, usize::MAX, a, LogEnd::Torn),
-            ("then junk, no budget", &then_junk, 0, a, LogEnd::Corrupt),
+            ("then junk, no budget", &then_junk, 0, a, LogEnd::Torn),
         ] {
             assert_eq!(
-                read_log_hashing(bytes, budget),
+                read_log_decoding(bytes, budget),
                 LogContents {
                     records: records.to_vec(),
                     end
                 },
                 "{name}"
             );
+        }
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig {
+            failure_persistence: None,
+            ..ProptestConfig::default()
+        })]
+
+        #[test]
+        fn a_salted_crc_from_prefixes_matches_hashing_the_range(
+            bytes in vec(any::<u8>(), 0..600),
+            start in any::<Index>(),
+            end in any::<Index>(),
+        ) {
+            let (start, end) = (start.index(bytes.len() + 1), end.index(bytes.len() + 1));
+            let (start, end) = (start.min(end), start.max(end));
+            prop_assert_eq!(
+                PrefixCrcs::new(&bytes, SALT).salted_crc(start, end),
+                SALT.crc(&bytes[start..end]),
+                "bytes {}..{} of {}", start, end, bytes.len()
+            );
+        }
+    }
+
+    #[test]
+    fn header_like_note_text_never_hides_the_record_after_it() {
+        let updates = UpdateGen::new(5, 1).updates(2);
+        let (alpha, gamma) = (&updates[0][..], &updates[1][..]);
+        let text = note(8, &"\0\0\u{1}\0".repeat(2048));
+        let big = typed(70_000);
+        let at = segment(&[alpha]).len();
+        let damaged = |flips: &[(usize, u8)]| {
+            let mut bytes = segment(&[alpha, &text, &big, gamma]);
+            for &(offset, mask) in flips {
+                bytes[at + offset] ^= mask;
+            }
+            bytes
+        };
+        for (name, flips) in [
+            ("one CRC bit", &[(4, 1)][..]),
+            ("a length bit and a CRC bit", &[(1, 1), (5, 0x10)]),
+        ] {
+            assert_eq!(
+                read_log(&damaged(flips)),
+                LogContents {
+                    records: vec![alpha, &big, gamma],
+                    end: LogEnd::Corrupt
+                },
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_frame_salted_inside_a_damaged_record_never_loads() {
+        let updates = UpdateGen::new(5, 1).updates(3);
+        let (alpha, ghost, gamma) = (&updates[0][..], &updates[1][..], &updates[2][..]);
+        let host = carrying(8, &record(ghost));
+        let at = segment(&[alpha]).len();
+        assert_eq!(host[0], 1, "the host's first byte counts its one client");
+        let damaged = |offset: usize, mask: u8| {
+            let mut bytes = segment(&[alpha, &host, gamma]);
+            bytes[at + offset] ^= mask;
+            bytes
+        };
+        let host_lost: &[&[u8]] = &[alpha, gamma];
+        let every_record: &[&[u8]] = &[alpha, &host, gamma];
+        for (name, offset, mask, records) in [
+            ("one CRC bit", 4, 1, host_lost),
+            ("one length bit", 0, 0x40, every_record),
+            ("the client count", 8, 0x40, host_lost),
+        ] {
+            assert_eq!(
+                read_log(&damaged(offset, mask)),
+                LogContents {
+                    records: records.to_vec(),
+                    end: LogEnd::Corrupt
+                },
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_frame_that_ends_its_host_never_loads_after_a_crc_flip() {
+        let updates = UpdateGen::new(5, 1).updates(2);
+        let (alpha, gamma) = (&updates[0][..], &updates[1][..]);
+        let frame = record(&typed(5));
+        let host = carrying(8, &frame[..frame.len() - 1]);
+        assert!(
+            host.ends_with(&frame),
+            "the host's empty delete set ends the frame"
+        );
+        let mut bytes = segment(&[alpha, &host, gamma]);
+        bytes[segment(&[alpha]).len() + 4] ^= 1;
+        assert_eq!(
+            read_log(&bytes),
+            LogContents {
+                records: vec![alpha, gamma],
+                end: LogEnd::Corrupt
+            }
+        );
+    }
+
+    #[test]
+    fn every_flipped_bit_in_a_record_loads_every_intact_record_and_no_planted_frame() {
+        let updates = UpdateGen::new(5, 1).updates(6);
+        let in_text = (1..400)
+            .map(|n| record(&typed(n)))
+            .find(|frame| frame.is_ascii())
+            .unwrap();
+        let in_text = format!("before {} after", std::str::from_utf8(&in_text).unwrap());
+        let layouts = [
+            (
+                "salted frames in text and a buffer",
+                vec![
+                    updates[0].clone(),
+                    note(8, &in_text),
+                    updates[1].clone(),
+                    carrying(9, &record(&typed(9))),
+                    updates[2].clone(),
+                ],
+            ),
+            (
+                "header-like note text",
+                vec![
+                    updates[0].clone(),
+                    note(8, &"\0\0\u{1}\0".repeat(64)),
+                    note(9, &"y".repeat(300)),
+                    updates[1].clone(),
+                ],
+            ),
+            ("six plain records", updates),
+        ];
+        for (layout, records) in &layouts {
+            let payloads: Vec<&[u8]> = records.iter().map(Vec::as_slice).collect();
+            let bytes = segment(&payloads);
+            let starts: Vec<usize> = (0..records.len())
+                .map(|k| segment(&payloads[..k]).len())
+                .collect();
+            let last = records.len() - 1;
+            for byte in SEGMENT_HEADER..bytes.len() {
+                let damaged = starts.iter().rposition(|&s| s <= byte).unwrap();
+                let in_length = byte < starts[damaged] + 4;
+                let kept = payloads.iter().enumerate();
+                let kept = kept.filter(|&(k, _)| in_length || k != damaged);
+                let expected = LogContents {
+                    records: kept.map(|(_, &p)| p).collect(),
+                    end: if damaged == last && !in_length {
+                        LogEnd::Torn
+                    } else {
+                        LogEnd::Corrupt
+                    },
+                };
+                for bit in 0..8 {
+                    let mut flipped = bytes.clone();
+                    flipped[byte] ^= 1 << bit;
+                    assert_eq!(
+                        read_log(&flipped),
+                        expected,
+                        "{layout}: bit {bit} of byte {byte}"
+                    );
+                }
+            }
         }
     }
 
