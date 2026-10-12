@@ -2,17 +2,26 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use yrs::types::ToJson;
-use yrs::{Any, Doc, GetString, Map, Transact, XmlElementPrelim, XmlFragment, XmlTextPrelim};
+use yrs::{
+    Any, Doc, GetString, Map, MapRef, Transact, XmlElementPrelim, XmlFragment, XmlFragmentRef,
+    XmlOut, XmlTextPrelim,
+};
 
 use super::{Env, doc, soon};
 use crate::storage::doc_id::DocId;
 use crate::storage::log::{self, LogEnd, LogFormat};
-use crate::storage::sim_fs::Crash;
+use crate::storage::sim_fs::{Crash, OpKind};
+use crate::storage::snapshot::{self, Condition, SnapshotFormat};
 use crate::storage::store::Store;
 use crate::storage::testkit::{apply, doc_from};
 
 fn fixture() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/data-folders/format-1")
+    data_folder(1)
+}
+
+fn data_folder(format: u64) -> PathBuf {
+    let folders = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/data-folders");
+    folders.join(format!("format-{format}"))
 }
 
 fn copy_dir(from: &Path, to: &Path) {
@@ -56,6 +65,144 @@ fn the_format_1_fixture_opens_with_its_exact_contents() {
     copy_dir(&fixture(), copy.path());
     let store = Store::open(copy.path()).unwrap();
     assert_eq!(contents(&store), Contents::fixture());
+}
+
+struct Editor {
+    doc: Doc,
+    content: XmlFragmentRef,
+    meta: MapRef,
+}
+
+impl Editor {
+    fn new(client: u64) -> Self {
+        let doc = Doc::with_client_id(client);
+        let content = doc.get_or_insert_xml_fragment("content");
+        let meta = doc.get_or_insert_map("meta");
+        Self { doc, content, meta }
+    }
+
+    fn paragraph(&self, text: &str) -> Vec<u8> {
+        let mut txn = self.doc.transact_mut();
+        let len = self.content.len(&txn);
+        let p = self
+            .content
+            .insert(&mut txn, len, XmlElementPrelim::empty("paragraph"));
+        p.push_back(&mut txn, XmlTextPrelim::new(text));
+        txn.encode_update_v1()
+    }
+
+    fn extend_first_paragraph(&self, text: &str) -> Vec<u8> {
+        let mut txn = self.doc.transact_mut();
+        let Some(XmlOut::Element(p)) = self.content.get(&txn, 0) else {
+            panic!("a paragraph")
+        };
+        let Some(XmlOut::Text(t)) = p.get(&txn, 0) else {
+            panic!("its text")
+        };
+        let len = yrs::Text::len(&t, &txn);
+        yrs::Text::insert(&t, &mut txn, len, text);
+        txn.encode_update_v1()
+    }
+
+    fn set(&self, key: &str, value: impl Into<Any>) -> Vec<u8> {
+        let mut txn = self.doc.transact_mut();
+        self.meta.insert(&mut txn, key, value.into());
+        txn.encode_update_v1()
+    }
+}
+
+/// Writes the same docs and history as `format-1/`. Format 2 has no random salt, so it
+/// writes the same bytes every time.
+fn write_format_2_fixture(target: &Path) {
+    let env = Env::manual();
+    let store = env.open();
+    let (page, workspace) = (doc("page-1"), DocId::workspace());
+    let editor = Editor::new(1);
+    let append = |d: &DocId, update: Vec<u8>| store.append(d, &update).unwrap();
+
+    let owner = Editor::new(2);
+    append(&workspace, owner.set("name", "Fixture workspace"));
+    append(&workspace, owner.set("pages", 1));
+    append(&page, editor.paragraph("Storage keeps every edit."));
+    append(&page, editor.paragraph("Snapshots replace old logs."));
+    assert_eq!(store.flush(soon()), []);
+    store.compact(&page).unwrap();
+
+    append(&page, editor.set("status", "draft"));
+    append(&page, editor.extend_first_paragraph(" Even after a crash."));
+    assert_eq!(store.flush(soon()), []);
+
+    env.fs
+        .fail(OpKind::Create, "snapshot-0000000002", libc::EIO);
+    assert!(
+        store.compact(&page).is_err(),
+        "rotated to generation 2, then failed"
+    );
+    env.fs.clear_faults();
+    append(&page, editor.paragraph("This line is in generation two."));
+    append(&page, editor.set("status", "final"));
+    assert_eq!(store.flush(soon()), []);
+
+    env.fs
+        .fail(OpKind::Append, "log-0000000002-0000000000", libc::EIO);
+    append(&page, editor.paragraph("This write was torn."));
+    store.run_writer_once();
+
+    if target.exists() {
+        std::fs::remove_dir_all(target).unwrap();
+    }
+    for (path, bytes) in env.fs.files() {
+        let relative = path.strip_prefix(env.root()).unwrap();
+        if relative == Path::new(".lock") {
+            continue;
+        }
+        let out = target.join(relative);
+        std::fs::create_dir_all(out.parent().unwrap()).unwrap();
+        std::fs::write(out, bytes).unwrap();
+    }
+}
+
+#[test]
+fn the_format_2_fixture_opens_with_its_exact_contents() {
+    if std::env::var_os("AELOMI_WRITE_FIXTURES").is_some_and(|v| v == "1") {
+        write_format_2_fixture(&data_folder(2));
+    }
+    let fixture = data_folder(2);
+    let committed = tree(&fixture);
+    assert_eq!(
+        committed.keys().map(String::as_str).collect::<Vec<_>>(),
+        [
+            "docs/page-1/log-0000000001-0000000000.ylog2",
+            "docs/page-1/log-0000000002-0000000000.ylog2",
+            "docs/page-1/snapshot-0000000001.ysnap2",
+            "docs/workspace/log-0000000000-0000000000.ylog2",
+            "format.json",
+        ],
+        "the format-2 fixture is committed; regenerate it with AELOMI_WRITE_FIXTURES=1"
+    );
+    assert_eq!(committed["format.json"], MARKER_2.as_bytes());
+    let snapshot = &committed["docs/page-1/snapshot-0000000001.ysnap2"];
+    assert_eq!(
+        snapshot::read(SnapshotFormat::V2, snapshot).map(|(_, condition)| condition),
+        Some(Condition::Whole)
+    );
+    let torn = &committed["docs/page-1/log-0000000002-0000000000.ylog2"];
+    assert_eq!(
+        log::read(LogFormat::V2, torn).end,
+        LogEnd::Torn,
+        "the fixture keeps its torn tail"
+    );
+    assert!(!fixture.join(".lock").exists(), "no .lock is committed");
+
+    let copy = tempfile::tempdir().unwrap();
+    copy_dir(&fixture, copy.path());
+    let store = Store::open(copy.path()).unwrap();
+    assert_eq!(contents(&store), Contents::fixture());
+    assert_eq!(
+        tree(copy.path()),
+        committed,
+        "opening and loading write nothing"
+    );
 }
 
 const FIXTURE_PAGE: &str = "<paragraph>Storage keeps every edit. Even after a crash.</paragraph>\
