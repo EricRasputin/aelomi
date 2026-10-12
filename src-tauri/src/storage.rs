@@ -246,6 +246,158 @@ mod tests {
         assert_eq!(release.cloud_roots, platform().cloud_roots);
     }
 
+    #[test]
+    fn opening_an_empty_folder_is_ready() {
+        let dir = tempfile::tempdir().unwrap();
+        let location = DataLocation {
+            path: dir.path().to_path_buf(),
+            cloud_roots: vec![],
+        };
+
+        let storage = Storage::open(&location);
+
+        assert_eq!(storage.status(), StorageStatus::Ready);
+        assert_eq!(
+            storage.startup_line(),
+            format!(
+                "storage status=Ready path={}",
+                std::fs::canonicalize(dir.path()).unwrap().display()
+            )
+        );
+        assert_eq!(
+            std::fs::read_to_string(dir.path().join("format.json")).unwrap(),
+            "{\n  \"format\": 1\n}\n"
+        );
+        assert!(dir.path().join("docs").is_dir());
+    }
+
+    #[test]
+    fn opening_a_folder_held_by_another_store_is_locked() {
+        let dir = tempfile::tempdir().unwrap();
+        let first = Store::open(dir.path()).unwrap();
+        let location = DataLocation {
+            path: dir.path().to_path_buf(),
+            cloud_roots: vec![],
+        };
+
+        let storage = Storage::open(&location);
+
+        assert_eq!(storage.status(), StorageStatus::Locked);
+        assert_eq!(
+            storage.startup_line(),
+            format!(
+                "storage status=Locked path={}",
+                std::fs::canonicalize(dir.path()).unwrap().display()
+            )
+        );
+        drop(first);
+    }
+
+    #[test]
+    fn opening_a_newer_format_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("format.json"), r#"{"format": 2}"#).unwrap();
+        let location = DataLocation {
+            path: dir.path().to_path_buf(),
+            cloud_roots: vec![],
+        };
+
+        let storage = Storage::open(&location);
+
+        assert_eq!(storage.status(), StorageStatus::NewerFormat);
+        assert_eq!(
+            storage.startup_line(),
+            format!(
+                "storage status=NewerFormat path={}",
+                std::fs::canonicalize(dir.path()).unwrap().display()
+            )
+        );
+    }
+
+    #[test]
+    fn opening_an_unknown_format_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("format.json"), r#"{"format": "one"}"#).unwrap();
+        let location = DataLocation {
+            path: dir.path().to_path_buf(),
+            cloud_roots: vec![],
+        };
+
+        let storage = Storage::open(&location);
+
+        assert_eq!(storage.status(), StorageStatus::UnknownFormat);
+        assert_eq!(
+            storage.startup_line(),
+            format!(
+                "storage status=UnknownFormat path={}",
+                std::fs::canonicalize(dir.path()).unwrap().display()
+            )
+        );
+    }
+
+    #[test]
+    fn opening_a_regular_file_reports_io() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("data");
+        std::fs::write(&path, b"not a data folder").unwrap();
+        let location = DataLocation {
+            path: path.clone(),
+            cloud_roots: vec![],
+        };
+
+        let storage = Storage::open(&location);
+
+        assert_eq!(
+            storage.status(),
+            StorageStatus::Io("Not a directory (os error 20)".into())
+        );
+        assert_eq!(
+            storage.startup_line(),
+            format!(
+                "storage status=Io(\"Not a directory (os error 20)\") path={}",
+                std::fs::canonicalize(&path).unwrap().display()
+            )
+        );
+        assert_eq!(std::fs::read(path).unwrap(), b"not a data folder");
+    }
+
+    #[test]
+    fn opening_a_symlink_into_a_cloud_root_reports_the_resolved_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let cloud = dir.path().join("cloud");
+        let target = cloud.join("data");
+        std::fs::create_dir_all(&target).unwrap();
+        let path = dir.path().join("data");
+        std::os::unix::fs::symlink(&target, &path).unwrap();
+        let resolved = std::fs::canonicalize(&target)
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        let location = DataLocation {
+            path,
+            cloud_roots: vec![cloud.clone()],
+        };
+
+        let storage = Storage::open(&location);
+
+        assert_eq!(
+            storage.status(),
+            StorageStatus::CloudPath {
+                resolved: resolved.clone()
+            }
+        );
+        assert_eq!(
+            storage.startup_line(),
+            format!("storage status=CloudPath {{ resolved: {resolved:?} }} path={resolved}")
+        );
+        assert_eq!(std::fs::read_dir(target).unwrap().count(), 0);
+        let names: Vec<_> = std::fs::read_dir(cloud)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name())
+            .collect();
+        assert_eq!(names, [OsString::from("data")]);
+    }
+
     fn open_on(disk: &SimDisk) -> Storage {
         Storage {
             opened: Ok(disk.open(Path::new("/data")).expect("opens")),
