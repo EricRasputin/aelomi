@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use yrs::updates::decoder::Decode;
 use yrs::{Doc, GetString, ReadTxn, StateVector, Text, Transact, Update};
 
@@ -6,6 +8,7 @@ use super::{
     soon, typed, with_a_loner_sixth, without,
 };
 use crate::storage::compact::CompactError;
+use crate::storage::doc_id::DocId;
 use crate::storage::equality::Ops;
 use crate::storage::log::{LOG_MAGIC, LogEnd, encode_segment, read_log};
 use crate::storage::sim_fs::{Crash, OpKind};
@@ -983,36 +986,102 @@ fn recovery_loads_the_union_of_every_valid_snapshot() {
     assert_doc(&env.open(), &a, &both);
 }
 
+fn append_durably(store: &Store, appends: &[(&DocId, &[Vec<u8>])]) {
+    for (doc, updates) in appends {
+        for update in *updates {
+            store.append(doc, update).unwrap();
+        }
+    }
+    assert_eq!(store.flush(soon()), []);
+}
+
 #[test]
 fn compaction_runs_beside_the_writer_without_losing_updates() {
     let mut env = Env::threaded();
     env.limits = Limits {
-        bytes: 4_000,
         records: 40,
         ..Limits::DATA_6
     };
-    let docs = [doc("a"), doc("b")];
-    let mut gens = [UpdateGen::new(41, 3), UpdateGen::new(42, 3)];
-    let mut sent = vec![Vec::new(), Vec::new()];
-    let store = env.open();
-    for i in 0..600 {
-        let update = gens[i % 2].next_update();
-        store.append(&docs[i % 2], &update).unwrap();
-        sent[i % 2].push(update);
-    }
-    assert_eq!(store.flush(soon()), []);
-    store.close(soon()).unwrap();
+    let (a, b) = (doc("a"), doc("b"));
+    let sent_a = UpdateGen::new(41, 3).updates(41 + 3 * 5);
+    let sent_b = UpdateGen::new(42, 3).updates(5 * 5);
+    let (before_rotation, after_rotation) = sent_a.split_at(41);
+    let (mut on_a, mut on_b) = (after_rotation.chunks(5), sent_b.chunks(5));
+    let (old_log, new_log) = (
+        "log-0000000000-0000000000.ylog",
+        "log-0000000001-0000000000.ylog",
+    );
+    let (tmp, snapshot) = ("snapshot-0000000001.ysnap.tmp", "snapshot-0000000001.ysnap");
+    let hold = |kind, file: &str| {
+        env.fs
+            .hold_once(kind, &format!("/docs/a/{file}"), Duration::ZERO)
+    };
+    let (writing, publishing, retiring) = (
+        hold(OpKind::Create, tmp),
+        hold(OpKind::Rename, tmp),
+        hold(OpKind::Remove, old_log),
+    );
 
     let store = env.open();
-    for (d, sent) in docs.iter().zip(&sent) {
-        assert_doc(&store, d, sent);
-        let snapshots = env
-            .doc_files(d)
-            .iter()
-            .filter(|n| n.starts_with("snapshot-"))
-            .count();
-        assert!(snapshots >= 1, "{d} was compacted");
-    }
+    append_durably(&store, &[(&a, before_rotation), (&b, on_b.next().unwrap())]);
+    writing.wait_until_reached();
+    append_durably(
+        &store,
+        &[(&a, on_a.next().unwrap()), (&b, on_b.next().unwrap())],
+    );
+    assert_eq!(
+        env.doc_files(&a),
+        [old_log, new_log],
+        "appends after the rotation go to generation 1"
+    );
+    writing.release();
+
+    publishing.wait_until_reached();
+    append_durably(
+        &store,
+        &[(&a, on_a.next().unwrap()), (&b, on_b.next().unwrap())],
+    );
+    assert_eq!(
+        env.doc_files(&a),
+        [old_log, new_log, tmp],
+        "the snapshot is written and verified"
+    );
+    publishing.release();
+
+    retiring.wait_until_reached();
+    append_durably(&store, &[(&b, on_b.next().unwrap())]);
+    assert_eq!(
+        env.doc_files(&a),
+        [old_log, new_log, snapshot],
+        "the snapshot is published, and b's appends land while a's files are locked"
+    );
+    retiring.release();
+
+    append_durably(
+        &store,
+        &[(&a, on_a.next().unwrap()), (&b, on_b.next().unwrap())],
+    );
+    assert_eq!(
+        env.doc_files(&a),
+        [new_log, snapshot],
+        "a's next batch waited for its old log to retire"
+    );
+    store.close(soon()).unwrap();
+
+    env.fs.crash(Crash::DropUnsynced);
+    assert_eq!(
+        env.doc_files(&a),
+        [new_log, snapshot],
+        "the retirement is durable"
+    );
+    let files = env.fs.files();
+    let dir = env.path("docs/a");
+    let held = Update::decode_v1(read_snapshot(&files[&dir.join(snapshot)]).unwrap()).unwrap();
+    assert_eq!(Ops::of_update(&held), ops_of_updates(before_rotation));
+    assert_eq!(read_log(&files[&dir.join(new_log)]).records, after_rotation);
+    let store = env.open();
+    assert_doc(&store, &a, &sent_a);
+    assert_doc(&store, &b, &sent_b);
 }
 
 #[test]
