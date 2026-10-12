@@ -59,7 +59,7 @@ Run it after launch and whenever a command behaves oddly. It changes nothing, wr
 
 - The launch process and the app process still run the commands this run started.
 - System Events has Accessibility access.
-- The app window is on screen, and its web content has a `role="status"` region.
+- The app window is on screen, and its web content has a `role="status"` region or an alert dialog. A modal dialog hides the background status from accessibility while it is open.
 - For `dev`, a process from this run listens on the run's `DEV_PORT`. For `app`, the bundle is newer than `src/`, `src-tauri/src/`, `crates/`, and `index.html`.
 - The shell log has `ping seq=1`.
 
@@ -74,6 +74,7 @@ If a check fails, do not drive the instance. Run cleanup and launch again.
 | `$S/app.sh tree "$RUN"` | Print the web content's accessibility tree |
 | `$S/app.sh status "$RUN"` | Print the text of the `role="status"` region |
 | `$S/app.sh wait-status "$RUN" TEXT [S]` | Wait up to S seconds (default 10) until the status reads TEXT. On timeout, exit 1 and print the last text |
+| `$S/app.sh wait-dialog "$RUN" TITLE [S]` | Wait up to S seconds for the alert dialog with TITLE. Use it after a native quit, before a screenshot |
 | `$S/app.sh press "$RUN" NAME` | Send `AXPress` to the first element named NAME |
 | `$S/app.sh focus "$RUN" NAME` | Focus the first element named NAME |
 | `$S/app.sh keys "$RUN" TEXT [MODS]` | Bring Aelomi to the front and type TEXT. MODS is a comma list of `command`, `shift`, `option`, and `control` |
@@ -212,6 +213,7 @@ Never kill Aelomi, Vite, or node by name. Another agent or the maintainer may be
 - After a Rust compile error, `tauri dev` keeps running and waits for a fix. `launch` stops waiting when the log shows `could not compile`, so clean up, fix the code, and launch again.
 - The first accessibility query after launch can find no web content. `launch` retries until the status region appears.
 - `src/main.tsx` wraps the app in `StrictMode`, which runs effects twice in dev. The ping store ignores a ping while one is pending, so the dev log still starts with one `ping seq=1`.
+- A native quit can block the main thread for its 2 s flush. Accessibility can report no window during that interval. Wait with `wait-dialog` before capturing a blocked quit.
 - `pnpm build:mock` empties `dist-mock/` before it writes the new build. Do not pass `--rebuild` while another mock run in the same checkout is serving `dist-mock/`.
 - The mock browser renders the light theme, Playwright's default color scheme. The real app follows the macOS appearance, which was dark in this repo's proof run.
 - An accessibility query takes 1 to 2 s, because each element read is a separate System Events call. Expect `tree` to slow down as pages grow.

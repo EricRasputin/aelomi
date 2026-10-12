@@ -4,7 +4,9 @@ ObjC.import("CoreGraphics");
 const USAGE = `Usage: ax.js <command> <pid> [args]
   tree PID                  print the window's web content as an accessibility tree
   status PID                print the text of the role="status" region
+  content PID               print the status or alert dialog text
   wait-status PID TEXT [S]  wait up to S seconds (default 10) until the status reads TEXT
+  wait-dialog PID TITLE [S] wait up to S seconds for an alert dialog with TITLE
   press PID NAME            send AXPress to the first element named NAME
   focus PID NAME            focus the first element named NAME
   keys PID TEXT [MODS]      bring the app to the front and type TEXT; MODS is a comma list of command,shift,option,control
@@ -25,8 +27,12 @@ function run(argv) {
       return tree(webArea(proc));
     case "status":
       return statusText(proc);
+    case "content":
+      return textOf(region(webArea(proc), ["AXApplicationStatus", "AXApplicationAlertDialog"]));
     case "wait-status":
       return waitStatus(proc, rest[0], Number(rest[1] ?? 10));
+    case "wait-dialog":
+      return waitDialog(proc, rest[0], Number(rest[1] ?? 10));
     case "press":
       findByName(webArea(proc), rest[0]).actions.whose({ name: "AXPress" })[0].perform();
       return `pressed ${JSON.stringify(rest[0])}`;
@@ -106,18 +112,35 @@ function textOf(root) {
   return parts.join("");
 }
 
-function statusRegion(web) {
+function region(web, subroles) {
   const queue = [web];
   while (queue.length > 0) {
     const element = queue.shift();
-    if (get(element, "subrole") === "AXApplicationStatus") return element;
+    if (subroles.includes(get(element, "subrole"))) return element;
     queue.push(...children(element));
   }
-  throw new Error('No role="status" region (AXApplicationStatus) in the web content.');
+  throw new Error(`No ${subroles.join(" or ")} region in the web content.`);
 }
 
 function statusText(proc) {
-  return textOf(statusRegion(webArea(proc)));
+  return textOf(region(webArea(proc), ["AXApplicationStatus"]));
+}
+
+function waitDialog(proc, expected, seconds) {
+  if (expected === undefined) throw new Error(USAGE);
+  const deadline = Date.now() + seconds * 1000;
+  let actual = "";
+  while (Date.now() < deadline) {
+    try {
+      const dialog = region(webArea(proc), ["AXApplicationAlertDialog"]);
+      actual = label(dialog);
+      if (actual === expected) return textOf(dialog);
+    } catch (_) {
+      actual = "";
+    }
+    delay(0.2);
+  }
+  throw new Error(`Dialog did not read ${JSON.stringify(expected)} within ${seconds} s. Last: ${JSON.stringify(actual)}`);
 }
 
 function waitStatus(proc, expected, seconds) {
