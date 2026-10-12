@@ -187,6 +187,14 @@ mod tests {
         out
     }
 
+    fn typed(n: usize) -> Vec<u8> {
+        let client = Doc::with_client_id(7);
+        let text = client.get_or_insert_text("t");
+        let mut txn = client.transact_mut();
+        text.insert(&mut txn, 0, &"x".repeat(n));
+        txn.encode_update_v1()
+    }
+
     #[test]
     fn records_round_trip() {
         let bytes = segment(&[b"one", b"two two", &[0u8; 300]]);
@@ -215,13 +223,6 @@ mod tests {
             bytes[at] ^= 0x40;
             bytes
         };
-        let typed = |n: usize| {
-            let client = Doc::with_client_id(7);
-            let text = client.get_or_insert_text("t");
-            let mut txn = client.transact_mut();
-            text.insert(&mut txn, 0, &"x".repeat(n));
-            txn.encode_update_v1()
-        };
         let sixty_four = (0..64).map(typed).find(|u| 8 + u.len() == 64).unwrap();
         assert_eq!(
             beta.len() & 0x40,
@@ -235,7 +236,8 @@ mod tests {
         let a: &[&[u8]] = &[alpha];
         let ab: &[&[u8]] = &[alpha, beta];
         let ac: &[&[u8]] = &[alpha, gamma];
-        let adc: &[&[u8]] = &[alpha, &sixty_four, gamma];
+        let abc: &[&[u8]] = &[alpha, beta, gamma];
+        let abdc: &[&[u8]] = &[alpha, beta, &sixty_four, gamma];
         let none: &[&[u8]] = &[];
         type Case<'a> = (&'a str, Vec<u8>, &'a [&'a [u8]], LogEnd);
         let cases: Vec<Case> = vec![
@@ -285,13 +287,13 @@ mod tests {
             (
                 "absurd length, then a good record",
                 flip(with(&third), two + 3),
-                ac,
+                abc,
                 LogEnd::Corrupt,
             ),
             (
                 "a length that lands on the record after next",
                 skips_one,
-                adc,
+                abdc,
                 LogEnd::Corrupt,
             ),
             (
@@ -303,6 +305,12 @@ mod tests {
             (
                 "absurd length at end",
                 flip(good.clone(), two + 3),
+                ab,
+                LogEnd::Corrupt,
+            ),
+            (
+                "absurd length, then bytes that are not a record",
+                flip(with(&[0xab; 20]), two + 3),
                 a,
                 LogEnd::Torn,
             ),
@@ -342,13 +350,14 @@ mod tests {
         let updates = UpdateGen::new(5, 1).updates(3);
         let (alpha, beta, gamma) = (&updates[0][..], &updates[1][..], &updates[2][..]);
         let two = segment(&[alpha]).len();
-        let absurd_length = |tail: &[u8]| {
+        let absurd_length_and_crc = |tail: &[u8]| {
             let mut bytes = [segment(&[alpha, beta]).as_slice(), tail].concat();
             bytes[two + 3] ^= 0x40;
+            bytes[two + 4] ^= 1;
             bytes
         };
-        let then_gamma = absurd_length(&record(gamma));
-        let then_junk = absurd_length(&[1, 0, 0, 0, 0, 0, 0, 0, 0xab]);
+        let then_gamma = absurd_length_and_crc(&record(gamma));
+        let then_junk = absurd_length_and_crc(&[1, 0, 0, 0, 0, 0, 0, 0, 0xab]);
         let a: &[&[u8]] = &[alpha];
         let ac: &[&[u8]] = &[alpha, gamma];
         for (name, bytes, budget, records, end) in [
@@ -374,6 +383,84 @@ mod tests {
                 LogContents {
                     records: records.to_vec(),
                     end
+                },
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_recovered_length_never_stretches_over_an_intact_record() {
+        let updates = UpdateGen::new(5, 1).updates(3);
+        let (alpha, gamma) = (&updates[0][..], &updates[2][..]);
+        let two = segment(&[alpha]).len();
+        let mut bytes = segment(&[alpha, &updates[1], gamma]);
+        let stretched_to_the_end = SALT.crc(&bytes[two + 8..]);
+        bytes[two..two + 4].copy_from_slice(&u32::MAX.to_le_bytes());
+        bytes[two + 4..two + 8].copy_from_slice(&stretched_to_the_end.to_le_bytes());
+        assert_eq!(
+            read_log(&bytes),
+            LogContents {
+                records: vec![alpha, gamma],
+                end: LogEnd::Corrupt
+            }
+        );
+    }
+
+    /// The CRC-32 of any bytes followed by their own CRC, little-endian.
+    const CRC_RESIDUE: u32 = 0x2144_df1c;
+
+    #[test]
+    fn crafted_files_exhaust_length_recovery_and_every_intact_record_still_loads() {
+        let updates = UpdateGen::new(5, 1).updates(403);
+        let (alpha, beta, gamma) = (&updates[0][..], &updates[1][..], &updates[2][..]);
+        let intact = &updates[3..];
+        let then_a_damaged_length = |mut bytes: Vec<u8>| {
+            let damaged = bytes.len();
+            encode_record(SALT, beta, &mut bytes);
+            bytes[damaged + 3] ^= 0x40;
+            bytes
+        };
+        let headers_that_fit_no_record = |n: usize| {
+            let mut bytes = segment_header(SALT);
+            for update in &intact[..n] {
+                bytes.extend([0xff, 0xff, 0xff, 0x7f, 0, 0, 0, 0]);
+                encode_record(SALT, update, &mut bytes);
+            }
+            then_a_damaged_length(bytes)
+        };
+        let long = typed(4_000);
+        let mut planted = segment(&[alpha]);
+        planted.extend(u32::MAX.to_le_bytes());
+        planted.extend(CRC_RESIDUE.to_le_bytes());
+        planted.extend(&long);
+        planted.extend(SALT.crc(&long).to_le_bytes());
+        planted.extend(CRC_RESIDUE.to_le_bytes().repeat(2_000));
+        planted.extend(record(gamma));
+        let two: Vec<&[u8]> = vec![&intact[0], &intact[1], beta];
+        let four_hundred: Vec<&[u8]> = intact.iter().map(Vec::as_slice).collect();
+        for (name, bytes, records) in [
+            (
+                "after two headers that fit no record",
+                headers_that_fit_no_record(2),
+                two,
+            ),
+            (
+                "after 400 headers that fit no record",
+                headers_that_fit_no_record(400),
+                four_hundred,
+            ),
+            (
+                "after a payload that matches its CRC every 4 bytes",
+                then_a_damaged_length(planted),
+                vec![alpha, gamma],
+            ),
+        ] {
+            assert_eq!(
+                read_log(&bytes),
+                LogContents {
+                    records,
+                    end: LogEnd::Corrupt
                 },
                 "{name}"
             );

@@ -55,7 +55,14 @@ fn five_where_one_length_bit_reaches_eof(damaged: usize) -> LengthFlip {
 }
 
 #[test]
-fn a_length_flip_that_reaches_eof_loses_only_its_own_record() {
+fn a_flipped_length_bit_loads_every_record() {
+    let updates: Vec<Vec<u8>> = (1..=4).map(|client| typed(client, 4)).collect();
+    let held = load_after(&updates, |b| flip_length(b, record_at(&updates, 2), 0x40));
+    assert_eq!(held, ops_of_updates(&updates));
+}
+
+#[test]
+fn a_length_flip_that_reaches_eof_loads_its_own_record() {
     let first = typed(1, 4);
     let second = (1..100)
         .map(|n| typed(2, n))
@@ -66,11 +73,11 @@ fn a_length_flip_that_reaches_eof_loses_only_its_own_record() {
     let held = load_after(&updates, |bytes| {
         flip_length(bytes, record_at(&updates, 0), 64);
     });
-    assert_eq!(held, ops_of_updates(&updates[1..]));
+    assert_eq!(held, ops_of_updates(&updates));
 }
 
 #[test]
-fn a_length_flip_loses_only_its_own_record_wherever_the_new_length_ends() {
+fn a_length_flip_loads_its_own_record_wherever_the_new_length_ends() {
     let past_eof = LengthFlip {
         records: (1..=5).map(|client| typed(client, 4)).collect(),
         mask: 1 << 30,
@@ -91,8 +98,7 @@ fn a_length_flip_loses_only_its_own_record_wherever_the_new_length_ends() {
         let held = load_after(&flip.records, |bytes| {
             flip_length(bytes, record_at(&flip.records, damaged), flip.mask);
         });
-        let intact = without(&flip.records, &[damaged]);
-        assert_eq!(held, ops_of_updates(&intact), "{case}");
+        assert_eq!(held, ops_of_updates(&flip.records), "{case}");
     }
 }
 
@@ -171,7 +177,9 @@ proptest! {
         });
         let damaged = (0..updates.len())
             .find(|&k| (record_at(&updates, k)..record_at(&updates, k + 1)).contains(&flipped));
+        let in_length = |k| (record_at(&updates, k)..record_at(&updates, k) + 4).contains(&flipped);
         let expected = match damaged {
+            Some(k) if in_length(k) => ops_of_updates(&updates),
             Some(k) => ops_of_updates(&without(&updates, &[k])),
             None => Ops::default(),
         };

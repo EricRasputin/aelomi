@@ -3,7 +3,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
-use super::{Delivery, Env, applied, assert_doc, doc, ops_of_updates, out_of_order, soon};
+use super::{
+    Delivery, Env, applied, assert_doc, doc, ops_of_updates, out_of_order, record_at, soon, typed,
+};
 use crate::storage::doc_id::DocId;
 use crate::storage::health::{FailReason, Health};
 use crate::storage::log::{LogEnd, read_log};
@@ -552,6 +554,34 @@ fn a_segment_a_failed_write_tore_in_an_earlier_session_is_quarantined_not_delete
     assert_eq!(
         env.quarantine(),
         [(env.path("quarantine/a").join(name), torn)].into(),
+        "moved byte for byte"
+    );
+    drop(store);
+    assert_doc(&env.open(), &a, &sent);
+}
+
+#[test]
+fn a_length_recovered_in_a_segment_a_failed_write_tore_moves_it_to_quarantine_not_deletion() {
+    let env = Env::manual();
+    let store = env.open();
+    let a = doc("a");
+    let sent: Vec<Vec<u8>> = (1..=5).map(|client| typed(client, 4)).collect();
+    fail_then_recover(&env, &store, &a, &sent, 1);
+    let name = "log-0000000000-0000000000.ylog";
+    let path = env.path("docs/a").join(name);
+    assert_eq!(
+        read_log(&env.fs.files()[&path]).records.len(),
+        4,
+        "the failed write kept half its bytes, the whole fourth record"
+    );
+    env.fs.flip_bit(&path, record_at(&sent, 3) + 2);
+    let damaged = env.fs.files()[&path].clone();
+
+    store.compact(&a).unwrap();
+    assert_eq!(env.doc_files(&a), ["snapshot-0000000001.ysnap"]);
+    assert_eq!(
+        env.quarantine(),
+        [(env.path("quarantine/a").join(name), damaged)].into(),
         "moved byte for byte"
     );
     drop(store);
