@@ -6,6 +6,7 @@ mod dirs;
 mod failures;
 mod fixture;
 mod measure;
+mod publication;
 mod real_disk;
 mod refusals;
 mod salvage;

@@ -1,9 +1,10 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use super::Env;
+use super::{Env, assert_doc, doc, v2_log};
 use crate::storage::sim_fs::OpKind;
 use crate::storage::store::{OpenError, Store};
+use crate::storage::testkit::UpdateGen;
 
 fn tree(dir: &Path) -> BTreeMap<PathBuf, Option<Vec<u8>>> {
     let mut out = BTreeMap::new();
@@ -149,4 +150,23 @@ fn a_format_json_left_half_written_by_a_crash_is_redone() {
         Some(&b"{\n  \"format\": 1\n}\n"[..])
     );
     assert!(!files.contains_key(&env.path("format.json.tmp")));
+}
+
+#[test]
+fn a_format_2_folder_opens_and_loads_without_a_write() {
+    let env = Env::manual();
+    let a = doc("a");
+    let updates = UpdateGen::new(9, 2).updates(3);
+    env.fs
+        .put_durable(&env.path("format.json"), b"{\n  \"format\": 2\n}\n");
+    env.fs.put_durable(
+        &env.path("docs/a/log-0000000000-0000000000.ylog2"),
+        &v2_log(&updates),
+    );
+    let before = env.fs.files();
+    let store = env.open();
+    assert_doc(&store, &a, &updates);
+    let mut after = env.fs.files();
+    assert!(after.remove(&env.path(".lock")).is_some());
+    assert_eq!(after, before);
 }

@@ -1,13 +1,15 @@
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use yrs::types::ToJson;
-use yrs::{Any, GetString, Transact};
+use yrs::{Any, Doc, GetString, Map, Transact, XmlElementPrelim, XmlFragment, XmlTextPrelim};
 
-use super::doc;
+use super::{Env, doc, soon};
 use crate::storage::doc_id::DocId;
 use crate::storage::log::{self, LogEnd, LogFormat};
+use crate::storage::sim_fs::Crash;
 use crate::storage::store::Store;
-use crate::storage::testkit::doc_from;
+use crate::storage::testkit::{apply, doc_from};
 
 fn fixture() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/data-folders/format-1")
@@ -53,30 +55,257 @@ fn the_format_1_fixture_opens_with_its_exact_contents() {
     let copy = tempfile::tempdir().unwrap();
     copy_dir(&fixture(), copy.path());
     let store = Store::open(copy.path()).unwrap();
-    let read = |d: &DocId| doc_from([store.load(d).unwrap().as_slice()]);
+    assert_eq!(contents(&store), Contents::fixture());
+}
 
-    let page = read(&doc("page-1"));
+const FIXTURE_PAGE: &str = "<paragraph>Storage keeps every edit. Even after a crash.</paragraph>\
+     <paragraph>Snapshots replace old logs.</paragraph>\
+     <paragraph>This line is in generation two.</paragraph>";
+const MARKER_2: &str = "{\n  \"format\": 2\n}\n";
+const WRITTEN: &str = "Written by format 2.";
+const AFTER_CRASH: &str = "Written after the crash.";
+
+#[derive(Debug, PartialEq)]
+struct Contents {
+    page: String,
+    page_meta: Any,
+    workspace_meta: Any,
+}
+
+impl Contents {
+    fn fixture() -> Self {
+        Self::with(&[], 1)
+    }
+
+    /// The fixture with `paragraphs` added to page-1 and `pages` set in the workspace.
+    fn with(paragraphs: &[&str], pages: u32) -> Self {
+        let added: String = paragraphs
+            .iter()
+            .map(|p| format!("<paragraph>{p}</paragraph>"))
+            .collect();
+        let workspace = format!(r#"{{"name": "Fixture workspace", "pages": {pages}}}"#);
+        Self {
+            page: format!("{FIXTURE_PAGE}{added}"),
+            page_meta: Any::from_json(r#"{"status": "final"}"#).unwrap(),
+            workspace_meta: Any::from_json(&workspace).unwrap(),
+        }
+    }
+}
+
+fn contents(store: &Store) -> Contents {
+    let page = doc_from([store.load(&doc("page-1")).unwrap().as_slice()]);
     let (content, meta) = (
         page.get_or_insert_xml_fragment("content"),
         page.get_or_insert_map("meta"),
     );
+    let workspace = doc_from([store.load(&DocId::workspace()).unwrap().as_slice()]);
+    let workspace_meta = workspace.get_or_insert_map("meta");
     let txn = page.transact();
-    assert_eq!(
-        content.get_string(&txn),
-        "<paragraph>Storage keeps every edit. Even after a crash.</paragraph>\
-         <paragraph>Snapshots replace old logs.</paragraph>\
-         <paragraph>This line is in generation two.</paragraph>"
-    );
-    assert_eq!(
-        meta.to_json(&txn),
-        Any::from_json(r#"{"status": "final"}"#).unwrap()
-    );
-    drop(txn);
+    Contents {
+        page: content.get_string(&txn),
+        page_meta: meta.to_json(&txn),
+        workspace_meta: workspace_meta.to_json(&workspace.transact()),
+    }
+}
 
-    let workspace = read(&DocId::workspace());
-    let meta = workspace.get_or_insert_map("meta");
+fn add_paragraph(state: &[u8], client: u64, text: &str) -> Vec<u8> {
+    let editor = Doc::with_client_id(client);
+    apply(&editor, state);
+    let content = editor.get_or_insert_xml_fragment("content");
+    let mut txn = editor.transact_mut();
+    let len = content.len(&txn);
+    let p = content.insert(&mut txn, len, XmlElementPrelim::empty("paragraph"));
+    p.push_back(&mut txn, XmlTextPrelim::new(text));
+    txn.encode_update_v1()
+}
+
+fn set_pages(state: &[u8], client: u64, pages: u32) -> Vec<u8> {
+    let editor = Doc::with_client_id(client);
+    apply(&editor, state);
+    let meta = editor.get_or_insert_map("meta");
+    let mut txn = editor.transact_mut();
+    meta.insert(&mut txn, "pages", pages);
+    txn.encode_update_v1()
+}
+
+/// Every file under `root` by its relative path, without `.lock`.
+fn tree(root: &Path) -> BTreeMap<String, Vec<u8>> {
+    fn walk(dir: &Path, root: &Path, out: &mut BTreeMap<String, Vec<u8>>) {
+        for entry in std::fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                walk(&path, root, out);
+            } else {
+                let relative = path.strip_prefix(root).unwrap().to_str().unwrap();
+                out.insert(relative.to_owned(), std::fs::read(&path).unwrap());
+            }
+        }
+    }
+    let mut out = BTreeMap::new();
+    walk(root, root, &mut out);
+    out.remove(".lock");
+    out
+}
+
+fn assert_format_1_files_unchanged(files: &BTreeMap<String, Vec<u8>>, case: &str) {
+    for (path, bytes) in tree(&fixture()) {
+        if path != "format.json" {
+            assert!(files.get(&path) == Some(&bytes), "{case}: {path} changed");
+        }
+    }
+}
+
+#[test]
+fn appending_to_the_format_1_fixture_publishes_format_2_and_never_rewrites_a_format_1_file() {
+    let copy = tempfile::tempdir().unwrap();
+    copy_dir(&fixture(), copy.path());
+    let (page, workspace) = (doc("page-1"), DocId::workspace());
+    let store = Store::open(copy.path()).unwrap();
+    assert_eq!(contents(&store), Contents::fixture());
     assert_eq!(
-        meta.to_json(&workspace.transact()),
-        Any::from_json(r#"{"name": "Fixture workspace", "pages": 1}"#).unwrap()
+        tree(copy.path()),
+        tree(&fixture()),
+        "opening and loading write nothing"
     );
+
+    let on_page = add_paragraph(&store.load(&page).unwrap(), 3, WRITTEN);
+    let on_workspace = set_pages(&store.load(&workspace).unwrap(), 3, 2);
+    store.append(&page, &on_page).unwrap();
+    store.append(&workspace, &on_workspace).unwrap();
+    store.close(soon()).unwrap();
+
+    let mut written = tree(copy.path());
+    let marker = written.remove("format.json").unwrap();
+    let legacy = tree(&fixture());
+    let added: Vec<&str> = written
+        .keys()
+        .filter(|path| !legacy.contains_key(*path))
+        .map(String::as_str)
+        .collect();
+    assert_eq!(
+        (String::from_utf8(marker).unwrap().as_str(), added),
+        (
+            MARKER_2,
+            vec![
+                "docs/page-1/log-0000000002-0000000001.ylog2",
+                "docs/workspace/log-0000000000-0000000001.ylog2",
+            ]
+        )
+    );
+    assert_format_1_files_unchanged(&written, "after the first format-2 write");
+    let store = Store::open(copy.path()).unwrap();
+    assert_eq!(contents(&store), Contents::with(&[WRITTEN], 2));
+}
+
+fn simulated_fixture() -> Env {
+    let env = Env::manual();
+    for (path, bytes) in tree(&fixture()) {
+        env.fs.put_durable(&env.path(&path), &bytes);
+    }
+    env
+}
+
+fn durable_tree(env: &Env) -> BTreeMap<String, Vec<u8>> {
+    let files = env.fs.durable_files().into_iter();
+    files
+        .map(|(path, bytes)| {
+            let relative = path.strip_prefix(env.root()).unwrap().to_str().unwrap();
+            (relative.to_owned(), bytes)
+        })
+        .filter(|(path, _)| path != ".lock")
+        .collect()
+}
+
+/// Loads both fixture docs, then appends one update to each and runs the writer once, dying
+/// after `die_after` operations of that write. Returns which updates were acknowledged and
+/// how many operations the write ran.
+fn first_write(env: &Env, die_after: usize) -> ([bool; 2], usize) {
+    let docs = [doc("page-1"), DocId::workspace()];
+    let store = env.open();
+    let updates = [
+        add_paragraph(&store.load(&docs[0]).unwrap(), 3, WRITTEN),
+        set_pages(&store.load(&docs[1]).unwrap(), 3, 2),
+    ];
+    let before = env.fs.ops().len();
+    env.fs.die_after(die_after);
+    let seqs = [
+        store.append(&docs[0], &updates[0]).unwrap(),
+        store.append(&docs[1], &updates[1]).unwrap(),
+    ];
+    store.run_writer_once();
+    let acked = [
+        store.is_durable(&docs[0], seqs[0]),
+        store.is_durable(&docs[1], seqs[1]),
+    ];
+    (acked, env.fs.ops().len() - before)
+}
+
+#[test]
+fn a_crash_anywhere_in_the_first_format_2_write_keeps_the_fixture_and_every_acknowledged_update() {
+    let (_, ops) = first_write(&simulated_fixture(), usize::MAX);
+    let modes = std::iter::once(Crash::DropUnsynced).chain((0..4).map(Crash::KeepTornPrefix));
+    for mode in modes {
+        for die_after in 0..=ops {
+            let case = format!("{mode:?} after {die_after} of {ops} operations");
+            let env = simulated_fixture();
+            let (acked, _) = first_write(&env, die_after);
+            env.fs.crash(mode);
+
+            let durable = durable_tree(&env);
+            let marker = String::from_utf8(durable["format.json"].clone()).unwrap();
+            assert!(
+                ["{\n  \"format\": 1\n}\n", MARKER_2].contains(&marker.as_str()),
+                "{case}: {marker:?}"
+            );
+            let format_2_logs: Vec<&String> =
+                durable.keys().filter(|p| p.ends_with(".ylog2")).collect();
+            assert!(
+                format_2_logs.is_empty() || marker == MARKER_2,
+                "{case}: {format_2_logs:?} under {marker:?}"
+            );
+            assert_format_1_files_unchanged(&durable, &case);
+
+            let store = env.open();
+            let after_crash = contents(&store);
+            let page_kept = after_crash.page != FIXTURE_PAGE;
+            let pages_kept = after_crash.workspace_meta != Contents::fixture().workspace_meta;
+            let paragraphs: &[&str] = if page_kept { &[WRITTEN] } else { &[] };
+            assert_eq!(
+                after_crash,
+                Contents::with(paragraphs, if pages_kept { 2 } else { 1 }),
+                "{case}"
+            );
+            assert!(
+                (page_kept || !acked[0]) && (pages_kept || !acked[1]),
+                "{case}: acknowledged {acked:?}, loaded {after_crash:?}"
+            );
+
+            let page = add_paragraph(&store.load(&doc("page-1")).unwrap(), 4, AFTER_CRASH);
+            let workspace = set_pages(&store.load(&DocId::workspace()).unwrap(), 4, 3);
+            store.append(&doc("page-1"), &page).unwrap();
+            store.append(&DocId::workspace(), &workspace).unwrap();
+            assert_eq!(store.flush(soon()), [], "{case}");
+            let durable = durable_tree(&env);
+            assert_eq!(
+                (
+                    String::from_utf8_lossy(&durable["format.json"]),
+                    env.fs.files().contains_key(&env.path("format.json.tmp"))
+                ),
+                (MARKER_2.into(), false),
+                "{case}"
+            );
+            assert_format_1_files_unchanged(&durable, &case);
+            drop(store);
+            let paragraphs: &[&str] = if page_kept {
+                &[WRITTEN, AFTER_CRASH]
+            } else {
+                &[AFTER_CRASH]
+            };
+            assert_eq!(
+                contents(&env.open()),
+                Contents::with(paragraphs, 3),
+                "{case}"
+            );
+        }
+    }
 }
