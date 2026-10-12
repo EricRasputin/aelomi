@@ -56,7 +56,6 @@ impl CrcState {
         let mut target = stored ^ crc32fast::hash(payload);
         let mut state = 0;
         // combine gives CRC(salt || payload) = shift(CRC(salt), len) ^ CRC(payload).
-        // Eliminate the shifted basis to invert that map without guessing salt bytes.
         for bit in 0..32 {
             let mask = 1 << bit;
             let pivot = (bit..32).find(|&column| columns[column].0 & mask != 0)?;
@@ -536,16 +535,16 @@ mod tests {
         }
     }
 
-    proptest::proptest! {
-        #![proptest_config(proptest::test_runner::Config {
+    proptest! {
+        #![proptest_config(ProptestConfig {
             failure_persistence: None,
-            ..proptest::test_runner::Config::default()
+            ..ProptestConfig::default()
         })]
 
         #[test]
         fn header_random_bursts_load_every_record_with_two_confirmations(
-            header in proptest::prelude::any::<[u8; 16]>(),
-            salt in proptest::prelude::any::<[u8; 8]>(),
+            header in any::<[u8; 16]>(),
+            salt in any::<[u8; 8]>(),
         ) {
             for count in [2, 4, 6] {
                 let updates = UpdateGen::new(count, 1).updates(count as usize);
@@ -559,13 +558,13 @@ mod tests {
                 }
                 let same_state = crc32fast::hash(&bytes[8..SEGMENT_HEADER]) == crc32fast::hash(&salt);
                 let end = if header[..8] == [0; 8] && same_state { LogEnd::Clean } else { LogEnd::Corrupt };
-                proptest::prop_assert_eq!(read_log(&bytes), LogContents { records, end });
+                prop_assert_eq!(read_log(&bytes), LogContents { records, end });
             }
             let update = typed(4);
             let mut single = segment(&[&update]);
             single[..SEGMENT_HEADER].copy_from_slice(&header);
             if crc32fast::hash(&header[8..]) != SALT.hasher().finalize() {
-                proptest::prop_assert_eq!(read_log(&single).records, Vec::<&[u8]>::new());
+                prop_assert_eq!(read_log(&single).records, Vec::<&[u8]>::new());
             }
         }
     }
