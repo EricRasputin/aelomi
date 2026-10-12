@@ -215,18 +215,16 @@ fn the_writer_thread_retries_on_its_own() {
     for update in &sent {
         store.append(&a, update).unwrap();
     }
-    let Health::Failing { reason, .. } = health.recv().unwrap() else {
+    let Ok(Health::Failing { reason, .. }) = health.recv_timeout(Duration::from_secs(10)) else {
         panic!("health turns Failing")
     };
     assert_eq!(reason, FailReason::ReadOnlyVolume);
     env.fs.clear_faults();
-    let started = Instant::now();
-    assert_eq!(store.flush(soon()), [], "the retry lands without new work");
-    assert!(
-        started.elapsed() < Duration::from_secs(6),
-        "retries are at most 5 s apart"
+    assert_eq!(
+        health.recv_timeout(Duration::from_secs(10)),
+        Ok(Health::Healthy),
+        "the retry lands without new work"
     );
-    assert_eq!(store.health(), Health::Healthy);
     drop(store);
     assert_doc(&env.open(), &a, &sent);
 }

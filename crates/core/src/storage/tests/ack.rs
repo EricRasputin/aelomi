@@ -185,9 +185,10 @@ fn a_docs_first_load_from_a_slow_disk_never_delays_another_docs_acknowledgement(
             store.run_writer_once();
             done.send(env.clock.now()).unwrap();
         });
-        let finished = writer_done.recv().unwrap();
+        let finished = writer_done.recv_timeout(Duration::from_secs(10));
         hold.release();
         loading.join().unwrap();
+        let finished = finished.expect("the writer finishes while b's load is held");
         (store.is_durable(&a, seq), finished - start)
     });
     assert!(acked, "a is acknowledged");

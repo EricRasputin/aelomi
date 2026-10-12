@@ -57,10 +57,20 @@ enum Effect {
     HoldOnce(Arc<Hold>, Duration),
 }
 
-#[derive(Default)]
 pub(crate) struct Hold {
     state: Mutex<HoldState>,
     changed: Condvar,
+    limit: Duration,
+}
+
+impl Default for Hold {
+    fn default() -> Self {
+        Self {
+            state: Mutex::default(),
+            changed: Condvar::new(),
+            limit: Duration::from_secs(10),
+        }
+    }
 }
 
 #[derive(Default)]
@@ -71,8 +81,8 @@ struct HoldState {
 
 impl Hold {
     pub fn wait_until_reached(&self) {
-        let state = self.state.lock().unwrap();
-        drop(self.changed.wait_while(state, |s| !s.reached).unwrap());
+        let reached = self.wait_for(|s| s.reached);
+        assert!(reached, "the held operation was never reached");
     }
 
     pub fn release(&self) {
@@ -81,10 +91,20 @@ impl Hold {
     }
 
     fn pass(&self) {
-        let mut state = self.state.lock().unwrap();
-        state.reached = true;
+        self.state.lock().unwrap().reached = true;
         self.changed.notify_all();
-        drop(self.changed.wait_while(state, |s| !s.released).unwrap());
+        let released = self.wait_for(|s| s.released);
+        assert!(released, "the held operation was never released");
+    }
+
+    /// Returns before a caller can panic, so a failed wait never poisons the state.
+    fn wait_for(&self, done: impl Fn(&HoldState) -> bool) -> bool {
+        let state = self.state.lock().unwrap();
+        let (state, _) = self
+            .changed
+            .wait_timeout_while(state, self.limit, |s| !done(s))
+            .unwrap();
+        done(&state)
     }
 }
 
@@ -1017,6 +1037,36 @@ mod tests {
             msgs,
             [
                 r#"remove "/d/log-0000000001-0000000000.ylog", not a .tmp or covered by a durable snapshot"#
+            ]
+        );
+    }
+
+    #[test]
+    fn a_hold_whose_signal_never_comes_fails_instead_of_hanging() {
+        let outcome = |wait: fn(&Hold)| {
+            let hold = Arc::new(Hold {
+                limit: Duration::from_millis(50),
+                ..Hold::default()
+            });
+            let (done, outcome) = std::sync::mpsc::channel();
+            let waiting = std::thread::spawn({
+                let hold = hold.clone();
+                move || {
+                    let result = std::panic::catch_unwind(|| wait(&hold));
+                    done.send(result.map_err(|e| *e.downcast::<&str>().unwrap()))
+                }
+            });
+            let result = outcome.recv_timeout(Duration::from_secs(10));
+            hold.release();
+            hold.pass();
+            waiting.join().unwrap().unwrap();
+            result
+        };
+        assert_eq!(
+            [outcome(Hold::pass), outcome(Hold::wait_until_reached)],
+            [
+                Ok(Err("the held operation was never released")),
+                Ok(Err("the held operation was never reached")),
             ]
         );
     }
