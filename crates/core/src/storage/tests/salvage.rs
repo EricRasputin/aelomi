@@ -145,13 +145,40 @@ fn a_frame_the_unsalted_format_accepts_never_loads_after_damage_whatever_the_sal
     assert_eq!(salts.len(), 64, "each segment has its own salt");
 }
 
-fn carrying_a_frame(writer: u64, ghost: &[u8]) -> Vec<u8> {
+fn carrying(writer: u64, frame: Vec<u8>) -> Vec<u8> {
     let client = Doc::with_client_id(writer);
     let blobs = client.get_or_insert_map("blobs");
     let mut txn = client.transact_mut();
-    let blob = Any::Buffer(unsalted_frame(ghost).into());
-    blobs.insert(&mut txn, writer.to_string(), blob);
+    blobs.insert(&mut txn, writer.to_string(), Any::Buffer(frame.into()));
     txn.encode_update_v1()
+}
+
+#[test]
+fn a_frame_salted_by_an_author_who_read_the_segment_never_loads_after_damage() {
+    let env = Env::manual();
+    let a = doc("a");
+    let store = env.open();
+    let first = typed(1, 4);
+    store.append(&a, &first).unwrap();
+    assert_eq!(store.flush(soon()), []);
+    let path = env.path("docs/a/log-0000000000-0000000000.ylog");
+    let salt = env.fs.files()[&path][LOG_MAGIC.len()..record_at(&[], 0)].to_vec();
+    let ghost = typed(NEVER_WROTE, 3);
+    let len = u32::try_from(ghost.len()).unwrap().to_le_bytes();
+    let crc = crc32fast::hash(&[&salt[..], &ghost].concat()).to_le_bytes();
+    let updates = [
+        first,
+        carrying(300, [&len[..], &crc, &ghost].concat()),
+        typed(400, 3),
+    ];
+    for update in &updates[1..] {
+        store.append(&a, update).unwrap();
+    }
+    assert_eq!(store.flush(soon()), []);
+    drop(store);
+    env.fs.flip_bit(&path, record_at(&updates, 1) + 4);
+    let (held, _) = applied(&env.open().load(&a).unwrap(), "reopened");
+    assert_eq!(held, ops_of_updates(&without(&updates, &[1])));
 }
 
 proptest! {
@@ -168,7 +195,7 @@ proptest! {
     ) {
         let ghosts = UpdateGen::new(seed, 2).updates(4);
         let updates: Vec<Vec<u8>> = (0..4)
-            .map(|k| carrying_a_frame(900_000_000 + k as u64, &ghosts[k]))
+            .map(|k| carrying(900_000_000 + k as u64, unsalted_frame(&ghosts[k])))
             .collect();
         let mut flipped = 0;
         let held = load_after(&updates, |bytes| {

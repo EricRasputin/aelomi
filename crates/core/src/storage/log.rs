@@ -212,7 +212,7 @@ fn candidate_at(bytes: &[u8], at: usize) -> Option<(u32, &[u8])> {
 
 #[cfg(test)]
 mod tests {
-    use yrs::{Doc, Text, Transact};
+    use yrs::{Any, Doc, Map, Text, Transact};
 
     use super::*;
     use crate::storage::testkit::UpdateGen;
@@ -234,10 +234,22 @@ mod tests {
     }
 
     fn typed(n: usize) -> Vec<u8> {
-        let client = Doc::with_client_id(7);
-        let text = client.get_or_insert_text("t");
+        note(7, &"x".repeat(n))
+    }
+
+    fn note(writer: u64, text: &str) -> Vec<u8> {
+        let client = Doc::with_client_id(writer);
+        let t = client.get_or_insert_text("t");
         let mut txn = client.transact_mut();
-        text.insert(&mut txn, 0, &"x".repeat(n));
+        t.insert(&mut txn, 0, text);
+        txn.encode_update_v1()
+    }
+
+    fn carrying(writer: u64, blob: &[u8]) -> Vec<u8> {
+        let client = Doc::with_client_id(writer);
+        let blobs = client.get_or_insert_map("blobs");
+        let mut txn = client.transact_mut();
+        blobs.insert(&mut txn, "blob", Any::Buffer(blob.into()));
         txn.encode_update_v1()
     }
 
@@ -432,6 +444,149 @@ mod tests {
                 },
                 "{name}"
             );
+        }
+    }
+
+    #[test]
+    fn header_like_note_text_never_hides_the_record_after_it() {
+        let updates = UpdateGen::new(5, 1).updates(2);
+        let (alpha, gamma) = (&updates[0][..], &updates[1][..]);
+        let text = note(8, &"\0\0\u{1}\0".repeat(2048));
+        let big = typed(70_000);
+        let at = segment(&[alpha]).len();
+        let damaged = |flips: &[(usize, u8)]| {
+            let mut bytes = segment(&[alpha, &text, &big, gamma]);
+            for &(offset, mask) in flips {
+                bytes[at + offset] ^= mask;
+            }
+            bytes
+        };
+        for (name, flips) in [
+            ("one CRC bit", &[(4, 1)][..]),
+            ("a length bit and a CRC bit", &[(1, 1), (5, 0x10)]),
+        ] {
+            assert_eq!(
+                read_log(&damaged(flips)),
+                LogContents {
+                    records: vec![alpha, &big, gamma],
+                    end: LogEnd::Corrupt
+                },
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_frame_salted_inside_a_damaged_record_never_loads() {
+        let updates = UpdateGen::new(5, 1).updates(3);
+        let (alpha, ghost, gamma) = (&updates[0][..], &updates[1][..], &updates[2][..]);
+        let host = carrying(8, &record(ghost));
+        let at = segment(&[alpha]).len();
+        assert_eq!(host[0], 1, "the host's first byte counts its one client");
+        let damaged = |offset: usize, mask: u8| {
+            let mut bytes = segment(&[alpha, &host, gamma]);
+            bytes[at + offset] ^= mask;
+            bytes
+        };
+        let host_lost: &[&[u8]] = &[alpha, gamma];
+        let every_record: &[&[u8]] = &[alpha, &host, gamma];
+        for (name, offset, mask, records) in [
+            ("one CRC bit", 4, 1, host_lost),
+            ("one length bit", 0, 0x40, every_record),
+            ("the client count", 8, 0x40, host_lost),
+        ] {
+            assert_eq!(
+                read_log(&damaged(offset, mask)),
+                LogContents {
+                    records: records.to_vec(),
+                    end: LogEnd::Corrupt
+                },
+                "{name}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_frame_that_ends_its_host_never_loads_after_a_crc_flip() {
+        let updates = UpdateGen::new(5, 1).updates(2);
+        let (alpha, gamma) = (&updates[0][..], &updates[1][..]);
+        let frame = record(&typed(5));
+        let host = carrying(8, &frame[..frame.len() - 1]);
+        assert!(
+            host.ends_with(&frame),
+            "the host's empty delete set ends the frame"
+        );
+        let mut bytes = segment(&[alpha, &host, gamma]);
+        bytes[segment(&[alpha]).len() + 4] ^= 1;
+        assert_eq!(
+            read_log(&bytes),
+            LogContents {
+                records: vec![alpha, gamma],
+                end: LogEnd::Corrupt
+            }
+        );
+    }
+
+    #[test]
+    fn every_flipped_bit_in_a_record_loads_every_intact_record_and_no_planted_frame() {
+        let updates = UpdateGen::new(5, 1).updates(6);
+        let in_text = (1..400)
+            .map(|n| record(&typed(n)))
+            .find(|frame| frame.is_ascii())
+            .unwrap();
+        let in_text = format!("before {} after", std::str::from_utf8(&in_text).unwrap());
+        let layouts = [
+            (
+                "salted frames in text and a buffer",
+                vec![
+                    updates[0].clone(),
+                    note(8, &in_text),
+                    updates[1].clone(),
+                    carrying(9, &record(&typed(9))),
+                    updates[2].clone(),
+                ],
+            ),
+            (
+                "header-like note text",
+                vec![
+                    updates[0].clone(),
+                    note(8, &"\0\0\u{1}\0".repeat(64)),
+                    note(9, &"y".repeat(300)),
+                    updates[1].clone(),
+                ],
+            ),
+            ("six plain records", updates),
+        ];
+        for (layout, records) in &layouts {
+            let payloads: Vec<&[u8]> = records.iter().map(Vec::as_slice).collect();
+            let bytes = segment(&payloads);
+            let starts: Vec<usize> = (0..records.len())
+                .map(|k| segment(&payloads[..k]).len())
+                .collect();
+            let last = records.len() - 1;
+            for byte in SEGMENT_HEADER..bytes.len() {
+                let damaged = starts.iter().rposition(|&s| s <= byte).unwrap();
+                let in_length = byte < starts[damaged] + 4;
+                let kept = payloads.iter().enumerate();
+                let kept = kept.filter(|&(k, _)| in_length || k != damaged);
+                let expected = LogContents {
+                    records: kept.map(|(_, &p)| p).collect(),
+                    end: if damaged == last && !in_length {
+                        LogEnd::Torn
+                    } else {
+                        LogEnd::Corrupt
+                    },
+                };
+                for bit in 0..8 {
+                    let mut flipped = bytes.clone();
+                    flipped[byte] ^= 1 << bit;
+                    assert_eq!(
+                        read_log(&flipped),
+                        expected,
+                        "{layout}: bit {bit} of byte {byte}"
+                    );
+                }
+            }
         }
     }
 
