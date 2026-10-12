@@ -10,7 +10,7 @@ use super::format::parse_format;
 use super::fs::{Fs, FsLock, LockError, validate_format_marker};
 use super::layout::DocFile;
 use super::log::{LogEnd, SEGMENT_HEADER, read_log};
-use super::snapshot::read_snapshot;
+use super::snapshot::{self, Condition};
 use super::testkit::SplitMix64;
 use yrs::{Doc, IdSet, Transact, Update};
 
@@ -591,7 +591,7 @@ impl Sim {
             return true;
         };
         match DocFile::parse(&name) {
-            Some(DocFile::SnapshotTmp(_)) => true,
+            Some(DocFile::SnapshotTmp(..)) => true,
             Some(file) => self.durable_snapshot_covers(dir, file, &leaving.data, enough),
             None => name.ends_with(".tmp"),
         }
@@ -619,13 +619,14 @@ impl Sim {
         enough: impl Fn(FileCoverage) -> bool,
     ) -> bool {
         self.dir(dir).durable.iter().any(|(name, &id)| {
-            let newer =
-                matches!(DocFile::parse(name), Some(DocFile::Snapshot(g)) if g > file.generation());
-            newer
+            let Some(DocFile::Snapshot(g, format)) = DocFile::parse(name) else {
+                return false;
+            };
+            g > file.generation()
                 && matches!(&self.nodes[id], Node::File(f) if f.durable == f.data.len()
-                && read_snapshot(&f.data)
-                    .filter(|payload| applies(payload))
-                    .and_then(|payload| decode::update(payload).ok())
+                && snapshot::read(format, &f.data)
+                    .filter(|(payload, _)| applies(payload))
+                    .and_then(|(payload, _)| decode::update(payload).ok())
                     .is_some_and(|update| {
                         enough(file_coverage(&update, file, bytes))
                     }))
@@ -811,11 +812,11 @@ fn file_coverage(snapshot: &Update, file: DocFile, bytes: &[u8]) -> FileCoverage
                 || (log.end == LogEnd::Torn && bytes.len() <= SEGMENT_HEADER);
             (log.records, deletable)
         }
-        DocFile::Snapshot(_) => match read_snapshot(bytes) {
-            Some(payload) => (vec![payload], true),
+        DocFile::Snapshot(_, format) => match snapshot::read(format, bytes) {
+            Some((payload, condition)) => (vec![payload], condition == Condition::Whole),
             None => (Vec::new(), false),
         },
-        DocFile::SnapshotTmp(_) => return FileCoverage::Uncovered,
+        DocFile::SnapshotTmp(..) => return FileCoverage::Uncovered,
     };
     let blocks = snapshot.insertions(true);
     for record in records {

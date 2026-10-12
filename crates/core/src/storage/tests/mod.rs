@@ -24,6 +24,7 @@ use super::doc_id::DocId;
 use super::equality::Ops;
 use super::log::SEGMENT_HEADER;
 use super::sim_fs::SimFs;
+use super::snapshot::{self, Condition, SnapshotFormat};
 use super::state::Limits;
 use super::store::{Driver, OpenError, Store};
 use super::testkit::{SplitMix64, UpdateGen, doc_from, fingerprint};
@@ -191,6 +192,13 @@ pub(crate) fn without(updates: &[Vec<u8>], lost: &[usize]) -> Vec<Vec<u8>> {
     let numbered = updates.iter().enumerate();
     let kept = numbered.filter(|(i, _)| !lost.contains(i));
     kept.map(|(_, update)| update.clone()).collect()
+}
+
+pub(crate) fn snapshot_payload(bytes: &[u8]) -> &[u8] {
+    match snapshot::read(SnapshotFormat::V1, bytes) {
+        Some((payload, Condition::Whole)) => payload,
+        read => panic!("not a whole snapshot: {read:?}"),
+    }
 }
 
 pub(crate) fn record_at(updates: &[Vec<u8>], n: usize) -> usize {

@@ -1,6 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use super::doc_id::DocId;
+use super::snapshot::SnapshotFormat;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct Generation(pub u64);
@@ -22,34 +23,39 @@ impl SegmentNo {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) enum DocFile {
-    Snapshot(Generation),
-    SnapshotTmp(Generation),
+    Snapshot(Generation, SnapshotFormat),
+    SnapshotTmp(Generation, SnapshotFormat),
     Log(Generation, SegmentNo),
 }
 
 impl DocFile {
     pub fn generation(self) -> Generation {
         match self {
-            Self::Snapshot(g) | Self::SnapshotTmp(g) | Self::Log(g, _) => g,
+            Self::Snapshot(g, _) | Self::SnapshotTmp(g, _) | Self::Log(g, _) => g,
         }
     }
 
     pub fn name(self) -> String {
         match self {
-            Self::Snapshot(g) => format!("snapshot-{:010}.ysnap", g.0),
-            Self::SnapshotTmp(g) => format!("snapshot-{:010}.ysnap.tmp", g.0),
+            Self::Snapshot(g, f) => format!("snapshot-{:010}.{}", g.0, f.extension()),
+            Self::SnapshotTmp(g, f) => format!("snapshot-{:010}.{}.tmp", g.0, f.extension()),
             Self::Log(g, s) => format!("log-{:010}-{:010}.ylog", g.0, s.0),
         }
     }
 
     pub fn parse(name: &str) -> Option<Self> {
         if let Some(rest) = name.strip_prefix("snapshot-") {
-            if let Some(g) = rest.strip_suffix(".ysnap.tmp") {
-                return Some(Self::SnapshotTmp(Generation(number(g)?)));
-            }
-            return Some(Self::Snapshot(Generation(number(
-                rest.strip_suffix(".ysnap")?,
-            )?)));
+            let tmp = rest.strip_suffix(".tmp");
+            let (g, extension) = tmp.unwrap_or(rest).split_once('.')?;
+            let (g, f) = (
+                Generation(number(g)?),
+                SnapshotFormat::from_extension(extension)?,
+            );
+            return Some(if tmp.is_some() {
+                Self::SnapshotTmp(g, f)
+            } else {
+                Self::Snapshot(g, f)
+            });
         }
         let rest = name.strip_prefix("log-")?.strip_suffix(".ylog")?;
         let (g, s) = rest.split_once('-')?;
@@ -121,8 +127,8 @@ mod tests {
     #[test]
     fn file_names_round_trip_and_sort_by_number() {
         let files = [
-            DocFile::Snapshot(Generation(7)),
-            DocFile::SnapshotTmp(Generation(7)),
+            DocFile::Snapshot(Generation(7), SnapshotFormat::V1),
+            DocFile::SnapshotTmp(Generation(7), SnapshotFormat::V1),
             DocFile::Log(Generation(7), SegmentNo(12)),
             DocFile::Log(Generation(9_999_999_999), SegmentNo(0)),
         ];

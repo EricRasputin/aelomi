@@ -5,14 +5,14 @@ use yrs::{Doc, GetString, ReadTxn, StateVector, Text, Transact, Update};
 
 use super::{
     Delivery, Env, applied, assert_doc, doc, in_order, ops_of_updates, out_of_order, record_at,
-    soon, typed, with_a_loner_sixth, without,
+    snapshot_payload, soon, typed, with_a_loner_sixth, without,
 };
 use crate::storage::compact::CompactError;
 use crate::storage::doc_id::DocId;
 use crate::storage::equality::Ops;
 use crate::storage::log::{LOG_MAGIC, LogEnd, encode_segment, read_log};
 use crate::storage::sim_fs::{Crash, OpKind};
-use crate::storage::snapshot::{encode_snapshot, read_snapshot};
+use crate::storage::snapshot::encode_snapshot;
 use crate::storage::state::Limits;
 use crate::storage::store::Store;
 use crate::storage::testkit::{UpdateGen, apply, doc_from, fingerprint};
@@ -345,7 +345,7 @@ fn pending_structs_still_let_compaction_delete_the_old_generation() {
         }
         let held: Vec<_> = snapshots
             .iter()
-            .map(|bytes| doc_from([read_snapshot(bytes).unwrap()]))
+            .map(|bytes| doc_from([snapshot_payload(bytes)]))
             .collect();
         assert_eq!(
             held.iter()
@@ -387,7 +387,7 @@ fn a_doc_with_pending_structs_compacts_to_a_snapshot_of_exactly_its_operations()
         let snapshot = "snapshot-0000000001.ysnap";
         assert_eq!(env.doc_files(&a), [snapshot], "seed {seed}");
         let stored = &env.fs.files()[&env.path("docs/a").join(snapshot)];
-        let held = Update::decode_v1(read_snapshot(stored).unwrap()).unwrap();
+        let held = Update::decode_v1(snapshot_payload(stored)).unwrap();
         assert_eq!(Ops::of_update(&held), ops_of_updates(&sent), "seed {seed}");
 
         let more = UpdateGen::new(seed + 1_000, 2).updates(2);
@@ -1078,7 +1078,7 @@ fn compaction_runs_beside_the_writer_without_losing_updates() {
     );
     let files = env.fs.files();
     let dir = env.path("docs/a");
-    let held = Update::decode_v1(read_snapshot(&files[&dir.join(snapshot)]).unwrap()).unwrap();
+    let held = Update::decode_v1(snapshot_payload(&files[&dir.join(snapshot)])).unwrap();
     assert_eq!(Ops::of_update(&held), ops_of_updates(before_rotation));
     assert_eq!(read_log(&files[&dir.join(new_log)]).records, after_rotation);
     let store = env.open();

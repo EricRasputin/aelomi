@@ -10,7 +10,7 @@ use super::equality::Ops;
 use super::fs::Fs;
 use super::layout::{DocFile, Generation, Layout, SegmentNo};
 use super::log::{LogEnd, read_log};
-use super::snapshot::read_snapshot;
+use super::snapshot::{self, Condition};
 use super::state::{DocDir, Limits, LogSize, LogState, Segment};
 
 pub(crate) struct Recovered {
@@ -44,13 +44,16 @@ pub(crate) fn recover(
     let ydoc = Doc::new();
     let mut base = None;
     for file in files.iter().rev() {
-        let DocFile::Snapshot(generation) = *file else {
+        let DocFile::Snapshot(generation, format) = *file else {
             continue;
         };
         let bytes = fs.read(&layout.doc_file(doc, *file))?;
-        if read_snapshot(&bytes).is_some_and(|payload| apply_records(&ydoc, &[payload])) {
+        let read = snapshot::read(format, &bytes);
+        let applied = read.is_some_and(|(payload, _)| apply_records(&ydoc, &[payload]));
+        if applied {
             base.get_or_insert(generation);
-        } else {
+        }
+        if read.map(|(_, condition)| condition) != Some(Condition::Whole) || !applied {
             eprintln!("aelomi storage: {doc}/{} is corrupt", file.name());
             corrupt.insert(file.name());
         }
@@ -92,7 +95,7 @@ pub(crate) fn recover(
         .unwrap_or(SegmentNo(0));
     let interrupted = files
         .iter()
-        .any(|f| matches!(f, DocFile::SnapshotTmp(_)) || base.is_some_and(|b| f.generation() < b));
+        .any(|f| matches!(f, DocFile::SnapshotTmp(..)) || base.is_some_and(|b| f.generation() < b));
     let log = LogState {
         dir: DocDir::UnsyncedThisSession,
         segment: Segment::Next(newest, next),
@@ -118,12 +121,14 @@ pub(crate) fn stored_updates(fs: &dyn Fs, layout: &Layout, doc: &DocId) -> io::R
     let mut updates = Vec::new();
     let mut corrupt = BTreeSet::new();
     for file in files.iter().rev() {
-        if let DocFile::Snapshot(_) = file {
-            match read_snapshot(&fs.read(&layout.doc_file(doc, *file))?) {
-                Some(payload) => updates.push(payload.to_vec()),
-                None => {
-                    corrupt.insert(file.name());
-                }
+        if let DocFile::Snapshot(_, format) = *file {
+            let bytes = fs.read(&layout.doc_file(doc, *file))?;
+            let read = snapshot::read(format, &bytes);
+            if let Some((payload, _)) = read {
+                updates.push(payload.to_vec());
+            }
+            if read.map(|(_, condition)| condition) != Some(Condition::Whole) {
+                corrupt.insert(file.name());
             }
         }
     }

@@ -4,13 +4,12 @@ use std::time::{Duration, Instant};
 use yrs::updates::decoder::Decode;
 use yrs::{Doc, ReadTxn, StateVector, Text, Transact, Update};
 
-use super::{Delivery, Env, doc, in_order, ops_of_updates, out_of_order, soon};
+use super::{Delivery, Env, doc, in_order, ops_of_updates, out_of_order, snapshot_payload, soon};
 use crate::storage::clock::SystemClock;
 use crate::storage::equality::Ops;
 use crate::storage::fs::OsFs;
 use crate::storage::log::{LogContents, LogEnd, Salt, encode_record, read_log, segment_header};
 use crate::storage::recover::merge;
-use crate::storage::snapshot::read_snapshot;
 use crate::storage::state::Limits;
 use crate::storage::store::{Driver, Store};
 use crate::storage::testkit::{SplitMix64, UpdateGen, doc_from, fingerprint};
@@ -59,7 +58,7 @@ fn compact_and_reopen(seed: u64, n: usize, case: Case) -> Outcome {
         return Outcome::Refused;
     }
     let stored = &env.fs.files()[&env.path("docs/a").join(&snapshot)];
-    let held = Ops::of_update(&Update::decode_v1(read_snapshot(stored).unwrap()).unwrap());
+    let held = Ops::of_update(&Update::decode_v1(snapshot_payload(stored)).unwrap());
     let union = ops_of_updates(&sent);
     // yrs's encoding of a doc whose pending structs all integrated also holds the deletions yrs
     // derived from them.
