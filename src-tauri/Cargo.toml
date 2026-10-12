@@ -25,4 +25,5 @@ libc = "0.2"
 [dev-dependencies]
 aelomi-core = { path = "../crates/core", version = "0.1.0", features = ["test-support"] }
 specta-typescript = "=0.0.12"
+tempfile = "3.27.0"
 yrs = "0.28"
