@@ -52,13 +52,30 @@ function run(argv) {
   }
 }
 
+// Accessibility lists only windows on the current Space, and another app can take the
+// front between two commands. Bringing Aelomi forward here keeps the check and the action
+// in one invocation.
+function ready(proc, { front = false, seconds = 5 } = {}) {
+  const deadline = Date.now() + seconds * 1000;
+  while (Date.now() < deadline) {
+    if (proc.windows.length > 0 && (!front || proc.frontmost())) return;
+    proc.frontmost = true;
+    delay(0.1);
+  }
+  throw new Error(`The app has no window in the accessibility tree after ${seconds} s. Is it minimized?`);
+}
+
 function webArea(proc) {
-  if (proc.windows.length === 0) throw new Error("The app has no window.");
-  const queue = [proc.windows[0]];
-  while (queue.length > 0) {
-    const element = queue.shift();
-    if (get(element, "role") === "AXWebArea") return element;
-    queue.push(...children(element));
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    ready(proc);
+    const queue = [proc.windows[0]];
+    while (queue.length > 0) {
+      const element = queue.shift();
+      if (get(element, "role") === "AXWebArea") return element;
+      queue.push(...children(element));
+    }
+    delay(0.2);
   }
   throw new Error("The window has no web content yet.");
 }
@@ -179,14 +196,13 @@ function findByName(web, name) {
 function keys(se, proc, text, mods) {
   if (text === undefined) throw new Error(USAGE);
   const using = (mods ? mods.split(",") : []).map((mod) => `${mod.trim()} down`);
-  proc.frontmost = true;
-  delay(0.3);
+  ready(proc, { front: true });
   se.keystroke(text, { using });
   return `typed ${JSON.stringify(text)}${using.length ? ` with ${using.join(", ")}` : ""}`;
 }
 
 function windowInfo(proc, pid) {
-  if (proc.windows.length === 0) throw new Error("The app has no window.");
+  ready(proc);
   const windows = ObjC.deepUnwrap(
     ObjC.castRefToObject($.CGWindowListCopyWindowInfo($.kCGWindowListOptionOnScreenOnly, $.kCGNullWindowID)),
   ).filter((info) => info.kCGWindowOwnerPID === pid && info.kCGWindowLayer === 0);

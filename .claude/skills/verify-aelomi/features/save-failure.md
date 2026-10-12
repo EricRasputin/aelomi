@@ -25,7 +25,7 @@ Preconditions:
 
 - `RUN=$($S/app.sh launch dev)` printed a run directory, and `$S/app.sh doctor "$RUN"` reports every line as `ok`. A release build has no **Storage probe** link.
 - `shell.log` has `storage status=Ready path=<run dir>/data`, and **Run probe** has not been pressed yet.
-- Aelomi's window is on the current Space, and `$S/app.sh tree "$RUN"` prints the web content.
+- `$S/app.sh tree "$RUN"` prints the web content.
 
 - **Open the probe.** Run `$S/app.sh press "$RUN" "Storage probe"` and `$S/app.sh wait-status "$RUN" "Storage probe idle"`.
 - **Make writes fail.** Run `chmod a-w "$RUN/data/docs"` before the first **Run probe**.
@@ -36,10 +36,11 @@ Preconditions:
 - **Keep app open.** Run `$S/app.sh press "$RUN" "Keep app open"` and `$S/app.sh screenshot "$RUN" kept`. `kept.ax.txt` has no alert dialog and still has the banner. `shell.log` has no `quit confirmed`.
 - **Recovery.** Run `chmod u+w "$RUN/data/docs"`, then wait up to 20 s with `for _ in $(seq 100); do grep -q '^storage event health="Healthy"' "$RUN/shell.log" && break; sleep 0.2; done; grep '^storage event health="Healthy"' "$RUN/shell.log"`. Run `$S/app.sh screenshot "$RUN" recovered`. `recovered.ax.txt` has no `AXApplicationAlert`.
 - **Quit after recovery.** Run `$S/app.sh keys "$RUN" q command` and wait up to 15 s for the app PID to exit with `(. "$RUN/run.env"; for _ in $(seq 75); do kill -0 "$APP_PID" 2>/dev/null || exit 0; sleep 0.2; done; echo "app $APP_PID still running after 15 s"; exit 1)`. `shell.log` ends with `quit flush via=ExitRequested pending=[]` and `quit flush via=Exit pending=[]`.
-- **Close with ⌘W.** From a fresh failing state, run `$S/app.sh keys "$RUN" w command` and `$S/app.sh wait-dialog "$RUN" "Quit with unsaved changes?"`. `shell.log` has `quit flush via=CloseRequested pending=[DocId(probe)]`, and the window stays open.
-- **Quit anyway.** From the dialog, run `$S/app.sh press "$RUN" "Quit anyway"` and wait up to 15 s for the app PID to exit with the loop from **Quit after recovery**. `shell.log` has `quit confirmed`, `quit allowed via=ExitRequested confirmed=true`, and a final `quit flush via=Exit pending=[DocId(probe)]` while the folder is still read-only.
+- **Close with ⌘W.** From the failing state, run `$S/app.sh keys "$RUN" w command` and `$S/app.sh wait-dialog "$RUN" "Quit with unsaved changes?"`. `shell.log` has `quit flush via=CloseRequested pending=[DocId(probe)]` and `storage event quit_blocked={"pending_docs":["probe"]}`. The window stays open with the dialog. Press **Keep app open** before the next path.
+- **Quit Apple event.** From the failing state, send a quit Apple event to the app PID with a PID-targeted sender (see Gotchas), then run `$S/app.sh wait-dialog "$RUN" "Quit with unsaved changes?"`. `shell.log` has `quit flush via=Terminate pending=[DocId(probe)]` and the `quit_blocked` line. The sender gets reply error `-128` because the quit was cancelled. The same event with the logout reason gives the same lines.
+- **Quit anyway.** From the dialog, run `$S/app.sh press "$RUN" "Quit anyway"` and wait up to 15 s for the app PID to exit with the loop from **Quit after recovery**. The app exited 5 s after the press in the proof run. `shell.log` has one `quit confirmed`, then `quit allowed via=ExitRequested confirmed=true`, then a final `quit flush via=Exit pending=[DocId(probe)]` while the folder is still read-only. No `quit_blocked` line and no other `quit flush` line follow `quit confirmed`. `data/docs` stays empty, because the pending edit is lost.
 - **Mock browser.** Run `pnpm exec playwright test tests/playwright/save-failure.spec.ts --project webkit` and `pnpm test:e2e`. Both pass. They cover Escape, outside clicks, recovery while the dialog is open, both themes, wrapping of a long reason, and a double click on **Quit anyway**. The mock injects the failure, so report these as mock-only. Run them only while no `launch dev` run is active.
-- **Proof.** Keep `failure`, `dialog`, `kept`, and `recovered` with their `.ax.txt` files, plus `actions.log` and `shell.log`.
+- **Proof.** Keep the before and dialog screenshot of each path with its `.ax.txt` file, plus `actions.log` and `shell.log`.
 
 ## Gotchas
 
@@ -49,6 +50,6 @@ Preconditions:
 - If `screenshot` or `keys` fails because accessibility reports no window, check the Spaces gotcha in `../SKILL.md` before you suspect the app.
 - While the dialog is open, the background `role="status"` region leaves the accessibility tree, so `status` and `wait-status` fail. Use `wait-dialog`.
 - `tree` shows an unnamed `AXButton` on each side of the dialog. These are focus guards. Press the dialog's buttons by name.
-- No helper in this repo sends a quit Apple event to one PID. `osascript -e 'tell application "Aelomi" to quit'` can reach another Aelomi instance, so don't use it. Without a PID-targeted sender, report Dock **Quit** and logout as unreachable. Dock **Quit** and logout log `quit flush via=Terminate`. **Quit anyway** after a blocked logout quits only Aelomi and does not resume the logout.
+- No helper in this repo sends a quit Apple event to one PID. `osascript -e 'tell application "Aelomi" to quit'` can reach another Aelomi instance, so don't use it. A sender must address `kAEQuitApplication` to the process ID (`typeKernelProcessID`) with `AESendMessage`, and add `kAEQuitReason` set to `kAEReallyLogOut` for the logout case. That event only asks Aelomi to quit. It does not log the Mac out. Without such a sender, report the Apple event and logout paths as unreachable. Dock **Quit** also logs `via=Terminate`, but it needs the person's pointer. **Quit anyway** after a blocked logout quits only Aelomi and does not resume the logout.
 - Never run the WebKit suite, `pnpm test:e2e`, `pnpm build:mock`, or `mock-drive.mjs` during a `launch dev` run. They rewrite files under `playwright-report/`, `.e2e/`, and `dist-mock/`. When an HTML file there changes, the dev server reloads the app's UI, which clears in-memory UI state such as an open quit dialog. The edit stays pending in Rust, but the run no longer proves the dialog.
 - The app follows the macOS appearance. To capture both themes, switch System Settings > Appearance between shots, and restore the setting afterwards.
