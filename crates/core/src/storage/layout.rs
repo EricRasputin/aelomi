@@ -138,6 +138,7 @@ mod tests {
             DocFile::SnapshotTmp(Generation(8), SnapshotFormat::V2),
             DocFile::Log(Generation(7), SegmentNo(12), LogFormat::V1),
             DocFile::Log(Generation(9_999_999_999), SegmentNo(0), LogFormat::V1),
+            DocFile::Log(Generation(2), SegmentNo(1), LogFormat::V2),
         ];
         let names: Vec<String> = files.iter().map(|f| f.name()).collect();
         assert_eq!(
@@ -149,6 +150,7 @@ mod tests {
                 "snapshot-0000000008.ysnap2.tmp",
                 "log-0000000007-0000000012.ylog",
                 "log-9999999999-0000000000.ylog",
+                "log-0000000002-0000000001.ylog2",
             ]
         );
         for (file, name) in files.iter().zip(&names) {
@@ -172,6 +174,10 @@ mod tests {
             "snapshot-0000000007.tmp",
             "log-0000000001.ylog",
             "log-0000000001-0000000001.ylog.tmp",
+            "log-0000000001-0000000001.ylog2.tmp",
+            "log-0000000001-0000000001.ylog3",
+            "log-1-1.ylog2",
+            "log-0000000001-0000000001.ylog.ylog2",
             "notes.txt",
             ".DS_Store",
         ] {

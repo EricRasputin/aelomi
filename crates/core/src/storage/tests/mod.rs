@@ -221,6 +221,14 @@ pub(crate) fn read_log_file(path: &Path, bytes: &[u8]) -> LogContents {
     log::read(format, bytes)
 }
 
+pub(crate) fn v2_log(updates: &[impl AsRef<[u8]>]) -> Vec<u8> {
+    let mut out = Vec::new();
+    for update in updates {
+        log::encode_frame(update.as_ref(), &mut out);
+    }
+    out
+}
+
 pub(crate) fn snapshot_name(generation: u64) -> String {
     DocFile::Snapshot(Generation(generation), SnapshotFormat::V1).name()
 }

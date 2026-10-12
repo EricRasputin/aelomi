@@ -6,7 +6,7 @@ use yrs::{Doc, GetString, ReadTxn, StateVector, Text, Transact, Update};
 use super::{
     Delivery, Env, applied, assert_doc, doc, frames, in_order, log_name, ops_of_updates,
     out_of_order, read_log_file, snapshot_name, snapshot_payload, snapshot_tmp_name, soon, typed,
-    v1_record_at, with_a_loner_sixth, without,
+    v1_record_at, v2_log, with_a_loner_sixth, without,
 };
 use crate::storage::compact::CompactError;
 use crate::storage::doc_id::DocId;
@@ -748,6 +748,40 @@ fn compaction_deletes_a_log_holding_no_record_bytes_but_quarantines_a_short_corr
     );
     drop(store);
     assert_doc(&env.open(), &a, &sent);
+}
+
+#[test]
+fn a_damaged_format_2_log_moves_to_quarantine_byte_for_byte_and_loses_nothing() {
+    let env = Env::manual();
+    let a = doc("a");
+    let updates = UpdateGen::new(47, 2).updates(5);
+    let store = env.open();
+    for update in &updates[..2] {
+        store.append(&a, update).unwrap();
+    }
+    assert_eq!(store.flush(soon()), []);
+    drop(store);
+    let dir = env.path("docs/a");
+    env.fs.put_durable(
+        &dir.join("log-0000000000-0000000001.ylog2"),
+        &v2_log(&updates[2..3]),
+    );
+    let name = "log-0000000000-0000000002.ylog2";
+    let mut damaged = v2_log(&updates[3..]);
+    damaged[3] ^= 1;
+    env.fs.put_durable(&dir.join(name), &damaged);
+
+    let store = env.open();
+    assert_doc(&store, &a, &updates);
+    store.compact(&a).unwrap();
+    assert_eq!(env.doc_files(&a), [snapshot_name(1)]);
+    assert_eq!(
+        env.quarantine(),
+        [(env.path("quarantine/a").join(name), damaged)].into(),
+        "only the damaged file moved, byte for byte"
+    );
+    drop(store);
+    assert_doc(&env.open(), &a, &updates);
 }
 
 #[test]
