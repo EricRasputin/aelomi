@@ -41,7 +41,7 @@ pub(crate) enum Condition {
 pub(crate) fn read(format: SnapshotFormat, bytes: &[u8]) -> Option<(&[u8], Condition)> {
     match format {
         SnapshotFormat::V1 => read_v1(bytes).map(|payload| (payload, Condition::Whole)),
-        SnapshotFormat::V2 => None,
+        SnapshotFormat::V2 => read_v2(bytes),
     }
 }
 
@@ -55,6 +55,18 @@ pub(crate) fn encode_snapshot(payload: &[u8]) -> Vec<u8> {
     out
 }
 
+fn read_v1(bytes: &[u8]) -> Option<&[u8]> {
+    let header = bytes.get(..HEADER)?;
+    let len = u32::from_le_bytes(header[8..12].try_into().unwrap()) as usize;
+    let crc = u32::from_le_bytes(header[12..16].try_into().unwrap());
+    let payload = &bytes[HEADER..];
+    (header[..8] == SNAPSHOT_MAGIC
+        && len > 0
+        && payload.len() == len
+        && crc32fast::hash(payload) == crc)
+        .then_some(payload)
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Anchor {
     len: usize,
@@ -62,11 +74,59 @@ struct Anchor {
 }
 
 impl Anchor {
+    fn parse(bytes: &[u8], magic: [u8; 8]) -> Option<Self> {
+        let bytes: &[u8; ANCHOR] = bytes.try_into().ok()?;
+        let field = |at: usize| u64::from_le_bytes(bytes[at..at + 8].try_into().unwrap());
+        let check = u32::from_le_bytes(bytes[28..].try_into().unwrap());
+        let valid = bytes[..8] == magic
+            && bytes[24..28] == [0; 4]
+            && crc32fast::hash(&bytes[..28]) == check;
+        let len = usize::try_from(field(8)).ok().filter(|&len| len > 0)?;
+        valid.then_some(Self {
+            len,
+            crc: field(16),
+        })
+    }
+
     fn copies(self) -> Option<[Range<usize>; 2]> {
         let a_end = ANCHOR.checked_add(self.len)?;
         let b = a_end.checked_next_multiple_of(BLOCK)?.checked_add(BLOCK)?;
         Some([ANCHOR..a_end, b..b.checked_add(self.len)?])
     }
+
+    fn file_len(self) -> Option<usize> {
+        self.copies()?[1].end.checked_add(ANCHOR)
+    }
+}
+
+/// A tail counts only where its own length puts it, so a cut that ends inside a payload can't
+/// make note text an anchor.
+fn read_v2(bytes: &[u8]) -> Option<(&[u8], Condition)> {
+    let head = bytes
+        .get(..ANCHOR)
+        .and_then(|head| Anchor::parse(head, HEAD_MAGIC));
+    let tail = (bytes.len().checked_sub(ANCHOR))
+        .and_then(|at| Anchor::parse(&bytes[at..], TAIL_MAGIC))
+        .filter(|tail| tail.file_len() == Some(bytes.len()));
+    let intact = |copy: usize| {
+        [head, tail].into_iter().flatten().find_map(|anchor| {
+            let payload = bytes.get(anchor.copies()?[copy].clone())?;
+            (CRC_64.checksum(payload) == anchor.crc).then_some(payload)
+        })
+    };
+    let (a, b) = (intact(0), intact(1));
+    let zero_padding = |anchor: Anchor| {
+        let [a, b] = anchor.copies()?;
+        Some(bytes.get(a.end..b.start)?.iter().all(|&byte| byte == 0))
+    };
+    let whole =
+        head == tail && a.is_some() && b.is_some() && head.and_then(zero_padding) == Some(true);
+    let condition = if whole {
+        Condition::Whole
+    } else {
+        Condition::Damaged
+    };
+    Some((a.or(b)?, condition))
 }
 
 #[cfg(test)]
@@ -95,18 +155,6 @@ pub(crate) fn encode_snapshot_v2(payload: &[u8]) -> Vec<u8> {
     out[b.clone()].copy_from_slice(payload);
     out[b.end..].copy_from_slice(&anchor.encode(TAIL_MAGIC));
     out
-}
-
-fn read_v1(bytes: &[u8]) -> Option<&[u8]> {
-    let header = bytes.get(..HEADER)?;
-    let len = u32::from_le_bytes(header[8..12].try_into().unwrap()) as usize;
-    let crc = u32::from_le_bytes(header[12..16].try_into().unwrap());
-    let payload = &bytes[HEADER..];
-    (header[..8] == SNAPSHOT_MAGIC
-        && len > 0
-        && payload.len() == len
-        && crc32fast::hash(payload) == crc)
-        .then_some(payload)
 }
 
 #[cfg(test)]
