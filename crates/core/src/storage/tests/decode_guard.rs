@@ -5,7 +5,7 @@ use yrs::encoding::write::Write;
 use yrs::updates::encoder::{Encoder, EncoderV1};
 
 use super::{Env, applied, doc, soon, typed};
-use crate::storage::log::encode_segment;
+use crate::storage::log::{LogContents, LogEnd, SEGMENT_HEADER, encode_segment, read_log};
 use crate::storage::snapshot::encode_snapshot;
 use crate::storage::store::AppendError;
 
@@ -92,6 +92,21 @@ fn decode_guard_resync_keeps_an_overdeep_record_without_decoding_it() {
 }
 
 #[test]
+fn decode_guard_length_recovery_bounds_resident_memory() {
+    child("length-allocation");
+}
+
+#[test]
+fn decode_guard_length_recovery_bounds_next_record_memory() {
+    child("length-next-allocation");
+}
+
+#[test]
+fn decode_guard_length_recovery_keeps_overdeep_records() {
+    child("length-disk");
+}
+
+#[test]
 fn decode_guard_small_caller_stack_survives_the_boundary() {
     child("small-stack");
 }
@@ -121,6 +136,33 @@ fn decode_guard_child() {
             "append increased maximum RSS by {growth} bytes"
         );
         assert_eq!(env.doc_files(&doc("a")), Vec::<String>::new());
+        return;
+    }
+    if case == "length-allocation" || case == "length-next-allocation" {
+        let bomb = [0x80, 0x80, 0x80, 0x80, 1];
+        let good = typed(7, 3);
+        let payloads: Vec<&[u8]> = if case == "length-next-allocation" {
+            vec![&good, &bomb, &good]
+        } else {
+            vec![&bomb, &good]
+        };
+        let mut bytes = encode_segment(&payloads);
+        bytes[SEGMENT_HEADER..SEGMENT_HEADER + 4].copy_from_slice(&u32::MAX.to_le_bytes());
+        let before = max_rss();
+        let contents = read_log(&bytes);
+        let growth = max_rss().saturating_sub(before);
+        eprintln!("{case} maximum RSS growth: {growth} bytes");
+        assert!(
+            growth < 32 * 1024 * 1024,
+            "length recovery increased maximum RSS by {growth} bytes"
+        );
+        assert_eq!(
+            contents,
+            LogContents {
+                records: vec![good.as_slice()],
+                end: LogEnd::Corrupt,
+            }
+        );
         return;
     }
     let stack_size = if case == "small-stack" {
@@ -175,7 +217,7 @@ fn decode_guard_child() {
                     assert_eq!(held, expected);
                 }
                 assert_eq!(loaded, nested);
-            } else if case == "disk" || case == "resync" {
+            } else if case == "disk" || case == "resync" || case == "length-disk" {
                 let good = typed(7, 3);
                 let deep = nested_update(6000);
                 store.append(&a, &good).unwrap();
@@ -183,13 +225,17 @@ fn decode_guard_child() {
                 store.close(soon()).unwrap();
                 let mut log = encode_segment(&[&deep]);
                 if case == "resync" {
-                    log.insert(crate::storage::log::SEGMENT_HEADER, 0xf0);
+                    log.insert(SEGMENT_HEADER, 0xf0);
+                } else if case == "length-disk" {
+                    log[SEGMENT_HEADER..SEGMENT_HEADER + 4]
+                        .copy_from_slice(&u32::MAX.to_le_bytes());
                 }
-                for (name, bytes) in [
-                    ("log-0000000000-0000000001.ylog", log),
-                    ("snapshot-0000000000.ysnap", encode_snapshot(&deep)),
-                ] {
-                    env.fs.put_durable(&env.path("docs/a").join(name), &bytes);
+                let mut planted = vec![("log-0000000000-0000000001.ylog", log)];
+                if case != "length-disk" {
+                    planted.push(("snapshot-0000000000.ysnap", encode_snapshot(&deep)));
+                }
+                for (name, bytes) in &planted {
+                    env.fs.put_durable(&env.path("docs/a").join(name), bytes);
                 }
                 let stored = env.fs.files();
                 let store = env.open();
@@ -202,10 +248,7 @@ fn decode_guard_child() {
                         .join()
                         .unwrap();
                 });
-                for name in [
-                    "log-0000000000-0000000001.ylog",
-                    "snapshot-0000000000.ysnap",
-                ] {
+                for (name, _) in planted {
                     let original = env.path("docs/a").join(name);
                     let kept = env.fs.files();
                     assert_eq!(
