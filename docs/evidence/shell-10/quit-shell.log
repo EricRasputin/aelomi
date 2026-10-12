@@ -1,0 +1,31 @@
+$ node scripts/tauri-dev.ts
+AELOMI_DEV_PORT=61164
+     Running BeforeDevCommand (`pnpm dev --port 61164 --strictPort`)
+$ vite --port 61164 --strictPort
+
+  VITE v8.3.4  ready in 182 ms
+
+  ➜  Local:   http://localhost:61164/
+     Running DevCommand (`cargo  run --no-default-features --color always --`)
+        Info Watching /Users/prabhath_p/.t3/worktrees/aelomi/feat-shell-10-save-failure/src-tauri for changes...
+        Info Watching /Users/prabhath_p/.t3/worktrees/aelomi/feat-shell-10-save-failure/crates/core for changes...
+[1m[92m   Compiling[0m aelomi v0.1.0 (/Users/prabhath_p/.t3/worktrees/aelomi/feat-shell-10-save-failure/src-tauri)
+[1m[96m    Building[0m [=======================> ] 373/376: aelomi(build)               [1m[96m    Building[0m [=======================> ] 374/376: aelomi                      [1m[96m    Building[0m [=======================> ] 375/376: aelomi(bin)                 [K[1m[92m    Finished[0m `dev` profile [unoptimized + debuginfo] target(s) in 4.64s
+[1m[92m     Running[0m `/Users/prabhath_p/.t3/worktrees/aelomi/feat-shell-10-save-failure/target/debug/aelomi`
+storage status=Ready path=/private/tmp/aelomi-verify/20261012-235412-dev-VRbH/data
+ping seq=1
+11:58:34 PM [vite] (client) hmr update /src/styles.css
+11:58:34 PM [vite] (client) hmr update /src/styles.css
+11:59:32 PM [vite] (client) hmr update /src/styles.css
+11:59:32 PM [vite] (client) hmr update /src/styles.css
+storage probe present=true marker=aelomi-dev-storage-probe-mv5l97be before=[] append_ms=5.0 load_ms=1.0
+storage event health={"Failing":{"reason":"PermissionDenied","pending_docs":["probe"]}}
+quit flush via=CloseRequested pending=[DocId(probe)]
+storage event quit_blocked={"pending_docs":["probe"]}
+quit flush via=Terminate pending=[DocId(probe)]
+storage event quit_blocked={"pending_docs":["probe"]}
+quit flush via=Terminate pending=[DocId(probe)]
+storage event quit_blocked={"pending_docs":["probe"]}
+quit confirmed
+quit allowed via=ExitRequested confirmed=true
+quit flush via=Exit pending=[DocId(probe)]

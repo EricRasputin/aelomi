@@ -1,0 +1,26 @@
+import Foundation
+import Carbon
+
+guard CommandLine.arguments.count >= 2, var pid = Int32(CommandLine.arguments[1]) else {
+    fatalError("usage: quit-event PID [logout]")
+}
+var target = AEAddressDesc()
+var event = AppleEvent()
+var reply = AppleEvent()
+var error = AECreateDesc(DescType(typeKernelProcessID), &pid, MemoryLayout<Int32>.size, &target)
+guard error == noErr else { fatalError("AECreateDesc: \(error)") }
+defer { AEDisposeDesc(&target) }
+error = AECreateAppleEvent(AEEventClass(kCoreEventClass), AEEventID(kAEQuitApplication), &target, AEReturnID(kAutoGenerateReturnID), AETransactionID(kAnyTransactionID), &event)
+guard error == noErr else { fatalError("AECreateAppleEvent: \(error)") }
+defer { AEDisposeDesc(&event); AEDisposeDesc(&reply) }
+if CommandLine.arguments.contains("logout") {
+    var reason = UInt32(kAEReallyLogOut)
+    error = AEPutParamPtr(&event, AEKeyword(kAEQuitReason), DescType(typeEnumerated), &reason, MemoryLayout<UInt32>.size)
+    guard error == noErr else { fatalError("AEPutParamPtr: \(error)") }
+}
+let sendStatus = AESendMessage(&event, &reply, AESendMode(kAEWaitReply | kAECanInteract), 600)
+var replyError: Int32 = 0
+var actualType: DescType = 0
+var actualSize = 0
+let readStatus = AEGetParamPtr(&reply, AEKeyword(keyErrorNumber), DescType(typeSInt32), &actualType, &replyError, MemoryLayout<Int32>.size, &actualSize)
+print("quit event pid=\(pid) logout=\(CommandLine.arguments.contains("logout")) send_status=\(sendStatus) reply_error=\(replyError) read_status=\(readStatus)")
