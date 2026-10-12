@@ -113,10 +113,8 @@ pub(crate) fn read_log_decoding(bytes: &[u8], mut decode_budget: usize) -> LogCo
         }
         let stated_end = stated_end(bytes, at, salt);
         let scan = match stated_end {
-            // The stated length holds, so only the CRC or the payload is damaged, and a record
-            // inside the payload could only be a frame its author planted there.
             Some(end) if decode::decodes_exactly(&bytes[at + RECORD_HEADER..end]) => Scan::NoRecord,
-            Some(end) => resync(crcs().chaining_to(at + 1, end), &mut decode_budget),
+            Some(end) => resync(crcs().records_chaining_to(at + 1, end), &mut decode_budget),
             None => resync(crcs().records_from(at + 1), &mut decode_budget),
         };
         let torn = contents.end == LogEnd::Clean
@@ -177,8 +175,6 @@ fn boundary_at(bytes: &[u8], at: usize, salt: Salt) -> bool {
         || record_at(bytes, at, salt).is_some_and(|record| decode::update(record).is_ok())
 }
 
-/// The CRC-32 of every 64th prefix of a log, so a scan checks a candidate's salted CRC without
-/// hashing the payload its length claims.
 struct PrefixCrcs<'a> {
     bytes: &'a [u8],
     salt: u32,
@@ -205,18 +201,21 @@ impl<'a> PrefixCrcs<'a> {
         (from..end).filter_map(move |at| Some((at, self.record_at(at, end)?)))
     }
 
-    /// Finds, in one backward pass, every offset whose chain of passing records ends exactly at
-    /// `end`, so a payload packed with frames costs one CRC check per offset, not one per hop.
-    fn chaining_to(&self, from: usize, end: usize) -> impl Iterator<Item = (usize, &'a [u8])> {
-        let mut lands = vec![false; end - from];
+    fn records_chaining_to(
+        &self,
+        from: usize,
+        end: usize,
+    ) -> impl Iterator<Item = (usize, &'a [u8])> {
+        let mut chains = vec![false; end - from];
         for at in (from..end).rev() {
-            lands[at - from] = self.record_at(at, end).is_some_and(|payload| {
+            chains[at - from] = self.record_at(at, end).is_some_and(|payload| {
                 let next = at + RECORD_HEADER + payload.len();
-                next == end || lands[next - from]
+                next == end || chains[next - from]
             });
         }
-        let landing = (from..end).filter(move |&at| lands[at - from]);
-        landing.filter_map(move |at| Some((at, self.record_at(at, end)?)))
+        let bytes = &self.bytes[..end];
+        let chaining = (from..end).filter(move |&at| chains[at - from]);
+        chaining.filter_map(move |at| Some((at, candidate_at(bytes, at)?.1)))
     }
 
     fn record_at(&self, at: usize, end: usize) -> Option<&'a [u8]> {
@@ -225,11 +224,10 @@ impl<'a> PrefixCrcs<'a> {
         (self.salted_crc(start, start + payload.len()) == crc).then_some(payload)
     }
 
-    /// CRC-32 is linear, so `crc(a ‖ b) = shift(crc(a), b.len()) ^ crc(b)`. The salted CRC of a
-    /// range is then the CRC of the prefix up to its end, with the prefix before it swapped for
-    /// the salt.
     fn salted_crc(&self, start: usize, end: usize) -> u32 {
-        self.prefix(end) ^ shift(self.prefix(start) ^ self.salt, end - start)
+        let len = end - start;
+        let range = self.prefix(end) ^ combine(self.prefix(start), 0, len);
+        combine(self.salt, range, len)
     }
 
     fn prefix(&self, end: usize) -> u32 {
@@ -240,10 +238,10 @@ impl<'a> PrefixCrcs<'a> {
     }
 }
 
-fn shift(crc: u32, len: usize) -> u32 {
-    let mut shifted = crc32fast::Hasher::new_with_initial(crc);
-    shifted.combine(&crc32fast::Hasher::new_with_initial_len(0, len as u64));
-    shifted.finalize()
+fn combine(crc: u32, then: u32, len: usize) -> u32 {
+    let mut combined = crc32fast::Hasher::new_with_initial(crc);
+    combined.combine(&crc32fast::Hasher::new_with_initial_len(then, len as u64));
+    combined.finalize()
 }
 
 fn recover_length<'a>(
