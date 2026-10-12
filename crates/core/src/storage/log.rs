@@ -557,7 +557,8 @@ mod tests {
                 for (byte, mask) in bytes[..SEGMENT_HEADER].iter_mut().zip(header) {
                     *byte ^= mask;
                 }
-                let end = if header == [0; 16] { LogEnd::Clean } else { LogEnd::Corrupt };
+                let same_state = crc32fast::hash(&bytes[8..SEGMENT_HEADER]) == crc32fast::hash(&salt);
+                let end = if header[..8] == [0; 8] && same_state { LogEnd::Clean } else { LogEnd::Corrupt };
                 proptest::prop_assert_eq!(read_log(&bytes), LogContents { records, end });
             }
             let update = typed(4);
