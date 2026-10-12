@@ -1,5 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError, TryLockError};
 use std::time::Duration;
 
 use yrs::Doc;
@@ -7,6 +7,7 @@ use yrs::Doc;
 use super::health::{FailReason, retry_delay};
 use super::layout::{DocFile, Generation, SegmentNo};
 use super::log::Salt;
+use super::store::Shared;
 
 /// An update's place in the order the store received updates.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -41,8 +42,42 @@ impl DocSlot {
         state
     }
 
-    pub fn files(&self) -> MutexGuard<'_, ()> {
-        lock_ignoring_poison(&self.files)
+    pub fn files<'a>(&'a self, shared: &'a Shared) -> Files<'a> {
+        Files {
+            held: Some(lock_ignoring_poison(&self.files)),
+            slot: self,
+            shared,
+        }
+    }
+
+    pub fn try_files(&self) -> Option<MutexGuard<'_, ()>> {
+        match self.files.try_lock() {
+            Ok(held) => Some(held),
+            Err(TryLockError::Poisoned(poisoned)) => Some(poisoned.into_inner()),
+            Err(TryLockError::WouldBlock) => None,
+        }
+    }
+}
+
+/// A doc's file lock, held by anything but the writer. The writer may have skipped the doc
+/// while it was held, so releasing it wakes the writer if the doc has updates queued.
+pub(crate) struct Files<'a> {
+    held: Option<MutexGuard<'a, ()>>,
+    slot: &'a DocSlot,
+    shared: &'a Shared,
+}
+
+impl Drop for Files<'_> {
+    fn drop(&mut self) {
+        self.held = None;
+        if self
+            .slot
+            .state()
+            .as_ref()
+            .is_some_and(|s| !s.queue.is_empty())
+        {
+            self.shared.notify_writer();
+        }
     }
 }
 

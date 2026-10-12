@@ -307,7 +307,11 @@ fn the_writer_thread_writes_a_skipped_doc_once_its_files_free() {
         (a_acked, pending, b_acked)
     });
     assert!(a_acked, "a is acknowledged while b's files are busy");
-    assert_eq!(pending, [b.clone()], "flush reports b at its deadline");
+    assert_eq!(
+        pending,
+        std::slice::from_ref(&b),
+        "flush reports b at its deadline"
+    );
     assert!(
         b_acked,
         "b is written once its files free, with no append or flush"

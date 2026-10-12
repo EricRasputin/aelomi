@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::{Duration, Instant};
 
-use super::{Env, assert_doc, doc, soon};
+use super::{Delivery, Env, applied, assert_doc, doc, ops_of_updates, out_of_order, soon};
 use crate::storage::doc_id::DocId;
 use crate::storage::health::{FailReason, Health};
 use crate::storage::log::{LogEnd, read_log};
@@ -262,6 +262,40 @@ fn flush_retries_a_failing_doc_at_once_whatever_its_backoff() {
     assert_eq!(store.health(), Health::Healthy);
     drop(store);
     assert_doc(&env.open(), &a, &sent);
+}
+
+#[test]
+fn a_flush_retries_a_failing_doc_whose_files_were_busy_as_soon_as_they_free() {
+    let env = Env::manual();
+    let b = doc("b");
+    let sent = out_of_order(82, 40, Delivery::OneWithheld);
+    let (last, stored) = sent.split_last().unwrap();
+    let store = env.open();
+    for update in stored {
+        store.append(&b, update).unwrap();
+    }
+    assert_eq!(store.flush(soon()), []);
+    assert!(store.has_pending_structs(&b), "b's load merges its files");
+    env.fs.fail(OpKind::Append, "/docs/b/", libc::EIO);
+    store.append(&b, last).unwrap();
+    write_batch(&store);
+    env.fs.clear_faults();
+
+    let hold = env.fs.hold_once(OpKind::Read, "/docs/b/", Duration::ZERO);
+    let pending = std::thread::scope(|s| {
+        let loading = s.spawn(|| store.load(&b).unwrap());
+        hold.wait_until_reached();
+        let pending = store.flush(soon());
+        hold.release();
+        loading.join().unwrap();
+        pending
+    });
+    assert_eq!(pending, std::slice::from_ref(&b), "b's files were busy");
+    write_batch(&store);
+    assert_eq!(store.health(), Health::Healthy, "within b's 100 ms backoff");
+    drop(store);
+    let (held, _) = applied(&env.open().load(&b).unwrap(), "b");
+    assert_eq!(held, ops_of_updates(&sent));
 }
 
 #[test]
