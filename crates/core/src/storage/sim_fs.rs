@@ -5,14 +5,13 @@ use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::Duration;
 
 use super::clock::Clock;
-use super::compact::{Coverage, coverage, torn_after};
-use super::equality::Ops;
 use super::fs::{Fs, FsLock, LockError};
 use super::layout::DocFile;
+use super::log::{LogEnd, SEGMENT_HEADER, read_log};
 use super::snapshot::read_snapshot;
 use super::testkit::SplitMix64;
 use yrs::updates::decoder::Decode;
-use yrs::{Doc, Transact, Update};
+use yrs::{Doc, IdSet, Transact, Update};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum OpKind {
@@ -506,7 +505,7 @@ impl Sim {
                 if self.lookup(to).is_some() {
                     self.violation(format!("rename {path:?} onto existing {to:?}"));
                 }
-                let held = |coverage| matches!(coverage, Coverage::Full { .. });
+                let held = |coverage| coverage != FileCoverage::Uncovered;
                 if to.parent() != path.parent() && !self.may_leave(id, path, held) {
                     self.violation(format!(
                         "move {path:?} out of its folder, though no durable snapshot holds it"
@@ -514,12 +513,16 @@ impl Sim {
                 }
             }
             OpKind::Remove => {
-                let clean = |coverage| coverage == Coverage::Full { damaged: false };
-                let held = |coverage| matches!(coverage, Coverage::Full { .. });
+                let clean = |coverage| coverage == FileCoverage::Deletable;
+                let held = |coverage| coverage != FileCoverage::Uncovered;
                 let torn_by_a_failed_write =
                     match (&self.nodes[id], self.durable_at_failure.get(&id)) {
                         (Node::File(file), Some(&durable)) => {
-                            torn_after(durable as u64, &file.data)
+                            matches!(DocFile::parse(&file_name(path)), Some(DocFile::Log(..)))
+                                && read_log(&file.data).end == LogEnd::Torn
+                                && file.data.get(..durable).is_some_and(|before| {
+                                    durable == 0 || read_log(before).end == LogEnd::Clean
+                                })
                         }
                         _ => false,
                     };
@@ -534,7 +537,7 @@ impl Sim {
         }
     }
 
-    fn may_leave(&self, id: usize, path: &Path, enough: impl Fn(Coverage) -> bool) -> bool {
+    fn may_leave(&self, id: usize, path: &Path, enough: impl Fn(FileCoverage) -> bool) -> bool {
         let (Ok((dir, name)), Node::File(leaving)) = (self.parent(path), &self.nodes[id]) else {
             return true;
         };
@@ -564,7 +567,7 @@ impl Sim {
         dir: usize,
         file: DocFile,
         bytes: &[u8],
-        enough: impl Fn(Coverage) -> bool,
+        enough: impl Fn(FileCoverage) -> bool,
     ) -> bool {
         self.dir(dir).durable.iter().any(|(name, &id)| {
             let newer =
@@ -575,7 +578,7 @@ impl Sim {
                     .filter(|payload| applies(payload))
                     .and_then(|payload| Update::decode_v1(payload).ok())
                     .is_some_and(|update| {
-                        enough(coverage(&Ops::of_update(&update), file, bytes))
+                        enough(file_coverage(&update, file, bytes))
                     }))
         })
     }
@@ -712,6 +715,61 @@ fn file_name(path: &Path) -> String {
 
 fn not_found() -> io::Error {
     io::Error::from(io::ErrorKind::NotFound)
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum FileCoverage {
+    Uncovered,
+    Deletable,
+    PreserveBytes,
+}
+
+fn file_coverage(snapshot: &Update, file: DocFile, bytes: &[u8]) -> FileCoverage {
+    let (records, deletable) = match file {
+        DocFile::Log(..) => {
+            let log = read_log(bytes);
+            let deletable = log.end == LogEnd::Clean
+                || (log.end == LogEnd::Torn && bytes.len() <= SEGMENT_HEADER);
+            (log.records, deletable)
+        }
+        DocFile::Snapshot(_) => match read_snapshot(bytes) {
+            Some(payload) => (vec![payload], true),
+            None => (Vec::new(), false),
+        },
+        DocFile::SnapshotTmp(_) => return FileCoverage::Uncovered,
+    };
+    let blocks = snapshot.insertions(true);
+    for record in records {
+        let Ok(update) = Update::decode_v1(record) else {
+            return FileCoverage::Uncovered;
+        };
+        if !every_id_is_present(&blocks, &update.insertions(true))
+            || !every_id_is_present(snapshot.delete_set(), update.delete_set())
+        {
+            return FileCoverage::Uncovered;
+        }
+    }
+    if deletable {
+        FileCoverage::Deletable
+    } else {
+        FileCoverage::PreserveBytes
+    }
+}
+
+fn every_id_is_present(held: &IdSet, needed: &IdSet) -> bool {
+    for (client, ranges) in needed.iter() {
+        for range in ranges.iter() {
+            for clock in range.clone() {
+                let present = held.iter().any(|(held_client, held_ranges)| {
+                    held_client == client && held_ranges.iter().any(|range| range.contains(&clock))
+                });
+                if !present {
+                    return false;
+                }
+            }
+        }
+    }
+    true
 }
 
 fn applies(payload: &[u8]) -> bool {
