@@ -13,6 +13,7 @@ mod snapshot_copies;
 mod store;
 
 use std::collections::BTreeMap;
+use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -23,6 +24,7 @@ use yrs::{Text, Transact};
 use super::clock::{Clock, ManualClock, SystemClock};
 use super::doc_id::DocId;
 use super::equality::Ops;
+use super::layout::{DocFile, Generation, SegmentNo};
 use super::log::SEGMENT_HEADER;
 use super::sim_fs::SimFs;
 use super::snapshot::{self, Condition, SnapshotFormat};
@@ -202,7 +204,49 @@ pub(crate) fn snapshot_payload(bytes: &[u8]) -> &[u8] {
     }
 }
 
-pub(crate) fn record_at(updates: &[Vec<u8>], n: usize) -> usize {
+pub(crate) fn log_name(generation: u64, segment: u64) -> String {
+    DocFile::Log(Generation(generation), SegmentNo(segment)).name()
+}
+
+pub(crate) fn snapshot_name(generation: u64) -> String {
+    DocFile::Snapshot(Generation(generation), SnapshotFormat::V1).name()
+}
+
+pub(crate) fn snapshot_tmp_name(generation: u64) -> String {
+    DocFile::SnapshotTmp(Generation(generation), SnapshotFormat::V1).name()
+}
+
+pub(crate) struct Frame {
+    pub head: Range<usize>,
+    pub body: Range<usize>,
+    pub tail: Range<usize>,
+}
+
+pub(crate) fn frames(updates: &[impl AsRef<[u8]>]) -> Vec<Frame> {
+    let mut at = SEGMENT_HEADER;
+    updates
+        .iter()
+        .map(|update| {
+            let head = at..at + 8;
+            let body = head.end..head.end + update.as_ref().len();
+            let tail = body.end..body.end;
+            at = tail.end;
+            Frame { head, body, tail }
+        })
+        .collect()
+}
+
+impl Frame {
+    pub fn length_byte(&self, byte: usize) -> usize {
+        self.head.start + byte
+    }
+
+    pub fn crc_byte(&self, byte: usize) -> usize {
+        self.head.start + 4 + byte
+    }
+}
+
+pub(crate) fn v1_record_at(updates: &[Vec<u8>], n: usize) -> usize {
     SEGMENT_HEADER + updates[..n].iter().map(|u| 8 + u.len()).sum::<usize>()
 }
 

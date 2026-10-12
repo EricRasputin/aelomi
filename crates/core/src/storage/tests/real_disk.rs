@@ -2,7 +2,7 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use super::{assert_doc, doc, record_at, soon, with_a_loner_sixth, without};
+use super::{assert_doc, doc, frames, log_name, snapshot_name, soon, with_a_loner_sixth, without};
 use crate::storage::clock::SystemClock;
 use crate::storage::fs::OsFs;
 use crate::storage::state::Limits;
@@ -77,7 +77,7 @@ fn compaction_and_quarantine_work_on_a_real_disk() {
     assert_eq!(store.flush(soon()), []);
     let (queued, result) = store.run_compactor_once().expect("over the limit");
     assert_eq!((queued, result.is_ok()), (a.clone(), true));
-    assert_eq!(files(&docs_a), ["snapshot-0000000001.ysnap"]);
+    assert_eq!(files(&docs_a), [snapshot_name(1)]);
     assert_doc(&store, &a, &compacted);
 
     let logged = with_a_loner_sixth(updates.updates(10));
@@ -85,19 +85,19 @@ fn compaction_and_quarantine_work_on_a_real_disk() {
         store.append(&a, update).unwrap();
     }
     store.close(soon()).unwrap();
-    let name = "log-0000000001-0000000000.ylog";
-    let path = docs_a.join(name);
+    let name = log_name(1, 0);
+    let path = docs_a.join(&name);
     let mut damaged = std::fs::read(&path).unwrap();
-    damaged[record_at(&logged, 5) + 9] ^= 0x10;
+    damaged[frames(&logged)[5].body.start + 1] ^= 0x10;
     std::fs::write(&path, &damaged).unwrap();
 
     let intact = [compacted, without(&logged, &[5])].concat();
     let store = open();
     assert_doc(&store, &a, &intact);
     store.compact(&a).unwrap();
-    assert_eq!(files(&docs_a), ["snapshot-0000000002.ysnap"]);
+    assert_eq!(files(&docs_a), [snapshot_name(2)]);
     assert_eq!(
-        std::fs::read(dir.path().join("quarantine/a").join(name)).unwrap(),
+        std::fs::read(dir.path().join("quarantine/a").join(&name)).unwrap(),
         damaged,
         "moved byte for byte"
     );

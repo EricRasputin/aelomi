@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 use yrs::encoding::write::Write;
 use yrs::updates::encoder::{Encoder, EncoderV1};
 
-use super::{Env, applied, doc, soon, typed};
+use super::{Env, applied, doc, snapshot_name, soon, typed};
 use crate::storage::log::{LogContents, LogEnd, SEGMENT_HEADER, encode_segment, read_log};
 use crate::storage::snapshot::encode_snapshot;
 use crate::storage::store::AppendError;
@@ -195,7 +195,7 @@ fn decode_guard_child() {
                 assert_eq!(store.flush(soon()), []);
                 if case == "threaded" {
                     let deadline = Instant::now() + Duration::from_secs(10);
-                    while env.doc_files(&a) != ["snapshot-0000000001.ysnap"] {
+                    while env.doc_files(&a) != [snapshot_name(1)] {
                         assert!(
                             Instant::now() < deadline,
                             "background compaction did not finish"
@@ -207,7 +207,7 @@ fn decode_guard_child() {
                         scope.spawn(|| store.compact(&a).unwrap()).join().unwrap();
                     });
                 }
-                assert_eq!(env.doc_files(&a), ["snapshot-0000000001.ysnap"]);
+                assert_eq!(env.doc_files(&a), [snapshot_name(1)]);
                 store.close(soon()).unwrap();
                 let store = env.open();
                 let loaded = store.load(&a).unwrap();
