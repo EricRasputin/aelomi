@@ -31,6 +31,10 @@ for (const colorScheme of ["light", "dark"] as const) {
     await page.evaluate(() => window.__aelomiMock?.quit.request());
     const dialog = page.getByRole("alertdialog");
     await expect(dialog).toBeVisible();
+    await expect(dialog).toHaveAccessibleName("Quit with unsaved changes?");
+    await expect(dialog).toHaveAccessibleDescription(
+      "Some changes haven't been saved to disk. If you quit now, unsaved changes will be lost. Keep Aelomi open to keep trying.",
+    );
     await expect(
       page.getByRole("button", { name: "Keep app open" }),
     ).toBeFocused();
