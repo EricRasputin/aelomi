@@ -1,3 +1,4 @@
+use std::cell::OnceCell;
 use std::io;
 
 use super::decode;
@@ -64,13 +65,13 @@ pub(crate) struct LogContents<'a> {
 }
 
 pub(crate) fn read_log(bytes: &[u8]) -> LogContents<'_> {
-    read_log_hashing(bytes, bytes.len().saturating_mul(RESYNC_HASHED_PER_BYTE))
+    read_log_decoding(bytes, bytes.len().saturating_mul(SCAN_DECODED_PER_BYTE))
 }
 
-const RESYNC_HASHED_PER_BYTE: usize = 1024;
+const SCAN_DECODED_PER_BYTE: usize = 64;
 const RECOVERY_WORK_PER_BYTE: usize = 64;
 
-pub(crate) fn read_log_hashing(bytes: &[u8], mut budget: usize) -> LogContents<'_> {
+pub(crate) fn read_log_decoding(bytes: &[u8], mut decode_budget: usize) -> LogContents<'_> {
     let Some(header) = bytes.get(..SEGMENT_HEADER) else {
         let magic = &bytes[..bytes.len().min(LOG_MAGIC.len())];
         let end = if LOG_MAGIC.starts_with(magic) {
@@ -95,6 +96,8 @@ pub(crate) fn read_log_hashing(bytes: &[u8], mut budget: usize) -> LogContents<'
         end: LogEnd::Clean,
     };
     let mut recovery = bytes.len().saturating_mul(RECOVERY_WORK_PER_BYTE);
+    let crcs = OnceCell::new();
+    let crcs = || crcs.get_or_init(|| PrefixCrcs::new(bytes, salt));
     let mut at = SEGMENT_HEADER;
     while at < bytes.len() {
         if let Some(payload) = record_at(bytes, at, salt) {
@@ -108,15 +111,22 @@ pub(crate) fn read_log_hashing(bytes: &[u8], mut budget: usize) -> LogContents<'
             at += RECORD_HEADER + payload.len();
             continue;
         }
-        let scan = resync(bytes, salt, at + 1, &mut budget);
+        let stated_end = stated_end(bytes, at, salt);
+        let scan = match stated_end {
+            // The stated length holds, so only the CRC or the payload is damaged, and a record
+            // inside the payload could only be a frame its author planted there.
+            Some(end) if decode::decodes_exactly(&bytes[at + RECORD_HEADER..end]) => Scan::NoRecord,
+            Some(end) => resync(crcs().chaining_to(at + 1, end), &mut decode_budget),
+            None => resync(crcs().records_from(at + 1), &mut decode_budget),
+        };
         let torn = contents.end == LogEnd::Clean
             && a_torn_write_explains(bytes, at)
             && matches!(scan, Scan::NoRecord);
         contents.end = if torn { LogEnd::Torn } else { LogEnd::Corrupt };
-        let Scan::ResumeAt(next) = scan else {
-            break;
+        at = match (scan, stated_end) {
+            (Scan::ResumeAt(next), _) | (_, Some(next)) => next,
+            _ => break,
         };
-        at = next;
     }
     contents
 }
@@ -138,20 +148,14 @@ enum Scan {
     OverBudget,
 }
 
-fn resync(bytes: &[u8], salt: Salt, from: usize, budget: &mut usize) -> Scan {
+fn resync<'a>(candidates: impl Iterator<Item = (usize, &'a [u8])>, budget: &mut usize) -> Scan {
     let mut scan = Scan::NoRecord;
-    for at in from..bytes.len() {
-        let Some((crc, payload)) = candidate_at(bytes, at) else {
-            continue;
-        };
+    for (at, payload) in candidates {
         let Some(left) = budget.checked_sub(payload.len()) else {
             scan = Scan::OverBudget;
             continue;
         };
         *budget = left;
-        if salt.crc(payload) != crc {
-            continue;
-        }
         match decode::check(payload) {
             Err(decode::Rejected::TooDeep) => return Scan::ResumeAt(at),
             Ok(()) if decode::update(payload).is_ok() => return Scan::ResumeAt(at),
@@ -160,6 +164,86 @@ fn resync(bytes: &[u8], salt: Salt, from: usize, budget: &mut usize) -> Scan {
         scan = Scan::NoUpdate;
     }
     scan
+}
+
+fn stated_end(bytes: &[u8], at: usize, salt: Salt) -> Option<usize> {
+    let (_, payload) = candidate_at(bytes, at)?;
+    let end = at + RECORD_HEADER + payload.len();
+    boundary_at(bytes, end, salt).then_some(end)
+}
+
+fn boundary_at(bytes: &[u8], at: usize, salt: Salt) -> bool {
+    at == bytes.len()
+        || record_at(bytes, at, salt).is_some_and(|record| decode::update(record).is_ok())
+}
+
+/// The CRC-32 of every 64th prefix of a log, so a scan checks a candidate's salted CRC without
+/// hashing the payload its length claims.
+struct PrefixCrcs<'a> {
+    bytes: &'a [u8],
+    salt: u32,
+    every_64: Vec<u32>,
+}
+
+impl<'a> PrefixCrcs<'a> {
+    fn new(bytes: &'a [u8], salt: Salt) -> Self {
+        let mut crc = crc32fast::Hasher::new();
+        let mut every_64 = vec![crc.clone().finalize()];
+        for chunk in bytes.chunks(64) {
+            crc.update(chunk);
+            every_64.push(crc.clone().finalize());
+        }
+        Self {
+            bytes,
+            salt: crc32fast::hash(&salt.0),
+            every_64,
+        }
+    }
+
+    fn records_from(&self, from: usize) -> impl Iterator<Item = (usize, &'a [u8])> {
+        let end = self.bytes.len();
+        (from..end).filter_map(move |at| Some((at, self.record_at(at, end)?)))
+    }
+
+    /// Finds, in one backward pass, every offset whose chain of passing records ends exactly at
+    /// `end`, so a payload packed with frames costs one CRC check per offset, not one per hop.
+    fn chaining_to(&self, from: usize, end: usize) -> impl Iterator<Item = (usize, &'a [u8])> {
+        let mut lands = vec![false; end - from];
+        for at in (from..end).rev() {
+            lands[at - from] = self.record_at(at, end).is_some_and(|payload| {
+                let next = at + RECORD_HEADER + payload.len();
+                next == end || lands[next - from]
+            });
+        }
+        let landing = (from..end).filter(move |&at| lands[at - from]);
+        landing.filter_map(move |at| Some((at, self.record_at(at, end)?)))
+    }
+
+    fn record_at(&self, at: usize, end: usize) -> Option<&'a [u8]> {
+        let (crc, payload) = candidate_at(&self.bytes[..end], at)?;
+        let start = at + RECORD_HEADER;
+        (self.salted_crc(start, start + payload.len()) == crc).then_some(payload)
+    }
+
+    /// CRC-32 is linear, so `crc(a ‖ b) = shift(crc(a), b.len()) ^ crc(b)`. The salted CRC of a
+    /// range is then the CRC of the prefix up to its end, with the prefix before it swapped for
+    /// the salt.
+    fn salted_crc(&self, start: usize, end: usize) -> u32 {
+        self.prefix(end) ^ shift(self.prefix(start) ^ self.salt, end - start)
+    }
+
+    fn prefix(&self, end: usize) -> u32 {
+        let chunk = end / 64;
+        let mut crc = crc32fast::Hasher::new_with_initial(self.every_64[chunk]);
+        crc.update(&self.bytes[chunk * 64..end]);
+        crc.finalize()
+    }
+}
+
+fn shift(crc: u32, len: usize) -> u32 {
+    let mut shifted = crc32fast::Hasher::new_with_initial(crc);
+    shifted.combine(&crc32fast::Hasher::new_with_initial_len(0, len as u64));
+    shifted.finalize()
 }
 
 fn recover_length<'a>(
@@ -185,9 +269,7 @@ fn recover_length<'a>(
         }
         let payload = &bytes[start..end];
         spend(payload.len())?;
-        let next_passes =
-            || record_at(bytes, end, salt).is_some_and(|next| decode::update(next).is_ok());
-        if decode::decodes_exactly(payload) && (end == bytes.len() || next_passes()) {
+        if decode::decodes_exactly(payload) && boundary_at(bytes, end, salt) {
             return Some(payload);
         }
     }
@@ -212,6 +294,9 @@ fn candidate_at(bytes: &[u8], at: usize) -> Option<(u32, &[u8])> {
 
 #[cfg(test)]
 mod tests {
+    use proptest::collection::vec;
+    use proptest::prelude::*;
+    use proptest::sample::Index;
     use yrs::{Any, Doc, Map, Text, Transact};
 
     use super::*;
@@ -404,7 +489,7 @@ mod tests {
     }
 
     #[test]
-    fn a_resync_skips_records_too_long_for_its_budget_and_never_calls_that_torn() {
+    fn a_resync_skips_records_it_cannot_afford_to_decode_and_never_calls_that_torn() {
         let updates = UpdateGen::new(5, 1).updates(3);
         let (alpha, beta, gamma) = (&updates[0][..], &updates[1][..], &updates[2][..]);
         let two = segment(&[alpha]).len();
@@ -434,15 +519,37 @@ mod tests {
                 LogEnd::Corrupt,
             ),
             ("then junk", &then_junk, usize::MAX, a, LogEnd::Torn),
-            ("then junk, no budget", &then_junk, 0, a, LogEnd::Corrupt),
+            ("then junk, no budget", &then_junk, 0, a, LogEnd::Torn),
         ] {
             assert_eq!(
-                read_log_hashing(bytes, budget),
+                read_log_decoding(bytes, budget),
                 LogContents {
                     records: records.to_vec(),
                     end
                 },
                 "{name}"
+            );
+        }
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig {
+            failure_persistence: None,
+            ..ProptestConfig::default()
+        })]
+
+        #[test]
+        fn a_salted_crc_from_prefixes_matches_hashing_the_range(
+            bytes in vec(any::<u8>(), 0..600),
+            start in any::<Index>(),
+            end in any::<Index>(),
+        ) {
+            let (start, end) = (start.index(bytes.len() + 1), end.index(bytes.len() + 1));
+            let (start, end) = (start.min(end), start.max(end));
+            prop_assert_eq!(
+                PrefixCrcs::new(&bytes, SALT).salted_crc(start, end),
+                SALT.crc(&bytes[start..end]),
+                "bytes {}..{} of {}", start, end, bytes.len()
             );
         }
     }
