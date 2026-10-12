@@ -714,12 +714,16 @@ fn compaction_deletes_a_log_holding_no_record_bytes_but_quarantines_a_short_corr
     drop(store);
     let header = encode_segment::<Vec<u8>>(&[]);
     let corrupt = ("log-0000000000-0000000005.ylog", b"AEX".to_vec());
+    let mut damaged_header = header.clone();
+    damaged_header[0] ^= 1;
+    let corrupt_header = ("log-0000000000-0000000006.ylog", damaged_header);
     for (name, bytes) in [
         ("log-0000000000-0000000001.ylog", Vec::new()),
         ("log-0000000000-0000000002.ylog", LOG_MAGIC[..5].to_vec()),
         ("log-0000000000-0000000003.ylog", header[..12].to_vec()),
         ("log-0000000000-0000000004.ylog", header),
         corrupt.clone(),
+        corrupt_header.clone(),
     ] {
         env.fs.put_durable(&env.path("docs/a").join(name), &bytes);
     }
@@ -729,8 +733,15 @@ fn compaction_deletes_a_log_holding_no_record_bytes_but_quarantines_a_short_corr
     assert_eq!(env.doc_files(&a), ["snapshot-0000000001.ysnap"]);
     assert_eq!(
         env.quarantine(),
-        [(env.path("quarantine/a").join(corrupt.0), corrupt.1)].into(),
-        "only the file that isn't part of a log header"
+        [
+            (env.path("quarantine/a").join(corrupt.0), corrupt.1),
+            (
+                env.path("quarantine/a").join(corrupt_header.0),
+                corrupt_header.1
+            ),
+        ]
+        .into(),
+        "a complete damaged header is corrupt, not cut off inside the header"
     );
     drop(store);
     assert_doc(&env.open(), &a, &sent);

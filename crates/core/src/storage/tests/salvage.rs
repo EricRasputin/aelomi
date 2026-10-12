@@ -4,9 +4,10 @@ use proptest::prelude::*;
 use proptest::sample::Index;
 use yrs::{Any, Doc, Map, Text, Transact};
 
-use super::{Env, applied, doc, ops_of_updates, record_at, soon, typed, without};
+use super::{Env, applied, assert_doc, doc, ops_of_updates, record_at, soon, typed, without};
 use crate::storage::equality::Ops;
 use crate::storage::log::LOG_MAGIC;
+use crate::storage::sim_fs::Crash;
 use crate::storage::testkit::UpdateGen;
 
 fn load_after(updates: &[Vec<u8>], damage: impl FnOnce(&mut [u8])) -> Ops {
@@ -59,6 +60,38 @@ fn header_salt_damage_preserves_every_saved_operation() {
     let updates: Vec<Vec<u8>> = (1..=4).map(|client| typed(client, 4)).collect();
     let held = load_after(&updates, |bytes| bytes[10] ^= 1);
     assert_eq!(held, ops_of_updates(&updates));
+}
+
+#[test]
+fn header_damage_is_quarantined_after_verified_compaction() {
+    for at in [0, 10] {
+        let env = Env::manual();
+        let a = doc("a");
+        let updates: Vec<Vec<u8>> = (1..=4).map(|client| typed(client, 4)).collect();
+        let store = env.open();
+        for update in &updates {
+            store.append(&a, update).unwrap();
+        }
+        assert_eq!(store.flush(soon()), []);
+        drop(store);
+        let name = "log-0000000000-0000000000.ylog";
+        let path = env.path("docs/a").join(name);
+        let mut bytes = env.fs.files()[&path].clone();
+        bytes[at] ^= 1;
+        env.fs.put_durable(&path, &bytes);
+
+        let store = env.open();
+        assert_doc(&store, &a, &updates);
+        store.compact(&a).unwrap();
+        assert_eq!(env.doc_files(&a), ["snapshot-0000000001.ysnap"]);
+        assert_eq!(
+            env.quarantine(),
+            [(env.path("quarantine/a").join(name), bytes)].into()
+        );
+        drop(store);
+        env.fs.crash(Crash::DropUnsynced);
+        assert_doc(&env.open(), &a, &updates);
+    }
 }
 
 #[test]
@@ -215,7 +248,7 @@ proptest! {
         let expected = match damaged {
             Some(k) if in_length(k) => ops_of_updates(&updates),
             Some(k) => ops_of_updates(&without(&updates, &[k])),
-            None => Ops::default(),
+            None => ops_of_updates(&updates),
         };
         prop_assert_eq!(held, expected, "bit {} of byte {}", bit, flipped);
     }
