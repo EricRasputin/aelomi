@@ -97,17 +97,16 @@ impl Anchor {
     fn file_len(self) -> Option<usize> {
         self.copies()?[1].end.checked_add(ANCHOR)
     }
+
+    fn tail_agreeing_with_file_len(bytes: &[u8]) -> Option<Self> {
+        let tail = Self::parse(&bytes[bytes.len().checked_sub(ANCHOR)?..], TAIL_MAGIC)?;
+        (tail.file_len() == Some(bytes.len())).then_some(tail)
+    }
 }
 
-/// A tail counts only where its own length puts it, so a cut that ends inside a payload can't
-/// make note text an anchor.
 fn read_v2(bytes: &[u8]) -> Option<(&[u8], Condition)> {
-    let head = bytes
-        .get(..ANCHOR)
-        .and_then(|head| Anchor::parse(head, HEAD_MAGIC));
-    let tail = (bytes.len().checked_sub(ANCHOR))
-        .and_then(|at| Anchor::parse(&bytes[at..], TAIL_MAGIC))
-        .filter(|tail| tail.file_len() == Some(bytes.len()));
+    let head = Anchor::parse(bytes.get(..ANCHOR)?, HEAD_MAGIC);
+    let tail = Anchor::tail_agreeing_with_file_len(bytes);
     let intact = |copy: usize| {
         [head, tail].into_iter().flatten().find_map(|anchor| {
             let payload = bytes.get(anchor.copies()?[copy].clone())?;
