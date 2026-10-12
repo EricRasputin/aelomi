@@ -10,7 +10,6 @@ const allowed = new Set([
   "MPL-2.0",
 ]);
 const exceptions = new Map([
-  ["0BSD", new Set(["tslib"])],
   ["Unlicense", new Set(["isbot"])],
   ["(AFL-2.1 OR BSD-3-Clause)", new Set(["json-schema"])],
 ]);

@@ -1,4 +1,4 @@
-import * as AlertDialog from "@radix-ui/react-alert-dialog";
+import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { useRef } from "react";
 import { storageCopy, storageFailureReason } from "../storage-copy";
 import { useQuitStore } from "../stores/quit";
@@ -23,38 +23,23 @@ export function QuitConfirmation() {
   const keepOpen = useQuitStore((state) => state.keepOpen);
   const quitAnyway = useQuitStore((state) => state.quitAnyway);
   const keepButton = useRef<HTMLButtonElement>(null);
-  const previousFocus = useRef<HTMLElement | null>(null);
   const quitting = decision.kind === "quitting";
 
   return (
     <AlertDialog.Root
       open={decision.kind !== "open"}
-      onOpenChange={(open) => {
-        if (!open) keepOpen();
+      onOpenChange={(open, eventDetails) => {
+        if (open) return;
+        if (quitting) eventDetails.cancel();
+        else keepOpen();
       }}
     >
       <AlertDialog.Portal>
-        <AlertDialog.Overlay className="quit-overlay" />
-        <AlertDialog.Content
+        <AlertDialog.Backdrop className="quit-overlay" />
+        <AlertDialog.Popup
           className="quit-dialog"
           aria-busy={quitting}
-          onOpenAutoFocus={(event) => {
-            event.preventDefault();
-            previousFocus.current =
-              document.activeElement instanceof HTMLElement
-                ? document.activeElement
-                : null;
-            keepButton.current?.focus();
-          }}
-          onCloseAutoFocus={(event) => {
-            event.preventDefault();
-            const target = previousFocus.current;
-            if (target?.isConnected) target.focus();
-            else document.querySelector("main")?.focus();
-          }}
-          onEscapeKeyDown={(event) => {
-            if (quitting) event.preventDefault();
-          }}
+          initialFocus={keepButton}
         >
           <AlertDialog.Title className="text-base font-semibold">
             {storageCopy.quitTitle}
@@ -68,16 +53,13 @@ export function QuitConfirmation() {
             </p>
           )}
           <div className="mt-6 flex flex-wrap justify-end gap-2">
-            <AlertDialog.Cancel asChild>
-              <button
-                ref={keepButton}
-                type="button"
-                disabled={quitting}
-                className="quit-button"
-              >
-                {storageCopy.keepOpen}
-              </button>
-            </AlertDialog.Cancel>
+            <AlertDialog.Close
+              ref={keepButton}
+              disabled={quitting}
+              className="quit-button"
+            >
+              {storageCopy.keepOpen}
+            </AlertDialog.Close>
             <button
               type="button"
               disabled={quitting}
@@ -87,7 +69,7 @@ export function QuitConfirmation() {
               {storageCopy.quitAnyway}
             </button>
           </div>
-        </AlertDialog.Content>
+        </AlertDialog.Popup>
       </AlertDialog.Portal>
     </AlertDialog.Root>
   );

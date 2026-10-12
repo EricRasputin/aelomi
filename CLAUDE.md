@@ -30,7 +30,7 @@ Aelomi is built entirely by AI agents. The maintainer sets direction and taste a
 | Long lists | TanStack Virtual (sidebar, search results, table rows) |
 | UI state | Zustand stores with selectors |
 | UI ↔ Rust calls | tauri-specta (types generated from Rust commands; mismatches fail the build) |
-| Styling | Tailwind v4 + Radix UI primitives |
+| Styling | Tailwind v4 + Base UI |
 | Tooling | Vite, pnpm, Biome (lint + format), Vitest, cargo-nextest |
 | MCP server | `rmcp` (official Rust MCP SDK), inside the Rust core |
 
