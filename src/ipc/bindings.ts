@@ -9,6 +9,13 @@ export const commands = {
 	perfReport: (marks: ColdStartMarks) => __TAURI_INVOKE<void>("perf_report", { marks }),
 	storageStatus: () => __TAURI_INVOKE<StorageStatus>("storage_status"),
 	storageHealth: () => __TAURI_INVOKE<Health>("storage_health"),
+	/**  The quit decision as it stands, for a webview that starts listening after a refusal. */
+	quitStatus: () => __TAURI_INVOKE<QuitStatus>("quit_status"),
+	/**
+	 *  Keep app open answers the refused quit asked at `revision`. Returns the decision after the
+	 *  call.
+	 */
+	keepOpen: (revision: number) => __TAURI_INVOKE<QuitStatus>("keep_open", { revision }),
 	quitAnyway: () => __TAURI_INVOKE<void>("quit_anyway"),
 	/**  Returns the doc's full state as base64. */
 	docLoad: (docId: string) => typedError<string, StorageError>(__TAURI_INVOKE("doc_load", { docId })),
@@ -23,7 +30,7 @@ export const commands = {
 
 /** Events */
 export const events = {
-	quitBlocked: makeEvent<QuitBlocked>("quit-blocked"),
+	quitStatusChanged: makeEvent<QuitStatusChanged>("quit-status-changed"),
 	storageHealthChanged: makeEvent<StorageHealthChanged>("storage-health-changed"),
 };
 
@@ -56,10 +63,18 @@ export type PingRequest = {
 	seq: number,
 };
 
-/**  Quitting waited for pending updates and gave up, so the app stays open. */
-export type QuitBlocked = {
-	pending_docs: string[],
+/**
+ *  The quit decision the shell holds. `pending_docs` is set while a refused quit waits for the
+ *  user's answer. `revision` grows with every change, so the webview can order events, snapshots,
+ *  and replies.
+ */
+export type QuitStatus = {
+	revision: number,
+	pending_docs: string[] | null,
 };
+
+/**  Every change of the quit decision: a refused quit, Keep app open, or Quit anyway. */
+export type QuitStatusChanged = QuitStatus;
 
 export type StorageError = 
 /**  The store is not open. `storage_status` says why. */

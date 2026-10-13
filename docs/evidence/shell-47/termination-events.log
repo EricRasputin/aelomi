@@ -1,0 +1,7 @@
+## quit event logout #1 10:14:17
+quit event pid=19624 logout=true send_status=0 reply_error=-128 read_status=0
+## quit event logout #2 10:14:57
+quit event pid=19624 logout=true send_status=0 reply_error=-128 read_status=0
+## Quit anyway 10:15:12
+pressed "Quit anyway"
+app 19624 exited at 10:15:18

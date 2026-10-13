@@ -159,6 +159,8 @@ mod tests {
     use objc2::{ClassType, msg_send};
     use tauri::Manager;
 
+    use crate::quit::QuitStatus;
+
     use super::*;
 
     #[test]
@@ -202,7 +204,14 @@ mod tests {
         );
         assert_eq!(
             *quit_events.lock().unwrap(),
-            [r#"quit-blocked {"pending_docs":["page"]}"#]
+            [r#"quit-status-changed {"revision":1,"pending_docs":["page"]}"#]
+        );
+        assert_eq!(
+            crate::commands::quit_status(app.state()),
+            QuitStatus {
+                revision: 1,
+                pending_docs: Some(vec!["page".into()])
+            }
         );
 
         disk.clear_faults();
@@ -212,7 +221,7 @@ mod tests {
         );
         assert_eq!(
             *quit_events.lock().unwrap(),
-            [r#"quit-blocked {"pending_docs":["page"]}"#]
+            [r#"quit-status-changed {"revision":1,"pending_docs":["page"]}"#]
         );
     }
 
@@ -227,7 +236,7 @@ mod tests {
             NSApplicationTerminateReply::TerminateCancel
         );
         let mut exits = 0;
-        crate::commands::quit_anyway_with(&app.state::<crate::storage::Storage>(), || exits += 1);
+        crate::commands::quit_anyway_with(app.handle(), || exits += 1);
         assert_eq!(exits, 1);
         assert_eq!(
             terminate_reply(app.handle()),
@@ -235,7 +244,17 @@ mod tests {
         );
         assert_eq!(
             *quit_events.lock().unwrap(),
-            [r#"quit-blocked {"pending_docs":["page"]}"#]
+            [
+                r#"quit-status-changed {"revision":1,"pending_docs":["page"]}"#,
+                r#"quit-status-changed {"revision":2,"pending_docs":null}"#,
+            ]
+        );
+        assert_eq!(
+            crate::commands::quit_status(app.state()),
+            QuitStatus {
+                revision: 2,
+                pending_docs: None
+            }
         );
     }
 }

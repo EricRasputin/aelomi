@@ -1,0 +1,9 @@
+storage event health={"Failing":{"reason":"PermissionDenied","pending_docs":["probe"]}}
+quit flush via=Terminate pending=[DocId(probe)]
+storage event quit_status={"revision":1,"pending_docs":["probe"]}
+storage event quit_status={"revision":2,"pending_docs":null}
+quit flush via=Terminate pending=[DocId(probe)]
+storage event quit_status={"revision":3,"pending_docs":["probe"]}
+quit confirmed
+quit allowed via=ExitRequested confirmed=true
+quit flush via=Exit pending=[DocId(probe)]

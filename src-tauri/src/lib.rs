@@ -2,10 +2,12 @@ mod commands;
 #[cfg(target_os = "macos")]
 mod macos;
 mod perf;
+mod quit;
 mod storage;
 
 use aelomi_core::storage::DocId;
-use storage::{QUIT_FLUSH_TIMEOUT, QuitBlocked, Storage, StorageHealthChanged};
+use quit::{QuitStatus, QuitStatusChanged};
+use storage::{QUIT_FLUSH_TIMEOUT, Storage, StorageHealthChanged};
 use tauri::webview::PageLoadEvent;
 use tauri::{AppHandle, Manager, RunEvent, Runtime, WindowEvent};
 use tauri_specta::Event;
@@ -87,19 +89,30 @@ fn open_storage(app: &tauri::App) {
 }
 
 fn flush_then_allow_quit<R: Runtime>(app: &AppHandle<R>, via: &str) -> bool {
-    if app
-        .try_state::<Storage>()
-        .is_some_and(|storage| storage.quit_confirmed())
-    {
+    let Some(storage) = app.try_state::<Storage>() else {
+        return true;
+    };
+    if storage.quit().confirmed() {
         println!("quit allowed via={via} confirmed=true");
         return true;
     }
     let Err(pending) = flush_before_quit(app, via) else {
         return true;
     };
-    let pending_docs = pending.iter().map(DocId::to_string).collect();
-    let _ = QuitBlocked { pending_docs }.emit(app);
-    false
+    match storage.quit().refuse(&pending) {
+        Some(status) => {
+            publish_quit(app, &status);
+            false
+        }
+        None => {
+            println!("quit allowed via={via} confirmed=true");
+            true
+        }
+    }
+}
+
+fn publish_quit<R: Runtime>(app: &AppHandle<R>, status: &QuitStatus) {
+    let _ = QuitStatusChanged(status.clone()).emit(app);
 }
 
 fn flush_before_quit<R: Runtime>(app: &AppHandle<R>, via: &str) -> Result<(), Vec<DocId>> {
@@ -131,15 +144,25 @@ pub(crate) mod tests {
     pub(crate) struct BlockedApp {
         pub app: App<MockRuntime>,
         pub quit_events: Seen,
-        pub quit_blocked: mpsc::Receiver<()>,
+        pub quit_changed: mpsc::Receiver<()>,
     }
 
     pub(crate) fn app_with_page_pending(disk: &SimDisk) -> BlockedApp {
+        let app = app_storing_page(disk);
+        let (quit_events, quit_changed) = record_quit_status(&app);
+        BlockedApp {
+            app,
+            quit_events,
+            quit_changed,
+        }
+    }
+
+    fn app_storing_page(disk: &SimDisk) -> App<MockRuntime> {
         let app = mock_builder()
             .build(mock_context(noop_assets()))
             .expect("builds the mock app");
         tauri_specta::Builder::<MockRuntime>::new()
-            .events(tauri_specta::collect_events![QuitBlocked])
+            .events(tauri_specta::collect_events![QuitStatusChanged])
             .mount_events(&app);
         let storage = storage::tests::open_on(disk);
         disk.fail_appends("docs/page/");
@@ -152,21 +175,21 @@ pub(crate) mod tests {
             )
             .unwrap();
         app.manage(storage);
+        app
+    }
+
+    fn record_quit_status(app: &App<MockRuntime>) -> (Seen, mpsc::Receiver<()>) {
         let quit_events = Seen::default();
-        let (blocked_tx, quit_blocked) = mpsc::channel();
+        let (changed_tx, quit_changed) = mpsc::channel();
         let record = quit_events.clone();
-        app.listen_any("quit-blocked", move |event| {
+        app.listen_any("quit-status-changed", move |event| {
             record
                 .lock()
                 .unwrap()
-                .push(format!("quit-blocked {}", event.payload()));
-            let _ = blocked_tx.send(());
+                .push(format!("quit-status-changed {}", event.payload()));
+            let _ = changed_tx.send(());
         });
-        BlockedApp {
-            app,
-            quit_events,
-            quit_blocked,
-        }
+        (quit_events, quit_changed)
     }
 
     /// `ready` waits for the loop to start, because the mock runtime removes a window closed
@@ -210,7 +233,7 @@ pub(crate) mod tests {
         let BlockedApp {
             app,
             quit_events,
-            quit_blocked,
+            quit_changed,
         } = app_with_page_pending(&disk);
         WebviewWindowBuilder::new(&app, "main", WebviewUrl::default())
             .build()
@@ -220,7 +243,7 @@ pub(crate) mod tests {
             let window = app.get_webview_window("main").unwrap();
             thread::spawn(move || {
                 window.close().unwrap();
-                let _ = quit_blocked.recv_timeout(Duration::from_secs(10));
+                let _ = quit_changed.recv_timeout(Duration::from_secs(10));
                 disk.clear_faults();
                 window.close().unwrap();
             });
@@ -230,7 +253,7 @@ pub(crate) mod tests {
             *quit_events.lock().unwrap(),
             [
                 "CloseRequested",
-                r#"quit-blocked {"pending_docs":["page"]}"#,
+                r#"quit-status-changed {"revision":1,"pending_docs":["page"]}"#,
                 "CloseRequested",
                 "ExitRequested",
                 "Exit",
@@ -244,7 +267,7 @@ pub(crate) mod tests {
         let BlockedApp {
             app,
             quit_events,
-            quit_blocked,
+            quit_changed,
         } = app_with_page_pending(&disk);
         WebviewWindowBuilder::new(&app, "main", WebviewUrl::default())
             .build()
@@ -254,7 +277,7 @@ pub(crate) mod tests {
             let app = app.clone();
             thread::spawn(move || {
                 app.get_webview_window("main").unwrap().destroy().unwrap();
-                let _ = quit_blocked.recv_timeout(Duration::from_secs(10));
+                let _ = quit_changed.recv_timeout(Duration::from_secs(10));
                 disk.clear_faults();
                 let (built_tx, built) = mpsc::channel();
                 let handle = app.clone();
@@ -273,7 +296,7 @@ pub(crate) mod tests {
             *quit_events.lock().unwrap(),
             [
                 "ExitRequested",
-                r#"quit-blocked {"pending_docs":["page"]}"#,
+                r#"quit-status-changed {"revision":1,"pending_docs":["page"]}"#,
                 "ExitRequested",
                 "Exit",
             ]
@@ -286,7 +309,7 @@ pub(crate) mod tests {
         let BlockedApp {
             app,
             quit_events,
-            quit_blocked,
+            quit_changed,
         } = app_with_page_pending(&disk);
         WebviewWindowBuilder::new(&app, "main", WebviewUrl::default())
             .build()
@@ -299,15 +322,22 @@ pub(crate) mod tests {
             *worker_handle.lock().unwrap() = Some(thread::spawn(move || {
                 let window = app.get_webview_window("main").unwrap();
                 window.close().unwrap();
-                quit_blocked.recv_timeout(Duration::from_secs(10)).unwrap();
-                let storage = app.state::<Storage>();
+                quit_changed.recv_timeout(Duration::from_secs(10)).unwrap();
                 let mut exits = 0;
-                commands::quit_anyway_with(&storage, || {
+                commands::quit_anyway_with(&app, || {
                     exits += 1;
                     window.close().unwrap();
                 });
-                commands::quit_anyway_with(&storage, || exits += 1);
+                commands::quit_anyway_with(&app, || exits += 1);
                 assert_eq!(exits, 1);
+                assert_eq!(
+                    commands::keep_open_with(&app, 1),
+                    QuitStatus {
+                        revision: 2,
+                        pending_docs: None
+                    }
+                );
+                let storage = app.state::<Storage>();
                 assert_eq!(
                     storage::tests::text_of(
                         &storage
@@ -326,10 +356,63 @@ pub(crate) mod tests {
             *quit_events.lock().unwrap(),
             [
                 "CloseRequested",
-                r#"quit-blocked {"pending_docs":["page"]}"#,
+                r#"quit-status-changed {"revision":1,"pending_docs":["page"]}"#,
+                r#"quit-status-changed {"revision":2,"pending_docs":null}"#,
                 "CloseRequested",
                 "ExitRequested",
                 "Exit",
+            ]
+        );
+    }
+
+    #[test]
+    fn a_refusal_without_a_listener_stays_outstanding_until_kept_open() {
+        let disk = SimDisk::default();
+        let app = app_storing_page(&disk);
+        let asked = QuitStatus {
+            revision: 1,
+            pending_docs: Some(vec!["page".into()]),
+        };
+
+        assert!(!flush_then_allow_quit(app.handle(), "ExitRequested"));
+        assert_eq!(commands::quit_status(app.state()), asked);
+        disk.clear_faults();
+        let storage = app.state::<Storage>();
+        assert_eq!(storage.flush_before_quit(QUIT_FLUSH_TIMEOUT), Ok(()));
+        assert_eq!(storage.health(), storage::Health::Healthy);
+        assert_eq!(commands::quit_status(app.state()), asked);
+
+        let (late_listener, _) = record_quit_status(&app);
+        let kept = QuitStatus {
+            revision: 2,
+            pending_docs: None,
+        };
+        assert_eq!(commands::keep_open_with(app.handle(), 1), kept);
+        assert_eq!(commands::keep_open_with(app.handle(), 1), kept);
+        assert_eq!(commands::quit_status(app.state()), kept);
+
+        disk.fail_appends("docs/page/");
+        storage
+            .store()
+            .unwrap()
+            .append(
+                &DocId::new("page").unwrap(),
+                &storage::tests::update(" again"),
+            )
+            .unwrap();
+        assert!(!flush_then_allow_quit(app.handle(), "Terminate"));
+        assert_eq!(
+            commands::quit_status(app.state()),
+            QuitStatus {
+                revision: 3,
+                pending_docs: Some(vec!["page".into()]),
+            }
+        );
+        assert_eq!(
+            *late_listener.lock().unwrap(),
+            [
+                r#"quit-status-changed {"revision":2,"pending_docs":null}"#,
+                r#"quit-status-changed {"revision":3,"pending_docs":["page"]}"#,
             ]
         );
     }
@@ -347,7 +430,7 @@ pub(crate) mod tests {
         assert!(!flush_then_allow_quit(app.handle(), "CloseRequested"));
         let storage = app.state::<Storage>();
         let mut exits = 0;
-        commands::quit_anyway_with(&storage, || exits += 1);
+        commands::quit_anyway_with(app.handle(), || exits += 1);
         assert_eq!(exits, 1);
         assert!(flush_then_allow_quit(app.handle(), "ExitRequested"));
         assert!(flush_then_allow_quit(app.handle(), "CloseRequested"));
@@ -375,7 +458,10 @@ pub(crate) mod tests {
         );
         assert_eq!(
             *quit_events.lock().unwrap(),
-            [r#"quit-blocked {"pending_docs":["page"]}"#]
+            [
+                r#"quit-status-changed {"revision":1,"pending_docs":["page"]}"#,
+                r#"quit-status-changed {"revision":2,"pending_docs":null}"#,
+            ]
         );
     }
 }

@@ -10,7 +10,7 @@ export type {
   Health,
   PingReply,
   PingRequest,
-  QuitBlocked,
+  QuitStatus,
   StorageError,
   StorageStatus,
 } from "./bindings";

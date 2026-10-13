@@ -1,11 +1,12 @@
 use std::ffi::OsString;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use aelomi_core::storage::{self as core, DataPathError, DocId, OpenError, Store};
 use serde::Serialize;
 use specta::Type;
+
+use crate::quit::QuitGate;
 
 pub const QUIT_FLUSH_TIMEOUT: Duration = Duration::from_secs(2);
 
@@ -71,7 +72,7 @@ pub enum StorageError {
 pub struct Storage {
     opened: Result<Store, StorageStatus>,
     path: PathBuf,
-    quit_confirmed: AtomicBool,
+    quit: QuitGate,
 }
 
 impl Storage {
@@ -80,19 +81,19 @@ impl Storage {
             Ok(resolved) => Self {
                 opened: Store::open(&resolved).map_err(StorageStatus::from),
                 path: resolved,
-                quit_confirmed: AtomicBool::new(false),
+                quit: QuitGate::default(),
             },
             Err(DataPathError::CloudFolder { resolved, .. }) => Self {
                 opened: Err(StorageStatus::CloudPath {
                     resolved: resolved.to_string_lossy().into_owned(),
                 }),
                 path: resolved,
-                quit_confirmed: AtomicBool::new(false),
+                quit: QuitGate::default(),
             },
             Err(DataPathError::Io(error)) => Self {
                 opened: Err(StorageStatus::Io(error.to_string())),
                 path: location.path.clone(),
-                quit_confirmed: AtomicBool::new(false),
+                quit: QuitGate::default(),
             },
         }
     }
@@ -101,12 +102,8 @@ impl Storage {
         self.opened.as_ref().map_err(|_| StorageError::Unavailable)
     }
 
-    pub(crate) fn confirm_quit(&self) -> bool {
-        !self.quit_confirmed.swap(true, Ordering::Relaxed)
-    }
-
-    pub(crate) fn quit_confirmed(&self) -> bool {
-        self.quit_confirmed.load(Ordering::Relaxed)
+    pub(crate) fn quit(&self) -> &QuitGate {
+        &self.quit
     }
 
     pub fn status(&self) -> StorageStatus {
@@ -198,12 +195,6 @@ impl From<std::io::Error> for StorageError {
 
 #[derive(Clone, Serialize, Type, tauri_specta::Event)]
 pub struct StorageHealthChanged(pub Health);
-
-/// Quitting waited for pending updates and gave up, so the app stays open.
-#[derive(Clone, Serialize, Type, tauri_specta::Event)]
-pub struct QuitBlocked {
-    pub pending_docs: Vec<String>,
-}
 
 #[cfg(test)]
 pub(crate) mod tests {
@@ -415,7 +406,7 @@ pub(crate) mod tests {
         Storage {
             opened: Ok(disk.open(Path::new("/data")).expect("opens")),
             path: "/data".into(),
-            quit_confirmed: AtomicBool::new(false),
+            quit: QuitGate::default(),
         }
     }
 
@@ -485,7 +476,7 @@ pub(crate) mod tests {
         let storage = Storage {
             opened: Err(StorageStatus::Locked),
             path: "/data".into(),
-            quit_confirmed: AtomicBool::new(false),
+            quit: QuitGate::default(),
         };
         assert_eq!(storage.flush_before_quit(QUIT_FLUSH_TIMEOUT), Ok(()));
         assert_eq!(storage.status(), StorageStatus::Locked);
