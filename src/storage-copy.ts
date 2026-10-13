@@ -14,6 +14,7 @@ export const storageCopy = {
   keepOpen: "Keep app open",
   quitAnyway: "Quit anyway",
   quitError: "Aelomi couldn't quit. Try again, or keep the app open.",
+  keepOpenError: "Aelomi couldn't record your choice. Try again.",
 };
 
 export function storageFailureReason(reason: FailReason): string {

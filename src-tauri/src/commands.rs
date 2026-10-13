@@ -3,11 +3,10 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use tauri::State;
+use tauri::{AppHandle, Manager, Runtime, State};
 
-use crate::storage::{
-    Health, QuitBlocked, Storage, StorageError, StorageHealthChanged, StorageStatus,
-};
+use crate::quit::{QuitStatus, QuitStatusChanged};
+use crate::storage::{Health, Storage, StorageError, StorageHealthChanged, StorageStatus};
 
 #[derive(Deserialize, Type)]
 pub struct PingRequest {
@@ -57,15 +56,42 @@ pub fn storage_health(storage: State<'_, Storage>) -> Health {
     storage.health()
 }
 
+/// The quit decision as it stands, for a webview that starts listening after a refusal.
 #[tauri::command]
 #[specta::specta]
-pub fn quit_anyway(app: tauri::AppHandle, storage: State<'_, Storage>) {
-    quit_anyway_with(&storage, || app.exit(0));
+pub fn quit_status(storage: State<'_, Storage>) -> QuitStatus {
+    storage.quit().status()
 }
 
-pub(crate) fn quit_anyway_with(storage: &Storage, exit: impl FnOnce()) {
-    if storage.confirm_quit() {
+/// Keep app open answers the refused quit asked at `revision`. Returns the decision after the
+/// call.
+#[tauri::command]
+#[specta::specta]
+pub fn keep_open(app: tauri::AppHandle, revision: u32) -> QuitStatus {
+    keep_open_with(&app, revision)
+}
+
+pub(crate) fn keep_open_with<R: Runtime>(app: &AppHandle<R>, revision: u32) -> QuitStatus {
+    let storage = app.state::<Storage>();
+    match storage.quit().keep_open(revision) {
+        Some(status) => {
+            crate::publish_quit(app, &status);
+            status
+        }
+        None => storage.quit().status(),
+    }
+}
+
+#[tauri::command]
+#[specta::specta]
+pub fn quit_anyway(app: tauri::AppHandle) {
+    quit_anyway_with(&app, || app.exit(0));
+}
+
+pub(crate) fn quit_anyway_with<R: Runtime>(app: &AppHandle<R>, exit: impl FnOnce()) {
+    if let Some(status) = app.state::<Storage>().quit().confirm() {
         println!("quit confirmed");
+        crate::publish_quit(app, &status);
         exit();
     }
 }
@@ -108,6 +134,8 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
             perf_report,
             storage_status,
             storage_health,
+            quit_status,
+            keep_open,
             quit_anyway,
             doc_load,
             doc_append,
@@ -115,7 +143,7 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
         ])
         .events(tauri_specta::collect_events![
             StorageHealthChanged,
-            QuitBlocked
+            QuitStatusChanged
         ])
 }
 

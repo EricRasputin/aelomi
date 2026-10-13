@@ -27,9 +27,11 @@ export function connectStorageEvents() {
         unlisteners.push(healthUnlisten);
       })(),
       (async () => {
-        const quitUnlisten = await events.quitBlocked.listen(({ payload }) => {
-          if (!disposed) useQuitStore.getState().receiveBlocked(payload);
-        });
+        const quitUnlisten = await events.quitStatusChanged.listen(
+          ({ payload }) => {
+            if (!disposed) useQuitStore.getState().receiveQuit(payload);
+          },
+        );
         if (disposed) {
           quitUnlisten();
           return;
@@ -41,14 +43,16 @@ export function connectStorageEvents() {
     const errors: unknown[] = registrations.flatMap((registration) =>
       registration.status === "rejected" ? [registration.reason] : [],
     );
-    try {
-      const health = await commands.storageHealth();
-      if (!disposed && healthEvents === 0) {
-        useStorageHealthStore.getState().receiveHealth(health);
-      }
-    } catch (error: unknown) {
-      errors.push(error);
+    const [health, quit] = await Promise.allSettled([
+      commands.storageHealth(),
+      commands.quitStatus(),
+    ]);
+    if (health.status === "rejected") errors.push(health.reason);
+    else if (!disposed && healthEvents === 0) {
+      useStorageHealthStore.getState().receiveHealth(health.value);
     }
+    if (quit.status === "rejected") errors.push(quit.reason);
+    else if (!disposed) useQuitStore.getState().receiveQuit(quit.value);
     if (errors.length > 0) {
       throw new AggregateError(errors, "Storage event connection failed");
     }

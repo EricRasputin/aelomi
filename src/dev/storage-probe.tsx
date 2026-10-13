@@ -92,8 +92,8 @@ export default function StorageProbe() {
       events.storageHealthChanged.listen(({ payload }) =>
         hear(`storage event health=${JSON.stringify(payload)}`),
       ),
-      events.quitBlocked.listen(({ payload }) =>
-        hear(`storage event quit_blocked=${JSON.stringify(payload)}`),
+      events.quitStatusChanged.listen(({ payload }) =>
+        hear(`storage event quit_status=${JSON.stringify(payload)}`),
       ),
     ];
     return () => {

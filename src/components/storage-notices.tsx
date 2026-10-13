@@ -31,7 +31,7 @@ export function QuitConfirmation() {
       onOpenChange={(open, eventDetails) => {
         if (open) return;
         if (quitting) eventDetails.cancel();
-        else keepOpen();
+        else void keepOpen();
       }}
     >
       <AlertDialog.Portal>

@@ -6,7 +6,7 @@ import type {
   commands as generatedCommands,
   events as generatedEvents,
   Health,
-  QuitBlocked,
+  QuitStatus,
   StorageError,
   StorageStatus,
 } from "./bindings";
@@ -41,6 +41,15 @@ const storage: {
 };
 let exited = false;
 
+type QuitState =
+  | { kind: "open" }
+  | { kind: "asking"; pendingDocs: string[] }
+  | { kind: "confirmed" };
+const quit: { revision: number; state: QuitState } = {
+  revision: 0,
+  state: { kind: "open" },
+};
+
 const listeners = new Map<string, Set<EventCallback<unknown>>>();
 let eventId = 0;
 
@@ -71,9 +80,23 @@ function mockEvent<T>(name: string) {
 }
 
 export const events = {
-  quitBlocked: mockEvent<QuitBlocked>("quit-blocked"),
+  quitStatusChanged: mockEvent<QuitStatus>("quit-status-changed"),
   storageHealthChanged: mockEvent<Health>("storage-health-changed"),
 } satisfies Events;
+
+function quitStatus(): QuitStatus {
+  return {
+    revision: quit.revision,
+    pending_docs:
+      quit.state.kind === "asking" ? [...quit.state.pendingDocs] : null,
+  };
+}
+
+function changeQuit(state: QuitState) {
+  quit.revision += 1;
+  quit.state = state;
+  void events.quitStatusChanged.emit(quitStatus());
+}
 
 function refreshHealth() {
   const pending = [...storage.docs]
@@ -124,8 +147,21 @@ export const commands = {
     calls.push({ command: "storageHealth", args: [] });
     return storage.health;
   },
+  quitStatus: async () => {
+    calls.push({ command: "quitStatus", args: [] });
+    return quitStatus();
+  },
+  keepOpen: async (revision) => {
+    calls.push({ command: "keepOpen", args: [revision] });
+    if (quit.state.kind === "asking" && quit.revision === revision) {
+      changeQuit({ kind: "open" });
+    }
+    return quitStatus();
+  },
   quitAnyway: async () => {
     calls.push({ command: "quitAnyway", args: [] });
+    if (quit.state.kind === "confirmed") return;
+    changeQuit({ kind: "confirmed" });
     exited = true;
   },
   docLoad: async (docId) => {
@@ -171,6 +207,8 @@ const control = {
     storage.health = "Healthy";
     storage.reason = { Io: "mock write failure" };
     exited = false;
+    quit.revision = 0;
+    quit.state = { kind: "open" };
   },
   quit: {
     get exited() {
@@ -178,11 +216,11 @@ const control = {
     },
     request() {
       if (exited) return;
-      const pending_docs = [...storage.docs]
+      const pendingDocs = [...storage.docs]
         .filter(([, doc]) => doc.pending)
         .map(([id]) => id);
-      if (pending_docs.length === 0) exited = true;
-      else void events.quitBlocked.emit({ pending_docs });
+      if (pendingDocs.length === 0) exited = true;
+      else changeQuit({ kind: "asking", pendingDocs });
     },
   },
   storage: {
