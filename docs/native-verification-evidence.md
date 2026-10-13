@@ -1,6 +1,6 @@
 # Publish native verification evidence
 
-For future native runs, attach the required PNG screenshots to the pull request and commit the small text record under `docs/evidence/<behavior-or-issue>/`. Keep the screenshots at their captured resolution. Include the shell log, accessibility trees, actions, doctor result, and a README that connects each action to its visible result and native side effect.
+For future native runs, attach the required PNG screenshots to the pull request and commit the small text record under `docs/evidence/<behavior-or-issue>/`. Commit the text record before the branch goes public; attach the screenshots once the PR opens (see **Private until ready** in `CLAUDE.md`). Keep the screenshots at their captured resolution. Include the shell log, accessibility trees, actions, doctor result, and a README that connects each action to its visible result and native side effect.
 
 Use [verify-aelomi](../.claude/skills/verify-aelomi/SKILL.md) to capture the proof. Publish and check every required file before deleting the local run. A `/tmp` path, a T3 thread attachment, or an expiring Actions artifact alone does not complete verification.
 
