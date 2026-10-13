@@ -1,0 +1,8 @@
+storage status=Ready path=/private/tmp/aelomi-data5-native.KLBOtO/garbage-proof-data
+index status=Rebuilding
+index cache=replaced reason=not-a-database (file is not a database)
+index status=Ready
+ping seq=1
+ping seq=2
+quit flush via=ExitRequested pending=[]
+quit flush via=Exit pending=[]

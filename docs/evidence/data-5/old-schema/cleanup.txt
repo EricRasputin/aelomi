@@ -1,0 +1,12 @@
+app.sh: nothing from this run is running
+app.sh: evidence kept in /tmp/aelomi-verify/20261014-021931-app-VHXz:
+actions.log
+after.ax.txt
+after.png
+before.ax.txt
+before.png
+cleanup.txt
+doctor.txt
+pids
+run.env
+shell.log

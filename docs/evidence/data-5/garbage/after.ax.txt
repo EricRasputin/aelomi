@@ -1,0 +1,8 @@
+id=23939 title="Aelomi" x=240 y=88 w=960 h=640
+AXWebArea "Aelomi"
+  AXGroup/AXLandmarkBanner
+    AXStaticText "Aelomi"
+  AXGroup/AXLandmarkMain
+    AXGroup/AXApplicationStatus
+      AXStaticText "IPC ok · core 0.1.0 · seq 2"
+    AXButton "Ping again"
