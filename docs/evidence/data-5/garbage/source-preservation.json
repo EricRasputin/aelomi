@@ -49,45 +49,14 @@
   "index_schema": 1,
   "integrity_check": "ok",
   "pages": [
-    [
-      "aelomi",
-      1
-    ],
-    [
-      "archive",
-      0
-    ],
-    [
-      "daily",
-      1
-    ],
-    [
-      "old-notes",
-      0
-    ],
-    [
-      "projects",
-      1
-    ],
-    [
-      "reading",
-      1
-    ],
-    [
-      "roadmap",
-      1
-    ],
-    [
-      "untitled",
-      1
-    ]
+    ["aelomi", 1],
+    ["archive", 0],
+    ["daily", 1],
+    ["old-notes", 0],
+    ["projects", 1],
+    ["reading", 1],
+    ["roadmap", 1],
+    ["untitled", 1]
   ],
-  "favorites": [
-    [
-      "reading"
-    ],
-    [
-      "aelomi"
-    ]
-  ]
+  "favorites": [["reading"], ["aelomi"]]
 }

@@ -67,7 +67,7 @@ Follow-ups cover common-word query performance, native disk-backed 10,000-page r
 
 ## Published-file manifest
 
-Personal checkout and home prefixes are replaced with `<checkout>` and `<home>`. The cold-start harness's user-specific temporary prefix is replaced with `<temporary>`. Terminal color escapes were removed. The hashes below cover those published text bytes. Databases, app data, `run.env`, and PID files remain local. PNGs retain their original captured bytes and are attached to the PR after publication.
+Personal checkout and home prefixes are replaced with `<checkout>` and `<home>`. The cold-start harness's user-specific temporary prefix is replaced with `<temporary>`. Terminal color escapes were removed. Source-preservation JSON uses the repository formatter without changing its values. The hashes below cover those published text bytes. Databases, app data, `run.env`, and PID files remain local. PNGs retain their original captured bytes and are attached to the PR after publication.
 
 ### Screenshots
 
@@ -90,7 +90,7 @@ Personal checkout and home prefixes are replaced with `<checkout>` and `<home>`.
 | [missing/cleanup.txt](missing/cleanup.txt) | 217 | `c1c22443a17b8c729aa02ec102859b9341a926f4c2e09c0ae11cb7aec0fb32da` |
 | [missing/before.ax.txt](missing/before.ax.txt) | 253 | `fef7cecbafd30944758ae8f22dbe12a7558cd95277c672bc5c9a83785fe21580` |
 | [missing/after.ax.txt](missing/after.ax.txt) | 253 | `84ef7eddf6cf6954cf21515de013f3144bafa769e7fe23c07f9296305818b855` |
-| [missing/source-preservation.json](missing/source-preservation.json) | 2278 | `bb8802236a1fc09aa7bc3eb1a08b00b6b409a26becac7fb14382890412e15310` |
+| [missing/source-preservation.json](missing/source-preservation.json) | 2098 | `87e637c0bc704c1f01eaa944b666d3b3247301302f367362f2f63df2f6fc1a15` |
 | [missing/source-before.json](missing/source-before.json) | 1688 | `21444a16158c4b03485d1d2e8f98d7d3b08781fdc5772951930d37ca3b4773f8` |
 | [missing/seed.log](missing/seed.log) | 421 | `08a9ae217474ae9db3bf689ed8ab0fc7bd741aa102df50b9fa00495ecbf4505e` |
 | [garbage/shell.log](garbage/shell.log) | 289 | `1bbccb87a5585a55158be104bea55eaf8aa37e429d4b4e857df401354d84153b` |
@@ -99,7 +99,7 @@ Personal checkout and home prefixes are replaced with `<checkout>` and `<home>`.
 | [garbage/cleanup.txt](garbage/cleanup.txt) | 217 | `2db31b7b759b7ad28f565ec38f037caa6c6a2febd5dff86ebd6025d9747afab7` |
 | [garbage/before.ax.txt](garbage/before.ax.txt) | 253 | `99c6b00e24424eee9be3475274bc621b910ec3714248bcf50f4eb95ceb64dd22` |
 | [garbage/after.ax.txt](garbage/after.ax.txt) | 253 | `9916082800a30da91722ebcfba085cd3f2e0de61d2e1ec1b70e42023926ce26e` |
-| [garbage/source-preservation.json](garbage/source-preservation.json) | 2278 | `dedce999b02c08de04eb97af1b69664e16064ba8b275cf07f70927ff3079710b` |
+| [garbage/source-preservation.json](garbage/source-preservation.json) | 2098 | `df8d4dd5fc8f10711351595627c06bbbfc3d33eac7481cd2386a547e55d4c095` |
 | [garbage/source-before.json](garbage/source-before.json) | 1688 | `9e31d4f903e58d11ef07bfb40e976098d67f877331aacc7ab636d21cfdde917c` |
 | [garbage/seed.log](garbage/seed.log) | 421 | `688a131def38e0773a67f66447c8978214aa6ebd2dedd766641230bc6e871f34` |
 | [old-schema/shell.log](old-schema/shell.log) | 275 | `364303d0e7edae3620511ccd49c7139434a19f42c36f410ed0f0e9189c7dadcb` |
@@ -108,7 +108,7 @@ Personal checkout and home prefixes are replaced with `<checkout>` and `<home>`.
 | [old-schema/cleanup.txt](old-schema/cleanup.txt) | 217 | `4d4137709b59810593a352c9d2163c2069cf47c26bb325bbf15c6ebdbe2beb69` |
 | [old-schema/before.ax.txt](old-schema/before.ax.txt) | 253 | `58970394e37750f23476c7eaa7d207033c36916c32b231010b8198e6144c2d29` |
 | [old-schema/after.ax.txt](old-schema/after.ax.txt) | 253 | `4e2c242c8ad9e89089b41a25e604da6692ba394b5268f8a7711792c40743bc29` |
-| [old-schema/source-preservation.json](old-schema/source-preservation.json) | 2278 | `ae69a12a755f28838f5fa136dc6760b21cb33c707645837572c414b1de4cc63e` |
+| [old-schema/source-preservation.json](old-schema/source-preservation.json) | 2098 | `1263f07ea008e9473f6d3fba1ca04bc1b923001e6354afd76a02646bda533064` |
 | [old-schema/source-before.json](old-schema/source-before.json) | 1688 | `91a13ad5fab83c9adf7842a5f70ff96e8e0b9240974af66822836de7563fc00c` |
 | [old-schema/seed.log](old-schema/seed.log) | 433 | `d5c28b6ac77f203bf56415eb571ea77c251bec938ffdcdcb6ecc7e33adfe043c` |
 | [failed-launch/shell.log](failed-launch/shell.log) | 153 | `05b213fd1f41a441aaf5c64c2c254b1187e84c39b5517949e9d2b2ce69d77dda` |
