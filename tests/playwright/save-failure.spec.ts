@@ -1,4 +1,91 @@
+import { contrastRatio, type Rgb } from "../contrast";
 import { expect, test } from "./fixtures";
+
+type RenderedText = {
+  text: string;
+  fill: Rgb;
+  background: Rgb;
+  visible: boolean;
+  inBanner: boolean;
+};
+
+function readRenderedText(banner: Element): RenderedText[] {
+  const context = document
+    .createElement("canvas")
+    .getContext("2d", { willReadFrequently: true });
+  if (!context) throw new Error("No 2D canvas context");
+  const toRgba = (color: string) => {
+    context.clearRect(0, 0, 1, 1);
+    context.fillStyle = color;
+    context.fillRect(0, 0, 1, 1);
+    const [red = 0, green = 0, blue = 0, alpha = 0] = context.getImageData(
+      0,
+      0,
+      1,
+      1,
+    ).data;
+    const rgb: Rgb = [red, green, blue];
+    return { rgb, alpha };
+  };
+  const opaque = (color: string, label: string): Rgb => {
+    const { rgb, alpha } = toRgba(color);
+    if (alpha !== 255) throw new Error(`${label} is translucent: ${color}`);
+    return rgb;
+  };
+  const backdrop = (element: Element, label: string): Rgb => {
+    for (
+      let layer: Element | null = element;
+      layer;
+      layer = layer.parentElement
+    ) {
+      const { backgroundColor, backgroundImage } = getComputedStyle(layer);
+      if (backgroundImage !== "none") {
+        throw new Error(`${label} sits on a background image`);
+      }
+      if (toRgba(backgroundColor).alpha > 0) {
+        return opaque(backgroundColor, `${label} background`);
+      }
+    }
+    throw new Error(`${label} has no background`);
+  };
+  const box = banner.getBoundingClientRect();
+  const texts: RenderedText[] = [];
+  const walker = document.createTreeWalker(banner, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const text = node.textContent?.trim();
+    const element = node.parentElement;
+    if (!text || !element) continue;
+    const label = `"${text.slice(0, 40)}"`;
+    for (
+      let layer: Element | null = element;
+      layer;
+      layer = layer.parentElement
+    ) {
+      const { opacity } = getComputedStyle(layer);
+      if (Number(opacity) < 1) {
+        throw new Error(`${label} is faded by opacity ${opacity}`);
+      }
+    }
+    const style = getComputedStyle(element);
+    const fill = style.getPropertyValue("-webkit-text-fill-color");
+    if (!fill) throw new Error(`${label} has no computed text fill`);
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    const rects = [...range.getClientRects()];
+    texts.push({
+      text,
+      fill: opaque(fill, `${label} fill`),
+      background: backdrop(element, label),
+      visible:
+        style.visibility === "visible" &&
+        rects.some((rect) => rect.width > 0 && rect.height > 0),
+      inBanner: rects.every(
+        (rect) => rect.left >= box.left && rect.right <= box.right,
+      ),
+    });
+  }
+  return texts;
+}
 
 for (const colorScheme of ["light", "dark"] as const) {
   test(`SHELL-10 ${colorScheme} warnings wrap and preserve the quit decision after recovery`, async ({
@@ -22,11 +109,21 @@ for (const colorScheme of ["light", "dark"] as const) {
         () => document.documentElement.scrollWidth <= window.innerWidth,
       ),
     ).toBe(true);
-    expect(
-      await banner.evaluate(
-        (element) => getComputedStyle(element).backgroundColor,
-      ),
-    ).toBe(colorScheme === "light" ? "rgb(255, 248, 235)" : "rgb(43, 37, 27)");
+    const texts = await banner.evaluate(readRenderedText);
+    expect(texts.map(({ text }) => text)).toEqual([
+      "Changes aren't being saved.",
+      reason,
+      "Your changes are kept in memory. Aelomi will keep trying.",
+    ]);
+    for (const { text, fill, background, visible, inBanner } of texts) {
+      const label = `${colorScheme} "${text.slice(0, 27)}"`;
+      expect(visible, `${label} is visible`).toBe(true);
+      expect(inBanner, `${label} wraps inside the banner`).toBe(true);
+      expect(
+        contrastRatio(fill, background),
+        `${label} meets the WCAG AA text contrast`,
+      ).toBeGreaterThanOrEqual(4.5);
+    }
     await page.getByRole("button", { name: "Ping again" }).focus();
     await page.evaluate(() => window.__aelomiMock?.quit.request());
     const dialog = page.getByRole("alertdialog");
