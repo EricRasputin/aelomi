@@ -1,5 +1,13 @@
-import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  expect,
+  onTestFinished,
+  test,
+  vi,
+} from "vitest";
 import { commands, events, type Health } from "../ipc";
+import { installMock } from "../ipc/mock";
 import { useQuitStore } from "./quit";
 import { connectStorageEvents } from "./storage-events";
 import { useStorageHealthStore } from "./storage-health";
@@ -17,6 +25,17 @@ function connect() {
   const connection = connectStorageEvents();
   connections.push(connection);
   return connection;
+}
+function mockBackend() {
+  vi.stubGlobal("window", {});
+  installMock();
+  const mock = window.__aelomiMock;
+  if (!mock) throw new Error("Missing IPC mock");
+  onTestFinished(() => {
+    mock.reset();
+    vi.unstubAllGlobals();
+  });
+  return mock;
 }
 function deferred<T>() {
   let resolve = (_value: T): void => {};
@@ -45,6 +64,29 @@ test("reads failing startup health after listeners register", async () => {
     pendingDocs: ["page"],
     error: null,
   });
+});
+
+test("a quit refused before the listeners register still asks, and keeping open answers it", async () => {
+  const mock = mockBackend();
+  mock.storage.failWrites(true);
+  await mock.storage.type("page", "x");
+  mock.quit.request();
+  mock.storage.failWrites(false);
+
+  const first = connect();
+  await first.ready;
+  expect(useStorageHealthStore.getState().health).toBe("Healthy");
+  expect(useQuitStore.getState().decision).toMatchObject({
+    kind: "asking",
+    pendingDocs: ["page"],
+    error: null,
+  });
+
+  useQuitStore.getState().keepOpen();
+  first.dispose();
+  useQuitStore.setState(useQuitStore.getInitialState(), true);
+  await connect().ready;
+  expect(useQuitStore.getState().decision).toMatchObject({ kind: "open" });
 });
 
 test("an event overtakes a delayed startup snapshot", async () => {
