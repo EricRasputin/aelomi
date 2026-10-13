@@ -63,6 +63,8 @@ GitHub's hosted Mac runners are too slow and too noisy to time these numbers, an
 
 Data-safety checks end in exact assertions, never an AI judgment step. The `verify-aelomi` skill drives the real app window through the macOS accessibility tree to prove a change works. It is evidence for a PR, not a CI gate, so the Rust tests and the maintainer's daily use still cover the real app.
 
+Before publishing native verification evidence or handing a PR to review, follow [Publish native verification evidence](docs/native-verification-evidence.md). Attach future screenshots to the PR and commit the text record. Use the documented committed fallback when uploads fail, and verify remote proof links before local runs disappear.
+
 **Definition of done:** the feature's `e2e` tests pass in CI, logic has unit tests, budgets are green, dependency checks (`cargo-deny`, `pnpm audit`) pass, and the reviewer agent approves.
 
 ## Workflow
