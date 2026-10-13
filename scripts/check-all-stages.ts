@@ -1,11 +1,12 @@
-// One stage per job in .github/workflows/ci.yml, named after it. check-all.test.ts fails
-// when the two lists drift. e2e builds dist-mock/ once for playwright and keystroke, and
+// One stage per job in .github/workflows/ci.yml, named after it, running that job's
+// commands. check-all.test.ts fails when the jobs or their commands drift. e2e builds dist-mock/ once for playwright and keystroke, and
 // build-app builds the bundle cold-start launches, so the order matters. Perf stages gate
 // CI's runner-calibrated budgets, not the spec numbers, and wait for a quiet machine first.
 // pnpm perf:cold and pnpm perf:keystroke on their own check the spec numbers.
 export const STAGES: readonly {
   job: string;
   commands: string[][];
+  env?: Record<string, string>;
   perf?: true;
 }[] = [
   { job: "biome", commands: [["pnpm", "lint"]] },
@@ -40,7 +41,8 @@ export const STAGES: readonly {
   },
   {
     job: "keystroke",
-    commands: [["env", "AELOMI_PERF_CI=1", "pnpm", "perf:keystroke"]],
+    commands: [["pnpm", "perf:keystroke"]],
+    env: { AELOMI_PERF_CI: "1" },
     perf: true,
   },
   {
@@ -50,5 +52,9 @@ export const STAGES: readonly {
       ["pnpm", "check:no-mock"],
     ],
   },
-  { job: "cold-start", commands: [["pnpm", "perf:cold", "--ci"]], perf: true },
+  {
+    job: "cold-start",
+    commands: [["node", "perf/cold-start.ts", "--ci"]],
+    perf: true,
+  },
 ];

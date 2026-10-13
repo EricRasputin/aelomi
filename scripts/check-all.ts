@@ -16,10 +16,14 @@ const env = {
 const git = (...args: string[]) =>
   spawnSync("git", args, { cwd: root, encoding: "utf8" }).stdout.trim();
 
-const run = (command: string[]) => {
+const run = (command: string[], extra: Record<string, string> = {}) => {
   console.log(`\n$ ${command.join(" ")}`);
   const [file = "", ...args] = command;
-  return spawnSync(file, args, { cwd: root, env, stdio: "inherit" }).status;
+  return spawnSync(file, args, {
+    cwd: root,
+    env: { ...env, ...extra },
+    stdio: "inherit",
+  }).status;
 };
 
 // Spotlight indexes a fresh build, which can push the load past 10x the core
@@ -52,12 +56,12 @@ const sha = git("rev-parse", "HEAD");
 if (run(["pnpm", "install", "--frozen-lockfile"]) !== 0)
   fail("pnpm install --frozen-lockfile");
 const stages: { job: string; seconds: number }[] = [];
-for (const { job, commands, perf } of STAGES) {
+for (const { job, commands, env: extra, perf } of STAGES) {
   console.log(`\n== ${job}`);
   if (perf) waitForQuiet();
   const start = performance.now();
   for (const command of commands)
-    if (run(command) !== 0) fail(`${job}: ${command.join(" ")}`);
+    if (run(command, extra) !== 0) fail(`${job}: ${command.join(" ")}`);
   stages.push({ job, seconds: Math.round((performance.now() - start) / 1000) });
 }
 

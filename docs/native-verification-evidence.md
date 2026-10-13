@@ -8,7 +8,7 @@ The existing [SHELL-10 proof](evidence/shell-10/README.md) stays in Git. Keep it
 
 ## Prepare the record
 
-1. Record the source commit before the native run with `git rev-parse HEAD`. Record the macOS version, app version, run mode, behavior IDs, commands, and observed results in the evidence README. Distinguish the tested source commit from later commits that only publish its evidence.
+1. Squash the branch first (see **Private until ready** in `CLAUDE.md`), then record the source commit before the native run with `git rev-parse HEAD`. A SHA from before the squash never reaches GitHub. Commit the record on top as its own commit, and don't squash or rebase it into the code afterwards. Record the macOS version, app version, run mode, behavior IDs, commands, and observed results in the evidence README. Distinguish the tested source commit from later commits that only publish its evidence.
 2. Run the applicable verification recipe with isolated `AELOMI_DATA_DIR`. Capture each required before and after state and inspect every screenshot. Keep the matching `shell.log` lines and `.ax.txt` files. A mock screenshot does not prove native IPC.
 3. Quit or clean up that run before any build, browser suite, or report generator runs in the same checkout. Restore any theme or permissions the recipe changed. Stop only that run's recorded PIDs.
 4. Copy the relevant text files into the evidence directory. Inspect them for credentials and unrelated personal data before publication. Use synthetic test data. Keep the full relevant shell log, including failures and cleanup, rather than only a success excerpt. Strip terminal color escapes and redact personal path prefixes. Mark any redaction in the README and hash the published bytes.

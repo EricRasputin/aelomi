@@ -72,12 +72,13 @@ Before publishing native verification evidence or handing a PR to review, follow
 
 - **pstack** (`github.com/backnotprop/pstack`) runs the engineering process. Use `/poteto-mode` and its playbooks: feature → PR → verify → merge. One branch and one PR per feature. Never commit directly to `main`.
 - **Private until ready.** The repo is public, so a branch stays on this machine until it is ready to merge. Never push a work-in-progress branch or open a PR early. This overrides every pstack instruction to push a first snapshot early, open the PR before self-proof, or push after each unit, including those in `.claude/skills/poteto-mode/playbooks/autopilot-full.md`, `autopilot-stack.md`, `multi-phase-plan.md`, and `opening-a-pr.md`. The order is:
-  1. Build and iterate on a local branch in its own worktree. Commit native verification text records as you go.
-  2. Squash the branch into the commits the PR will show. Clean history before review, because squashing afterwards orphans the verdict.
-  3. Run `pnpm check:all` on the committed head. It runs every CI job locally, stops at the first failure, and writes `.local-gate/<sha>.checks.json` (gitignored) when all pass. Its perf stages gate the same runner-calibrated budgets as CI. Run `pnpm perf:cold` or `pnpm perf:keystroke` on their own to check the spec numbers.
-  4. Run a fresh `reviewer` on Fable with `local <worktree path>`. It returns its verdict for the head SHA. Fix, commit, and repeat steps 2 to 4 until it says APPROVE.
-  5. Push that exact head and open the PR ready. Attach native verification screenshots to it.
-  6. Run the **Review gate** below once CI is green. Fix anything CI or the reviewer finds on the PR in place.
+  1. Build and iterate on a local branch in its own worktree.
+  2. Squash the branch into the commits the PR will show. From here on, add fixes as new commits and never squash or rebase again, because rewriting history orphans every SHA recorded below.
+  3. Run native verification on that head and commit its text record as a separate commit on top, so the source commit it names reaches GitHub. Repeat it after any later product-code fix.
+  4. Run `pnpm check:all` on the committed head. It runs every CI job locally, stops at the first failure, and writes `.local-gate/<sha>.checks.json` (gitignored) when all pass. Its perf stages gate the same runner-calibrated budgets as CI. Run `pnpm perf:cold` or `pnpm perf:keystroke` on their own to check the spec numbers.
+  5. Run a fresh `reviewer` on Fable with `local <worktree path>`. It returns its verdict for the head SHA. Fix, commit, and repeat steps 4 and 5 until it says APPROVE.
+  6. Push that exact head and open the PR ready. Attach native verification screenshots to it.
+  7. Run the **Review gate** below once CI is green. Fix anything CI or the reviewer finds on the PR in place.
 - **Emil Kowalski's skills** (`github.com/emilkowalski/skill`) are the design and motion rulebook. Not used: `animate-expo`, `mobile-native`, `write-swift`.
 - **pen.dev** (`pen-design` skill, `@pen.dev/cli`) can prototype new UI designs to explore and verify ideas before implementation when useful. Judge the prototypes against Emil's rules. Its skill is proprietary, so `scripts/vendor-skills.sh` fetches it from npm at a pinned version into a gitignored `.claude/skills/pen-design/`; it is never committed.
 - Both skill sets are vendored into `.claude/skills/` (pstack's subagents into `.claude/agents/`), pinned to commits in `scripts/vendor-skills.sh`. Licenses and the pinned source live in `.claude/vendor/`. Update deliberately: bump the ref (or pen.dev's version), rerun the script, review the diff. Never hand-edit vendored files. Keep `.claude/` out of Biome, tsc, and Vitest (pstack ships its own TS scripts).

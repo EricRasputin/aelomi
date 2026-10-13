@@ -43,7 +43,7 @@ This file maps the code. `CLAUDE.md` has the rules and the stack, `SPEC.md` has 
 | `tests/is-local-url.ts` | The loopback allow list both browser suites share |
 | `.github/workflows/ci.yml` | Every CI job |
 | `scripts/check-all.ts` | `pnpm check:all`, which runs every CI job locally on a clean committed head and records a pass in `.local-gate/` |
-| `scripts/check-all-stages.ts` | The stage list `check:all` runs, one per CI job; `check-all.test.ts` fails when it drifts from `ci.yml` |
+| `scripts/check-all-stages.ts` | The stage list `check:all` runs, one per CI job; `check-all.test.ts` fails when its jobs or commands drift from `ci.yml` |
 | `scripts/check-licenses.mjs` | Fails on an npm license outside the allow list |
 | `scripts/check-no-mock.mjs` | Fails if the IPC mock or a dev route is in the production bundle in `dist/` |
 | `scripts/protect-main.sh` | Makes each CI job a required check on `main` |
