@@ -1,5 +1,6 @@
 use std::ffi::OsString;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 
 use aelomi_core::storage::{self as core, DataPathError, DocId, OpenError, Store};
@@ -70,6 +71,7 @@ pub enum StorageError {
 pub struct Storage {
     opened: Result<Store, StorageStatus>,
     path: PathBuf,
+    quit_confirmed: AtomicBool,
 }
 
 impl Storage {
@@ -78,22 +80,33 @@ impl Storage {
             Ok(resolved) => Self {
                 opened: Store::open(&resolved).map_err(StorageStatus::from),
                 path: resolved,
+                quit_confirmed: AtomicBool::new(false),
             },
             Err(DataPathError::CloudFolder { resolved, .. }) => Self {
                 opened: Err(StorageStatus::CloudPath {
                     resolved: resolved.to_string_lossy().into_owned(),
                 }),
                 path: resolved,
+                quit_confirmed: AtomicBool::new(false),
             },
             Err(DataPathError::Io(error)) => Self {
                 opened: Err(StorageStatus::Io(error.to_string())),
                 path: location.path.clone(),
+                quit_confirmed: AtomicBool::new(false),
             },
         }
     }
 
     pub fn store(&self) -> Result<&Store, StorageError> {
         self.opened.as_ref().map_err(|_| StorageError::Unavailable)
+    }
+
+    pub(crate) fn confirm_quit(&self) -> bool {
+        !self.quit_confirmed.swap(true, Ordering::Relaxed)
+    }
+
+    pub(crate) fn quit_confirmed(&self) -> bool {
+        self.quit_confirmed.load(Ordering::Relaxed)
     }
 
     pub fn status(&self) -> StorageStatus {
@@ -402,6 +415,7 @@ pub(crate) mod tests {
         Storage {
             opened: Ok(disk.open(Path::new("/data")).expect("opens")),
             path: "/data".into(),
+            quit_confirmed: AtomicBool::new(false),
         }
     }
 
@@ -471,6 +485,7 @@ pub(crate) mod tests {
         let storage = Storage {
             opened: Err(StorageStatus::Locked),
             path: "/data".into(),
+            quit_confirmed: AtomicBool::new(false),
         };
         assert_eq!(storage.flush_before_quit(QUIT_FLUSH_TIMEOUT), Ok(()));
         assert_eq!(storage.status(), StorageStatus::Locked);
@@ -478,7 +493,7 @@ pub(crate) mod tests {
         assert_eq!(storage.startup_line(), "storage status=Locked path=/data");
     }
 
-    fn text_of(state: &[u8]) -> String {
+    pub(crate) fn text_of(state: &[u8]) -> String {
         use yrs::updates::decoder::Decode;
         use yrs::{GetString, Transact, Update};
         let doc = yrs::Doc::new();

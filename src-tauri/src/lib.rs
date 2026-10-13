@@ -87,6 +87,13 @@ fn open_storage(app: &tauri::App) {
 }
 
 fn flush_then_allow_quit<R: Runtime>(app: &AppHandle<R>, via: &str) -> bool {
+    if app
+        .try_state::<Storage>()
+        .is_some_and(|storage| storage.quit_confirmed())
+    {
+        println!("quit allowed via={via} confirmed=true");
+        return true;
+    }
     let Err(pending) = flush_before_quit(app, via) else {
         return true;
     };
@@ -270,6 +277,105 @@ pub(crate) mod tests {
                 "ExitRequested",
                 "Exit",
             ]
+        );
+    }
+
+    #[test]
+    fn confirmed_quit_bypasses_close_and_exit_holds_while_writes_still_fail() {
+        let disk = Arc::new(SimDisk::default());
+        let BlockedApp {
+            app,
+            quit_events,
+            quit_blocked,
+        } = app_with_page_pending(&disk);
+        WebviewWindowBuilder::new(&app, "main", WebviewUrl::default())
+            .build()
+            .unwrap();
+
+        let worker = Arc::new(Mutex::new(None));
+        let worker_handle = worker.clone();
+        run_recording(app, quit_events.clone(), move |app| {
+            let app = app.clone();
+            *worker_handle.lock().unwrap() = Some(thread::spawn(move || {
+                let window = app.get_webview_window("main").unwrap();
+                window.close().unwrap();
+                quit_blocked.recv_timeout(Duration::from_secs(10)).unwrap();
+                let storage = app.state::<Storage>();
+                let mut exits = 0;
+                commands::quit_anyway_with(&storage, || {
+                    exits += 1;
+                    window.close().unwrap();
+                });
+                commands::quit_anyway_with(&storage, || exits += 1);
+                assert_eq!(exits, 1);
+                assert_eq!(
+                    storage::tests::text_of(
+                        &storage
+                            .store()
+                            .unwrap()
+                            .load(&DocId::new("page").unwrap())
+                            .unwrap()
+                    ),
+                    "unsaved"
+                );
+            }));
+        });
+        worker.lock().unwrap().take().unwrap().join().unwrap();
+
+        assert_eq!(
+            *quit_events.lock().unwrap(),
+            [
+                "CloseRequested",
+                r#"quit-blocked {"pending_docs":["page"]}"#,
+                "CloseRequested",
+                "ExitRequested",
+                "Exit",
+            ]
+        );
+    }
+
+    #[test]
+    fn final_exit_flush_saves_recovered_writes_and_appends_after_confirmation() {
+        use std::path::Path;
+        use yrs::updates::decoder::Decode;
+        use yrs::{Text, Transact, Update};
+
+        let disk = SimDisk::default();
+        let BlockedApp {
+            app, quit_events, ..
+        } = app_with_page_pending(&disk);
+        assert!(!flush_then_allow_quit(app.handle(), "CloseRequested"));
+        let storage = app.state::<Storage>();
+        let mut exits = 0;
+        commands::quit_anyway_with(&storage, || exits += 1);
+        assert_eq!(exits, 1);
+        assert!(flush_then_allow_quit(app.handle(), "ExitRequested"));
+        assert!(flush_then_allow_quit(app.handle(), "CloseRequested"));
+
+        let id = DocId::new("page").unwrap();
+        let doc = yrs::Doc::new();
+        let body = doc.get_or_insert_text("body");
+        let mut txn = doc.transact_mut();
+        txn.apply_update(Update::decode_v1(&storage.store().unwrap().load(&id).unwrap()).unwrap())
+            .unwrap();
+        body.insert(&mut txn, 7, " after confirmation");
+        storage
+            .store()
+            .unwrap()
+            .append(&id, &txn.encode_update_v1())
+            .unwrap();
+        drop(txn);
+        disk.clear_faults();
+        on_run_event(app.handle(), RunEvent::Exit);
+        disk.crash();
+        let reopened = disk.open(Path::new("/data")).unwrap();
+        assert_eq!(
+            storage::tests::text_of(&reopened.load(&id).unwrap()),
+            "unsaved after confirmation"
+        );
+        assert_eq!(
+            *quit_events.lock().unwrap(),
+            [r#"quit-blocked {"pending_docs":["page"]}"#]
         );
     }
 }

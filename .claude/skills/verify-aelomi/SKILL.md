@@ -59,7 +59,7 @@ Run it after launch and whenever a command behaves oddly. It changes nothing, wr
 
 - The launch process and the app process still run the commands this run started.
 - System Events has Accessibility access.
-- The app window is on screen, and its web content has a `role="status"` region.
+- The app window is on screen, and its web content has a `role="status"` region or an alert dialog. A modal dialog hides the background status from accessibility while it is open.
 - For `dev`, a process from this run listens on the run's `DEV_PORT`. For `app`, the bundle is newer than `src/`, `src-tauri/src/`, `crates/`, and `index.html`.
 - The shell log has `ping seq=1`.
 
@@ -74,6 +74,7 @@ If a check fails, do not drive the instance. Run cleanup and launch again.
 | `$S/app.sh tree "$RUN"` | Print the web content's accessibility tree |
 | `$S/app.sh status "$RUN"` | Print the text of the `role="status"` region |
 | `$S/app.sh wait-status "$RUN" TEXT [S]` | Wait up to S seconds (default 10) until the status reads TEXT. On timeout, exit 1 and print the last text |
+| `$S/app.sh wait-dialog "$RUN" TITLE [S]` | Wait up to S seconds for the alert dialog with TITLE. Use it after a native quit, before a screenshot |
 | `$S/app.sh press "$RUN" NAME` | Send `AXPress` to the first element named NAME |
 | `$S/app.sh focus "$RUN" NAME` | Focus the first element named NAME |
 | `$S/app.sh keys "$RUN" TEXT [MODS]` | Bring Aelomi to the front and type TEXT. MODS is a comma list of `command`, `shift`, `option`, and `control` |
@@ -93,7 +94,7 @@ Use `tree` to find names. In this app, WebKit maps the DOM to these accessibilit
 
 `press` and `focus` match an element's accessibility name or description and skip static text. If nothing matches, they exit 1 and list the named elements.
 
-Prefer `press`. It works while the window is in the background, and it does not take focus from the person at the keyboard. Use `focus` and `keys` only to prove a keyboard path. `keys` brings Aelomi to the front and types into the focused element. Tab and Option-Tab did not move focus to the button in this WKWebView, so set focus with `focus` first.
+Prefer `press`. It works while the window is in the background, and it does not take focus from the person at the keyboard. The exception is a window on another Space, which accessibility cannot see. Every `ax.js` command then makes Aelomi frontmost first and waits up to 5 s for its window. Use `focus` and `keys` only to prove a keyboard path. `keys` brings Aelomi to the front and types into the focused element. Tab and Option-Tab did not move focus to the button in this WKWebView, so set focus with `focus` first.
 
 Wait for state with `wait-status`, not `sleep`. The IPC reply arrives after `press` returns.
 
@@ -212,6 +213,9 @@ Never kill Aelomi, Vite, or node by name. Another agent or the maintainer may be
 - After a Rust compile error, `tauri dev` keeps running and waits for a fix. `launch` stops waiting when the log shows `could not compile`, so clean up, fix the code, and launch again.
 - The first accessibility query after launch can find no web content. `launch` retries until the status region appears.
 - `src/main.tsx` wraps the app in `StrictMode`, which runs effects twice in dev. The ping store ignores a ping while one is pending, so the dev log still starts with one `ping seq=1`.
+- A native quit can block the main thread for its 2 s flush. Accessibility can report no window during that interval. Wait with `wait-dialog` before capturing a blocked quit.
+- Accessibility lists only windows on the current Space. When Aelomi's window is on another Space, each `ax.js` command makes Aelomi frontmost, which switches Spaces, and waits up to 5 s for the window. The switch took about 2 s in the proof run. Another app can take the front back between two commands, so a command can still fail with `The window has no web content yet.` Rerun it. This is not a product failure. `screencapture -l` captures the window from any Space, but the tree in `NAME.ax.txt` needs the switch.
+- During a `launch dev` run, the dev server reloads the app's UI when an HTML file under `playwright-report/`, `.e2e/`, or `dist-mock/` changes. The reload clears in-memory UI state, such as an open dialog. Don't run the WebKit suite, `pnpm test:e2e`, `pnpm build:mock`, or `mock-drive.mjs` until that run is cleaned up.
 - `pnpm build:mock` empties `dist-mock/` before it writes the new build. Do not pass `--rebuild` while another mock run in the same checkout is serving `dist-mock/`.
 - The mock browser renders the light theme, Playwright's default color scheme. The real app follows the macOS appearance, which was dark in this repo's proof run.
 - An accessibility query takes 1 to 2 s, because each element read is a separate System Events call. Expect `tree` to slow down as pages grow.

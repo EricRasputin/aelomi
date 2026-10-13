@@ -1,0 +1,11 @@
+id=21519 title="Aelomi" x=240 y=88 w=960 h=640
+AXWebArea "Aelomi"
+  AXGroup/AXLandmarkBanner
+    AXStaticText "Aelomi"
+  AXGroup/AXLandmarkMain
+    AXGroup/AXApplicationStatus
+      AXStaticText "Storage probe idle"
+    AXGroup
+      AXStaticText "No storage events yet"
+    AXButton "Run probe"
+    AXButton "Measure transport"

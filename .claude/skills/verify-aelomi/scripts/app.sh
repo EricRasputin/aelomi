@@ -15,6 +15,7 @@ Usage: app.sh <command> [args]
   tree RUN                       print the web content's accessibility tree
   status RUN                     print the text of the role="status" region
   wait-status RUN TEXT [S]       wait up to S seconds (default 10) until the status reads TEXT
+  wait-dialog RUN TITLE [S]      wait up to S seconds for an alert dialog with TITLE
   press RUN NAME                 press the element named NAME (AXPress, no focus change)
   focus RUN NAME                 focus the element named NAME
   keys RUN TEXT [MODS]           bring Aelomi to the front and type TEXT (MODS: command,shift,option,control)
@@ -170,7 +171,7 @@ doctor() {
   check "System Events has Accessibility access (System Settings > Privacy & Security > Accessibility)" \
     test "$(osascript -e 'tell application "System Events" to get UI elements enabled' 2>/dev/null)" = true
   check "app window is on screen" ax window "${APP_PID:-0}"
-  check "web content has a role=\"status\" region" ax status "${APP_PID:-0}"
+  check "web content has a status region or an alert dialog" ax content "${APP_PID:-0}"
   if [ "$MODE" = dev ]; then
     local owner=""
     [ -z "${DEV_PORT:-}" ] || owner=$(port_owner "$DEV_PORT")
@@ -234,6 +235,7 @@ case $command in
   doctor) doctor "$@" ;;
   tree | status | menus) load "${1:-}"; require_app; ax "$command" "$APP_PID" ;;
   wait-status) load "${1:-}"; require_app; ax wait-status "$APP_PID" "${2:?wait-status needs TEXT}" "${3:-10}" ;;
+  wait-dialog) load "${1:-}"; require_app; ax wait-dialog "$APP_PID" "${2:?wait-dialog needs TITLE}" "${3:-10}" ;;
   press | focus) load "${1:-}"; require_app; log_action "$command \"${2:?$command needs NAME}\""; ax "$command" "$APP_PID" "$2" ;;
   keys) load "${1:-}"; require_app; log_action "keys \"${2:?keys needs TEXT}\" ${3:-}"; ax keys "$APP_PID" "$2" "${3:-}" ;;
   screenshot) screenshot "$@" ;;

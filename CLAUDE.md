@@ -30,7 +30,7 @@ Aelomi is built entirely by AI agents. The maintainer sets direction and taste a
 | Long lists | TanStack Virtual (sidebar, search results, table rows) |
 | UI state | Zustand stores with selectors |
 | UI ↔ Rust calls | tauri-specta (types generated from Rust commands; mismatches fail the build) |
-| Styling | Tailwind v4 + Radix UI primitives |
+| Styling | Tailwind v4 + Base UI |
 | Tooling | Vite, pnpm, Biome (lint + format), Vitest, cargo-nextest |
 | MCP server | `rmcp` (official Rust MCP SDK), inside the Rust core |
 
@@ -69,9 +69,10 @@ Data-safety checks end in exact assertions, never an AI judgment step. The `veri
 
 - **pstack** (`github.com/backnotprop/pstack`) runs the engineering process. Use `/poteto-mode` and its playbooks: feature → PR → verify → merge. One branch and one PR per feature. Never commit directly to `main`.
 - **Emil Kowalski's skills** (`github.com/emilkowalski/skill`) are the design and motion rulebook. Not used: `animate-expo`, `mobile-native`, `write-swift`.
-- **pen.dev** (`pen-design` skill, `@pen.dev/cli`) is where designs get explored and perfected, judged against Emil's rules. Its skill is proprietary, so `scripts/vendor-skills.sh` fetches it from npm at a pinned version into a gitignored `.claude/skills/pen-design/`; it is never committed.
+- **pen.dev** (`pen-design` skill, `@pen.dev/cli`) can prototype new UI designs to explore and verify ideas before implementation when useful. Judge the prototypes against Emil's rules. Its skill is proprietary, so `scripts/vendor-skills.sh` fetches it from npm at a pinned version into a gitignored `.claude/skills/pen-design/`; it is never committed.
 - Both skill sets are vendored into `.claude/skills/` (pstack's subagents into `.claude/agents/`), pinned to commits in `scripts/vendor-skills.sh`. Licenses and the pinned source live in `.claude/vendor/`. Update deliberately: bump the ref (or pen.dev's version), rerun the script, review the diff. Never hand-edit vendored files. Keep `.claude/` out of Biome, tsc, and Vitest (pstack ships its own TS scripts).
 - pstack's model roles live in `~/.agents/pstack-models.md`, written by `/setup-pstack`.
+- **UI work goes to Claude Opus 5.5 only.** Claude Opus 5.5 (`claude-opus-5-5`) does every UI design and implementation task: pen.dev prototypes, React components, styles, UI dependencies, and UI tests. No other model writes or edits UI code. For UI work this overrides the `feature` role and the other code roles in `~/.agents/pstack-models.md`, which stays unchanged. The Fable review gate still applies.
 - **Review gate.** After CI is green on a PR, the agent that opened or updated it runs a fresh `reviewer` subagent (`.claude/agents/reviewer.md`) on Claude Fable. Builder subagents never use Fable. Findings go back to the builder, and the loop repeats on each new head until the verdict is APPROVE for the current head SHA. The maintainer merges only PRs whose latest reviewer verdict is APPROVE for the head SHA.
 
 ## Design direction

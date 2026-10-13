@@ -1,4 +1,4 @@
-import * as Tooltip from "@radix-ui/react-tooltip";
+import { Tooltip } from "@base-ui/react/tooltip";
 import {
   createRootRoute,
   createRoute,
@@ -7,27 +7,37 @@ import {
   lazyRouteComponent,
   Outlet,
 } from "@tanstack/react-router";
-import { useEffect, useLayoutEffect } from "react";
+import { useEffect, useId, useLayoutEffect } from "react";
+import {
+  QuitConfirmation,
+  SaveFailureBanner,
+} from "./components/storage-notices";
 import { formatPingReply } from "./ipc/format-ping";
 import { markIndexCommit } from "./perf/cold-start";
 import { usePingStore } from "./stores/ping";
 
 function RootLayout() {
   return (
-    <Tooltip.Provider>
+    <Tooltip.Provider delay={700} timeout={300}>
       <div className="flex min-h-screen flex-col">
         <header className="border-b border-[var(--border)] px-8 py-5 text-sm font-medium">
           Aelomi
         </header>
-        <main className="flex flex-1 items-center justify-center px-8 py-12">
+        <SaveFailureBanner />
+        <main
+          tabIndex={-1}
+          className="flex flex-1 items-center justify-center px-8 py-12"
+        >
           <Outlet />
         </main>
+        <QuitConfirmation />
       </div>
     </Tooltip.Provider>
   );
 }
 
 function IndexScreen() {
+  const tooltipId = useId();
   const status = usePingStore((state) => state.status);
   const ping = usePingStore((state) => state.ping);
 
@@ -50,23 +60,30 @@ function IndexScreen() {
         {text}
       </p>
       <Tooltip.Root>
-        <Tooltip.Trigger asChild>
-          <button
-            type="button"
-            disabled={status.kind === "pending"}
-            onClick={() => void ping()}
-            className="mt-4 rounded-md border border-[var(--border)] bg-[var(--button)] px-3 py-1.5 text-sm font-medium hover:bg-[var(--button-hover)] focus-visible:outline-2 focus-visible:outline-offset-4 disabled:opacity-50"
-          >
-            Ping again
-          </button>
+        <Tooltip.Trigger
+          disabled={status.kind === "pending"}
+          aria-describedby={tooltipId}
+          render={
+            <button
+              type="button"
+              disabled={status.kind === "pending"}
+              onClick={() => void ping()}
+              className="mt-4 rounded-md border border-[var(--border)] bg-[var(--button)] px-3 py-1.5 text-sm font-medium hover:bg-[var(--button-hover)] focus-visible:outline-2 focus-visible:outline-offset-4 disabled:opacity-50"
+            />
+          }
+        >
+          Ping again
         </Tooltip.Trigger>
         <Tooltip.Portal>
-          <Tooltip.Content
-            sideOffset={8}
-            className="rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-xs shadow-sm"
-          >
-            Check the connection to the Rust core
-          </Tooltip.Content>
+          <Tooltip.Positioner sideOffset={8}>
+            <Tooltip.Popup
+              id={tooltipId}
+              role="tooltip"
+              className="rounded-md border border-[var(--border)] bg-[var(--background)] px-3 py-2 text-xs shadow-sm"
+            >
+              Check the connection to the Rust core
+            </Tooltip.Popup>
+          </Tooltip.Positioner>
         </Tooltip.Portal>
       </Tooltip.Root>
       {import.meta.env.DEV && (
