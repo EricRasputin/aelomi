@@ -53,8 +53,7 @@ function run(argv) {
 }
 
 // Accessibility lists only windows on the current Space, and another app can take the
-// front between two commands. Bringing Aelomi forward here keeps the check and the action
-// in one invocation.
+// front between two commands.
 function ready(proc, { front = false, seconds = 5 } = {}) {
   const deadline = Date.now() + seconds * 1000;
   while (Date.now() < deadline) {
