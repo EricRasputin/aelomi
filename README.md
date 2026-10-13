@@ -13,6 +13,8 @@ After changing a Rust command, run `pnpm bindings` and `pnpm typecheck`.
 Run `pnpm lint`, `pnpm typecheck`, `pnpm test`, `cargo nextest run --workspace`,
 `cargo deny check`, `pnpm audit --audit-level moderate`, and `pnpm check-licenses` before committing.
 
+For native screenshots and shell logs, follow [Publish native verification evidence](docs/native-verification-evidence.md) before requesting review. Future screenshots use PR attachments, with a committed text record and a verified committed-image fallback.
+
 The license policy allows Unicode-3.0 for the ICU and unicode-ident dependencies,
 Zlib for foldhash, and Unlicense for isbot. Each is scoped to the packages named in `deny.toml` or `scripts/check-licenses.mjs`.
 `deny.toml` names two unmaintained transitive crates with no patched releases.
