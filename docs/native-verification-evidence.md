@@ -33,7 +33,7 @@ In an authenticated GitHub browser, use the comment box's attachment control for
 
 ## Verify publication before review
 
-1. Download every screenshot URL to a fresh directory without a GitHub token. For example, `curl --fail --location "$SCREENSHOT_URL" --output /tmp/downloaded-before.png`. Public-repository attachments should be readable without authentication. Reject a login page, HTML error, or expired signed URL.
+1. Download every screenshot URL to a fresh directory without a GitHub token. For example, `curl --disable --fail --location --connect-timeout 10 --max-time 60 "$SCREENSHOT_URL" --output /tmp/downloaded-before.png`. Public-repository attachments should be readable without authentication. Reject a login page, HTML error, or expired signed URL.
 2. Compare each download's SHA-256 and byte size with the manifest. Open each downloaded image and confirm it shows the intended native window and state.
 3. Commit and push the text record on the PR branch. Link it with `https://github.com/aelomi/aelomi/blob/<full-evidence-commit>/docs/evidence/<directory>/README.md`. Use that evidence commit in every text-file link too. Download the remote text files and compare their hashes with the manifest.
 4. Read the PR body back. Require every proof link to resolve to the expected bytes independently of the original run directory. Only then remove local copies if needed.
@@ -47,4 +47,8 @@ If `--attach` is missing, permission fails, the browser is signed out, or attach
 
 Use full-commit `blob` links for the README and logs, and full-commit `raw` links for PNGs. Download and hash-check those remote files as above. Do not leave required proof only in `/tmp` while waiting for an upload preference. A successful later attachment upload does not justify rewriting history or removing an already approved record.
 
+If the raw-file host is unreachable, use GitHub's documented [Contents API](https://docs.github.com/en/rest/repos/contents#get-repository-content). Request `/repos/aelomi/aelomi/contents/<path>?ref=<full-evidence-commit>` with `Accept: application/vnd.github.raw+json`. Public files need no authorization header. Compare the returned bytes with the same manifest.
+
 Actions artifacts are useful additional diagnostics. This repository's CI uploads currently retain artifacts for seven days. GitHub allows at most 90 days for public-repository artifact retention, as documented in [Actions retention settings](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository). Publish required screenshots and logs through the attachment or committed workflow before those artifacts expire. Evidence publication needs no product release or app network change.
+
+The [native publication proof](evidence/native-publication-46/README.md) records the attachment upload, anonymous screenshot retrieval, and committed-file fallback check for issue #46.

@@ -1,0 +1,7 @@
+ok    launch process 84241 runs the command this run started
+ok    app process 85465 is running
+ok    System Events has Accessibility access (System Settings > Privacy & Security > Accessibility)
+ok    app window is on screen
+ok    web content has a status region or an alert dialog
+ok    port 53523 is served by this run (owner PID 85175)
+ok    shell log has 'ping seq=1'
