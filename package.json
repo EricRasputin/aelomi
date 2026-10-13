@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "biome ci .",
     "test": "vitest run",
+    "check:all": "node scripts/check-all.ts",
     "bindings": "AELOMI_WRITE_BINDINGS=1 cargo test -p aelomi --lib bindings_are_current",
     "check-licenses": "node scripts/check-licenses.mjs",
     "build:mock": "pnpm typecheck && vite build --mode mock",

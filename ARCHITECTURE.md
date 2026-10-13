@@ -42,6 +42,8 @@ This file maps the code. `CLAUDE.md` has the rules and the stack, `SPEC.md` has 
 | `fixtures/data-folders/` | A data folder per storage format, for migration tests |
 | `tests/is-local-url.ts` | The loopback allow list both browser suites share |
 | `.github/workflows/ci.yml` | Every CI job |
+| `scripts/check-all.ts` | `pnpm check:all`, which runs every CI job locally on a clean committed head and records a pass in `.local-gate/` |
+| `scripts/check-all-stages.ts` | The stage list `check:all` runs, one per CI job; `check-all.test.ts` fails when its jobs or commands drift from `ci.yml` |
 | `scripts/check-licenses.mjs` | Fails on an npm license outside the allow list |
 | `scripts/check-no-mock.mjs` | Fails if the IPC mock or a dev route is in the production bundle in `dist/` |
 | `scripts/protect-main.sh` | Makes each CI job a required check on `main` |
@@ -51,7 +53,7 @@ This file maps the code. `CLAUDE.md` has the rules and the stack, `SPEC.md` has 
 | `vite.config.ts` | Vite config. Mock builds go to `dist-mock/`, production builds to `dist/` |
 | `tsconfig.json` | Strict TypeScript settings for `src/`, `e2e/`, and `tests/` |
 | `biome.json` | Lint and format rules, including the test import restrictions |
-| `.claude/agents/reviewer.md` | The reviewer agent that gates each PR |
+| `.claude/agents/reviewer.md` | The reviewer agent that gates each PR, with a local mode for branches not yet pushed |
 | `.claude/skills/verify-aelomi/` | The skill agents use to launch, drive, and screenshot the app to prove a change works, with its feature map |
 
 ## Rust workspace
@@ -120,7 +122,7 @@ To add a command:
 
 | Layer | Tool | Location | CI job |
 |---|---|---|---|
-| Pure TypeScript logic | Vitest | `*.test.ts` in `src/`, `tests/`, `perf/`, and `fixtures/`, configured in `vitest.config.ts` | `vitest` |
+| Pure TypeScript logic | Vitest | `*.test.ts` in `src/`, `tests/`, `perf/`, `fixtures/`, and `scripts/`, configured in `vitest.config.ts` | `vitest` |
 | Rust core and shell | cargo-nextest | `#[cfg(test)]` modules in each crate | `nextest` |
 | Acceptance | TesterArmy `e2e` | `e2e/*.e2e.ts`, configured in `e2e.config.ts` | `e2e` |
 | WebKit flows and the network check | Playwright, `webkit` project | `tests/playwright/*.spec.ts`, configured in `playwright.config.ts` | `playwright` |
@@ -149,7 +151,7 @@ Acceptance tests import `test` from `e2e/fixtures.ts`, and Playwright tests impo
 | `cold-start` | Downloads `Aelomi-app` and runs `perf/cold-start.ts --ci` |
 | `keystroke` | `pnpm build:mock` and the `perf` Playwright project in CI mode |
 
-To add a job, add its ID to `CHECKS` in `scripts/protect-main.sh` and rerun the script, so `main` requires it.
+To add a job, add its ID to `CHECKS` in `scripts/protect-main.sh` and rerun the script, so `main` requires it. Add a matching stage to `scripts/check-all-stages.ts` so `pnpm check:all` runs it too.
 
 ## Performance gates
 

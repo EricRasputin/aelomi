@@ -1,6 +1,6 @@
 # Publish native verification evidence
 
-For future native runs, attach the required PNG screenshots to the pull request and commit the small text record under `docs/evidence/<behavior-or-issue>/`. Keep the screenshots at their captured resolution. Include the shell log, accessibility trees, actions, doctor result, and a README that connects each action to its visible result and native side effect.
+For future native runs, attach the required PNG screenshots to the pull request and commit the small text record under `docs/evidence/<behavior-or-issue>/`. Commit the text record before the branch goes public; attach the screenshots once the PR opens (see **Private until ready** in `CLAUDE.md`). Keep the screenshots at their captured resolution. Include the shell log, accessibility trees, actions, doctor result, and a README that connects each action to its visible result and native side effect.
 
 Use [verify-aelomi](../.claude/skills/verify-aelomi/SKILL.md) to capture the proof. Publish and check every required file before deleting the local run. A `/tmp` path, a T3 thread attachment, or an expiring Actions artifact alone does not complete verification.
 
@@ -8,7 +8,7 @@ The existing [SHELL-10 proof](evidence/shell-10/README.md) stays in Git. Keep it
 
 ## Prepare the record
 
-1. Record the source commit before the native run with `git rev-parse HEAD`. Record the macOS version, app version, run mode, behavior IDs, commands, and observed results in the evidence README. Distinguish the tested source commit from later commits that only publish its evidence.
+1. Squash the branch first (see **Private until ready** in `CLAUDE.md`), then record the source commit before the native run with `git rev-parse HEAD`. A SHA from before the squash never reaches GitHub. Commit the record on top as its own commit, and don't squash or rebase it into the code afterwards. Record the macOS version, app version, run mode, behavior IDs, commands, and observed results in the evidence README. Distinguish the tested source commit from later commits that only publish its evidence.
 2. Run the applicable verification recipe with isolated `AELOMI_DATA_DIR`. Capture each required before and after state and inspect every screenshot. Keep the matching `shell.log` lines and `.ax.txt` files. A mock screenshot does not prove native IPC.
 3. Quit or clean up that run before any build, browser suite, or report generator runs in the same checkout. Restore any theme or permissions the recipe changed. Stop only that run's recorded PIDs.
 4. Copy the relevant text files into the evidence directory. Inspect them for credentials and unrelated personal data before publication. Use synthetic test data. Keep the full relevant shell log, including failures and cleanup, rather than only a success excerpt. Strip terminal color escapes and redact personal path prefixes. Mark any redaction in the README and hash the published bytes.
@@ -27,7 +27,7 @@ gh pr comment 123 --repo aelomi/aelomi \
 	--attach "$RUN/after.png#Native state after the action"
 ```
 
-GitHub replaces matching local image paths in the comment with uploaded URLs. Read the posted comment back with `gh api --paginate repos/aelomi/aelomi/issues/123/comments`. Put the exact screenshot URLs and comment permalink in the evidence README. Embed the images and link the text record from the PR body.
+GitHub replaces matching local image paths in the comment with uploaded URLs. Read the posted comment back with `gh api --paginate repos/aelomi/aelomi/issues/123/comments`. Leave the URLs out of the evidence README. Its filename, byte size, and SHA-256 manifest already ties each attachment to the record, so the record needs no commit after the PR opens and the reviewed head stays put. Embed the images and link the text record from the PR body.
 
 In an authenticated GitHub browser, use the comment box's attachment control for PNGs. Wait for the upload to produce Markdown URLs, then post the comment and read it back. GitHub documents a 10 MB image limit in [Attaching files](https://docs.github.com/en/get-started/writing-on-github/working-with-advanced-formatting/attaching-files). Split a large proof into the required states; preserve legibility rather than shrinking text to fit.
 
@@ -35,7 +35,7 @@ In an authenticated GitHub browser, use the comment box's attachment control for
 
 1. Download every screenshot URL to a fresh directory without a GitHub token. For example, `curl --disable --fail --location --connect-timeout 10 --max-time 60 "$SCREENSHOT_URL" --output /tmp/downloaded-before.png`. Public-repository attachments should be readable without authentication. Reject a login page, HTML error, or expired signed URL.
 2. Compare each download's SHA-256 and byte size with the manifest. Open each downloaded image and confirm it shows the intended native window and state.
-3. Commit and push the text record on the PR branch. Link it with `https://github.com/aelomi/aelomi/blob/<full-evidence-commit>/docs/evidence/<directory>/README.md`. Use that evidence commit in every text-file link too. Download the remote text files and compare their hashes with the manifest.
+3. The text record is already in the pushed head. Link it with `https://github.com/aelomi/aelomi/blob/<full-evidence-commit>/docs/evidence/<directory>/README.md`. Use the full SHA of the commit that added it, here and in every text-file link. Download the remote text files and compare their hashes with the manifest.
 4. Read the PR body back. Require every proof link to resolve to the expected bytes independently of the original run directory. Only then remove local copies if needed.
 5. After any product-code change, repeat the affected native proof and append a new evidence record. Keep previous published records and state which source commit each proves. Run the repository's CI and fresh-review gate on the final PR head.
 
@@ -43,7 +43,7 @@ Attachments avoid adding PNG blobs to Git history, but GitHub does not promise p
 
 ## Use the committed fallback when uploads fail
 
-If `--attach` is missing, permission fails, the browser is signed out, or attachment automation fails, commit the required PNGs alongside the text record. Keep only the states needed to prove the behavior, with all required native paths still covered. Omit duplicate captures, build reports, and raw app data. Explain the upload failure in the README and PR body.
+If `--attach` is missing, permission fails, the browser is signed out, or attachment automation fails, commit the required PNGs alongside the text record. Keep only the states needed to prove the behavior, with all required native paths still covered. Omit duplicate captures, build reports, and raw app data. Explain the upload failure in the README and PR body. This fallback adds a commit after the PR opens, so the new head needs CI and a fresh review.
 
 Use full-commit `blob` links for the README and logs, and full-commit `raw` links for PNGs. Download and hash-check those remote files as above. Do not leave required proof only in `/tmp` while waiting for an upload preference. A successful later attachment upload does not justify rewriting history or removing an already approved record.
 

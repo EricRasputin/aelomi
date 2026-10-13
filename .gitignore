@@ -12,3 +12,5 @@ perf-results/
 .claude/skills/pen-design/
 # A store opened on a fixture folder in place takes this lock.
 fixtures/data-folders/**/.lock
+# check:all pass records, keyed by commit SHA.
+.local-gate/
