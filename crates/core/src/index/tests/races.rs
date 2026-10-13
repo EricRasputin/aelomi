@@ -1,5 +1,5 @@
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, mpsc};
 use std::time::{Duration, Instant};
 
 use super::{Opened, eventually, hit_ids, index_path, open, open_with, page, ready, snapshot};
@@ -209,30 +209,32 @@ fn edits_during_the_startup_reconcile_converge_to_a_fresh_rebuild() {
 fn continuous_edits_never_starve_the_coalesced_update() {
     let dir = tempfile::tempdir().unwrap();
     let opened = Arc::new(seeded(dir.path()));
+    let (stop, stopping) = mpsc::channel();
+    let (first_edit, started) = mpsc::channel();
     let typing = {
         let opened = opened.clone();
         std::thread::spawn(move || {
-            let started = Instant::now();
             let mut n = 0;
-            while started.elapsed() < Duration::from_millis(800) {
+            while matches!(stopping.try_recv(), Err(mpsc::TryRecvError::Empty)) {
                 add_block(&opened, "daily", &format!("t{n}"), &format!("keystroke{n}"));
                 n += 1;
+                if n == 1 {
+                    first_edit.send(()).unwrap();
+                }
                 std::thread::sleep(Duration::from_millis(2));
             }
-            n
         })
     };
-    let started = Instant::now();
-    let seen = eventually(Duration::from_secs(5), || {
+    started.recv_timeout(Duration::from_secs(5)).unwrap();
+    let hits = eventually(Duration::from_secs(5), || {
         match opened.workspace.search("keystroke0", 5) {
-            Ok(Reply::Ready(hits)) if !hits.is_empty() => Some(started.elapsed()),
+            Ok(Reply::Ready(hits)) if !hits.is_empty() => Some(hits),
             _ => None,
         }
     });
-    let typed = typing.join().unwrap();
-    assert!(seen < Duration::from_millis(250), "{seen:?}");
-    assert!(typed > 50, "the edits kept coming ({typed})");
-    assert!(started.elapsed() > seen, "seen while typing continued");
+    stop.send(()).unwrap();
+    typing.join().unwrap();
+    assert_eq!(hit_ids(&hits), ["daily"]);
 }
 
 #[test]

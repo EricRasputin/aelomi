@@ -1,0 +1,26 @@
+warning: ignoring --test-threads because --no-capture is specified
+   Compiling aelomi-core v0.1.0 (<checkout>/crates/core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.78s
+────────────
+ Nextest run ID df3ce727-36fe-4d56-864c-7cb00cb2aae0 with nextest profile: default
+    Starting 2 tests across 1 binary (250 tests skipped)
+       START [         ] (1/2) aelomi-core index::tests::latency::a_linking_edit_on_a_5000_block_page_reaches_the_backlinks_within_250_ms
+
+running 1 test
+5,000-block page: linking edit to backlink, max 121.017667ms over 5 edits
+test index::tests::latency::a_linking_edit_on_a_5000_block_page_reaches_the_backlinks_within_250_ms ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 251 filtered out; finished in 1.15s
+
+        PASS [   1.159s] (1/2) aelomi-core index::tests::latency::a_linking_edit_on_a_5000_block_page_reaches_the_backlinks_within_250_ms
+       START [         ] (2/2) aelomi-core index::tests::latency::a_linking_edit_reaches_the_backlinks_within_250_ms_on_real_threads
+
+running 1 test
+200-block page: linking edit to backlink, max 47.020625ms over 20 edits
+test index::tests::latency::a_linking_edit_reaches_the_backlinks_within_250_ms_on_real_threads ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 251 filtered out; finished in 0.84s
+
+        PASS [   0.851s] (2/2) aelomi-core index::tests::latency::a_linking_edit_reaches_the_backlinks_within_250_ms_on_real_threads
+────────────
+     Summary [   2.011s] 2 tests run: 2 passed, 250 skipped

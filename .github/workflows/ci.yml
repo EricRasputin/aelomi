@@ -71,6 +71,7 @@ jobs:
           tool: cargo-nextest@0.9.148
           fallback: none
       - run: cargo nextest run --workspace --locked
+      - run: cargo nextest run -p aelomi-core --cargo-profile release --locked --run-ignored only --test-threads 1 index::tests::latency::
 
   cargo-deny:
     runs-on: macos-15

@@ -21,7 +21,24 @@ export const STAGES: readonly {
   },
   {
     job: "nextest",
-    commands: [["cargo", "nextest", "run", "--workspace", "--locked"]],
+    commands: [
+      ["cargo", "nextest", "run", "--workspace", "--locked"],
+      [
+        "cargo",
+        "nextest",
+        "run",
+        "-p",
+        "aelomi-core",
+        "--cargo-profile",
+        "release",
+        "--locked",
+        "--run-ignored",
+        "only",
+        "--test-threads",
+        "1",
+        "index::tests::latency::",
+      ],
+    ],
   },
   { job: "cargo-deny", commands: [["cargo", "deny", "--locked", "check"]] },
   {

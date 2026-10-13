@@ -74,6 +74,7 @@ fn linking_latencies(blocks: usize, edits: usize) -> Vec<Duration> {
 }
 
 #[test]
+#[ignore = "LINK-8 is gated separately in release with one test thread"]
 fn a_linking_edit_reaches_the_backlinks_within_250_ms_on_real_threads() {
     let latencies = linking_latencies(200, 20);
     let max = *latencies.iter().max().unwrap();
@@ -85,6 +86,7 @@ fn a_linking_edit_reaches_the_backlinks_within_250_ms_on_real_threads() {
 }
 
 #[test]
+#[ignore = "LINK-8 is gated separately in release with one test thread"]
 fn a_linking_edit_on_a_5000_block_page_reaches_the_backlinks_within_250_ms() {
     let latencies = linking_latencies(5_000, 5);
     let max = *latencies.iter().max().unwrap();
