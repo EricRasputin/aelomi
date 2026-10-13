@@ -36,6 +36,8 @@ Both attachment URLs were downloaded with `curl --disable --fail --location`, wi
 | `before.png` | [Native window with seq 1](https://github.com/user-attachments/assets/996e831b-4927-4cc8-92a5-2f662e99ca45) | 82722 | `62852fdcbfbbc3381fd8844d3107a73cda6db5dfaffd063980e4e9b9d1591608` |
 | `after.png` | [Native window with seq 2](https://github.com/user-attachments/assets/e37b5d66-0983-403c-a102-49062cecc241) | 83003 | `ff43481a7a756930788f1e736c9eca47546b320262527085b79424289543f635` |
 
+`before.png` is byte-identical to PR #43's committed [healthy-dark.png](https://github.com/aelomi/aelomi/blob/5603b6813af94d904e4bed697c787a987977798d/docs/evidence/shell-10/healthy-dark.png). The deterministic initial native window renders identical pixels. This run's freshness is established by the distinct `after.png`, window ID 21634, action timestamps, doctor PIDs and port 53523, and native shell side effects recorded above.
+
 The text record is committed and linked from the PR with its full evidence commit. Download each text file through that commit's raw URL or GitHub Contents API and compare with this manifest. The README itself is excluded from its own hash list.
 
 | File | Bytes | SHA-256 |
