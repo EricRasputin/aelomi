@@ -18,7 +18,7 @@ The agent that opens or updates a PR runs a fresh reviewer after CI is green on 
 ## Procedure
 
 1. Record the head: `gh pr view <n> --json title,body,headRefOid,baseRefName,files`. Call the head SHA `$HEAD`.
-2. Read CI: `gh pr checks <n>`. If a check is still running, wait with `gh pr checks <n> --watch`. Every failed or cancelled check is a blocker, except `reviewer-approved`, which fails until this review posts its verdict. `CHECKS` in `scripts/protect-main.sh` lists the jobs `main` requires. A job in `.github/workflows/ci.yml` that is missing from that list is a blocker.
+2. Read CI: `gh pr checks <n>`. If a check is still running, wait with `gh pr checks <n> --watch`. Every failed or cancelled check is a blocker. `CHECKS` in `scripts/protect-main.sh` lists the jobs `main` requires. A job in `.github/workflows/ci.yml` that is missing from that list is a blocker.
 3. Read the full diff with `gh pr diff <n>`. Run `git fetch origin pull/<n>/head`, then read each touched file whole at the head with `git show $HEAD:<path>`. A bug often sits outside the changed lines.
 4. Read `CLAUDE.md`, `ARCHITECTURE.md`, and every `SPEC.md` entry for the behavior IDs the PR cites or implements.
 5. Check the PR in the order of the next section. Record each finding with `path:line`, a severity, and a one-sentence failure scenario that names the input or state and the wrong result.
