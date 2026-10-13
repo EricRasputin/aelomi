@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri::{AppHandle, Manager, Runtime, State};
 
+use crate::index::{self, IndexChanged, IndexStatusChanged};
 use crate::quit::{QuitStatus, QuitStatusChanged};
 use crate::storage::{Health, Storage, StorageError, StorageHealthChanged, StorageStatus};
 
@@ -100,7 +101,7 @@ pub(crate) fn quit_anyway_with<R: Runtime>(app: &AppHandle<R>, exit: impl FnOnce
 #[tauri::command]
 #[specta::specta]
 pub fn doc_load(storage: State<'_, Storage>, doc_id: String) -> Result<String, StorageError> {
-    let state = storage.store()?.load(&DocId::new(doc_id)?)?;
+    let state = storage.workspace()?.load(&DocId::new(doc_id)?)?;
     Ok(BASE64.encode(state))
 }
 
@@ -117,7 +118,7 @@ pub fn doc_append(
     let update = BASE64
         .decode(update)
         .map_err(|_| StorageError::InvalidUpdate)?;
-    let seq = storage.store()?.append(&DocId::new(doc_id)?, &update)?;
+    let seq = storage.workspace()?.append(&DocId::new(doc_id)?, &update)?;
     Ok(seq.0 as f64)
 }
 
@@ -139,11 +140,17 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
             quit_anyway,
             doc_load,
             doc_append,
+            index::index_status,
+            index::page_tree,
+            index::search,
+            index::backlinks,
             dev_probe_log,
         ])
         .events(tauri_specta::collect_events![
             StorageHealthChanged,
-            QuitStatusChanged
+            QuitStatusChanged,
+            IndexStatusChanged,
+            IndexChanged
         ])
 }
 

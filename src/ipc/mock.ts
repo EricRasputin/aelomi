@@ -6,6 +6,9 @@ import type {
   commands as generatedCommands,
   events as generatedEvents,
   Health,
+  IndexChanged,
+  IndexStatus,
+  QueryError,
   QuitStatus,
   StorageError,
   StorageStatus,
@@ -40,6 +43,7 @@ const storage: {
   reason: { Io: "mock write failure" },
 };
 let exited = false;
+let indexStatus: IndexStatus = "Ready";
 
 type QuitState =
   | { kind: "open" }
@@ -80,6 +84,8 @@ function mockEvent<T>(name: string) {
 }
 
 export const events = {
+  indexChanged: mockEvent<IndexChanged>("index-changed"),
+  indexStatusChanged: mockEvent<IndexStatus>("index-status-changed"),
   quitStatusChanged: mockEvent<QuitStatus>("quit-status-changed"),
   storageHealthChanged: mockEvent<Health>("storage-health-changed"),
 } satisfies Events;
@@ -122,6 +128,12 @@ function refusal(docId: string): StorageError | null {
   return null;
 }
 
+function queryFailure(): QueryError | null {
+  if (storage.status !== "Ready") return "Unavailable";
+  if (typeof indexStatus === "object") return structuredClone(indexStatus);
+  return null;
+}
+
 function mockDoc(docId: string): MockDoc {
   let doc = storage.docs.get(docId);
   if (!doc) {
@@ -146,6 +158,38 @@ export const commands = {
   storageHealth: async () => {
     calls.push({ command: "storageHealth", args: [] });
     return storage.health;
+  },
+  indexStatus: async () => {
+    calls.push({ command: "indexStatus", args: [] });
+    if (storage.status !== "Ready")
+      return { Failed: { reason: "the data folder is not open" } };
+    return structuredClone(indexStatus);
+  },
+  pageTree: async () => {
+    calls.push({ command: "pageTree", args: [] });
+    if (storage.status !== "Ready")
+      return { status: "error", error: "Unavailable" };
+    return { status: "ok", data: { pages: [], favorites: [], trash: [] } };
+  },
+  search: async (query, limit) => {
+    calls.push({ command: "search", args: [query, limit] });
+    const error = queryFailure();
+    if (error) return { status: "error", error };
+    return {
+      status: "ok",
+      data: indexStatus === "Rebuilding" ? "Indexing" : { Ready: [] },
+    };
+  },
+  backlinks: async (pageId) => {
+    calls.push({ command: "backlinks", args: [pageId] });
+    if (pageId === "workspace" || !/^[0-9a-z-]{1,64}$/.test(pageId))
+      return { status: "error", error: "InvalidPageId" };
+    const error = queryFailure();
+    if (error) return { status: "error", error };
+    return {
+      status: "ok",
+      data: indexStatus === "Rebuilding" ? "Indexing" : { Ready: [] },
+    };
   },
   quitStatus: async () => {
     calls.push({ command: "quitStatus", args: [] });
@@ -207,6 +251,7 @@ const control = {
     storage.health = "Healthy";
     storage.reason = { Io: "mock write failure" };
     exited = false;
+    indexStatus = "Ready";
     quit.revision = 0;
     quit.state = { kind: "open" };
   },
@@ -221,6 +266,12 @@ const control = {
         .map(([id]) => id);
       if (pendingDocs.length === 0) exited = true;
       else changeQuit({ kind: "asking", pendingDocs });
+    },
+  },
+  index: {
+    setStatus(status: IndexStatus) {
+      indexStatus = structuredClone(status);
+      void events.indexStatusChanged.emit(structuredClone(status));
     },
   },
   storage: {

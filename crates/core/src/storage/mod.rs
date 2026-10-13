@@ -28,6 +28,14 @@ mod testkit;
 #[cfg(test)]
 mod tests;
 
+#[cfg(test)]
+pub(crate) use {
+    clock::SystemClock,
+    sim_fs::{Crash, OpKind, SimFs},
+    state::Limits,
+    store::Driver,
+};
+
 pub use data_path::{DataPathError, check_data_path};
 pub use doc_id::{DocId, InvalidDocId};
 pub use health::{FailReason, Health};

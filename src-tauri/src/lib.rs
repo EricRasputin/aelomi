@@ -1,11 +1,14 @@
 mod commands;
+mod index;
 #[cfg(target_os = "macos")]
 mod macos;
 mod perf;
 mod quit;
 mod storage;
 
+use aelomi_core::index::IndexEvent;
 use aelomi_core::storage::DocId;
+use index::{IndexChanged, IndexStatusChanged};
 use quit::{QuitStatus, QuitStatusChanged};
 use storage::{QUIT_FLUSH_TIMEOUT, Storage, StorageHealthChanged};
 use tauri::webview::PageLoadEvent;
@@ -77,15 +80,29 @@ fn open_storage(app: &tauri::App) {
         |name| std::env::var_os(name),
         cfg!(debug_assertions),
     );
-    let storage = Storage::open(&location);
+    let handle = app.handle().clone();
+    let storage = Storage::open(&location, move |event| publish_index(&handle, event));
     println!("{}", storage.startup_line());
-    if let Ok(store) = storage.store() {
+    if let Ok(workspace) = storage.workspace() {
         let app = app.handle().clone();
-        store.subscribe_health(move |health| {
+        workspace.subscribe_health(move |health| {
             let _ = StorageHealthChanged(health.into()).emit(&app);
         });
     }
     app.manage(storage);
+}
+
+fn publish_index<R: Runtime>(app: &AppHandle<R>, event: &IndexEvent) {
+    match event {
+        IndexEvent::Status(status) => {
+            println!("index status={status:?}");
+            let _ = IndexStatusChanged(status.clone().into()).emit(app);
+        }
+        IndexEvent::Cache(state) => println!("index cache={state}"),
+        IndexEvent::Changed(change) => {
+            let _ = IndexChanged::from(change.clone()).emit(app);
+        }
+    }
 }
 
 fn flush_then_allow_quit<R: Runtime>(app: &AppHandle<R>, via: &str) -> bool {
@@ -167,7 +184,7 @@ pub(crate) mod tests {
         let storage = storage::tests::open_on(disk);
         disk.fail_appends("docs/page/");
         storage
-            .store()
+            .workspace()
             .unwrap()
             .append(
                 &DocId::new("page").unwrap(),
@@ -341,7 +358,7 @@ pub(crate) mod tests {
                 assert_eq!(
                     storage::tests::text_of(
                         &storage
-                            .store()
+                            .workspace()
                             .unwrap()
                             .load(&DocId::new("page").unwrap())
                             .unwrap()
@@ -393,7 +410,7 @@ pub(crate) mod tests {
 
         disk.fail_appends("docs/page/");
         storage
-            .store()
+            .workspace()
             .unwrap()
             .append(
                 &DocId::new("page").unwrap(),
@@ -439,11 +456,13 @@ pub(crate) mod tests {
         let doc = yrs::Doc::new();
         let body = doc.get_or_insert_text("body");
         let mut txn = doc.transact_mut();
-        txn.apply_update(Update::decode_v1(&storage.store().unwrap().load(&id).unwrap()).unwrap())
-            .unwrap();
+        txn.apply_update(
+            Update::decode_v1(&storage.workspace().unwrap().load(&id).unwrap()).unwrap(),
+        )
+        .unwrap();
         body.insert(&mut txn, 7, " after confirmation");
         storage
-            .store()
+            .workspace()
             .unwrap()
             .append(&id, &txn.encode_update_v1())
             .unwrap();

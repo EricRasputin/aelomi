@@ -25,16 +25,45 @@ export const commands = {
 	 *  below 2^53 exactly.
 	 */
 	docAppend: (docId: string, update: string) => typedError<number | null, StorageError>(__TAURI_INVOKE("doc_append", { docId, update })),
+	/**  Never touches SQLite, so it answers at once on any thread. */
+	indexStatus: () => __TAURI_INVOKE<IndexStatus>("index_status"),
+	/**  Reads the workspace doc, not the index, so it works while the index rebuilds. */
+	pageTree: () => typedError<PageTree, QueryError>(__TAURI_INVOKE("page_tree")),
+	/**  Active pages whose title or a block matches `query`; the last word matches as a prefix. */
+	search: (query: string, limit: number) => typedError<SearchReply, QueryError>(__TAURI_INVOKE("search", { query, limit })),
+	/**  Active pages linking to `page_id`, most recently updated first. */
+	backlinks: (pageId: string) => typedError<BacklinksReply, QueryError>(__TAURI_INVOKE("backlinks", { pageId })),
 	devProbeLog: (line: string) => __TAURI_INVOKE<void>("dev_probe_log", { line }),
 };
 
 /** Events */
 export const events = {
+	indexChanged: makeEvent<IndexChanged>("index-changed"),
+	indexStatusChanged: makeEvent<IndexStatusChanged>("index-status-changed"),
 	quitStatusChanged: makeEvent<QuitStatusChanged>("quit-status-changed"),
 	storageHealthChanged: makeEvent<StorageHealthChanged>("storage-health-changed"),
 };
 
 /* Types */
+export type Backlink = {
+	page_id: string,
+	title: string,
+	blocks: BacklinkBlock[],
+};
+
+export type BacklinkBlock = {
+	block_id: string,
+	/**  Links show the target's current title; `\n` is a hard break or a code newline. */
+	text: string,
+};
+
+export type BacklinksReply = "Indexing" | { Ready: Backlink[] };
+
+export type BlockHit = {
+	block_id: string,
+	text: TextPart[],
+};
+
 export type ColdStartMarks = {
 	variant: string,
 	time_origin: number | null,
@@ -54,6 +83,30 @@ export type Health = "Healthy" | { Failing: {
 	pending_docs: string[],
 } };
 
+/**  A committed index batch: search and backlink results may differ after it. */
+export type IndexChanged = {
+	/**  The batch applied workspace changes: titles, the tree, or trash. */
+	workspace: boolean,
+	/**  Pages whose body was indexed again, sorted. */
+	pages: string[],
+};
+
+export type IndexStatus = "Ready" | "Rebuilding" | { Failed: {
+	reason: string,
+} };
+
+/**  The initial index status and every later status change. */
+export type IndexStatusChanged = IndexStatus;
+
+export type PageTree = {
+	/**  Every active page, depth-first, parents before children. */
+	pages: TreePage[],
+	/**  Active favorites in favorite order. */
+	favorites: string[],
+	/**  The pages the user trashed, without their descendants, newest first. */
+	trash: TrashedPage[],
+};
+
 export type PingReply = {
 	seq: number,
 	core_version: string,
@@ -62,6 +115,14 @@ export type PingReply = {
 export type PingRequest = {
 	seq: number,
 };
+
+export type QueryError = 
+/**  The store is not open. `storage_status` says why. */
+"Unavailable" | "InvalidPageId" | 
+/**  The index failed, or the workspace doc has a malformed record. */
+({ Failed: {
+	reason: string,
+} }) & { Io?: never } | ({ Io: string }) & { Failed?: never };
 
 /**
  *  The quit decision the shell holds. `pending_docs` is set while a refused quit waits for the
@@ -76,6 +137,17 @@ export type QuitStatus = {
 /**  Every change of the quit decision: a refused quit, Keep app open, or Quit anyway. */
 export type QuitStatusChanged = QuitStatus;
 
+export type SearchHit = {
+	page_id: string,
+	/**  The raw title, highlighted where it matched. */
+	title: TextPart[],
+	/**  The best matching block, or null when only the title matched. */
+	block: BlockHit | null,
+};
+
+/**  `Indexing` until the index can answer from current data. */
+export type SearchReply = "Indexing" | { Ready: SearchHit[] };
+
 export type StorageError = 
 /**  The store is not open. `storage_status` says why. */
 "Unavailable" | "InvalidDocId" | "InvalidUpdate" | { Io: string };
@@ -85,6 +157,28 @@ export type StorageHealthChanged = Health;
 export type StorageStatus = "Ready" | ({ CloudPath: {
 	resolved: string,
 } }) & { Io?: never } | "Locked" | "NewerFormat" | "UnknownFormat" | ({ Io: string }) & { CloudPath?: never };
+
+export type TextPart = {
+	text: string,
+	highlighted: boolean,
+};
+
+export type TrashedPage = {
+	id: string,
+	title: string,
+	batch_id: string,
+	trashed_at: number | null,
+};
+
+/**  Times are milliseconds since the Unix epoch. */
+export type TreePage = {
+	id: string,
+	/**  Empty for an untitled page. */
+	title: string,
+	parent_id: string | null,
+	created_at: number | null,
+	updated_at: number | null,
+};
 
 /* Tauri Specta runtime */
 async function typedError<T, E>(result: Promise<T>): Promise<{ status: "ok"; data: T } | { status: "error"; error: E }> {

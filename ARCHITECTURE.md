@@ -19,11 +19,20 @@ This file maps the code. `CLAUDE.md` has the rules and the stack, `SPEC.md` has 
 | `crates/core/src/storage/data_path.rs` | `check_data_path`, the cloud folder check (SHELL-11) |
 | `crates/core/src/storage/test_support.rs` | `SimDisk`, a crash-simulating disk for the shell's tests, behind the `test-support` feature |
 | `crates/core/src/storage/tests/` | Store tests: crash points, compaction, failures, acknowledgement time, refusals, the fixture. `measure.rs` holds ignored measurements: `cargo nextest run -p aelomi-core --cargo-profile release --run-ignored only measure --no-capture` |
+| `crates/core/src/workspace/mod.rs` | `Workspace`: the store plus its index. Every append goes through it, so the index hears of each change the store accepts |
+| `crates/core/src/workspace/records.rs` | `PageId` and the workspace doc's page records (DATA-2), read with typed failures |
+| `crates/core/src/workspace/body.rs` | The page body reader for BlockNote's Yjs layout: blocks, text, and page links |
+| `crates/core/src/workspace/tree.rs` | The page tree, favorites, and trash list projected from the records |
+| `crates/core/src/workspace/fixture.rs` | Writers for records and bodies, the index fixture, and `break_index`, behind the `test-support` feature |
+| `crates/core/src/index/` | The SQLite index (DATA-5): `mod.rs` holds the API and the marks, `worker.rs` the only writer, `db.rs` the schema, startup check, and projection writes, `query.rs` search and backlinks |
+| `crates/core/src/index/tests/` | Index tests: rebuild equality, races, failures, latency, the backlink property test, and the 10,000-page search fixture |
+| `crates/core/examples/seed_index.rs` | Seeds a new data folder with the index fixture and a missing, garbage, old-schema, or valid index, for native checks |
 | `src-tauri/` | `aelomi`, the Tauri 2 shell (library name `aelomi_lib`) |
-| `src-tauri/src/lib.rs` | `run()` builds the Tauri app, registers the commands and events, opens the store, and flushes it before quitting |
+| `src-tauri/src/lib.rs` | `run()` builds the Tauri app, registers the commands and events, opens the workspace, logs and emits index events, and flushes the store before quitting |
 | `src-tauri/src/commands.rs` | Tauri commands, the tauri-specta `builder()`, and the `bindings_are_current` test |
-| `src-tauri/src/storage.rs` | `Storage`, the open store or why it did not open, the data folder overrides, the flush before quitting, and the storage IPC types |
+| `src-tauri/src/storage.rs` | `Storage`, the open workspace or why it did not open, the data folder overrides, the flush before quitting, and the storage IPC types |
 | `src-tauri/src/quit.rs` | `QuitGate`, the quit decision `Storage` holds, and its `QuitStatus` and `QuitStatusChanged` IPC types |
+| `src-tauri/src/index.rs` | The index commands (`index_status`, `page_tree`, `search`, `backlinks`), the `IndexStatusChanged` and `IndexChanged` events, and their IPC types |
 | `src-tauri/capabilities/default.json` | Lets the window listen to the events the core emits |
 | `src-tauri/src/macos.rs` | All macOS-specific code |
 | `src-tauri/src/perf.rs` | The cold-start probe, armed only by `AELOMI_PERF_REPORT` |
@@ -40,6 +49,7 @@ This file maps the code. `CLAUDE.md` has the rules and the stack, `SPEC.md` has 
 | `perf/` | Perf harnesses and `budgets.json`, the numbers every perf gate reads |
 | `fixtures/` | The seeded fixture generator and its output in `fixtures/generated/` |
 | `fixtures/data-folders/` | A data folder per storage format, for migration tests |
+| `fixtures/index/` | A page body the real BlockNote binding wrote, its generator, and its provenance |
 | `tests/is-local-url.ts` | The loopback allow list both browser suites share |
 | `.github/workflows/ci.yml` | Every CI job |
 | `scripts/check-all.ts` | `pnpm check:all`, which runs every CI job locally on a clean committed head and records a pass in `.local-gate/` |
@@ -60,9 +70,9 @@ This file maps the code. `CLAUDE.md` has the rules and the stack, `SPEC.md` has 
 
 The workspace has two crates. Both use the version, edition, and license from `[workspace.package]` in `Cargo.toml`.
 
-`crates/core` is the package `aelomi-core`. `CLAUDE.md` assigns storage, indexing, search, markdown export, the MCP server, and later the sync client to it. Today it holds the storage engine, `aelomi_core::storage`, and the constant `VERSION`. It depends on no Tauri crate, so its tests need no window.
+`crates/core` is the package `aelomi-core`. `CLAUDE.md` assigns storage, indexing, search, markdown export, the MCP server, and later the sync client to it. Today it holds the storage engine, `aelomi_core::storage`, the source model and its owner, `aelomi_core::workspace`, the SQLite index, `aelomi_core::index`, and the constant `VERSION`. It depends on no Tauri crate, so its tests need no window.
 
-`src-tauri` is the package `aelomi`, the desktop shell. `src-tauri/src/main.rs` calls `aelomi_lib::run()`. `run()` in `src-tauri/src/lib.rs` passes the command list from `commands::builder()` to Tauri's `invoke_handler`. Tauri's `setup` hook mounts the events, calls `macos::setup`, and opens the store (see "Storage in the shell").
+`src-tauri` is the package `aelomi`, the desktop shell. `src-tauri/src/main.rs` calls `aelomi_lib::run()`. `run()` in `src-tauri/src/lib.rs` passes the command list from `commands::builder()` to Tauri's `invoke_handler`. Tauri's `setup` hook mounts the events, calls `macos::setup`, and opens the workspace (see "Storage in the shell").
 
 ## macOS-specific code lives in one module
 
@@ -166,7 +176,7 @@ To add a job, add its ID to `CHECKS` in `scripts/protect-main.sh` and rerun the 
 
 Yjs is the source of truth (DATA-1, DATA-2). Each page body is one Y.Doc, and one workspace Y.Doc, `DocId::workspace()`, holds every page's record. Each database in v2 will be one Y.Doc with a Y.Map per row. `aelomi_core::storage::Store` keeps them.
 
-Not built yet: the SQLite index. SQLite (rusqlite with FTS5) will be a derived index for search, backlinks, and the page tree, always rebuildable from the Y.Docs (DATA-5). The Rust core will update it and emit change events over Tauri IPC for Zustand stores. Page content skips that path, because BlockNote edits Yjs directly.
+SQLite is a derived index for search, backlinks, and page metadata, always rebuildable from the Y.Docs (DATA-5). See "The index". The tree the sidebar shows is read from the workspace doc itself, so it never waits for the index. Page content skips the index path, because BlockNote edits Yjs directly.
 
 **Data folder.** `~/Library/Application Support/Aelomi`, or `Aelomi Dev` in debug builds, so `pnpm dev:app` never touches daily-use data. `AELOMI_DATA_DIR` replaces the path in every build. `check_data_path` checks it before opening: it resolves every symlink and refuses a path inside `~/Library/Mobile Documents` or `~/Library/CloudStorage` (SHELL-11). Debug builds also read `AELOMI_CLOUD_ROOTS`, a `:`-separated list that replaces those two roots, so a test can prove the refusal against a fake folder. The store opens the resolved path.
 
@@ -180,6 +190,7 @@ Aelomi/
     log-<gen>-<seg>.ylog            updates a format-1 build appended during generation <gen>
     log-<gen>-<seg>.ylog2           updates appended during generation <gen>, in format 2
   quarantine/<doc-id>/              files that failed validation, never deleted
+  index.sqlite                      the derived index, with its -wal and -shm sidecars; disposable
 ```
 
 `<gen>` and `<seg>` are 10-digit zero-padded numbers. A `.ylog`, which only format-1 builds wrote, is the 8-byte magic `AELOG\0\0\x02`, a random 8-byte salt, then records of a `u32` length, a `u32` CRC-32 of the salt and the payload, and the payload, one Yjs v1 update. The salt stops a record framed inside a payload, in note text say, from passing for a real record, unless its author read the salt from the file. A `.ylog2` has no file header. Each update is one frame: a 20-byte head, the update packed 7 bytes at a time into bytes below 0x80, and a 20-byte tail. Every head and tail byte is 0x80 or above, and each of the two names the update's length and CRC-64/NVME under its own CRC-32. So no update's bytes can hold a frame boundary. Reading checks each run of bytes below 0x80 against the head before it and the tail after it, and takes an update only when its CRC-64 matches. Damage confined to a frame's head, or to its tail, loses nothing. Reading unpacks and hashes at most twice the file's length and never decodes. A frame planted in note text can load if a fault sets bit 7 on all 20 bytes of either anchor while keeping their other bits. Segment numbers are unique across both log formats, and the writer writes only `.ylog2`. A snapshot is a magic header, length, CRC-32 of the payload, and the doc's state as one update. A `.ysnap2` holds that state twice, between a 32-byte head at offset 0 and a 32-byte tail at the end of the file, each naming the length and a CRC-64/NVME of the payload. Copy A follows the head. Copy B starts one aligned 4 KiB block past the block where copy A ends, so no 4 KiB block holds bytes of both. Reading uses the head's length, ranges, and CRC-64 whenever the head passes its own check, and consults the tail only if the head fails. It takes the first copy, A then B, that passes that CRC-64 and never searches for an anchor inside the file. A `.ysnap2` that loads with an anchor, a copy, or its padding damaged counts as corrupt, as a damaged log does. Generation numbers are unique across both snapshot formats. The compactor writes a `.ysnap2` once the format gate has confirmed `format.json` says 2 in this store lifetime, which the writer's first new segment does, and creates its `.tmp` only through that `Format2Ready`. Before that, such as for a compaction a load queued, it writes a `.ysnap`, and it never touches `format.json` itself.
@@ -204,9 +215,69 @@ Aelomi/
 
 **Testing seams.** `Store` runs over the `Fs` and `Clock` traits. The `test-support` feature exports `SimDisk`, a `SimFs` on the system clock, for tests outside the crate. Only `src-tauri`'s dev-dependencies turn it on, so it never reaches a release build. `OsFs` and the system clock are production. `SimFs` models written, drive-cache, and durable layers, crashes with torn prefixes, injects errors, panics, damaged writes, and latency, holds an operation until the test releases it, and checks the append-only rules on every operation. It reads each log with the parser its name selects. It allows a delete only of a `.tmp`, or of a file a durable newer snapshot holds that is clean, cut off inside a log header, or torn by a write that failed this session after bytes that read clean. It allows a move out of a doc's folder only of a file a durable newer snapshot holds. Plain rename refuses an existing entry; only `Fs::replace_format(root)` can replace `format.json`, from a complete durable `format.json.tmp` marker. Creating a `.ylog2`, `.ysnap2`, or `.ysnap2.tmp` requires the folder's durable `format.json` to say 2. With `Driver::Manual` a test steps the writer and compactor itself.
 
+## Workspace records
+
+The workspace doc, `DocId::workspace()`, has one root, the Y.Map `pages` (DATA-2). Each key is a page ID and each value is that page's record, a nested Y.Map. The key is the record's ID, so no field repeats it. A `PageId` is a `DocId` other than `workspace`, so a page's body doc is the doc with the same ID.
+
+| Key | Value |
+|---|---|
+| `title` | A string. Empty means untitled; the UI shows "Untitled" (TREE-7) |
+| `placement` | An object `{ parentId: string or null, order: integer }`. One value, so parent and order change together |
+| `favorite` | `null` or absent when not a favorite, else an object `{ order: integer }` |
+| `trash` | `null` or absent when active, else `{ originalParentId: string or null, originalOrder: integer, batchId: string, trashedAt: integer }`. One value, so a trash or restore is whole. `placement` keeps its value while trashed |
+| `createdAt`, `updatedAt` | Integers, milliseconds since the Unix epoch |
+
+Every integer is a whole number from 0 to 2^53 - 1, the range a JavaScript number holds exactly. Yjs stores one as an integer or a float by size, and both read. The coupled fields are plain Any objects rather than nested Y.Maps, so concurrent edits can't leave half a placement or half a trash record. Readers ignore keys and object fields they don't know, and the writers in `fixture.rs` keep them, so fields can be added without a migration. A record that breaks the table fails with a `RecordError` naming the page and the field, never the title. Readers never create a root or write a default back.
+
+`tree::forest` decides each page's parent and whether it is active. A parent with no record makes its page top-level, and a parent cycle is cut at its smallest page ID, so no page disappears. A page is active when it and every ancestor have no `trash`, so a descendant left active under a trashed page is still hidden from the tree, favorites, search, and backlinks (TREE-9). The trash list holds each trashed page whose parent is not in its batch, newest first (TREE-10). An erased page has no record (TREE-14), so its body doc, even if its files remain, is never read again.
+
+## Page bodies
+
+A page's body is the Y.XmlFragment root `prosemirror` of its doc, as `@blocknote/core/yjs` 0.55.0 (MPL-2.0) writes it through y-prosemirror 1.3.7 (MIT). The editor must bind that same fragment. The layout is ProseMirror's document without the `doc` node:
+
+```text
+Y.XmlFragment "prosemirror"
+  blockGroup
+    blockContainer  id="<block ID>"
+      <content node>  paragraph, heading, codeBlock, image, …, with its props as attributes
+        Y.XmlText  text runs; marks are formatting attributes
+        pageLink  targetPageId="<page ID>"   an empty custom inline node (LINK-1)
+        hardBreak
+      blockGroup    optional, the block's children
+```
+
+`body::read_body` walks it with an explicit stack and returns each block in document order, parents before children, as its ID and segments. A segment is text or a link to a page ID. Text comes from the text runs, with marks dropped; a hard break is `\n`; a code block keeps its raw newlines; an image contributes its `caption`; a divider has none. URL links keep their text and are not backlinks, and literal `[[…]]` is text. Unknown elements contribute the text inside them, and attributes are never text. A blockContainer without a string `id`, or a `pageLink` without a valid `targetPageId`, fails with a `BodyError`. A doc with no `prosemirror` content but content under another root fails too, so a body stored elsewhere never reads as empty. `fixtures/index/blocknote-body.yupdate` was written by the real binding; a test checks every block the reader finds in it.
+
+## The index
+
+`aelomi_core::index` keeps `index.sqlite` in the resolved data folder: rusqlite 0.40.2 with its bundled SQLite 3.53.2 and FTS5 (MIT and public domain). It holds only what the Y.Docs rebuild: a row per page record with every DATA-2 field and whether the page is active, each block's segments and rendered text, one link row per block and target, and FTS5 indexes over titles and block text (`unicode61` with diacritics removed). Triggers keep both FTS indexes in step with their content tables. The schema version is `PRAGMA user_version`, independent of `format.json`.
+
+**Ownership.** `Workspace` owns the `Store` and the `Index`. `append` calls `Store::append`, then marks the doc with one short lock: a workspace mark, or the page's first unindexed change time. An update the store refuses marks nothing. No decoding, SQL, or callback runs on that path, and `load` and `flush` never touch the index. The index reads docs only through `Source::load`, which can't append.
+
+**The worker.** One thread, `aelomi-index`, owns the only writer connection and opens, validates, and rebuilds the cache. Queries use an independent read connection off the main thread. `Workspace::open` starts the worker and returns with the status `Rebuilding`. On every launch the worker:
+
+1. Checks the file. It is missing, or it must open as a database at the current `user_version`, match the schema exactly, and pass `PRAGMA integrity_check` and the FTS5 `integrity-check` of both indexes. Otherwise it deletes `index.sqlite` and its `-wal`, `-shm`, and `-journal` sidecars, and only those, and creates the schema again. Sidecars left without an index file are deleted before a new one is created. A symlink or special file at one of those names is removed as an entry, never followed; SQLite opens the file with `SQLITE_OPEN_NOFOLLOW`. A folder at one of those names is never removed and fails the index.
+2. Reconciles the whole cache with the docs, even when the file passed: a structurally valid cache can hold an edit a crash lost from the store, or lack one the store flushed. It takes the workspace mark, reads the records, writes every page row, and deletes rows of pages without a record. Then it marks every page and replaces each body projection, 128 pages per transaction.
+3. Takes the marks that arrived meanwhile and applies them, then opens the read-only connection and publishes `Ready`.
+
+After that it waits for marks. A workspace mark runs at once. A page runs 25 ms after its first unindexed change; later edits don't extend that, so typing can't starve it. Each round applies the workspace first, because titles, membership, and trash change other pages' rows. A workspace pass diffs the page rows against the last committed ones, rerenders every block that links to a page whose title appeared, changed, or went away, and marks pages that gained a record. A body pass loads the page, reads it, and writes only the blocks whose segments, text, or position changed, so one edit on a 5,000-block page stays cheap. The worker takes a doc's mark before it loads the doc, and the store applies an update before `append` marks it, so an edit that lands during a load or a commit is marked again and never lost. Dropping the workspace stops the worker between pages and joins it before the store releases its folder.
+
+**Links render from current titles.** A page link stores only its target (LINK-1). The index renders it as the target's title, "Untitled" for an empty one, or "Deleted page" for an erased one, into the block text it searches and returns. A rename rerenders the blocks that link to the page; it never touches their docs.
+
+**Queries.** `search` and `backlinks` run on the reader connection in one read transaction. Each answers `Reply::Indexing` unless the status is `Ready` and no workspace change is marked or being applied, checked before and after the query against a generation counter. So a query never shows a page whose trash or erasure the index has not applied. Body edits may lag by the coalescing delay. A Failed status answers `QueryError::Failed` with its reason.
+
+- `search` quotes each word of the query, makes the last one a prefix, and matches titles and block text of active pages. It returns one hit per page, best rank first, ties by page ID: the raw title split into highlighted parts, and the best matching block with its ID and highlighted parts. Highlights are marked with private-use characters the text doesn't contain, then split into parts, so no HTML is built. A query with no word returns nothing. The palette's fuzzy title matching (CMD-4) stays in TypeScript.
+- `backlinks` returns each active page that links to an active target, most recently updated first, ties by page ID, with each linking block's ID and text in document order. A block that links twice appears once. Self-links are included, matching LINK-7's rule that every active linking page appears.
+
+**Failures.** A doc that breaks the record or body schema sets the status to `Failed` with a reason naming the doc and the problem. A page body that breaks it loses its block rows; a workspace doc keeps the last rows that read. The next edit to that doc retries it. A SQLite or file error, a failed doc load, or a panic in the worker publishes `Failed`, drops the reader, and rebuilds from step 1 after 100 ms, doubling to 30 s. Nothing in the index writes a doc or a store file, and the docs keep loading, appending, and flushing whatever its status. Each listener call is caught, so a panicking listener stops nothing.
+
+**Not yet.** Erasure (TREE-14) must also scrub the index: `secure_delete` and FTS5 `secure-delete`, an FTS `optimize`, and a WAL checkpoint, proven by the byte scan TREE-14 specifies. The startup reconcile reads every page and keeps it loaded in the store; skipping unchanged pages by fingerprint waits for a measurement on a large folder.
+
+**Measured** on an Apple M1 with a load average near 7, 2026-10-14. A linking edit, from `append` to the backlink a query returns, took at most 40 ms on a 200-block page over 20 edits and 51 ms on a 5,000-block page over 5, in a release build. A debug build took 45 ms and 122 ms. LINK-8's budget is 250 ms, and 25 ms of each figure is the coalescing delay. On the 10,000-page search fixture, served from memory, the four fixture queries took 0.07 ms at p50 and 0.15 ms at p95 over 1,000 runs, highlights included, against CMD-5's 5 ms. Words in thousands of pages are slower: common words and a two-letter prefix took 26 ms at p50 and 63 ms at p95, so palette work should measure them in place. `cargo nextest run -p aelomi-core --cargo-profile release --run-ignored only measure_content_query --no-capture` repeats the search measurement, and `cargo nextest run -p aelomi-core latency --no-capture` the latency.
+
 ## Storage in the shell
 
-`open_storage` in `src-tauri/src/lib.rs` runs in Tauri's `setup` hook, on the main thread, after the window exists. It resolves the data folder, opens the store on the resolved path, and prints one line to stdout, such as `storage status=Ready path=/…/Aelomi`. Opening an existing folder adds nothing measurable to cold start: on an Apple M1 the median from Tauri's `setup` to page load start was 97 ms before and after. The app manages a `Storage`, which holds the store or the `StorageStatus` that says why it did not open: `CloudPath { resolved }`, `Locked`, `NewerFormat`, `UnknownFormat`, or `Io`. The app starts either way.
+`open_storage` in `src-tauri/src/lib.rs` runs in Tauri's `setup` hook, on the main thread, after the window exists. It resolves the data folder, opens a `Workspace` on the resolved path, and prints one line to stdout, such as `storage status=Ready path=/…/Aelomi`. SQLite work runs on the index thread. The earlier store-only implementation measured 97 ms from Tauri's `setup` to page load start on an Apple M1, both before and after storage was added. The cold-start harness checks the complete app with the index enabled. The app manages a `Storage`, which holds the workspace or the `StorageStatus` that says why it did not open: `CloudPath { resolved }`, `Locked`, `NewerFormat`, `UnknownFormat`, or `Io`. The app starts either way.
 
 A doc call goes from the UI to the store like `ping` does:
 
@@ -215,6 +286,8 @@ A doc call goes from the UI to the store like `ping` does:
 3. `doc_load` returns the doc's full state as base64, and `fromBase64` turns it back into bytes.
 
 Both return `Unavailable` when the store did not open. `storage_status` returns the `StorageStatus`, and `storage_health` returns `Health`. Each change of health also arrives as the `StorageHealthChanged` event, from `Store::subscribe_health`.
+
+**The index in the shell** (SHELL-12). `index_status` returns `Ready`, `Rebuilding`, or `Failed { reason }`, and each change arrives as `IndexStatusChanged`. A launch starts `Rebuilding`, so a webview reads the status with `index_status` before it listens. `IndexChanged { workspace, pages }` follows each batch the worker commits after `Ready`, so tree, search, and backlink views know to read again. `page_tree` returns active pages depth-first with their parents, favorites, and the trash list, read from the workspace doc, so the tree loads while the index rebuilds. `search(query, limit)` and `backlinks(pageId)` return `"Indexing"` or `{ Ready: … }`. The three are `async` and run on Tauri's blocking pool, so the main thread never waits on a doc load or SQLite. Errors are `QueryError`: `Unavailable`, `InvalidPageId`, `Failed { reason }`, or `Io`. Times cross IPC as numbers of milliseconds. The shell prints `index cache=created`, `reused`, or `replaced reason=…`, and `index status=…` on each change. When storage did not open, `index_status` is `Failed` with the reason "the data folder is not open". The "Indexing…" text in the palette waits for the palette itself.
 
 **Bytes cross IPC as base64.** The storage probe measured each encoding over real IPC on an Apple M1, with release Rust and the dev frontend: the median of 20 loads of a 1 MB doc and of 50 appends of a 99-byte update, at WebKit's 1 ms timer resolution.
 

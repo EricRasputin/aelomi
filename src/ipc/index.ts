@@ -6,11 +6,24 @@ export const { commands, events } =
     ? installMock()
     : { commands: realCommands, events: realEvents };
 export type {
+  Backlink,
+  BacklinkBlock,
+  BacklinksReply,
+  BlockHit,
   FailReason,
   Health,
+  IndexChanged,
+  IndexStatus,
+  PageTree,
   PingReply,
   PingRequest,
+  QueryError,
   QuitStatus,
+  SearchHit,
+  SearchReply,
   StorageError,
   StorageStatus,
+  TextPart,
+  TrashedPage,
+  TreePage,
 } from "./bindings";
