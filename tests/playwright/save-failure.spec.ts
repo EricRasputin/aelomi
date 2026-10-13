@@ -109,6 +109,7 @@ for (const colorScheme of ["light", "dark"] as const) {
         () => document.documentElement.scrollWidth <= window.innerWidth,
       ),
     ).toBe(true);
+    await expect(banner).toBeVisible();
     const texts = await banner.evaluate(readRenderedText);
     expect(texts.map(({ text }) => text)).toEqual([
       "Changes aren't being saved.",
