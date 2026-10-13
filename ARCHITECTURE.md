@@ -133,7 +133,7 @@ Acceptance tests import `test` from `e2e/fixtures.ts`, and Playwright tests impo
 
 ## CI jobs
 
-`.github/workflows/ci.yml` runs on every pull request and on pushes to `main`. Every `ci.yml` job runs on `macos-15`. `review-gate.yml` runs `review-gate` on `ubuntu-latest`, because it only calls the GitHub API.
+`.github/workflows/ci.yml` runs on every pull request and on pushes to `main`. Every `ci.yml` job runs on `macos-15`.
 
 | Job | Runs |
 |---|---|
@@ -148,7 +148,6 @@ Acceptance tests import `test` from `e2e/fixtures.ts`, and Playwright tests impo
 | `playwright` | `pnpm build:mock` and `pnpm test:playwright` |
 | `cold-start` | Downloads `Aelomi-app` and runs `perf/cold-start.ts --ci` |
 | `keystroke` | `pnpm build:mock` and the `perf` Playwright project in CI mode |
-| `reviewer-approved` | Required commit status posted by `review-gate` on Ubuntu for the latest reviewer verdict on the PR head. Keep this context in `CHECKS`. |
 
 To add a job, add its ID to `CHECKS` in `scripts/protect-main.sh` and rerun the script, so `main` requires it.
 

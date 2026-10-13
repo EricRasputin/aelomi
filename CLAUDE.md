@@ -16,6 +16,7 @@ Aelomi is built entirely by AI agents. The maintainer sets direction and taste a
 - **The decided stack wins.** If a skill, library, or your own judgment suggests replacing part of the stack, open a proposal for the maintainer. Never switch silently.
 - **Don't re-propose ruled-out options** (list at the bottom) unless something material has changed.
 - **Never store SQLite or app data in iCloud Drive.** iCloud file sync corrupts SQLite.
+- **No merge without a Fable APPROVE.** Every PR needs a `reviewer` verdict of APPROVE from Claude Fable for its current head SHA. No CI check enforces this, so the agent that owns the PR runs the review and reports the verdict line and head SHA before asking the maintainer to merge. A push or rebase after APPROVE needs a new review. See **Review gate** below.
 
 ## Stack
 
@@ -75,7 +76,7 @@ Before publishing native verification evidence or handing a PR to review, follow
 - Both skill sets are vendored into `.claude/skills/` (pstack's subagents into `.claude/agents/`), pinned to commits in `scripts/vendor-skills.sh`. Licenses and the pinned source live in `.claude/vendor/`. Update deliberately: bump the ref (or pen.dev's version), rerun the script, review the diff. Never hand-edit vendored files. Keep `.claude/` out of Biome, tsc, and Vitest (pstack ships its own TS scripts).
 - pstack's model roles live in `~/.agents/pstack-models.md`, written by `/setup-pstack`.
 - **UI work goes to Claude Opus 5.5 only.** Claude Opus 5.5 (`claude-opus-5-5`) does every UI design and implementation task: pen.dev prototypes, React components, styles, UI dependencies, and UI tests. No other model writes or edits UI code. For UI work this overrides the `feature` role and the other code roles in `~/.agents/pstack-models.md`, which stays unchanged. The Fable review gate still applies.
-- **Review gate.** After CI is green on a PR, the agent that opened or updated it runs a fresh `reviewer` subagent (`.claude/agents/reviewer.md`) on Claude Fable. Builder subagents never use Fable. Findings go back to the builder, and the loop repeats on each new head until the verdict is APPROVE for the current head SHA. The maintainer merges only PRs whose latest reviewer verdict is APPROVE for the head SHA.
+- **Review gate.** After CI is green on a PR, the agent that opened or updated it runs a fresh `reviewer` subagent (`.claude/agents/reviewer.md`) on Claude Fable. Builder subagents never use Fable. Findings go back to the builder, and the loop repeats on each new head until the verdict is APPROVE for the current head SHA. The maintainer merges only PRs whose latest reviewer verdict is APPROVE for the head SHA. No status check tracks the verdict; the reviewer's PR comment is the record, and the PR owner reports it to the maintainer.
 
 ## Design direction
 
