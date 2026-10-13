@@ -14,20 +14,20 @@ $ vite --port 53523 --strictPort
     Building [=======================> ] 365/376: tauri(build.rs), getrandom(…
     Building [=======================> ] 366/376: tauri(build.rs), getrandom(…
     Building [=======================> ] 367/376: tauri(build), getrandom(bui…
-    Building [=======================> ] 368/376: tauri(build), getrandom     
+    Building [=======================> ] 368/376: tauri(build), getrandom
    Compiling aelomi-core v0.1.0 (<checkout>/crates/core)
     Building [=======================> ] 368/376: tauri(build), getrandom, ae…
-    Building [=======================> ] 369/376: tauri(build), aelomi-core   
+    Building [=======================> ] 369/376: tauri(build), aelomi-core
    Compiling aelomi v0.1.0 (<checkout>/src-tauri)
     Building [=======================> ] 370/376: tauri, aelomi(build), aelom…
-    Building [=======================> ] 371/376: tauri, aelomi-core          
-    Building [=======================> ] 372/376: tauri                       
+    Building [=======================> ] 371/376: tauri, aelomi-core
+    Building [=======================> ] 372/376: tauri
    Compiling tauri-specta v2.0.0-rc.25
-    Building [=======================> ] 372/376: tauri-specta, tauri         
-    Building [=======================> ] 372/376: aelomi, tauri-specta, tauri 
-    Building [=======================> ] 373/376: aelomi, tauri               
-    Building [=======================> ] 374/376: aelomi                      
-    Building [=======================> ] 375/376: aelomi(bin)                 
+    Building [=======================> ] 372/376: tauri-specta, tauri
+    Building [=======================> ] 372/376: aelomi, tauri-specta, tauri
+    Building [=======================> ] 373/376: aelomi, tauri
+    Building [=======================> ] 374/376: aelomi
+    Building [=======================> ] 375/376: aelomi(bin)
     Finished `dev` profile [unoptimized + debuginfo] target(s) in 13.17s
      Running `<checkout>/target/debug/aelomi`
 storage status=Ready path=/private/tmp/aelomi-verify/20261013-091400-dev-4yev/data

@@ -21,7 +21,7 @@ quit flush via=ExitRequested pending=[]
 quit flush via=Exit pending=[]
 ```
 
-[Actions](actions.log), [doctor](doctor.txt), [before accessibility tree](before.ax.txt), and [after accessibility tree](after.ax.txt) provide the matching text record. The published shell log strips ANSI color escapes and replaces the personal checkout path with `<checkout>`. All other content remains. Hashes below cover the published bytes. Raw app data, environment, and PID files were not published.
+[Actions](actions.log), [doctor](doctor.txt), [before accessibility tree](before.ax.txt), and [after accessibility tree](after.ax.txt) provide the matching text record. The published shell log strips ANSI color escapes, normalizes line endings, trims trailing spaces, and replaces the personal checkout path with `<checkout>`. All other content remains. Hashes below cover the published bytes. Raw app data, environment, and PID files were not published.
 
 ## Publication and retrieval
 
@@ -44,7 +44,7 @@ The text record is committed and linked from the PR with its full evidence commi
 | `before.ax.txt` | 315 | `8f3176a28112994e95595a4e2586b38055ea4badf9add3240e816f46b7a21778` |
 | `after.ax.txt` | 315 | `4e97d623bbc19f1fcf2a66f3f96ed45c961fef9130426095634d693ed5d02e61` |
 | `doctor.txt` | 373 | `1ade4ccaea5af3d744f2f50340315e53e4b25212cf936126e1f8d785fd85f3db` |
-| `shell.log` | 2036 | `c35555c228bf4143cc7361ac63447ab529b5562c39fa7fe8176a54fe26c2dd86` |
+| `shell.log` | 1931 | `e8467d8e0f9418fc755ea9525933e109be2a996a9dc6c1e661604d29c7924302` |
 
 The committed fallback was retrieval-tested against the unchanged [SHELL-10 screenshot](https://github.com/aelomi/aelomi/blob/5603b6813af94d904e4bed697c787a987977798d/docs/evidence/shell-10/healthy-dark.png) and [quit shell log](https://github.com/aelomi/aelomi/blob/5603b6813af94d904e4bed697c787a987977798d/docs/evidence/shell-10/quit-shell.log). The raw-file host stalled, so those two downloads were stopped and retried anonymously through GitHub's documented Contents API, with the full source commit and `Accept: application/vnd.github.raw+json`. Both files matched the original committed bytes. This checks access to already published fallback files; it does not claim a new committed-image upload.
 
