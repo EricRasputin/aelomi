@@ -1,0 +1,33 @@
+[WebServer] (node:15307) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+[WebServer] $ vite preview --mode mock --host 127.0.0.1 --port 4173 --strictPort
+[WebServer] (node:15582) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+[WebServer] (Use `node --trace-warnings ...` to show where the warning was created)
+
+Running 3 tests using 1 worker
+
+(node:15647) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+scroll frames 301, rendering work p50 1 ms p95 11 ms (budget < 16.7) max 15 ms, longest interval 18 ms (budget 50)
+  raw intervals p50 17 ms p95 18 ms and idle cadence 17 ms (information)
+  load average 2.86 2.96 3.42
+  ✓  1 [perf] › tests/playwright/perf/scroll.spec.ts:33:1 › EDIT-14 the 5,000-block editor page scrolls smoothly for 5 seconds (10.4s)
+(node:15701) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+scroll frames 301, rendering work p50 2 ms p95 13 ms (budget < 16.7) max 19 ms, longest interval 21 ms (budget 50)
+  raw intervals p50 17 ms p95 18 ms and idle cadence 17 ms (information)
+  load average 3.13 3.01 3.43
+  ✓  2 [perf] › tests/playwright/perf/scroll.spec.ts:33:1 › EDIT-14 the 5,000-block editor page scrolls smoothly for 5 seconds (10.0s)
+(node:15836) Warning: The 'NO_COLOR' env is ignored due to the 'FORCE_COLOR' env being set.
+(Use `node --trace-warnings ...` to show where the warning was created)
+scroll frames 300, rendering work p50 2 ms p95 13 ms (budget < 16.7) max 19 ms, longest interval 22 ms (budget 50)
+  raw intervals p50 17 ms p95 18 ms and idle cadence 17 ms (information)
+  load average 3.80 3.16 3.48
+  ✓  3 [perf] › tests/playwright/perf/scroll.spec.ts:33:1 › EDIT-14 the 5,000-block editor page scrolls smoothly for 5 seconds (10.7s)
+
+  3 passed (33.5s)
+
+To open last HTML report run:
+
+  pnpm exec playwright show-report
+

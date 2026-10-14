@@ -1,0 +1,6 @@
+from pathlib import Path
+import sys,json,re,subprocess
+r=Path(sys.argv[1]);name=sys.argv[2];s=json.loads((r/(name+'-body.json')).read_text());assert s['focused']
+wid=re.match(r'id=(\d+)',s['window'])[1]
+subprocess.run(['screencapture','-x','-o','-l',wid,str(r/(name+'-edit.png'))],check=True)
+(r/(name+'-edit.ax.txt')).write_text(s['window']+'\nAXTextArea "Page body" = '+json.dumps(s['body'])+'\n')

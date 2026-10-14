@@ -1,0 +1,15 @@
+app.sh: started <worktree>/target/release/bundle/macos/Aelomi.app/Contents/MacOS/aelomi as PID 19344, log /tmp/aelomi-verify/20261015-034739-app-XCZV/shell.log
+app.sh: ready, app PID 19344
+ok    launch process 19344 runs the command this run started
+ok    app process 19344 is running
+ok    System Events has Accessibility access (System Settings > Privacy & Security > Accessibility)
+ok    app window is on screen
+ok    web content has a status region or an alert dialog
+ok    built app is newer than the sources
+ok    shell log has 'ping seq=1'
+{"before": "Fumaso zidasi fire kisa govova dapoku de fosuvu voha logihe hufo ko siro hulu.\n\nFire ko ledawo govova jima zitida gilu nodoje muni kaza robo dapoku rokezi rehada wofome.", "after": "EFumaso zidasi fire kisa govova dapoku de fosuvu voha logihe hufo ko siro hulu.\n\nFire ko ledawo govova jima zitida gilu nodoje muni kaza robo dapoku rokezi rehada wofome.", "inserted_character": "E", "insertion_position": 0, "index_status_when_after_body_read": "Ready", "doc_append_logged": true, "append_precedes_ready": false}
+Traceback (most recent call last):
+  File "/tmp/aelomi-data5-final-native-MtjA/rebuild-edit-result.py", line 8, in <module>
+    assert result['index_status_when_after_body_read']=='Rebuilding' and result['append_precedes_ready']
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError

@@ -1,0 +1,33 @@
+# Native edit during rebuild and gate diagnostics
+
+This record supplements the [populated native measurements](../data-5-followups-9d7a9d4/README.md) and [final native indexing and quit checks](../data-5-final-native-9d7a9d4/README.md). All prove product source `9d7a9d44acbe4a34d66bcf7f6c8edfb6fe6aa66c`. The native app was version 0.1.0 on Apple M1 and macOS 27.0.1, build 26A434. Later commits add evidence only.
+
+## An edit reaches the store during a populated rebuild
+
+The auxiliary 30,000-page synthetic folder provided a long enough rebuild to send an edit. Only its four disposable index filenames were removed after every owned app had exited. The release app launched with `AELOMI_TRACE_IPC=1` and an isolated `AELOMI_DATA_DIR`. Every doctor check passed before driving it.
+
+Run `/tmp/aelomi-verify/20261015-034739-app-XCZV` opened the first generated page, Rehada Sizido Zitida Zoviwu. Native Accessibility focused its Page body and recorded its exact text. A window screenshot captured the original first word, `Fumaso`. System Events typed `E`. Rust logged `ipc doc_append ms=0.115 bytes=93` before `index status=Ready`. Thus source acceptance did not wait for the background rebuild.
+
+The later Accessibility read completed after Ready. Its exact body was the original body with one `E` inserted at position zero, now starting `EFumaso`. The after screenshot shows that edit. The capture script had demanded that this later read still see Rebuilding, so that guard failed and its launch owner exited. The app was subsequently gone, with no normal-quit lines. This run makes no normal-quit claim. It proves native input and source acceptance before Ready, followed by the exact displayed edit. It does not measure keystroke-to-paint, painted output before Ready or physical flush time.
+
+[edit-edit-result.json](edit-edit-result.json) preserves the original guard result. Its `append_precedes_ready` field checked whether Ready had appeared by the later body read, not log order. [rebuild-edit-observed.json](rebuild-edit-observed.json) records the independently checked log ordering. The full [edit-shell.log](edit-shell.log) shows append before Ready. Neither artifact is relabeled as a successful capture guard.
+
+Run `/tmp/aelomi-verify/20261015-035036-app-Hfdp` reopened the same folder and passed doctor. Its complete Accessibility body equaled the previously edited body literally, including both paragraphs. The reopened screenshot shows `EFumaso`. Command-Q drained and flushed before exiting normally. A read-only SQLite check then found exactly one edited first block and exactly one FTS prefix match for `efumaso*`, with the expected text. [rebuild-edit-index-result.json](rebuild-edit-index-result.json) records the rows. It supplements the core's public-query tests.
+
+The first extra attempt used the wrong function name in a temporary Accessibility helper. It failed before any edit. Its `helper-failed-*` log, doctor result and actions remain here. It was quit normally and cleaned up. The corrected helper copied the vendored PID-bound Accessibility reader to a private file and added a command that focused Page body, read its value and returned window bounds. No vendored or product file changed. The capture script and its checks are included as text.
+
+All three native PNGs were inspected at 1920 by 1280. Before shows `Fumaso`, after shows `EFumaso`, and the fresh process shows the same `EFumaso`. Every owned app was gone and every held launch session closed before browser tests or builds resumed.
+
+## Retained scrolling failure
+
+`pnpm check:all` on clean head `2ed0b50ac8857f9ac4b6bc7135176638c381fff5` passed formatting, types, 144 TypeScript tests, dependency audit and licenses, all 331 Rust tests, both serial backlink tests, the complete search gate, cargo-deny, 13 acceptance tests and 10 WebKit flows. Its timing stage passed both actual editors, both synthetic diagnostics and the palette. The actual 5,000-block editor measured full key-to-paint p95 of 18 ms and app-owned p95 of 17 ms, within the chosen 19 ms ceiling. The palette measured 13 ms p95 against 16 ms.
+
+Scrolling failed its unchanged maximum-gap gate. It measured 59 ms against 50 ms, while rendering-work p95 was 13 ms. Load was 2.67, 2.91 and 3.44 across eight CPUs. The whole relevant output remains in [check-all-2ed0b50-failed.log](check-all-2ed0b50-failed.log). This was a failed gate, not a passing result or a noisy-run exemption.
+
+Three fresh focused repeats used the same source, untraced test and unchanged limits. All passed. Their maximum gaps were 18, 21 and 22 ms; work p95 was 11, 13 and 13 ms. [scroll-three-repeats.log](scroll-three-repeats.log) records their contemporaneous load. The cause of the single 59 ms gap remains unknown. The clock and rare-gap follow-up must retain that uncertainty. A complete fresh `check:all` is still required on the next committed head. These focused repeats do not replace it.
+
+## Files and publication
+
+[context.json](context.json) distinguishes product source from the head used for gate diagnostics. Personal path prefixes are redacted, and terminal control escapes are removed. JSON formatting follows Biome without changing parsed values. Full relevant shell logs, actions, doctor results and the failed guards remain. Source files, SQLite files, PID files and `run.env` remain local.
+
+[screenshots.json](screenshots.json) records filenames, byte sizes and SHA-256 hashes for the three PNG attachments. [manifest.json](manifest.json) hashes this README and every companion text file, excluding itself. Attach the PNGs after the clean-head gate and fresh local Fable approval. Download all published images anonymously, compare bytes and hashes, and inspect them again. Compare every committed text file with its remote bytes before the PR review.

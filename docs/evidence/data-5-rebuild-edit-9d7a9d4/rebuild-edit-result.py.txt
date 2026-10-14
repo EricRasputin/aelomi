@@ -1,0 +1,8 @@
+from pathlib import Path
+import json,re,sys
+r=Path(sys.argv[1]);a=json.loads((r/'before-body.json').read_text());b=json.loads((r/'after-body.json').read_text())
+positions=[i for i,c in enumerate(b['body']) if c=='E' and b['body'][:i]+b['body'][i+1:]==a['body']];assert len(positions)==1,(a,b)
+log=(r/'shell.log').read_text();states=re.findall(r'index status=(\w+)',log)
+result=dict(before=a['body'],after=b['body'],inserted_character='E',insertion_position=positions[0],index_status_when_after_body_read=states[-1],doc_append_logged='ipc doc_append' in log,append_precedes_ready='index status=Ready' not in log)
+(r/'edit-result.json').write_text(json.dumps(result,indent=2)+'\n');print(json.dumps(result))
+assert result['index_status_when_after_body_read']=='Rebuilding' and result['append_precedes_ready']
