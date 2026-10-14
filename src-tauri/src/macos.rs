@@ -149,6 +149,15 @@ pub fn process_start_us() -> u64 {
     info.pbi_start_tvsec * 1_000_000 + info.pbi_start_tvusec
 }
 
+pub fn peak_rss_bytes() -> std::io::Result<u64> {
+    let mut usage: libc::rusage = unsafe { std::mem::zeroed() };
+    if unsafe { libc::getrusage(libc::RUSAGE_SELF, &mut usage) } != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    u64::try_from(usage.ru_maxrss)
+        .map_err(|_| std::io::Error::other("the native RSS peak was negative"))
+}
+
 #[cfg(test)]
 mod tests {
     use aelomi_core::storage::test_support::SimDisk;

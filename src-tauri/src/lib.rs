@@ -114,7 +114,17 @@ fn publish_index<R: Runtime>(app: &AppHandle<R>, event: &IndexEvent) {
         IndexEvent::Changed(change) => {
             let _ = IndexChanged::from(change.clone()).emit(app);
         }
-        IndexEvent::Startup(report) => println!("{}", trace::startup_line(report)),
+        IndexEvent::Startup(report) => {
+            println!("{}", trace::startup_line(report));
+            #[cfg(target_os = "macos")]
+            match macos::peak_rss_bytes() {
+                Ok(bytes) => println!(
+                    "index main_peak_rss_bytes={bytes} t_ms={:.1}",
+                    trace::since_start_ms()
+                ),
+                Err(error) => eprintln!("index main_peak_rss_unavailable={error}"),
+            }
+        }
     }
 }
 
