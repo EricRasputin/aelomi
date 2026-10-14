@@ -1,17 +1,30 @@
 import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { useRef } from "react";
-import { storageCopy, storageFailureReason } from "../storage-copy";
-import { useQuitStore } from "../stores/quit";
+import { useDeliveryStore } from "../editor/delivery";
+import {
+  storageCopy,
+  storageErrorText,
+  storageFailureReason,
+} from "../storage-copy";
+import { quitDialogOpen, useQuitStore } from "../stores/quit";
 import { useStorageHealthStore } from "../stores/storage-health";
 
 export function SaveFailureBanner() {
   const health = useStorageHealthStore((state) => state.health);
-  if (!health || health === "Healthy") return null;
+  const refused = useDeliveryStore(
+    (state) => state.failing.values().next().value ?? null,
+  );
+  const reason =
+    health && health !== "Healthy"
+      ? storageFailureReason(health.Failing.reason)
+      : refused
+        ? storageErrorText(refused)
+        : null;
+  if (reason === null) return null;
   return (
     <div role="alert" className="save-failure-banner">
       <p>
-        <span className="font-medium">{storageCopy.banner}</span>{" "}
-        {storageFailureReason(health.Failing.reason)}
+        <span className="font-medium">{storageCopy.banner}</span> {reason}
       </p>
       <p className="mt-1">{storageCopy.retry}</p>
     </div>
@@ -27,7 +40,7 @@ export function QuitConfirmation() {
 
   return (
     <AlertDialog.Root
-      open={decision.kind !== "open"}
+      open={quitDialogOpen(decision)}
       onOpenChange={(open, eventDetails) => {
         if (open) return;
         if (quitting) eventDetails.cancel();

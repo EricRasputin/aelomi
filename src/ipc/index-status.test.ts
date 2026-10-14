@@ -21,7 +21,7 @@ test("rebuilding keeps documents available and publishes ready", async () => {
   try {
     window.__aelomiMock?.index.setStatus("Rebuilding");
     expect(await commands.indexStatus()).toBe("Rebuilding");
-    expect(await commands.search("still", 20)).toEqual({
+    expect(await commands.search("still", 20, "All")).toEqual({
       status: "ok",
       data: "Indexing",
     });
@@ -38,9 +38,9 @@ test("rebuilding keeps documents available and publishes ready", async () => {
     expect(window.__aelomiMock?.storage.text("page")).toBe("still editable");
     window.__aelomiMock?.index.setStatus("Ready");
     expect(await commands.indexStatus()).toBe("Ready");
-    expect(await commands.search("still", 20)).toEqual({
+    expect(await commands.search("still", 20, "All")).toEqual({
       status: "ok",
-      data: { Ready: [] },
+      data: { Ready: { hits: [], issues: [] } },
     });
     expect(seen).toEqual(["Rebuilding", "Ready"]);
   } finally {
@@ -52,7 +52,7 @@ test("failed status preserves its reason and reset restores ready", async () => 
   const failed: IndexStatus = { Failed: { reason: "read-only index folder" } };
   window.__aelomiMock?.index.setStatus(failed);
   expect(await commands.indexStatus()).toEqual(failed);
-  expect(await commands.search("anything", 20)).toEqual({
+  expect(await commands.search("anything", 20, "All")).toEqual({
     status: "error",
     error: { Failed: { reason: "read-only index folder" } },
   });
@@ -81,7 +81,7 @@ test("unopened storage reports the same index failure as Rust", async () => {
   expect(await commands.indexStatus()).toEqual({
     Failed: { reason: "the data folder is not open" },
   });
-  expect(await commands.search("word", 20)).toEqual({
+  expect(await commands.search("word", 20, "All")).toEqual({
     status: "error",
     error: "Unavailable",
   });

@@ -1,5 +1,11 @@
 import type { EventCallback } from "@tauri-apps/api/event";
 import * as Y from "yjs";
+import {
+  type Body,
+  isPageId,
+  readBody,
+  renderSegments,
+} from "../editor/body-reader";
 import { fromBase64, toBase64 } from "./base64";
 import type {
   FailReason,
@@ -8,11 +14,34 @@ import type {
   Health,
   IndexChanged,
   IndexStatus,
+  PageIssue,
+  PageProblem,
+  PageTree,
   QueryError,
+  QuitPhase,
   QuitStatus,
+  SearchScope,
   StorageError,
   StorageStatus,
 } from "./bindings";
+import { type SeedBlock, writeBody } from "./mock-body";
+import {
+  type MockHit,
+  PageIndex,
+  prepare,
+  type Scope,
+  type SearchablePage,
+  searchPages,
+} from "./mock-search";
+import {
+  type PageRecord,
+  projectTree,
+  readRecords,
+  type SeedPage,
+  trashPage,
+  workspaceDocId,
+  writeRecords,
+} from "./mock-workspace";
 
 type Commands = typeof generatedCommands;
 type Events = typeof generatedEvents;
@@ -23,7 +52,24 @@ type MockCall = {
   };
 }[keyof Commands];
 
+export type MockSetup = {
+  indexStatus?: IndexStatus;
+  pages?: SeedPage[];
+  bodies?: Record<string, SeedBlock[]>;
+  /** Page bodies as base64 Yjs updates, applied as stored. */
+  rawBodies?: Record<string, string>;
+  /** Loads the 10,000-page search fixture as the workspace. */
+  searchFixture?: boolean;
+};
+
+declare global {
+  interface Window {
+    __aelomiMockSetup?: MockSetup;
+  }
+}
+
 const calls: MockCall[] = [];
+const errors: string[] = [];
 
 type MockDoc = { doc: Y.Doc; updates: Uint8Array[]; pending: boolean };
 
@@ -45,13 +91,13 @@ const storage: {
 let exited = false;
 let indexStatus: IndexStatus = "Ready";
 
-type QuitState =
-  | { kind: "open" }
-  | { kind: "asking"; pendingDocs: string[] }
-  | { kind: "confirmed" };
-const quit: { revision: number; state: QuitState } = {
+type FixturePage = { id: string; title: string; lines: string[] };
+const fixtureBodies = new Map<string, string[]>();
+
+const quit: { revision: number; phase: QuitPhase; frontendReady: boolean } = {
   revision: 0,
-  state: { kind: "open" },
+  phase: "Open",
+  frontendReady: false,
 };
 
 const listeners = new Map<string, Set<EventCallback<unknown>>>();
@@ -91,17 +137,25 @@ export const events = {
 } satisfies Events;
 
 function quitStatus(): QuitStatus {
-  return {
-    revision: quit.revision,
-    pending_docs:
-      quit.state.kind === "asking" ? [...quit.state.pendingDocs] : null,
-  };
+  return { revision: quit.revision, phase: structuredClone(quit.phase) };
 }
 
-function changeQuit(state: QuitState) {
+function changeQuit(phase: QuitPhase) {
   quit.revision += 1;
-  quit.state = state;
+  quit.phase = phase;
   void events.quitStatusChanged.emit(quitStatus());
+}
+
+function pendingDocs(): string[] {
+  return [...storage.docs].filter(([, doc]) => doc.pending).map(([id]) => id);
+}
+
+function flushThenQuit() {
+  const pending = pendingDocs();
+  if (pending.length === 0) {
+    changeQuit("Confirmed");
+    exited = true;
+  } else changeQuit({ Asking: { pending_docs: pending } });
 }
 
 function refreshHealth() {
@@ -138,9 +192,172 @@ function mockDoc(docId: string): MockDoc {
   let doc = storage.docs.get(docId);
   if (!doc) {
     doc = { doc: new Y.Doc(), updates: [], pending: false };
+    const lines = fixtureBodies.get(docId);
+    if (lines) {
+      writeBody(
+        doc.doc,
+        lines.map((line, i) => ({ id: `${docId}-b${i}`, content: [line] })),
+      );
+    }
     storage.docs.set(docId, doc);
   }
   return doc;
+}
+
+const derived: {
+  tree: { version: number; value: ReturnType<typeof projectTree> } | null;
+  records: Map<string, PageRecord> | null;
+  bodies: Map<string, Body>;
+  searchable: Map<string, SearchablePage>;
+  ordered: PageIndex | null;
+  workspaceVersion: number;
+  changed: { workspace: boolean; pages: Set<string> };
+  timer: ReturnType<typeof setTimeout> | null;
+} = {
+  tree: null,
+  records: null,
+  bodies: new Map(),
+  searchable: new Map(),
+  ordered: null,
+  workspaceVersion: 0,
+  changed: { workspace: false, pages: new Set() },
+  timer: null,
+};
+
+function workspaceDoc(): Y.Doc {
+  return mockDoc(workspaceDocId).doc;
+}
+
+function records(): Map<string, PageRecord> {
+  derived.records ??= readRecords(workspaceDoc());
+  return derived.records;
+}
+
+function sourceTree() {
+  if (derived.tree?.version !== derived.workspaceVersion)
+    derived.tree = {
+      version: derived.workspaceVersion,
+      value: projectTree(records()),
+    };
+  return derived.tree.value;
+}
+
+function body(pageId: string): Body {
+  let read = derived.bodies.get(pageId);
+  if (!read) {
+    read = readBody(mockDoc(pageId).doc);
+    derived.bodies.set(pageId, read);
+  }
+  return read;
+}
+
+function label(pageId: string): string {
+  const page = sourceTree().tree.pages.find((p) => p.id === pageId);
+  if (!page) return "Deleted page";
+  return page.title === "" ? "Untitled" : page.title;
+}
+
+function searchable(pageId: string, record: PageRecord): SearchablePage {
+  let page = derived.searchable.get(pageId);
+  if (!page) {
+    const lines = storage.docs.has(pageId) ? null : fixtureBodies.get(pageId);
+    page = {
+      id: pageId,
+      title: prepare(record.title),
+      createdAt: record.createdAt,
+      blocks: lines
+        ? lines.map((line, i) => ({
+            id: `${pageId}-b${i}`,
+            text: prepare(line),
+          }))
+        : body(pageId).blocks.map((block) => ({
+            id: block.id,
+            text: prepare(renderSegments(block.segments, label)),
+          })),
+    };
+    derived.searchable.set(pageId, page);
+  }
+  return page;
+}
+
+function markChanged(change: { workspace: boolean; pages: string[] }) {
+  if (change.workspace) {
+    derived.workspaceVersion += 1;
+    derived.records = null;
+    derived.searchable.clear();
+    derived.ordered = null;
+    derived.changed.workspace = true;
+  }
+  for (const page of change.pages) {
+    derived.bodies.delete(page);
+    derived.searchable.delete(page);
+    derived.ordered = null;
+    derived.changed.pages.add(page);
+  }
+  if (indexStatus !== "Ready" || derived.timer !== null) return;
+  derived.timer = setTimeout(() => {
+    derived.timer = null;
+    const changed = {
+      workspace: derived.changed.workspace,
+      pages: [...derived.changed.pages].sort(),
+    };
+    derived.changed = { workspace: false, pages: new Set() };
+    if (indexStatus === "Ready") void events.indexChanged.emit(changed);
+  }, 25);
+}
+
+function scopeError(scope: SearchScope): QueryError | null {
+  if (scope === "All") return null;
+  const exclude = new Set(scope.Content.exclude);
+  if ([...exclude].some((id) => !isPageId(id))) return "InvalidPageId";
+  if (exclude.size > 200)
+    return { InvalidQuery: { TooManyExcluded: { max: 200 } } };
+  return null;
+}
+
+function pageProblem(problem: NonNullable<Body["problem"]>): PageProblem {
+  switch (problem.kind) {
+    case "UnrecognizedRoot":
+      return { UnrecognizedRoot: { root: problem.root } };
+    default:
+      return problem.kind;
+  }
+}
+
+function issues(): PageIssue[] {
+  const active = new Set(sourceTree().tree.pages.map((page) => page.id));
+  return [...storage.docs.keys()]
+    .filter((docId) => active.has(docId))
+    .sort()
+    .flatMap((pageId) => {
+      const read = body(pageId);
+      return read.problem
+        ? [
+            {
+              page_id: pageId,
+              problem: pageProblem(read.problem),
+              indexed_blocks: read.blocks.length,
+            },
+          ]
+        : [];
+    });
+}
+
+function orderedPages(): PageIndex {
+  if (!derived.ordered) {
+    const all = records();
+    derived.ordered = new PageIndex(
+      sourceTree().tree.pages.flatMap((page) => {
+        const record = all.get(page.id);
+        return record ? [searchable(page.id, record)] : [];
+      }),
+    );
+  }
+  return derived.ordered;
+}
+
+function search(text: string, limit: number, scope: Scope): MockHit[] {
+  return searchPages(orderedPages(), text, limit, scope);
 }
 
 export const commands = {
@@ -167,28 +384,48 @@ export const commands = {
   },
   pageTree: async () => {
     calls.push({ command: "pageTree", args: [] });
+    await setupReady;
     if (storage.status !== "Ready")
       return { status: "error", error: "Unavailable" };
-    return { status: "ok", data: { pages: [], favorites: [], trash: [] } };
+    const tree: PageTree = structuredClone(sourceTree().tree);
+    return { status: "ok", data: tree };
   },
-  search: async (query, limit) => {
-    calls.push({ command: "search", args: [query, limit] });
-    const error = queryFailure();
+  search: async (query, limit, scope) => {
+    calls.push({
+      command: "search",
+      args: [query, limit, structuredClone(scope)],
+    });
+    await setupReady;
+    const error = queryFailure() ?? scopeError(scope);
     if (error) return { status: "error", error };
+    if (indexStatus === "Rebuilding") return { status: "ok", data: "Indexing" };
     return {
       status: "ok",
-      data: indexStatus === "Rebuilding" ? "Indexing" : { Ready: [] },
+      data: {
+        Ready: {
+          hits: search(
+            query,
+            limit,
+            scope === "All"
+              ? { kind: "all" }
+              : { kind: "content", exclude: new Set(scope.Content.exclude) },
+          ),
+          issues: issues(),
+        },
+      },
     };
   },
   backlinks: async (pageId) => {
     calls.push({ command: "backlinks", args: [pageId] });
-    if (pageId === "workspace" || !/^[0-9a-z-]{1,64}$/.test(pageId))
-      return { status: "error", error: "InvalidPageId" };
+    if (!isPageId(pageId)) return { status: "error", error: "InvalidPageId" };
     const error = queryFailure();
     if (error) return { status: "error", error };
     return {
       status: "ok",
-      data: indexStatus === "Rebuilding" ? "Indexing" : { Ready: [] },
+      data:
+        indexStatus === "Rebuilding"
+          ? "Indexing"
+          : { Ready: { backlinks: [], issues: issues() } },
     };
   },
   quitStatus: async () => {
@@ -197,19 +434,38 @@ export const commands = {
   },
   keepOpen: async (revision) => {
     calls.push({ command: "keepOpen", args: [revision] });
-    if (quit.state.kind === "asking" && quit.revision === revision) {
-      changeQuit({ kind: "open" });
-    }
+    if (typeof quit.phase === "object" && quit.revision === revision)
+      changeQuit("Open");
     return quitStatus();
   },
   quitAnyway: async () => {
     calls.push({ command: "quitAnyway", args: [] });
-    if (quit.state.kind === "confirmed") return;
-    changeQuit({ kind: "confirmed" });
+    if (quit.phase === "Confirmed") return;
+    changeQuit("Confirmed");
     exited = true;
+  },
+  frontendReady: async () => {
+    calls.push({ command: "frontendReady", args: [] });
+    quit.frontendReady = true;
+  },
+  completeQuit: async (revision) => {
+    calls.push({ command: "completeQuit", args: [revision] });
+    if (quit.phase === "Draining" && quit.revision === revision)
+      flushThenQuit();
+    return quitStatus();
+  },
+  quitDrainFailed: async (revision, docIds) => {
+    calls.push({ command: "quitDrainFailed", args: [revision, [...docIds]] });
+    const invalid = docIds.find((id) => !/^[0-9a-z-]{1,64}$/.test(id));
+    if (invalid !== undefined)
+      return { status: "error", error: "InvalidDocId" };
+    if (quit.phase === "Draining" && quit.revision === revision)
+      changeQuit({ Asking: { pending_docs: [...docIds] } });
+    return { status: "ok", data: quitStatus() };
   },
   docLoad: async (docId) => {
     calls.push({ command: "docLoad", args: [docId] });
+    await setupReady;
     const error = refusal(docId);
     if (error) return { status: "error", error };
     const { doc } = mockDoc(docId);
@@ -231,6 +487,11 @@ export const commands = {
     doc.pending = storage.failWrites;
     refreshHealth();
     storage.seq += 1;
+    markChanged(
+      docId === workspaceDocId
+        ? { workspace: true, pages: [] }
+        : { workspace: false, pages: [docId] },
+    );
     return { status: "ok", data: storage.seq };
   },
   devProbeLog: async (line) => {
@@ -238,40 +499,214 @@ export const commands = {
   },
 } satisfies Commands;
 
+function seedBodies(bodies: Record<string, SeedBlock[]>) {
+  for (const [pageId, blocks] of Object.entries(bodies)) {
+    writeBody(mockDoc(pageId).doc, blocks);
+    markChanged({ workspace: false, pages: [pageId] });
+  }
+}
+
+function seedRawBodies(bodies: Record<string, string>) {
+  for (const [pageId, update] of Object.entries(bodies)) {
+    Y.applyUpdate(mockDoc(pageId).doc, fromBase64(update));
+    markChanged({ workspace: false, pages: [pageId] });
+  }
+}
+
+async function loadSearchFixture() {
+  const { default: jsonl } = await import(
+    "../../fixtures/generated/search-10k-pages.jsonl?raw"
+  );
+  const pages: FixturePage[] = jsonl
+    .split("\n")
+    .filter((line) => line.trim() !== "")
+    .map((line) => {
+      const page = JSON.parse(line) as {
+        id: string;
+        title: string;
+        parentId: string | null;
+        trash: { batchId: string; trashedAt: number } | null;
+        body: string;
+      };
+      fixtureBodies.set(page.id, page.body.split("\n"));
+      return { id: page.id, title: page.title, lines: [] };
+    });
+  const parents = new Map<string, string | null>();
+  const trash = new Map<
+    string,
+    { batchId: string; trashedAt: number } | null
+  >();
+  for (const line of jsonl.split("\n")) {
+    if (line.trim() === "") continue;
+    const page = JSON.parse(line) as {
+      id: string;
+      parentId: string | null;
+      trash: { batchId: string; trashedAt: number } | null;
+    };
+    parents.set(page.id, page.parentId);
+    trash.set(page.id, page.trash);
+  }
+  writeRecords(
+    workspaceDoc(),
+    pages.map((page, line) => {
+      const trashed = trash.get(page.id) ?? null;
+      return {
+        id: page.id,
+        title: page.title,
+        parentId: parents.get(page.id) ?? null,
+        order: line,
+        createdAt: 1_700_000_000_000 + line * 1000,
+        updatedAt: 1_700_000_000_000 + line * 1000,
+        trash: trashed && {
+          originalParentId: parents.get(page.id) ?? null,
+          originalOrder: line,
+          batchId: trashed.batchId,
+          trashedAt: trashed.trashedAt,
+        },
+      };
+    }),
+  );
+  markChanged({ workspace: true, pages: [] });
+  orderedPages();
+}
+
+async function applySetup(setup: MockSetup | undefined) {
+  if (!setup) return;
+  if (setup.indexStatus) indexStatus = structuredClone(setup.indexStatus);
+  if (setup.pages) {
+    writeRecords(workspaceDoc(), setup.pages);
+    markChanged({ workspace: true, pages: [] });
+  }
+  if (setup.bodies) seedBodies(setup.bodies);
+  if (setup.rawBodies) seedRawBodies(setup.rawBodies);
+  if (setup.searchFixture) await loadSearchFixture();
+}
+
+let setupReady: Promise<void> = Promise.resolve();
+
+const reloadKey = "aelomi-mock-reload";
+type KeptState = { indexStatus: IndexStatus; docs: Record<string, string> };
+
+function restoreKept(): boolean {
+  const kept = window.sessionStorage?.getItem(reloadKey);
+  if (!kept) return false;
+  window.sessionStorage.removeItem(reloadKey);
+  const state = JSON.parse(kept) as KeptState;
+  indexStatus = state.indexStatus;
+  for (const [docId, update] of Object.entries(state.docs))
+    Y.applyUpdate(mockDoc(docId).doc, fromBase64(update));
+  markChanged({ workspace: true, pages: Object.keys(state.docs) });
+  return true;
+}
+
+function resetState() {
+  calls.length = 0;
+  errors.length = 0;
+  storage.status = "Ready";
+  storage.failWrites = false;
+  storage.docs.clear();
+  storage.seq = 0;
+  storage.health = "Healthy";
+  storage.reason = { Io: "mock write failure" };
+  exited = false;
+  indexStatus = "Ready";
+  quit.revision = 0;
+  quit.phase = "Open";
+  quit.frontendReady = false;
+  fixtureBodies.clear();
+  if (derived.timer !== null) clearTimeout(derived.timer);
+  derived.tree = null;
+  derived.records = null;
+  derived.bodies.clear();
+  derived.searchable.clear();
+  derived.ordered = null;
+  derived.workspaceVersion = 0;
+  derived.changed = { workspace: false, pages: new Set() };
+  derived.timer = null;
+}
+
+function pageWrite(update: () => void) {
+  update();
+  markChanged({ workspace: true, pages: [] });
+}
+
 const control = {
   get calls(): readonly MockCall[] {
     return calls;
   },
+  /** Uncaught errors and unhandled rejections since the page loaded. */
+  get errors(): readonly string[] {
+    return errors;
+  },
   reset() {
-    calls.length = 0;
-    storage.status = "Ready";
-    storage.failWrites = false;
-    storage.docs.clear();
-    storage.seq = 0;
-    storage.health = "Healthy";
-    storage.reason = { Io: "mock write failure" };
-    exited = false;
-    indexStatus = "Ready";
-    quit.revision = 0;
-    quit.state = { kind: "open" };
+    resetState();
   },
   quit: {
     get exited() {
       return exited;
     },
+    get status(): QuitStatus {
+      return quitStatus();
+    },
+    /** A native quit: ⌘Q, closing the window, or AppleScript `quit`. */
     request() {
       if (exited) return;
-      const pendingDocs = [...storage.docs]
-        .filter(([, doc]) => doc.pending)
-        .map(([id]) => id);
-      if (pendingDocs.length === 0) exited = true;
-      else changeQuit({ kind: "asking", pendingDocs });
+      if (quit.phase === "Confirmed") {
+        exited = true;
+        return;
+      }
+      if (!quit.frontendReady) {
+        const pending = pendingDocs();
+        if (pending.length === 0) exited = true;
+        else changeQuit({ Asking: { pending_docs: pending } });
+        return;
+      }
+      if (quit.phase !== "Draining") changeQuit("Draining");
+    },
+    /** The shell's drain timeout: flushes the Store and asks. */
+    timeOut() {
+      if (quit.phase !== "Draining") return;
+      changeQuit({ Asking: { pending_docs: pendingDocs() } });
     },
   },
   index: {
     setStatus(status: IndexStatus) {
       indexStatus = structuredClone(status);
       void events.indexStatusChanged.emit(structuredClone(status));
+    },
+  },
+  workspace: {
+    seed(pages: SeedPage[]) {
+      pageWrite(() => writeRecords(workspaceDoc(), pages));
+    },
+    trash(pageId: string, batchId: string) {
+      pageWrite(() => trashPage(workspaceDoc(), pageId, batchId, Date.now()));
+    },
+    tree(): PageTree {
+      return structuredClone(sourceTree().tree);
+    },
+  },
+  bodies: {
+    seed(pageId: string, blocks: SeedBlock[]) {
+      seedBodies({ [pageId]: blocks });
+    },
+    /** Applies a base64 Yjs update to the page's doc as stored bytes. */
+    raw(pageId: string, update: string) {
+      seedRawBodies({ [pageId]: update });
+    },
+    /** The body's blocks as the Rust reader would index them. */
+    blocks(pageId: string) {
+      return readBody(mockDoc(pageId).doc);
+    },
+    /** Every block's rendered text, one line per block. */
+    text(pageId: string): string {
+      return readBody(mockDoc(pageId).doc)
+        .blocks.map((block) => renderSegments(block.segments, label))
+        .join("\n");
+    },
+    /** The doc's full state as base64. */
+    state(pageId: string): string {
+      return toBase64(Y.encodeStateAsUpdate(mockDoc(pageId).doc));
     },
   },
   storage: {
@@ -305,6 +740,23 @@ const control = {
     setStatus(status: StorageStatus) {
       storage.status = status;
     },
+    /**
+     * Keeps every doc for the next load of this tab, as the store keeps
+     * accepted updates across a relaunch. Acceptance tests cannot relaunch,
+     * so they reload instead.
+     */
+    keepForReload() {
+      const state: KeptState = {
+        indexStatus,
+        docs: Object.fromEntries(
+          [...storage.docs].map(([id, { doc }]) => [
+            id,
+            toBase64(Y.encodeStateAsUpdate(doc)),
+          ]),
+        ),
+      };
+      window.sessionStorage.setItem(reloadKey, JSON.stringify(state));
+    },
     /** Every update appended to `docId`, in order, pending or not. */
     updates(docId: string): Uint8Array[] {
       return (storage.docs.get(docId)?.updates ?? []).map((u) => u.slice());
@@ -320,5 +772,14 @@ declare global {
 
 export function installMock(): { commands: Commands; events: Events } {
   window.__aelomiMock = control;
+  window.addEventListener?.("error", (event) => {
+    errors.push(String(event.error ?? event.message));
+  });
+  window.addEventListener?.("unhandledrejection", (event) => {
+    errors.push(String(event.reason));
+  });
+  setupReady = restoreKept()
+    ? Promise.resolve()
+    : applySetup(window.__aelomiMockSetup);
   return { commands, events };
 }

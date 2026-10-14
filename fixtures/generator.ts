@@ -321,9 +321,11 @@ export function generateBlocks(): Block[] {
         ? { [prng.pick(styleNames)]: true }
         : {};
       if (prng.chance(3)) {
+        // BlockNote's code mark excludes link, so linked text drops the code
+        // style it drew. The draws stay the same, so nothing else moves.
         content.push({
           type: "link",
-          content: [{ type: "text", text, styles }],
+          content: [{ type: "text", text, styles: styles.code ? {} : styles }],
           href: `https://example.com/${word()}`,
         });
       } else {

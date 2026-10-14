@@ -110,3 +110,317 @@ body {
     --overlay: rgb(0 0 0 / 50%);
   }
 }
+
+:root {
+  --surface: #ffffff;
+  --selected: #ececf0;
+  --highlight: #fbe7a1;
+  --highlight-text: inherit;
+  --link: #3a5ccc;
+  --flash: rgb(251 231 161 / 70%);
+  --shadow-popover: 0 12px 40px rgb(0 0 0 / 14%), 0 0 0 1px rgb(0 0 0 / 4%);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --surface: #1f1f23;
+    --selected: #2c2c32;
+    --highlight: #5b4a1a;
+    --highlight-text: #f6e7b8;
+    --link: #8fa8ff;
+    --flash: rgb(91 74 26 / 70%);
+    --shadow-popover:
+      0 12px 40px rgb(0 0 0 / 50%), 0 0 0 1px rgb(255 255 255 / 6%);
+  }
+}
+
+.page {
+  position: relative;
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 56px 48px 40vh;
+}
+
+.page-title {
+  min-height: 1.25em;
+  margin: 0 0 12px;
+  font-size: 30px;
+  font-weight: 650;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+
+.page-notice {
+  margin: 0 0 16px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.page-readonly p {
+  margin: 0;
+  padding: 3px 0;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.page-body .bn-editor {
+  padding-inline: 0;
+  font-family: inherit;
+  color: var(--foreground);
+  background: transparent;
+}
+
+.page-body .bn-default-styles {
+  font-family: inherit;
+  font-size: 16px;
+}
+
+/* BlockNote positions every nested block for an absolute ::before that
+   paints nothing. Each pair is a WebKit render layer, and every keystroke
+   frame walks all of them: 1,280 on the 5,000-block page (EDIT-14). */
+.page-body.bn-editor .bn-block-group .bn-block-group > .bn-block-outer {
+  position: static;
+}
+
+.page-body.bn-editor .bn-block-group .bn-block-group > .bn-block-outer::before {
+  content: none;
+}
+
+/* The same for render layers that anchor nothing: a code block without a
+   language picker, a divider's UA overflow clip, and a media wrapper whose
+   hover-only resize handles sit at the same place against the positioned
+   file wrapper around it. */
+.page-body.bn-editor
+.bn-block-content[data-content-type="codeBlock"]:not(:has(> div)) {
+  position: static;
+}
+
+.page-body.bn-editor [data-content-type="divider"] hr {
+  overflow: visible;
+}
+
+.page-body.bn-editor [data-file-block] .bn-visual-media-wrapper {
+  position: static;
+}
+
+.page-link {
+  color: var(--link);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--link) 35%, transparent);
+  text-underline-offset: 3px;
+}
+
+.page-link[data-state="missing"] {
+  color: var(--muted);
+  text-decoration: none;
+}
+
+.block-flash {
+  position: absolute;
+  z-index: 0;
+  border-radius: 6px;
+  background: var(--flash);
+  pointer-events: none;
+  animation: block-flash 1000ms cubic-bezier(0.23, 1, 0.32, 1) forwards;
+}
+
+@keyframes block-flash {
+  0%,
+  60% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .block-flash {
+    animation-timing-function: steps(1, end);
+  }
+}
+
+mark {
+  border-radius: 2px;
+  background: var(--highlight);
+  color: var(--highlight-text);
+}
+
+.palette-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgb(0 0 0 / 8%);
+}
+
+.palette {
+  position: fixed;
+  top: 14vh;
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  width: min(640px, calc(100vw - 32px));
+  max-height: 72vh;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--foreground);
+  box-shadow: var(--shadow-popover);
+  transform: translateX(-50%);
+}
+
+.palette-input {
+  height: 52px;
+  padding: 0 18px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: inherit;
+  font-size: 15px;
+  outline: none;
+}
+
+.palette-input::placeholder {
+  color: var(--muted);
+}
+
+.palette-list {
+  max-height: 380px;
+  overflow-y: auto;
+  padding: 0 6px;
+  overscroll-behavior: contain;
+}
+
+.palette-list[data-empty] {
+  display: none;
+}
+
+.palette-header {
+  display: flex;
+  align-items: flex-end;
+  padding: 0 10px 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.palette-row {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  padding: 0 10px;
+  border-radius: 7px;
+  cursor: default;
+  font-size: 14px;
+}
+
+.palette-row[aria-selected="true"] {
+  background: var(--selected);
+}
+
+.palette-title,
+.palette-snippet {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.palette-snippet {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.palette-status:empty {
+  padding: 0;
+}
+
+.palette-status,
+.palette-notice {
+  margin: 0;
+  padding: 10px 18px;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.palette-notice {
+  border-top: 1px solid var(--border);
+  overflow-wrap: anywhere;
+}
+
+.palette-alert {
+  margin: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--warning-border);
+  border-radius: 8px;
+  background: var(--warning-background);
+  color: var(--warning-text);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.palette-alert p {
+  margin: 0;
+}
+
+.palette-alert-reason {
+  overflow-wrap: anywhere;
+  opacity: 0.85;
+}
+
+.picker {
+  position: fixed;
+  z-index: 20;
+  width: 320px;
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--foreground);
+  box-shadow: var(--shadow-popover);
+}
+
+.picker-option {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: default;
+}
+
+.picker-option[aria-selected="true"] {
+  background: var(--selected);
+}
+
+.picker-title {
+  flex: 0 1 auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.picker-detail {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.picker-empty {
+  margin: 0;
+  padding: 6px 8px;
+  color: var(--muted);
+  font-size: 13px;
+}

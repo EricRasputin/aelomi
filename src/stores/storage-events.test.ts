@@ -24,12 +24,18 @@ function mockBackend() {
   if (!mock) throw new Error("Missing IPC mock");
   return mock;
 }
+async function requestQuit() {
+  const mock = mockBackend();
+  mock.quit.request();
+  const { revision, phase } = mock.quit.status;
+  if (phase === "Draining") await commands.completeQuit(revision);
+  return mock;
+}
 async function refuseQuit() {
   const mock = mockBackend();
   mock.storage.failWrites(true);
   await mock.storage.type("page", "x");
-  mock.quit.request();
-  return mock;
+  return requestQuit();
 }
 function deferred<T>() {
   let resolve = (_value: T): void => {};
@@ -58,7 +64,10 @@ test("reads failing startup health after listeners register", async () => {
   vi.spyOn(commands, "storageHealth").mockResolvedValue(failing);
   await connect().ready;
   expect(useStorageHealthStore.getState().health).toEqual(failing);
-  await events.quitStatusChanged.emit({ revision: 1, pending_docs: ["page"] });
+  await events.quitStatusChanged.emit({
+    revision: 1,
+    phase: { Asking: { pending_docs: ["page"] } },
+  });
   expect(useQuitStore.getState().decision).toEqual({
     kind: "asking",
     revision: 1,
@@ -103,7 +112,7 @@ test("a Keep app open that lands after a reload's snapshot still closes the new 
   void useQuitStore.getState().keepOpen();
   expect(useQuitStore.getState().decision).toEqual({
     kind: "open",
-    revision: 1,
+    revision: 2,
   });
 
   old.dispose();
@@ -111,14 +120,14 @@ test("a Keep app open that lands after a reload's snapshot still closes the new 
   await connect().ready;
   expect(useQuitStore.getState().decision).toEqual({
     kind: "asking",
-    revision: 1,
+    revision: 2,
     pendingDocs: ["page"],
     error: null,
   });
   land();
   expect(useQuitStore.getState().decision).toEqual({
     kind: "open",
-    revision: 2,
+    revision: 3,
   });
 });
 
@@ -129,14 +138,17 @@ test("an answer read by a fresh page's snapshot outranks the refusal's event", a
     .mockReturnValue(snapshot.promise);
   const connection = connect();
   await vi.waitFor(() => expect(read).toHaveBeenCalledOnce());
-  await events.quitStatusChanged.emit({ revision: 1, pending_docs: ["page"] });
+  await events.quitStatusChanged.emit({
+    revision: 1,
+    phase: { Asking: { pending_docs: ["page"] } },
+  });
   expect(useQuitStore.getState().decision).toEqual({
     kind: "asking",
     revision: 1,
     pendingDocs: ["page"],
     error: null,
   });
-  snapshot.resolve({ revision: 2, pending_docs: null });
+  snapshot.resolve({ revision: 2, phase: "Open" });
   await connection.ready;
   expect(useQuitStore.getState().decision).toEqual({
     kind: "open",
@@ -148,10 +160,13 @@ test("a fresh page reads a kept-open quit as answered, and a delayed refusal eve
   await refuseQuit();
   expect(await commands.keepOpen(1)).toEqual({
     revision: 2,
-    pending_docs: null,
+    phase: "Open",
   });
   await connect().ready;
-  await events.quitStatusChanged.emit({ revision: 1, pending_docs: ["page"] });
+  await events.quitStatusChanged.emit({
+    revision: 1,
+    phase: { Asking: { pending_docs: ["page"] } },
+  });
   expect(useQuitStore.getState().decision).toEqual({
     kind: "open",
     revision: 2,
@@ -165,8 +180,11 @@ test("a stale snapshot never hides a newer refusal", async () => {
     .mockReturnValue(snapshot.promise);
   const connection = connect();
   await vi.waitFor(() => expect(read).toHaveBeenCalledOnce());
-  await events.quitStatusChanged.emit({ revision: 3, pending_docs: ["page"] });
-  snapshot.resolve({ revision: 2, pending_docs: null });
+  await events.quitStatusChanged.emit({
+    revision: 3,
+    phase: { Asking: { pending_docs: ["page"] } },
+  });
+  snapshot.resolve({ revision: 2, phase: "Open" });
   await connection.ready;
   expect(useQuitStore.getState().decision).toEqual({
     kind: "asking",
@@ -181,16 +199,19 @@ test("keeping open survives a stale reconnect snapshot and takes Rust's reply", 
   vi.spyOn(commands, "keepOpen").mockReturnValue(reply.promise);
   vi.spyOn(commands, "quitStatus").mockResolvedValue({
     revision: 1,
-    pending_docs: ["page"],
+    phase: { Asking: { pending_docs: ["page"] } },
   });
-  useQuitStore.getState().receiveQuit({ revision: 1, pending_docs: ["page"] });
+  useQuitStore.getState().receiveQuit({
+    revision: 1,
+    phase: { Asking: { pending_docs: ["page"] } },
+  });
   const kept = useQuitStore.getState().keepOpen();
   await connect().ready;
   expect(useQuitStore.getState().decision).toEqual({
     kind: "open",
     revision: 1,
   });
-  reply.resolve({ revision: 2, pending_docs: null });
+  reply.resolve({ revision: 2, phase: "Open" });
   await kept;
   expect(useQuitStore.getState().decision).toEqual({
     kind: "open",
@@ -207,14 +228,14 @@ test("a failed Keep app open asks again with an error, and a retry answers", asy
   await useQuitStore.getState().keepOpen();
   expect(useQuitStore.getState().decision).toEqual({
     kind: "asking",
-    revision: 1,
+    revision: 2,
     pendingDocs: ["page"],
     error: "Aelomi couldn't record your choice. Try again.",
   });
   await useQuitStore.getState().keepOpen();
   expect(useQuitStore.getState().decision).toEqual({
     kind: "open",
-    revision: 2,
+    revision: 3,
   });
 });
 
@@ -222,9 +243,15 @@ test("a refusal that lands before a failed Keep app open is not overwritten", as
   const reply = deferred<QuitStatus>();
   vi.spyOn(commands, "keepOpen").mockReturnValue(reply.promise);
   const store = useQuitStore.getState();
-  store.receiveQuit({ revision: 1, pending_docs: ["page"] });
+  store.receiveQuit({
+    revision: 1,
+    phase: { Asking: { pending_docs: ["page"] } },
+  });
   const kept = store.keepOpen();
-  store.receiveQuit({ revision: 2, pending_docs: ["other"] });
+  store.receiveQuit({
+    revision: 2,
+    phase: { Asking: { pending_docs: ["other"] } },
+  });
   reply.reject(new Error("IPC unavailable"));
   await kept;
   expect(useQuitStore.getState().decision).toEqual({
@@ -245,10 +272,13 @@ test.each(["reply", "event"])(
       .mockReturnValueOnce(reply.promise);
     await events.quitStatusChanged.emit({
       revision: 1,
-      pending_docs: ["page"],
+      phase: { Asking: { pending_docs: ["page"] } },
     });
     const kept = useQuitStore.getState().keepOpen();
-    const refused = { revision: 2, pending_docs: ["page"] };
+    const refused = {
+      revision: 2,
+      phase: { Asking: { pending_docs: ["page"] } },
+    };
     if (first === "event") await events.quitStatusChanged.emit(refused);
     reply.resolve(refused);
     await kept;
@@ -267,22 +297,22 @@ test.each(["reply", "event"])(
 test("repeated quits ask the newest question, and keeping open answers that one", async () => {
   await connect().ready;
   const mock = await refuseQuit();
-  mock.quit.request();
+  await requestQuit();
   expect(useQuitStore.getState().decision).toEqual({
     kind: "asking",
-    revision: 2,
+    revision: 4,
     pendingDocs: ["page"],
     error: null,
   });
   await useQuitStore.getState().keepOpen();
   expect(useQuitStore.getState().decision).toEqual({
     kind: "open",
-    revision: 3,
+    revision: 5,
   });
-  mock.quit.request();
+  await requestQuit();
   expect(useQuitStore.getState().decision).toEqual({
     kind: "asking",
-    revision: 4,
+    revision: 7,
     pendingDocs: ["page"],
     error: null,
   });
@@ -296,10 +326,13 @@ test("a hot reload keeps an answer even when the old refusal is replayed", async
   await useQuitStore.getState().keepOpen();
   first.dispose();
   await connect().ready;
-  await events.quitStatusChanged.emit({ revision: 1, pending_docs: ["page"] });
+  await events.quitStatusChanged.emit({
+    revision: 2,
+    phase: { Asking: { pending_docs: ["page"] } },
+  });
   expect(useQuitStore.getState().decision).toEqual({
     kind: "open",
-    revision: 2,
+    revision: 3,
   });
 });
 
@@ -350,7 +383,10 @@ test("disposing a late registration removes it and ignores later events", async 
   registered.resolve();
   await connection.ready;
   await events.storageHealthChanged.emit("Healthy");
-  await events.quitStatusChanged.emit({ revision: 1, pending_docs: ["page"] });
+  await events.quitStatusChanged.emit({
+    revision: 1,
+    phase: { Asking: { pending_docs: ["page"] } },
+  });
   expect(useStorageHealthStore.getState().health).toEqual(failing);
   expect(useQuitStore.getState().decision).toEqual({
     kind: "open",
@@ -396,7 +432,10 @@ test("snapshot failure preserves subscriptions and subsequent recovery", async (
     "Storage event connection failed",
   );
   await events.storageHealthChanged.emit("Healthy");
-  await events.quitStatusChanged.emit({ revision: 1, pending_docs: ["page"] });
+  await events.quitStatusChanged.emit({
+    revision: 1,
+    phase: { Asking: { pending_docs: ["page"] } },
+  });
   expect(useStorageHealthStore.getState().health).toBe("Healthy");
   expect(useQuitStore.getState().decision).toEqual({
     kind: "asking",
@@ -415,7 +454,10 @@ test("a failed quit snapshot is reported while startup health still applies", as
     "Storage event connection failed",
   );
   expect(useStorageHealthStore.getState().health).toEqual(failing);
-  await events.quitStatusChanged.emit({ revision: 1, pending_docs: ["page"] });
+  await events.quitStatusChanged.emit({
+    revision: 1,
+    phase: { Asking: { pending_docs: ["page"] } },
+  });
   expect(useQuitStore.getState().decision).toEqual({
     kind: "asking",
     revision: 1,
@@ -432,7 +474,10 @@ test("health listener failure preserves quit events and startup health", async (
   await expect(connect().ready).rejects.toThrow(
     "Storage event connection failed",
   );
-  await events.quitStatusChanged.emit({ revision: 1, pending_docs: ["page"] });
+  await events.quitStatusChanged.emit({
+    revision: 1,
+    phase: { Asking: { pending_docs: ["page"] } },
+  });
   expect(useStorageHealthStore.getState().health).toEqual(failing);
   expect(useQuitStore.getState().decision).toEqual({
     kind: "asking",
@@ -467,14 +512,14 @@ test("health recovery never dismisses a blocked quit decision", async () => {
   expect(useStorageHealthStore.getState().health).toBe("Healthy");
   expect(useQuitStore.getState().decision).toEqual({
     kind: "asking",
-    revision: 1,
+    revision: 2,
     pendingDocs: ["page"],
     error: null,
   });
   await useQuitStore.getState().keepOpen();
   expect(useQuitStore.getState().decision).toEqual({
     kind: "open",
-    revision: 2,
+    revision: 3,
   });
 });
 
@@ -484,8 +529,9 @@ test("Quit anyway exits once and stays quitting through its own status", async (
   await useQuitStore.getState().quitAnyway();
   expect(useQuitStore.getState().decision).toEqual({
     kind: "quitting",
-    revision: 2,
+    revision: 3,
     pendingDocs: ["page"],
+    asked: true,
   });
   mock.quit.request();
   await useQuitStore.getState().quitAnyway();
@@ -502,15 +548,22 @@ test("double confirmation and repeated blocked requests exit once", async () => 
     .spyOn(commands, "quitAnyway")
     .mockReturnValue(exit.promise);
   const store = useQuitStore.getState();
-  store.receiveQuit({ revision: 1, pending_docs: ["page"] });
+  store.receiveQuit({
+    revision: 1,
+    phase: { Asking: { pending_docs: ["page"] } },
+  });
   const confirmed = store.quitAnyway();
-  store.receiveQuit({ revision: 2, pending_docs: ["other"] });
+  store.receiveQuit({
+    revision: 2,
+    phase: { Asking: { pending_docs: ["other"] } },
+  });
   await store.keepOpen();
   await store.quitAnyway();
   expect(useQuitStore.getState().decision).toEqual({
     kind: "quitting",
     revision: 2,
     pendingDocs: ["other"],
+    asked: true,
   });
   exit.resolve();
   await confirmed;
@@ -522,7 +575,10 @@ test("failed confirmation restores choices and allows another decision", async (
     new Error("IPC unavailable"),
   );
   const store = useQuitStore.getState();
-  store.receiveQuit({ revision: 1, pending_docs: ["page"] });
+  store.receiveQuit({
+    revision: 1,
+    phase: { Asking: { pending_docs: ["page"] } },
+  });
   await store.quitAnyway();
   expect(useQuitStore.getState().decision).toEqual({
     kind: "asking",
@@ -535,5 +591,6 @@ test("failed confirmation restores choices and allows another decision", async (
     kind: "quitting",
     revision: 1,
     pendingDocs: ["page"],
+    asked: true,
   });
 });

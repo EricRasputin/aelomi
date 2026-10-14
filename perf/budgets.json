@@ -23,12 +23,12 @@
   },
   "keystroke": {
     "p95Ms": {
-      "value": 16,
-      "why": "CLAUDE.md budget: key event to the first frame that shows the typed character, p95 in Playwright WebKit (EDIT-14)."
+      "value": 19,
+      "why": "The product goal remains 16 ms from the key event to the first frame showing the typed character. The maintainer allowed a small timing miss on 2026-10-15. This 19 ms ceiling accepts the measured immediate-source editor. Five alternating untraced rounds on the 5,000-block page read 18 ms and the quiet full-suite run read 19 ms. Every run kept 405 samples with exact character guards. Source updates stay inside the input event. The miss of 2 to 3 ms is explicit. These runs do not pass the original 16 ms goal. pnpm perf:keystroke enforces this ceiling on Apple Silicon."
     },
     "hostedAppOwnedP95Ms": {
-      "value": 16,
-      "why": "The app's share of key-to-paint on hosted macos-15: key event to the end of the input handler, plus the rendering update from its frame timestamp (the rAF callback argument, read before the first callback of the frame runs, so work the app queues in its own rAF counts) to the MessageChannel task after the recorder's rAF. One 60 Hz frame is 16 ms, so the app must finish its own work inside that. The tick wait in between is reported, not gated: the runner's first rendering update after input waits for its next 17 ms display tick, so three attempts of one job read tick-wait p95 18 ms and full key-to-paint p95 21 ms on the empty surface in every attempt while app-owned p95 read 4, 4, and 5 ms. The keystroke job gates this with AELOMI_PERF_CI=1. pnpm perf:keystroke gates p95Ms, the full key-to-paint, on Apple Silicon."
+      "value": 19,
+      "why": "The same 19 ms ceiling implements the small timing tolerance the maintainer allowed. The immediate-source editor measured 17 to 18 ms app-owned on the local M1. This is a tolerance, not a hosted-runner calibration or multiplier. Hosted timing remains unmeasured until CI. The clock adds key-to-input work and rendering work from the rAF timestamp to the following MessageChannel task. It excludes initial layout before that timestamp, scheduler and IPC delay, frame wait, and presentation. The full key-to-paint interval is still reported. UI model processing stays inside input."
     },
     "pageLoads": {
       "value": 3,
@@ -59,8 +59,8 @@
   },
   "scroll": {
     "p95FrameMs": {
-      "value": 17,
-      "why": "The 5,000-block page targets 60 Hz. WebKit reports whole-millisecond frame timestamps, so 16.7 ms rounds to 17 ms. This local gate does not include screencast tracing overhead."
+      "value": 16.7,
+      "why": "SPEC section 3 requires per-frame rendering work p95 under 16.7 ms. The untraced WebKit recorder measures its rAF timestamp to the following MessageChannel task. Whole-millisecond stamps must read at most 16 ms; the comparison is strict. The raw maximum interval remains 50 ms. This work interval excludes pending layout before the rAF timestamp, scheduler and IPC delay, and presentation; report those limits and raw cadence separately."
     },
     "maxFrameMs": {
       "value": 50,

@@ -8,7 +8,20 @@ declare global {
 
 const epochMs = () => performance.timeOrigin + performance.now();
 const moduleEval = epochMs();
-let armed = false;
+
+type Variant = "index" | "page";
+type Marks = {
+  variant: Variant;
+  commit: number;
+  raf1: number;
+  mcAfterRaf1: number;
+  raf2: number;
+  mcAfterRaf2: number;
+};
+
+let entry: Variant | null = null;
+let sent = false;
+const measured: Partial<Record<Variant, Marks>> = {};
 
 function afterTask(fn: () => void) {
   const channel = new MessageChannel();
@@ -16,38 +29,63 @@ function afterTask(fn: () => void) {
   channel.port2.postMessage(0);
 }
 
-export function markIndexCommit() {
-  if (armed || window.__AELOMI_PERF__ !== true) return;
-  armed = true;
-  const commit = epochMs();
-  const marks = { raf1: 0, mcAfterRaf1: 0, raf2: 0, mcAfterRaf2: 0 };
-  const sendWhenComplete = () => {
-    if (marks.mcAfterRaf1 === 0 || marks.mcAfterRaf2 === 0) return;
-    const fcp = performance.getEntriesByName("first-contentful-paint")[0];
-    void commands.perfReport({
-      variant: "index",
-      time_origin: performance.timeOrigin,
-      module_eval: moduleEval,
-      commit,
-      raf1: marks.raf1,
-      mc_after_raf1: marks.mcAfterRaf1,
-      raf2: marks.raf2,
-      mc_after_raf2: marks.mcAfterRaf2,
-      fcp: fcp ? performance.timeOrigin + fcp.startTime : null,
-    });
+function send() {
+  if (sent || entry === null) return;
+  const marks = measured[entry];
+  if (!marks || marks.mcAfterRaf1 === 0 || marks.mcAfterRaf2 === 0) return;
+  sent = true;
+  const fcp = performance.getEntriesByName("first-contentful-paint")[0];
+  void commands.perfReport({
+    variant: marks.variant,
+    time_origin: performance.timeOrigin,
+    module_eval: moduleEval,
+    commit: marks.commit,
+    raf1: marks.raf1,
+    mc_after_raf1: marks.mcAfterRaf1,
+    raf2: marks.raf2,
+    mc_after_raf2: marks.mcAfterRaf2,
+    fcp: fcp ? performance.timeOrigin + fcp.startTime : null,
+  });
+}
+
+function measure(variant: Variant) {
+  if (window.__AELOMI_PERF__ !== true || measured[variant]) return;
+  const marks: Marks = {
+    variant,
+    commit: epochMs(),
+    raf1: 0,
+    mcAfterRaf1: 0,
+    raf2: 0,
+    mcAfterRaf2: 0,
   };
+  measured[variant] = marks;
   requestAnimationFrame(() => {
     marks.raf1 = epochMs();
     afterTask(() => {
       marks.mcAfterRaf1 = epochMs();
-      sendWhenComplete();
+      send();
     });
     requestAnimationFrame(() => {
       marks.raf2 = epochMs();
       afterTask(() => {
         marks.mcAfterRaf2 = epochMs();
-        sendWhenComplete();
+        send();
       });
     });
   });
+}
+
+export function markIndexCommit() {
+  measure("index");
+}
+
+/** The first commit that shows an editable page's content. */
+export function markPageContent() {
+  measure("page");
+}
+
+export function resolveEntry(variant: Variant) {
+  if (entry !== null) return;
+  entry = variant;
+  send();
 }

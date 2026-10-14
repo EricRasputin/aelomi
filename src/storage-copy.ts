@@ -1,4 +1,4 @@
-import type { FailReason } from "./ipc";
+import type { FailReason, StorageError } from "./ipc";
 
 export const storageCopy = {
   banner: "Changes aren't being saved.",
@@ -15,7 +15,26 @@ export const storageCopy = {
   quitAnyway: "Quit anyway",
   quitError: "Aelomi couldn't quit. Try again, or keep the app open.",
   keepOpenError: "Aelomi couldn't record your choice. Try again.",
+  notOpen: "The data folder isn't open.",
+  refusedEdit: "The core refused an edit.",
+  invalidDoc: "The page ID isn't valid.",
 };
+
+export function storageErrorText(error: StorageError): string {
+  if (typeof error === "object") return error.Io;
+  switch (error) {
+    case "Unavailable":
+      return storageCopy.notOpen;
+    case "InvalidUpdate":
+      return storageCopy.refusedEdit;
+    case "InvalidDocId":
+      return storageCopy.invalidDoc;
+    default: {
+      const exhaustive: never = error;
+      return exhaustive;
+    }
+  }
+}
 
 export function storageFailureReason(reason: FailReason): string {
   if (typeof reason === "object") return reason.Io;

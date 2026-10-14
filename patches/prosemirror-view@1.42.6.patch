@@ -1,0 +1,52 @@
+diff --git a/dist/index.cjs b/dist/index.cjs
+index d52a5260a7b9924b2865053ea1e8c6484225277b..3e1bfddfdd1f0fc15b52f50c59585ecaaf62326e 100644
+--- a/dist/index.cjs
++++ b/dist/index.cjs
+@@ -3995,10 +3995,13 @@ var DecorationSet = function () {
+       if (this == empty) return this;
+       if (node.isLeaf) return DecorationSet.empty;
+       var child, local;
+-      for (var i = 0; i < this.children.length; i += 3) if (this.children[i] >= offset) {
+-        if (this.children[i] == offset) child = this.children[i + 2];
+-        break;
++      var lo = 0,
++        hi = this.children.length / 3;
++      while (lo < hi) {
++        var mid = lo + hi >> 1;
++        if (this.children[mid * 3] < offset) lo = mid + 1;else hi = mid;
+       }
++      if (lo * 3 < this.children.length && this.children[lo * 3] == offset) child = this.children[lo * 3 + 2];
+       var start = offset + 1,
+         end = start + node.content.size;
+       for (var _i9 = 0; _i9 < this.local.length; _i9++) {
+diff --git a/dist/index.js b/dist/index.js
+index dc0d117b85e1da3eae915b4d8ff8e5e604683861..654bca1e8fea1eacd6e6b678c3953450f7f7c839 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -4298,12 +4298,20 @@ class DecorationSet {
+         if (node.isLeaf)
+             return DecorationSet.empty;
+         let child, local;
+-        for (let i = 0; i < this.children.length; i += 3)
+-            if (this.children[i] >= offset) {
+-                if (this.children[i] == offset)
+-                    child = this.children[i + 2];
+-                break;
+-            }
++        // Aelomi patch: `children` holds [from, to, set] triples sorted by
++        // `from`, and the view asks for every child of a node in turn, so a
++        // linear scan here is quadratic in a long list of decorated blocks.
++        // This finds the same first entry with `from >= offset` by bisection.
++        let lo = 0, hi = this.children.length / 3;
++        while (lo < hi) {
++            let mid = (lo + hi) >> 1;
++            if (this.children[mid * 3] < offset)
++                lo = mid + 1;
++            else
++                hi = mid;
++        }
++        if (lo * 3 < this.children.length && this.children[lo * 3] == offset)
++            child = this.children[lo * 3 + 2];
+         let start = offset + 1, end = start + node.content.size;
+         for (let i = 0; i < this.local.length; i++) {
+             let dec = this.local[i];

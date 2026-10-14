@@ -1,0 +1,292 @@
+import { useNavigate } from "@tanstack/react-router";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import { useEffect, useLayoutEffect, useRef } from "react";
+import { createPortal, flushSync } from "react-dom";
+import { restoreFocus } from "../editor/active-editor";
+import type { PageIssue, SearchHit } from "../ipc";
+import { HighlightedText } from "../pages/highlighted-text";
+import { type ContentResult, shownContent } from "../palette/content";
+import type { TitleMatch } from "../palette/title-match";
+import { useIndexStatusStore } from "../stores/index-status";
+import {
+  displayTitle,
+  linkText,
+  type SourceTree,
+  usePageTreeStore,
+} from "../stores/page-tree";
+import { usePaletteStore } from "../stores/palette";
+
+export const paletteCopy = {
+  indexing: "Indexing…",
+  failed: "Search is unavailable because the index couldn't be rebuilt.",
+  noContent: "No page content matches.",
+  pages: "Pages",
+  content: "Content",
+};
+
+type Row =
+  | { kind: "header"; label: string }
+  | { kind: "title"; index: number; match: TitleMatch }
+  | { kind: "content"; index: number; hit: SearchHit };
+
+function rowsOf(titles: readonly TitleMatch[], content: ContentResult): Row[] {
+  const rows: Row[] = [];
+  if (titles.length > 0)
+    rows.push({ kind: "header", label: paletteCopy.pages });
+  for (const [index, match] of titles.entries())
+    rows.push({ kind: "title", index, match });
+  if (content.kind === "ready" && content.hits.length > 0) {
+    rows.push({ kind: "header", label: paletteCopy.content });
+    for (const [i, hit] of content.hits.entries())
+      rows.push({ kind: "content", index: titles.length + i, hit });
+  }
+  return rows;
+}
+
+const rowHeight: Record<Row["kind"], number> = {
+  header: 28,
+  title: 34,
+  content: 52,
+};
+
+function issueNotice(issues: readonly PageIssue[], source: SourceTree) {
+  if (issues.length === 0) return null;
+  const names = issues.map((issue) => linkText(source, issue.page_id));
+  return `${issues.length === 1 ? "1 page is" : `${issues.length} pages are`} only partly searchable: ${names.join(", ")}.`;
+}
+
+export function CommandPalette() {
+  const open = usePaletteStore((state) => state.open);
+  const query = usePaletteStore((state) => state.query);
+  const titles = usePaletteStore((state) => state.titles);
+  const content = usePaletteStore((state) => state.content);
+  const selected = usePaletteStore((state) => state.selected);
+  const settled = usePaletteStore((state) => state.answered === state.request);
+  const status = useIndexStatusStore((state) => state.status);
+  const source = usePageTreeStore((state) => state.source);
+  const navigate = useNavigate();
+  const input = useRef<HTMLInputElement>(null);
+  const list = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    if (!open) return;
+    const page = document.querySelector("main");
+    if (page) page.inert = true;
+    input.current?.focus();
+    void usePageTreeStore.getState().refresh();
+    return () => {
+      if (page) page.inert = false;
+    };
+  }, [open]);
+
+  const close = () => {
+    const { returnTo } = usePaletteStore.getState();
+    flushSync(() => usePaletteStore.getState().hide());
+    restoreFocus(returnTo);
+  };
+
+  const shown = shownContent(status, content);
+  const rows = rowsOf(titles, shown);
+  const virtualizer = useVirtualizer({
+    count: rows.length,
+    getScrollElement: () => list.current,
+    estimateSize: (i) => rowHeight[rows[i]?.kind ?? "title"],
+    overscan: 6,
+  });
+  const selectedRow = rows.findIndex(
+    (row) => row.kind !== "header" && row.index === selected,
+  );
+  useEffect(() => {
+    if (selectedRow >= 0) virtualizer.scrollToIndex(selectedRow);
+  }, [selectedRow, virtualizer]);
+
+  const activate = (row: Row | undefined) => {
+    if (!row || row.kind === "header") return;
+    usePaletteStore.getState().hide();
+    if (row.kind === "title")
+      void navigate({
+        to: "/page/$pageId",
+        params: { pageId: row.match.id },
+        search: {},
+      });
+    else
+      void navigate({
+        to: "/page/$pageId",
+        params: { pageId: row.hit.page_id },
+        search: { block: row.hit.block?.block_id },
+      });
+  };
+
+  const onKeyDown = (event: React.KeyboardEvent) => {
+    const palette = usePaletteStore.getState();
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      palette.move(event.key === "ArrowDown" ? 1 : -1);
+    } else if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+      event.preventDefault();
+      activate(rows[selectedRow]);
+    } else if (event.key === "Escape" && !event.nativeEvent.isComposing) {
+      event.preventDefault();
+      event.stopPropagation();
+      close();
+    } else if (event.key === "Tab") {
+      event.preventDefault();
+    }
+  };
+
+  const issues =
+    shown.kind === "ready" ? issueNotice(shown.issues, source) : null;
+  const items = virtualizer.getVirtualItems();
+  const activeId = selectedRow >= 0 ? `palette-row-${selectedRow}` : undefined;
+
+  if (!open) return null;
+  return createPortal(
+    <>
+      <div
+        className="palette-backdrop"
+        aria-hidden="true"
+        onMouseDown={(event) => {
+          event.preventDefault();
+          close();
+        }}
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Command palette"
+        className="palette"
+      >
+        <input
+          ref={input}
+          className="palette-input"
+          aria-label="Search pages"
+          role="combobox"
+          aria-expanded={rows.length > 0}
+          aria-controls="palette-results"
+          aria-activedescendant={activeId}
+          autoComplete="off"
+          spellCheck={false}
+          placeholder="Search pages…"
+          value={query}
+          onChange={(event) =>
+            usePaletteStore
+              .getState()
+              .setQuery(event.target.value, usePageTreeStore.getState().source)
+          }
+          onKeyDown={onKeyDown}
+        />
+        <div
+          ref={list}
+          id="palette-results"
+          role="listbox"
+          aria-label="Results"
+          className="palette-list"
+          data-empty={rows.length === 0 || undefined}
+          data-query={query}
+          data-settled={settled}
+        >
+          <div
+            style={{
+              height: virtualizer.getTotalSize(),
+              position: "relative",
+            }}
+          >
+            {items.map((item) => {
+              const row = rows[item.index];
+              if (!row) return null;
+              const style = {
+                position: "absolute" as const,
+                top: 0,
+                left: 0,
+                right: 0,
+                height: item.size,
+                transform: `translateY(${item.start}px)`,
+              };
+              if (row.kind === "header")
+                return (
+                  <div
+                    key={item.key}
+                    role="presentation"
+                    className="palette-header"
+                    style={style}
+                  >
+                    {row.label}
+                  </div>
+                );
+              const isSelected = row.index === selected;
+              return (
+                <div
+                  key={item.key}
+                  id={`palette-row-${item.index}`}
+                  role="option"
+                  aria-selected={isSelected}
+                  tabIndex={-1}
+                  className="palette-row"
+                  data-kind={row.kind}
+                  data-page-id={
+                    row.kind === "title" ? row.match.id : row.hit.page_id
+                  }
+                  style={style}
+                  onMouseMove={() => {
+                    if (!isSelected)
+                      usePaletteStore.getState().select(row.index);
+                  }}
+                  onClick={() => activate(row)}
+                  onKeyDown={() => {}}
+                >
+                  {row.kind === "title" ? (
+                    <span className="palette-title">
+                      <HighlightedText parts={row.match.parts} />
+                    </span>
+                  ) : (
+                    <>
+                      <span className="palette-title">
+                        {row.hit.title.length > 0 ? (
+                          <HighlightedText parts={row.hit.title} />
+                        ) : (
+                          displayTitle("")
+                        )}
+                      </span>
+                      {row.hit.block && (
+                        <span className="palette-snippet">
+                          <HighlightedText parts={row.hit.block.text} />
+                        </span>
+                      )}
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        {shown.kind === "failed" && (
+          <div role="alert" className="palette-alert">
+            <p>{paletteCopy.failed}</p>
+            <p className="palette-alert-reason">{shown.reason}</p>
+          </div>
+        )}
+        <p
+          role="status"
+          aria-label="Search status"
+          className="palette-status"
+          data-testid="palette-status"
+        >
+          {shown.kind === "indexing"
+            ? paletteCopy.indexing
+            : shown.kind === "error"
+              ? `Search couldn't run: ${shown.message}`
+              : shown.kind === "ready" &&
+                  shown.hits.length === 0 &&
+                  query.trim() !== ""
+                ? paletteCopy.noContent
+                : ""}
+        </p>
+        {issues && (
+          <p className="palette-notice" data-testid="palette-issues">
+            {issues}
+          </p>
+        )}
+      </div>
+    </>,
+    document.body,
+  );
+}

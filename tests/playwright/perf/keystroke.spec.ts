@@ -1,5 +1,5 @@
 import { loadavg } from "node:os";
-import { keystrokeSurfaces, readBudgets } from "../../../perf/budgets.ts";
+import { readBudgets } from "../../../perf/budgets.ts";
 import {
   keystrokeMode,
   type Split,
@@ -11,6 +11,9 @@ import { machineNoise, withNoise } from "../../../perf/noise.ts";
 import { median, percentile95, range } from "../../../perf/stats.ts";
 import { expect, test } from "../fixtures";
 
+// The tracer snapshots the whole DOM right before each key, which warms the
+// page and would be measured as the app's speed.
+test.use({ trace: "off" });
 const budgets = readBudgets().keystroke;
 const mode = keystrokeMode(process.env);
 const gates = {
@@ -18,6 +21,13 @@ const gates = {
   ci: { metric: "appOwned", budget: budgets.hostedAppOwnedP95Ms.value },
 } as const satisfies Record<string, { metric: keyof Split; budget: number }>;
 const gate = gates[mode];
+
+const surfaces = [
+  { name: "editor-empty", testId: "page-editor", gated: true },
+  { name: "editor-page-5000-blocks", testId: "page-editor", gated: true },
+  { name: "empty", testId: "keystroke-surface", gated: false },
+  { name: "page-5000-blocks", testId: "keystroke-surface", gated: false },
+] as const;
 
 type Recorder = { samples: Stamps[]; missing: number };
 
@@ -54,7 +64,20 @@ function installRecorder() {
     requestAnimationFrame((frame) => {
       stamps.frame = frame;
       stamps.raf = performance.now();
-      stamps.shown = (target?.lastChild?.textContent ?? "").endsWith(key);
+      const caret = getSelection();
+      const node = caret?.anchorNode ?? null;
+      const offset = caret?.anchorOffset ?? 0;
+      const beforeCaret =
+        node === null
+          ? ""
+          : node.nodeType === Node.TEXT_NODE
+            ? (node.textContent ?? "").slice(0, offset)
+            : (node.childNodes[offset - 1]?.textContent ?? "");
+      stamps.shown =
+        target !== null &&
+        node !== null &&
+        target.contains(node) &&
+        beforeCaret.endsWith(key);
       if (!stamps.shown) recorder.missing += 1;
       let landed = 0;
       const finish = () => {
@@ -78,8 +101,7 @@ function installRecorder() {
 const p50p95 = (values: number[]) =>
   `p50 ${median(values)} ms p95 ${percentile95(values)} ms`;
 
-for (const surface of keystrokeSurfaces) {
-  const gated = surface === budgets.gate.value;
+for (const { name: surface, testId, gated } of surfaces) {
   test(`EDIT-14 keystroke-to-paint on the ${surface} surface`, async ({
     page,
   }, testInfo) => {
@@ -90,12 +112,13 @@ for (const surface of keystrokeSurfaces) {
     const cadences: number[] = [];
     for (let load = 1; load <= budgets.pageLoads.value; load++) {
       await page.goto(`/perf/keystroke/${surface}`);
-      const surfaceEl = page.getByTestId("keystroke-surface");
+      const surfaceEl = page.getByTestId(testId);
       await expect(surfaceEl).toBeVisible();
       const before = await surfaceEl.evaluate((el) => {
         el.focus();
+        const texts = el.querySelectorAll(".bn-inline-content");
         const caret = document.createRange();
-        caret.selectNodeContents(el);
+        caret.selectNodeContents(texts[texts.length - 1] ?? el);
         caret.collapse(false);
         const selection = getSelection();
         selection?.removeAllRanges();
@@ -165,10 +188,10 @@ for (const surface of keystrokeSurfaces) {
     const noise = startNoise ?? endNoise;
     const summary = [
       withNoise(
-        `${surface}: full key-to-paint p95 ${verdict(fullP95, budgets.p95Ms.value)} (spec, ${role("full")})`,
+        `${surface}: full key-to-paint p95 ${verdict(fullP95, budgets.p95Ms.value)} (local budget, ${role("full")})`,
         noise,
       ),
-      `app-owned p95 ${verdict(appOwnedP95, budgets.hostedAppOwnedP95Ms.value)} (hosted, ${role("appOwned")})`,
+      `app-owned p95 ${verdict(appOwnedP95, budgets.hostedAppOwnedP95Ms.value)} (hosted budget, ${role("appOwned")})`,
       `tick wait ${p50p95(column("tickWait"))}, key-to-input ${p50p95(column("keyToInput"))}, render ${p50p95(column("render"))}, frame start to the recorder's rAF ${p50p95(column("frameToRaf"))}`,
       `full key-to-paint p50 ${median(column("full"))} ms, range ${range(column("full"))} ms, per-load ${gate.metric} p95 ${loads.map((load) => load.p95).join(", ")}, double rAF p95 ${percentile95(column("doubleRaf"))} ms`,
       `split check: max |app-owned + tick wait - full| ${residual.toFixed(3)} ms over ${kept.length} samples from ${loads.length} loads`,

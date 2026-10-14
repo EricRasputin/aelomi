@@ -88,3 +88,41 @@ test("the editor page has exactly 5,000 blocks including children", () => {
     "quote",
   ]);
 });
+
+test("every run holds marks BlockNote can store together, and each mark stays covered", () => {
+  // In BlockNote 0.55 the code mark excludes every other mark, link included,
+  // and code blocks hold plain text. A run breaking either rule opens read-only.
+  const supported = ["bold", "code", "italic", "strike", "underline"];
+  const problems: string[] = [];
+  const plain = new Set<string>();
+  const linked = new Set<string>();
+  let links = 0;
+  const visit = (list: Block[]) => {
+    for (const block of list) {
+      for (const inline of "content" in block ? block.content : []) {
+        const isLink = inline.type === "link";
+        if (isLink) links += 1;
+        for (const run of isLink ? inline.content : [inline]) {
+          const styles = Object.keys(run.styles);
+          for (const style of styles) {
+            if (!supported.includes(style))
+              problems.push(`${block.id}: ${style}`);
+            (isLink ? linked : plain).add(style);
+          }
+          if (styles.length > 1 && styles.includes("code"))
+            problems.push(`${block.id}: code with ${styles}`);
+          if (isLink && styles.includes("code"))
+            problems.push(`${block.id}: code inside a link`);
+          if (block.type === "codeBlock" && styles.length > 0)
+            problems.push(`${block.id}: ${styles} in a code block`);
+        }
+      }
+      visit(block.children);
+    }
+  };
+  visit(generateBlocks());
+  expect(problems).toEqual([]);
+  expect([...plain].sort()).toEqual(supported);
+  expect(links).toBeGreaterThan(0);
+  expect(linked.size).toBeGreaterThan(0);
+});
