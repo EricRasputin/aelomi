@@ -491,6 +491,18 @@ fn after_settled(opened: &super::Opened) -> Vec<IndexEvent> {
 fn a_query_that_finds_a_corrupt_stored_value_replaces_the_cache_in_the_same_session() {
     for (sql, corrupt) in [
         (
+            "UPDATE pages SET title = x'00' WHERE page_id = 'reading'",
+            Corrupt::Field,
+        ),
+        (
+            "UPDATE pages SET title = CAST(x'80' AS TEXT) WHERE page_id = 'reading'",
+            Corrupt::Field,
+        ),
+        (
+            "UPDATE blocks SET block_id = x'726431' WHERE block_id = 'rd1'",
+            Corrupt::Field,
+        ),
+        (
             "UPDATE pages SET page_id = 'Not An ID' WHERE page_id = 'reading'",
             Corrupt::PageId,
         ),
@@ -515,6 +527,7 @@ fn a_query_that_finds_a_corrupt_stored_value_replaces_the_cache_in_the_same_sess
         let opened = open(dir.path());
         opened.append(&index_fixture());
         opened.settle();
+        let expected = snapshot(&opened.workspace);
         assert_eq!(
             opened
                 .workspace
@@ -540,15 +553,157 @@ fn a_query_that_finds_a_corrupt_stored_value_replaces_the_cache_in_the_same_sess
             ],
             "{sql}"
         );
-        assert_eq!(
-            hit_ids(&ready(
-                opened.workspace.search(&content("cafe", 10, &[])).unwrap()
-            )),
-            ["reading"],
-            "{sql}"
-        );
+        assert_eq!(snapshot(&opened.workspace), expected, "{sql}");
         assert_eq!(super::source_files(dir.path()), source, "{sql}");
     }
+}
+
+#[test]
+fn a_wrong_sqlite_field_type_is_replaced_at_startup() {
+    for (sql, reused_first) in [
+        (
+            "UPDATE pages SET title = x'00' WHERE page_id = 'reading'",
+            false,
+        ),
+        (
+            "UPDATE pages SET title = CAST(x'80' AS TEXT) WHERE page_id = 'reading'",
+            false,
+        ),
+        (
+            "UPDATE pages SET updated_at = 1.5 WHERE page_id = 'reading'",
+            false,
+        ),
+        (
+            "UPDATE blocks SET block_id = x'726431' WHERE block_id = 'rd1'",
+            true,
+        ),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let expected = {
+            let opened = open(dir.path());
+            opened.append(&index_fixture());
+            opened.settle();
+            assert_eq!(
+                opened
+                    .workspace
+                    .flush(Instant::now() + Duration::from_secs(10)),
+                []
+            );
+            snapshot(&opened.workspace)
+        };
+        let source = super::source_files(dir.path());
+        tamper(dir.path(), sql);
+        let opened = open(dir.path());
+        let status = eventually(Duration::from_secs(10), || {
+            let status = opened.workspace.index_status();
+            (!matches!(status, IndexStatus::Rebuilding)).then_some(status)
+        });
+        assert_eq!(status, IndexStatus::Ready, "{sql}");
+        opened.settle();
+        assert_eq!(
+            opened.statuses(),
+            [IndexStatus::Rebuilding, IndexStatus::Ready],
+            "{sql}"
+        );
+        let caches: Vec<_> = opened
+            .events()
+            .into_iter()
+            .filter_map(|event| match event {
+                IndexEvent::Cache(state) => Some(state),
+                _ => None,
+            })
+            .collect();
+        let mut expected_caches = Vec::new();
+        if reused_first {
+            expected_caches.push(CacheState::Reused);
+        }
+        expected_caches.push(CacheState::Replaced(CacheProblem::Corrupt(Corrupt::Field)));
+        assert_eq!(caches, expected_caches, "{sql}");
+        assert_eq!(snapshot(&opened.workspace), expected, "{sql}");
+        assert_eq!(super::source_files(dir.path()), source, "{sql}");
+    }
+}
+
+#[test]
+fn backlinks_with_a_wrong_sqlite_field_type_rebuild_in_the_same_session() {
+    for sql in [
+        "UPDATE pages SET title = x'00' WHERE page_id = 'daily'",
+        "UPDATE pages SET title = CAST(x'80' AS TEXT) WHERE page_id = 'daily'",
+        "UPDATE blocks SET block_id = x'6434' WHERE block_id = 'd4'",
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let opened = open(dir.path());
+        opened.append(&index_fixture());
+        opened.settle();
+        let expected = snapshot(&opened.workspace);
+        assert_eq!(
+            opened
+                .workspace
+                .flush(Instant::now() + Duration::from_secs(10)),
+            []
+        );
+        let source = super::source_files(dir.path());
+        let before = after_settled(&opened).len();
+        tamper(dir.path(), sql);
+        assert_eq!(
+            opened.workspace.backlinks(&page("reading")),
+            Ok(Reply::Indexing),
+            "{sql}"
+        );
+        opened.settle();
+        assert_eq!(
+            after_settled(&opened)[before..],
+            [
+                IndexEvent::Status(IndexStatus::Rebuilding),
+                IndexEvent::Cache(CacheState::Replaced(CacheProblem::Corrupt(Corrupt::Field))),
+                IndexEvent::Status(IndexStatus::Ready),
+            ],
+            "{sql}"
+        );
+        assert_eq!(snapshot(&opened.workspace), expected, "{sql}");
+        assert_eq!(super::source_files(dir.path()), source, "{sql}");
+    }
+}
+
+#[test]
+fn an_incremental_read_of_a_wrong_sqlite_field_type_rebuilds() {
+    let dir = tempfile::tempdir().unwrap();
+    let opened = open(dir.path());
+    opened.append(&index_fixture());
+    opened.settle();
+    let expected = snapshot(&opened.workspace);
+    let before = after_settled(&opened).len();
+    tamper(
+        dir.path(),
+        "UPDATE blocks SET block_id = x'726431' WHERE block_id = 'rd1'",
+    );
+    let reading = DocId::new("reading").unwrap();
+    let update = opened.workspace.load(&reading).unwrap();
+    opened.workspace.append(&reading, &update).unwrap();
+    assert_eq!(
+        opened
+            .workspace
+            .flush(Instant::now() + Duration::from_secs(10)),
+        []
+    );
+    let source = super::source_files(dir.path());
+    let status = eventually(Duration::from_secs(10), || {
+        let status = opened.workspace.index_status();
+        (after_settled(&opened).len() > before).then_some(status)
+    });
+    assert!(!matches!(status, IndexStatus::Failed { .. }), "{status:?}");
+    opened.settle();
+    assert_eq!(opened.workspace.index_status(), IndexStatus::Ready);
+    assert_eq!(
+        after_settled(&opened)[before..],
+        [
+            IndexEvent::Status(IndexStatus::Rebuilding),
+            IndexEvent::Cache(CacheState::Replaced(CacheProblem::Corrupt(Corrupt::Field))),
+            IndexEvent::Status(IndexStatus::Ready),
+        ]
+    );
+    assert_eq!(snapshot(&opened.workspace), expected);
+    assert_eq!(super::source_files(dir.path()), source);
 }
 
 #[test]

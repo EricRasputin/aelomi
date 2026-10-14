@@ -17,7 +17,10 @@ pub(crate) enum QueryFault {
 
 impl From<rusqlite::Error> for QueryFault {
     fn from(e: rusqlite::Error) -> Self {
-        Self::Sql(e)
+        match Corrupt::from_row_error(&e) {
+            Some(what) => what.into(),
+            None => Self::Sql(e),
+        }
     }
 }
 

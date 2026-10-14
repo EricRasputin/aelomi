@@ -159,6 +159,18 @@ pub enum Corrupt {
     Field,
 }
 
+impl Corrupt {
+    pub(crate) fn from_row_error(error: &rusqlite::Error) -> Option<Self> {
+        match error {
+            rusqlite::Error::InvalidColumnType(..)
+            | rusqlite::Error::FromSqlConversionFailure(..)
+            | rusqlite::Error::IntegralValueOutOfRange(..)
+            | rusqlite::Error::Utf8Error(..) => Some(Self::Field),
+            _ => None,
+        }
+    }
+}
+
 impl fmt::Display for CacheState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -225,7 +237,10 @@ impl fmt::Display for RunError {
 
 impl From<rusqlite::Error> for RunError {
     fn from(e: rusqlite::Error) -> Self {
-        Self::Sql(e)
+        match Corrupt::from_row_error(&e) {
+            Some(what) => what.into(),
+            None => Self::Sql(e),
+        }
     }
 }
 
