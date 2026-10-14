@@ -22,10 +22,7 @@
   ],
   "startup_acceptance": {
     "median_ms": 618,
-    "range_ms": [
-      612,
-      639
-    ],
+    "range_ms": [612, 639],
     "goal_ms": 500,
     "local_verdict": "FAIL",
     "maintainer_accepted": true,

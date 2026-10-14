@@ -1,1 +1,10 @@
-{"pid":77456,"key":"Z","route":"none","startTicks":26171844102479,"keyCallReturnTicks":26171844171425,"scriptReturnTicks":26171844173917,"clock":"mach_continuous_time","startMeaning":"Before the System Events keystroke call, including automation overhead"}
+{
+  "pid": 77456,
+  "key": "Z",
+  "route": "none",
+  "startTicks": 26171844102479,
+  "keyCallReturnTicks": 26171844171425,
+  "scriptReturnTicks": 26171844173917,
+  "clock": "mach_continuous_time",
+  "startMeaning": "Before the System Events keystroke call, including automation overhead"
+}

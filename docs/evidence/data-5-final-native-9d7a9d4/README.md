@@ -41,7 +41,7 @@ A private attempt to interpose `F_FULLFSYNC` did not load into the hardened rele
 
 ## Published files
 
-Personal path prefixes are replaced with `<user>` and `<worktree>`. Terminal control escapes are removed. Relevant shell logs include startup, failures and normal exits. Synthetic source files, databases, `run.env`, PID files and the private interposer remain local.
+Personal path prefixes are replaced with `<user>` and `<worktree>`. Terminal control escapes are removed. JSON whitespace follows the repository formatter; every parsed value was compared before and after formatting and remained equal. The original captured files remain local. Captured action logs retain their literal trailing spaces. Relevant shell logs include startup, failures and normal exits. Synthetic source files, databases, `run.env`, PID files and the private interposer remain local.
 
 [screenshots.json](screenshots.json) records each of the eight required PNG filenames, byte sizes and SHA-256 hashes. The captures remain at 1920 by 1280. The images will attach to PR #68 after its local gate and fresh local Fable approval. [manifest.json](manifest.json) hashes every companion text file and this README. It excludes itself.
 

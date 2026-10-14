@@ -5,17 +5,9 @@
     "osRelease": "27.0.0",
     "architecture": "arm64",
     "cpuCount": 8,
-    "loadBefore": [
-      2.63916015625,
-      4.39013671875,
-      4.2421875
-    ],
+    "loadBefore": [2.63916015625, 4.39013671875, 4.2421875],
     "nodeVersion": "v24.13.1",
-    "loadAfter": [
-      2.43359375,
-      4.23291015625,
-      4.189453125
-    ]
+    "loadAfter": [2.43359375, 4.23291015625, 4.189453125]
   },
   "measurement": "Observed main-process RSS after sampler attachment; excludes WebKit helpers",
   "intervalMs": 100,

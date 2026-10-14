@@ -1,18 +1,18 @@
 [
   {
     "file": "README.md",
-    "bytes": 7519,
-    "sha256": "3388b778fe49017f77fbe09a5984e157dbece03dfa9fdd0fdb62a2c4951187b7"
+    "bytes": 7750,
+    "sha256": "5d63c91cc1680a8751b20b7682019b608ef2894698881fa456aab9a7f8974f7e"
   },
   {
     "file": "context.json",
-    "bytes": 1195,
-    "sha256": "1021c7cef0e6d039a65f8788664ff36a02759a1f10e19fced8b5b4ad39abfbda"
+    "bytes": 1177,
+    "sha256": "4e4d41610e6ce6337dc1428c45b42c7c47e9188abb90f4ef9e8c6c33ce1d2077"
   },
   {
     "file": "durability-key-Z.json",
-    "bytes": 257,
-    "sha256": "372715c467d8fb8ae4dd67f6991f7f43738969ac290fea01a86115bbef3a7352"
+    "bytes": 290,
+    "sha256": "8b94a00d39eecbbb7eaad7dd18c65a5d1d21a6bf328f0526cd05f34934b1fcfb"
   },
   {
     "file": "durability-seed.log",
@@ -71,8 +71,8 @@
   },
   {
     "file": "mach-timebase.json",
-    "bytes": 47,
-    "sha256": "1a4574331ee92442daf61c7d74793d7de4f9af8543195bc4161ff3a55c70cb20"
+    "bytes": 54,
+    "sha256": "8885acc9d782f43a99cdd6be541f2a5ab9a46a965878fce5e191a81413a47048"
   },
   {
     "file": "native-caret-end.js.txt",
@@ -121,8 +121,8 @@
   },
   {
     "file": "quit-Q-key.json",
-    "bytes": 262,
-    "sha256": "4bf63ba915ecd4522780ac36a58553f12904dce35d1fadb891a714f0c09c788c"
+    "bytes": 295,
+    "sha256": "df77c6dab5eda13059b78698e3faa6519c5846e99acd2992e400626fc40c1b4d"
   },
   {
     "file": "quit-Q-recovered-Z.ax.txt",
@@ -146,8 +146,8 @@
   },
   {
     "file": "quit-W-key.json",
-    "bytes": 262,
-    "sha256": "45af16754bef8b0365907c0b2dc382647363073b4837f5f440a0a94d26118cac"
+    "bytes": 295,
+    "sha256": "7de909769a7cd64d95e4e0e14967b379550efec92ceebbb92e362a0e4d67380e"
   },
   {
     "file": "quit-W-recovered-ZQ.ax.txt",
@@ -176,8 +176,8 @@
   },
   {
     "file": "quit-apple-key.json",
-    "bytes": 257,
-    "sha256": "5d7b648e6f8605605c05ccb6a6cf0112fdada5894011fc194e49850114c77056"
+    "bytes": 290,
+    "sha256": "3dd7b92de5f80373008cee244f21e692f4ec31996569d137f3f0cd83695563f2"
   },
   {
     "file": "quit-apple-recovered-ZQW.ax.txt",
@@ -226,8 +226,8 @@
   },
   {
     "file": "quit-logout-key.json",
-    "bytes": 257,
-    "sha256": "f841365fcc70cc608aa60703b46a4f72a95208ebfc9b37c875620f550664c1df"
+    "bytes": 290,
+    "sha256": "52ceb786344ccf687b7275aa3bf15931e4cb7a346ba6f1ec5a1673e318b92a90"
   },
   {
     "file": "quit-logout-recovered-ZQWA.ax.txt",

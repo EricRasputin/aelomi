@@ -122,30 +122,12 @@
     ]
   ],
   "title_text": [
-    [
-      65536,
-      ""
-    ],
-    [
-      131072,
-      "Roadmap"
-    ],
-    [
-      196608,
-      "Reading list"
-    ],
-    [
-      262144,
-      "Projects"
-    ],
-    [
-      393216,
-      "Daily"
-    ],
-    [
-      524288,
-      "Aelomi"
-    ]
+    [65536, ""],
+    [131072, "Roadmap"],
+    [196608, "Reading list"],
+    [262144, "Projects"],
+    [393216, "Daily"],
+    [524288, "Aelomi"]
   ],
   "blocks": [
     [
@@ -154,78 +136,23 @@
       0,
       "[\"untitled body mentions \",{\"page\":\"daily\"}]"
     ],
-    [
-      137438953472,
-      "r1",
-      0,
-      "[\"Milestones for \",{\"page\":\"aelomi\"}]"
-    ],
-    [
-      137438953473,
-      "r2",
-      1,
-      "[\"line one\\nline two\"]"
-    ],
-    [
-      206158430208,
-      "rd1",
-      0,
-      "[\"Books about caf\u00e9 culture\"]"
-    ],
-    [
-      274877906944,
-      "p1",
-      0,
-      "[\"project index\"]"
-    ],
-    [
-      274877906945,
-      "p2",
-      1,
-      "[\"Project diagram\"]"
-    ],
+    [137438953472, "r1", 0, "[\"Milestones for \",{\"page\":\"aelomi\"}]"],
+    [137438953473, "r2", 1, "[\"line one\\nline two\"]"],
+    [206158430208, "rd1", 0, "[\"Books about caf\u00e9 culture\"]"],
+    [274877906944, "p1", 0, "[\"project index\"]"],
+    [274877906945, "p2", 1, "[\"Project diagram\"]"],
     [
       343597383680,
       "on1",
       0,
       "[\"quillmere in old notes \",{\"page\":\"daily\"}]"
     ],
-    [
-      412316860416,
-      "d1",
-      0,
-      "[\"see \",{\"page\":\"aelomi\"},\" today\"]"
-    ],
-    [
-      412316860417,
-      "d2",
-      1,
-      "[\"quarterly roadmap review\"]"
-    ],
-    [
-      412316860418,
-      "d3",
-      2,
-      "[\"tasks\"]"
-    ],
-    [
-      412316860419,
-      "d4",
-      3,
-      "[\"call \",{\"page\":\"reading\"}]"
-    ],
-    [
-      412316860420,
-      "d5",
-      4,
-      "[\"read \",{\"page\":\"erased\"}]"
-    ],
-    [
-      412316860421,
-      "d6",
-      5,
-      "[{\"page\":\"archive\"},\" is archived\"]"
-    ],
+    [412316860416, "d1", 0, "[\"see \",{\"page\":\"aelomi\"},\" today\"]"],
+    [412316860417, "d2", 1, "[\"quarterly roadmap review\"]"],
+    [412316860418, "d3", 2, "[\"tasks\"]"],
+    [412316860419, "d4", 3, "[\"call \",{\"page\":\"reading\"}]"],
+    [412316860420, "d5", 4, "[\"read \",{\"page\":\"erased\"}]"],
+    [412316860421, "d6", 5, "[{\"page\":\"archive\"},\" is archived\"]"],
     [
       412316860422,
       "d7",
@@ -238,18 +165,8 @@
       0,
       "[\"archived thoughts about \",{\"page\":\"aelomi\"}]"
     ],
-    [
-      549755813888,
-      "a1",
-      0,
-      "[\"Aelomi app\"]"
-    ],
-    [
-      549755813889,
-      "a2",
-      1,
-      "[\"fn kestrel() {\\n    // [[not a link]]\\n}\"]"
-    ],
+    [549755813888, "a1", 0, "[\"Aelomi app\"]"],
+    [549755813889, "a2", 1, "[\"fn kestrel() {\\n    // [[not a link]]\\n}\"]"],
     [
       549755813890,
       "a3",
@@ -258,115 +175,34 @@
     ]
   ],
   "block_text": [
-    [
-      68719476736,
-      "untitled body mentions Daily"
-    ],
-    [
-      137438953472,
-      "Milestones for Aelomi"
-    ],
-    [
-      137438953473,
-      "line one\nline two"
-    ],
-    [
-      206158430208,
-      "Books about caf\u00e9 culture"
-    ],
-    [
-      274877906944,
-      "project index"
-    ],
-    [
-      274877906945,
-      "Project diagram"
-    ],
-    [
-      412316860416,
-      "see Aelomi today"
-    ],
-    [
-      412316860417,
-      "quarterly roadmap review"
-    ],
-    [
-      412316860418,
-      "tasks"
-    ],
-    [
-      412316860419,
-      "call Reading list"
-    ],
-    [
-      412316860420,
-      "read Deleted page"
-    ],
-    [
-      412316860421,
-      "Archive is archived"
-    ],
-    [
-      412316860422,
-      "Aelomi and Aelomi"
-    ],
-    [
-      549755813888,
-      "Aelomi app"
-    ],
-    [
-      549755813889,
-      "fn kestrel() {\n    // [[not a link]]\n}"
-    ],
-    [
-      549755813890,
-      "links to Roadmap and Untitled"
-    ]
+    [68719476736, "untitled body mentions Daily"],
+    [137438953472, "Milestones for Aelomi"],
+    [137438953473, "line one\nline two"],
+    [206158430208, "Books about caf\u00e9 culture"],
+    [274877906944, "project index"],
+    [274877906945, "Project diagram"],
+    [412316860416, "see Aelomi today"],
+    [412316860417, "quarterly roadmap review"],
+    [412316860418, "tasks"],
+    [412316860419, "call Reading list"],
+    [412316860420, "read Deleted page"],
+    [412316860421, "Archive is archived"],
+    [412316860422, "Aelomi and Aelomi"],
+    [549755813888, "Aelomi app"],
+    [549755813889, "fn kestrel() {\n    // [[not a link]]\n}"],
+    [549755813890, "links to Roadmap and Untitled"]
   ],
   "links": [
-    [
-      "aelomi",
-      137438953472
-    ],
-    [
-      "aelomi",
-      412316860416
-    ],
-    [
-      "aelomi",
-      412316860422
-    ],
-    [
-      "aelomi",
-      481036337152
-    ],
-    [
-      "archive",
-      412316860421
-    ],
-    [
-      "daily",
-      68719476736
-    ],
-    [
-      "daily",
-      343597383680
-    ],
-    [
-      "erased",
-      412316860420
-    ],
-    [
-      "reading",
-      412316860419
-    ],
-    [
-      "roadmap",
-      549755813890
-    ],
-    [
-      "untitled",
-      549755813890
-    ]
+    ["aelomi", 137438953472],
+    ["aelomi", 412316860416],
+    ["aelomi", 412316860422],
+    ["aelomi", 481036337152],
+    ["archive", 412316860421],
+    ["daily", 68719476736],
+    ["daily", 343597383680],
+    ["erased", 412316860420],
+    ["reading", 412316860419],
+    ["roadmap", 549755813890],
+    ["untitled", 549755813890]
   ]
 }

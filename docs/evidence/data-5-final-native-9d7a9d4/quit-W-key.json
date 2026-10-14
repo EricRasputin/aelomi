@@ -1,1 +1,10 @@
-{"pid":92062,"key":"W","route":"command-w","startTicks":26188945659232,"keyCallReturnTicks":26188945698428,"scriptReturnTicks":26188945908236,"clock":"mach_continuous_time","startMeaning":"Before the System Events keystroke call, including automation overhead"}
+{
+  "pid": 92062,
+  "key": "W",
+  "route": "command-w",
+  "startTicks": 26188945659232,
+  "keyCallReturnTicks": 26188945698428,
+  "scriptReturnTicks": 26188945908236,
+  "clock": "mach_continuous_time",
+  "startMeaning": "Before the System Events keystroke call, including automation overhead"
+}
