@@ -209,8 +209,11 @@ fn edits_during_the_startup_reconcile_converge_to_a_fresh_rebuild() {
 fn continuous_edits_never_starve_the_coalesced_update() {
     let dir = tempfile::tempdir().unwrap();
     let opened = Arc::new(seeded(dir.path()));
-    let (stop, stopping) = mpsc::channel();
-    let (first_edit, started) = mpsc::channel();
+    opened.gate.arm(Point::Commit);
+    add_block(&opened, "daily", "held", "heldword");
+    opened.gate.wait_held(&Point::Commit);
+    let (stop, stopping) = mpsc::channel::<()>();
+    let (edits_accepted, started) = mpsc::channel();
     let typing = {
         let opened = opened.clone();
         std::thread::spawn(move || {
@@ -218,22 +221,36 @@ fn continuous_edits_never_starve_the_coalesced_update() {
             while matches!(stopping.try_recv(), Err(mpsc::TryRecvError::Empty)) {
                 add_block(&opened, "daily", &format!("t{n}"), &format!("keystroke{n}"));
                 n += 1;
-                if n == 1 {
-                    first_edit.send(()).unwrap();
+                if n == 2 {
+                    edits_accepted.send(()).unwrap();
                 }
                 std::thread::sleep(Duration::from_millis(2));
             }
+            n
         })
     };
-    started.recv_timeout(Duration::from_secs(5)).unwrap();
+    if let Err(error) = started.recv_timeout(Duration::from_secs(5)) {
+        drop(stop);
+        opened.gate.release();
+        match typing.join() {
+            Err(panic) => std::panic::resume_unwind(panic),
+            Ok(accepted) => {
+                panic!("producer accepted {accepted} edits while the index was held: {error}")
+            }
+        }
+    }
+    opened.gate.release();
     let hits = eventually(Duration::from_secs(5), || {
         match opened.workspace.search("keystroke0", 5) {
             Ok(Reply::Ready(hits)) if !hits.is_empty() => Some(hits),
             _ => None,
         }
     });
-    stop.send(()).unwrap();
-    typing.join().unwrap();
+    drop(stop);
+    let accepted = typing
+        .join()
+        .unwrap_or_else(|panic| std::panic::resume_unwind(panic));
+    assert!(accepted > 1, "producer accepted {accepted} edits");
     assert_eq!(hit_ids(&hits), ["daily"]);
 }
 

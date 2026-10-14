@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { expect, test } from "vitest";
@@ -7,6 +8,17 @@ const ci = readFileSync(
   resolve(import.meta.dirname, "../.github/workflows/ci.yml"),
   "utf8",
 );
+
+test("the workflow is valid YAML", () => {
+  const parsed = spawnSync("ruby", ["-ryaml", "-e", "YAML.parse(STDIN.read)"], {
+    input: ci,
+    encoding: "utf8",
+  });
+  expect({ status: parsed.status, error: parsed.stderr }).toEqual({
+    status: 0,
+    error: "",
+  });
+});
 
 // One-line `run:` steps per job. Multi-line `run: |` blocks are CI's quiet-machine wait,
 // which check:all does natively, and a bundle-attribute printout.

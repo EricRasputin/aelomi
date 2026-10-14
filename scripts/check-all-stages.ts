@@ -36,7 +36,7 @@ export const STAGES: readonly {
         "only",
         "--test-threads",
         "1",
-        "index::tests::latency::",
+        "index::tests::latency",
       ],
     ],
   },
