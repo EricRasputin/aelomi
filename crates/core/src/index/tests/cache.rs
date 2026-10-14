@@ -176,9 +176,6 @@ fn cache_problems_read_as_their_log_labels() {
     );
 }
 
-/// `check()` compares a cache with this schema, so an edit to `SCHEMA` without a version bump
-/// would silently rebuild every cache as a schema mismatch. Bump `SCHEMA_VERSION` with any
-/// schema change, then update this pin.
 #[test]
 fn the_schema_text_is_pinned_to_its_version() {
     assert_eq!(

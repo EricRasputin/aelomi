@@ -27,7 +27,6 @@ fn b(id: &str, segments: Vec<Segment>) -> Block {
     }
 }
 
-/// What BlockNote 0.55.0 and y-prosemirror 1.3.7 wrote for `fixtures/index/generate-blocknote-body.mjs`.
 fn expected_fixture_blocks() -> Vec<Block> {
     vec![
         b("block-heading", vec![t("Café roadmap")]),

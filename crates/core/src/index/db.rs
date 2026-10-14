@@ -18,12 +18,8 @@ const SIDECARS: [&str; 3] = ["-wal", "-shm", "-journal"];
 
 pub(crate) const SCHEMA_VERSION: i64 = 2;
 
-/// Page keys order pages: ascending key is ascending `(created_at, Reverse(page_id))`, so a
-/// descending FTS rowid walk visits pages newest first. A block's rowid is its page's key
-/// shifted left by `SLOT_BITS`, plus a slot unique within the page.
 pub(crate) const SLOT_BITS: u32 = 20;
 pub(crate) const SLOTS: i64 = 1 << SLOT_BITS;
-/// Page keys are 1 up to, but not including, this, so every block rowid is a positive `i64`.
 pub(crate) const PAGE_KEYS: i64 = 1 << (63 - SLOT_BITS);
 pub(crate) const KEY_SPACING: i64 = 1 << 16;
 
@@ -95,7 +91,6 @@ WHEN old.text IS NOT new.text BEGIN
 END;
 "#;
 
-/// What the startup check found.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CacheState {
     /// There was no index file.
@@ -186,8 +181,6 @@ impl fmt::Display for Corrupt {
     }
 }
 
-/// Why one run of the worker stopped. `Replace` rebuilds at once; the others are retried with
-/// a growing delay.
 #[derive(Debug)]
 pub(crate) enum RunError {
     Sql(rusqlite::Error),
@@ -237,11 +230,8 @@ pub struct CheckTimings {
     pub block_fts: Option<Duration>,
 }
 
-/// The only writer connection.
 pub(crate) struct Writer(Connection);
 
-/// An open cache: what the check found, how long it took, and the pages a reused file holds,
-/// strictly decoded with their keys checked against the content order.
 pub(crate) struct Opened {
     pub writer: Writer,
     pub state: CacheState,
@@ -258,8 +248,6 @@ fn connect(path: &Path) -> Result<Connection, RunError> {
 }
 
 impl Writer {
-    /// Checks the file at `path` and opens it, or deletes it and its sidecars and creates a new
-    /// one. With `replace`, deletes it whatever it holds.
     pub fn open(
         path: &Path,
         replace: Option<CacheProblem>,
@@ -437,8 +425,6 @@ fn file_name(path: &Path) -> String {
         .map_or_else(String::new, |n| n.to_string_lossy().into_owned())
 }
 
-/// Deletes the index file first, then its sidecars, so an interrupted removal leaves sidecars
-/// without a main file, which the next open deletes before SQLite sees them.
 fn remove(path: &Path, hold: &dyn Fn(HoldPoint)) -> Result<(), RunError> {
     hold(HoldPoint::BeforeRemove);
     for (i, name) in names(path).enumerate() {
@@ -510,7 +496,6 @@ fn expected_schema() -> rusqlite::Result<SchemaRows> {
     schema(&conn)
 }
 
-/// A page's position in the content order: oldest first, then page ID descending.
 pub(crate) type OrderKey = (u64, Reverse<PageId>);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -529,7 +514,6 @@ impl PageKey {
         self.0
     }
 
-    /// The page of a stored block rowid.
     pub fn of_block(rowid: i64) -> Result<Self, Corrupt> {
         if rowid < 0 {
             return Err(Corrupt::Key);
@@ -541,15 +525,11 @@ impl PageKey {
         (self.0 << SLOT_BITS) | slot
     }
 
-    /// The first and last block rowid the page can hold.
     pub fn blocks(self) -> (i64, i64) {
         (self.block(0), self.block(SLOTS - 1))
     }
 }
 
-/// Keys for new pages at `new`, sorted and absent from `existing`, that keep key order equal
-/// to content order. Pages past the newest are spaced `KEY_SPACING` apart; pages in a gap are
-/// spread evenly across it. `None` when a gap or the key space has no room.
 pub(crate) fn allocate(
     existing: &BTreeMap<OrderKey, PageKey>,
     new: &[OrderKey],
@@ -594,11 +574,9 @@ pub(crate) fn allocate(
     Some(keys)
 }
 
-/// One page's row, as the cache stores it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct PageColumns {
     pub title: String,
-    /// After the forest rule, so a missing parent or a cut cycle reads as top level.
     pub parent: Option<PageId>,
     pub sibling_order: u64,
     pub favorite_order: Option<u64>,
@@ -655,7 +633,6 @@ pub(crate) fn page_columns(
         .collect()
 }
 
-/// How a link to `target` reads: its title, "Untitled", or "Deleted page".
 pub(crate) fn label(pages: &BTreeMap<PageId, CachedPage>, target: &PageId) -> String {
     match pages.get(target) {
         Some(page) if page.columns.title.is_empty() => "Untitled".to_owned(),
@@ -675,8 +652,6 @@ fn stored_integer(n: i64) -> Result<u64, Corrupt> {
         .ok_or(Corrupt::Field)
 }
 
-/// Writes one page's row. A new page also gets its title text if active; its blocks come from
-/// the body pass.
 pub(crate) fn write_page(
     tx: &Transaction,
     id: &PageId,
@@ -725,7 +700,6 @@ pub(crate) fn write_page(
     Ok(())
 }
 
-/// Sets the page's title text, present only while the page is active.
 pub(crate) fn write_title(tx: &Transaction, page: &CachedPage) -> rusqlite::Result<()> {
     if page.columns.active {
         tx.prepare_cached(
@@ -740,7 +714,6 @@ pub(crate) fn write_title(tx: &Transaction, page: &CachedPage) -> rusqlite::Resu
     Ok(())
 }
 
-/// Adds or removes the text of every block of a page whose activity changed.
 pub(crate) fn write_block_texts(
     tx: &Transaction,
     page: &CachedPage,
@@ -767,9 +740,6 @@ pub(crate) fn write_block_texts(
     Ok(())
 }
 
-/// Replaces the stored blocks of `page` with `blocks`, writing only what changed. Each block
-/// occurrence keeps its slot while its ID and position in the duplicates stay; a new one takes
-/// the lowest free slot.
 pub(crate) fn sync_body(
     tx: &Transaction,
     page: &CachedPage,
@@ -904,7 +874,6 @@ pub(crate) fn sync_body(
     Ok(())
 }
 
-/// Renders again the text of every active block that links to a page in `targets`.
 pub(crate) fn rerender_links_to(
     tx: &Transaction,
     targets: &BTreeSet<PageId>,
@@ -939,8 +908,6 @@ pub(crate) fn rerender_links_to(
     Ok(())
 }
 
-/// The JSON a block's segments are stored as: an array of text strings and `{"page": <ID>}`
-/// links.
 pub(crate) struct StoredSegments;
 
 impl StoredSegments {
@@ -955,7 +922,6 @@ impl StoredSegments {
         serde_json::Value::Array(values).to_string()
     }
 
-    /// Every segment, or `Corrupt::Segments` if any is malformed. Never drops one.
     pub fn decode(json: &str) -> Result<Vec<Segment>, Corrupt> {
         let Ok(serde_json::Value::Array(values)) = serde_json::from_str(json) else {
             return Err(Corrupt::Segments);
@@ -976,7 +942,6 @@ impl StoredSegments {
     }
 }
 
-/// A stored block ID, which is never empty.
 pub(crate) fn stored_block_id(id: String) -> Result<BlockId, Corrupt> {
     BlockId::new(id).ok_or(Corrupt::BlockId)
 }

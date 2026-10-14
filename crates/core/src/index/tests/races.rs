@@ -217,8 +217,6 @@ fn edits_during_the_startup_reconcile_converge_to_a_fresh_rebuild() {
     assert_eq!(snapshot(&rebuilt.workspace), incremental);
 }
 
-/// Edits the producer must have accepted while the index is held before it is released, so the
-/// held update is proven to progress under continuous typing.
 const HELD_EDITS: usize = 2;
 
 #[test]

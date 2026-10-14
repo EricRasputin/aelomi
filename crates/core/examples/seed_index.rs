@@ -1,14 +1,3 @@
-//! Seeds a new data folder for native checks of SHELL-12 and the index's scale. Refuses a folder
-//! that already holds anything.
-//!
-//! cargo run -p aelomi-core --features test-support --example seed_index -- <folder> <state>
-//!
-//! `<state>` is `missing`, `garbage`, `old-schema`, or `valid`: the index fixture with its index
-//! left in that state. Or `search-10k [--copies <n>] [--big-page]`: the 10,000-page search fixture,
-//! `n` renamed copies of it, and the 5,000-block page as the newest page, written straight to the
-//! store with no index, flushed and closed. Launch the app with `AELOMI_DATA_DIR=<folder>`; the
-//! shell log shows `index cache=…`, `index status=…`, and `index startup …`.
-
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 

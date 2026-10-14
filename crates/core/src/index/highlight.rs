@@ -4,7 +4,6 @@
 use super::TextPart;
 use super::tokenizer::{Mode, Token, Tokenizer, TokenizerError};
 
-/// The words of a query that can match: each holds a letter or digit.
 pub(crate) fn words(query: &str) -> Vec<&str> {
     query
         .split_whitespace()
@@ -12,7 +11,6 @@ pub(crate) fn words(query: &str) -> Vec<&str> {
         .collect()
 }
 
-/// FTS5's expression for `words`: each word quoted as a phrase, all required, the last a prefix.
 pub(crate) fn match_expression(words: &[&str]) -> Option<String> {
     let (last, rest) = words.split_last()?;
     let quote = |word: &str| format!("\"{}\"", word.replace('"', "\"\""));
@@ -49,9 +47,6 @@ impl Phrases {
         Ok(Self(phrases))
     }
 
-    /// `text` split into parts with each phrase occurrence highlighted, overlapping occurrences
-    /// merged. `None` when the text does not match: some phrase does not occur, or the query has
-    /// no phrase at all.
     pub fn highlight(
         &self,
         tokenizer: &Tokenizer,
@@ -85,7 +80,6 @@ impl Phrases {
 }
 
 impl Phrase {
-    /// Each occurrence as its first and last token index.
     fn occurrences<'a>(&'a self, tokens: &'a [Token]) -> impl Iterator<Item = (usize, usize)> + 'a {
         let n = self.terms.len();
         (0..tokens.len().saturating_sub(n - 1)).filter_map(move |at| {
@@ -102,7 +96,6 @@ impl Phrase {
     }
 }
 
-/// `text` as parts, highlighting the byte ranges in `spans`, which are ordered and disjoint.
 pub(crate) fn parts(text: &str, spans: impl IntoIterator<Item = (usize, usize)>) -> Vec<TextPart> {
     let mut parts = Vec::new();
     let mut at = 0;

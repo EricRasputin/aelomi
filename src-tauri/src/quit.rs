@@ -5,8 +5,6 @@ use aelomi_core::storage::DocId;
 use serde::Serialize;
 use specta::Type;
 
-/// How long a registered webview has to finish delivering edits after a quit request, before
-/// the quit asks the user instead.
 pub const QUIT_DRAIN_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// The quit decision the shell holds. `revision` grows with every change, so the webview can
@@ -42,16 +40,10 @@ pub struct QuitGate {
     drain_timeout: Duration,
 }
 
-/// What a native quit request must do next.
 #[derive(Debug, PartialEq, Eq)]
 pub enum QuitRequest {
-    /// The quit is confirmed: let it go on.
     Allow,
-    /// No webview registered, so no editor holds edits: flush the store and refuse if any doc
-    /// is still pending.
     FlushStore,
-    /// Refuse, and wait for the webview. `Some` when the request started a new drain, to
-    /// publish and time.
     Drain(Option<QuitStatus>),
 }
 
@@ -66,7 +58,6 @@ struct Gate {
 enum Phase {
     #[default]
     Open,
-    /// `completing` once the webview reported its drain done, so the timeout no longer applies.
     Draining {
         completing: bool,
     },
@@ -118,13 +109,10 @@ impl QuitGate {
         self.drain_timeout
     }
 
-    /// The webview listens for quit status and can drain its edits. From now on no native quit
-    /// exits before the phase is Confirmed.
     pub fn register_frontend(&self) {
         self.lock().frontend = true;
     }
 
-    /// A native quit or close. Never blocks.
     pub fn request(&self) -> QuitRequest {
         let mut gate = self.lock();
         match gate.phase {
@@ -137,8 +125,6 @@ impl QuitGate {
         }
     }
 
-    /// Records a refused Store-only quit as a new question. `None` once Quit anyway is
-    /// confirmed, so the quit goes on.
     pub fn refuse(&self, pending: &[DocId]) -> Option<QuitStatus> {
         let mut gate = self.lock();
         if matches!(gate.phase, Phase::Confirmed) {
@@ -153,8 +139,6 @@ impl QuitGate {
         self.lock().status()
     }
 
-    /// The webview delivered every edit of the drain at `revision`. `false` for any other
-    /// revision or phase, so a late reply never completes a newer quit.
     pub fn begin_completing(&self, revision: u32) -> bool {
         let mut gate = self.lock();
         if !gate.draining_at(revision) {
@@ -164,8 +148,6 @@ impl QuitGate {
         true
     }
 
-    /// The store flush after a completed drain at `revision`: Confirmed when nothing is
-    /// pending, else Asking.
     pub fn finish_drain(&self, revision: u32, pending: &[DocId]) -> Option<QuitStatus> {
         let mut gate = self.lock();
         if !gate.draining_at(revision) {
@@ -180,7 +162,6 @@ impl QuitGate {
         })
     }
 
-    /// The webview could not deliver edits to `docs` during the drain at `revision`.
     pub fn drain_failed(&self, revision: u32, docs: &[DocId]) -> Option<QuitStatus> {
         let mut gate = self.lock();
         if !gate.draining_at(revision) {
@@ -189,14 +170,11 @@ impl QuitGate {
         Some(gate.change(Phase::Asking(docs.iter().map(DocId::to_string).collect())))
     }
 
-    /// Whether the drain at `revision` still waits for the webview, so its timeout applies.
     pub fn awaiting_drain(&self, revision: u32) -> bool {
         let gate = self.lock();
         matches!(gate.phase, Phase::Draining { completing: false }) && gate.revision == revision
     }
 
-    /// The drain at `revision` ran out of time, or its request never reached the webview.
-    /// `pending` is what the store still holds.
     pub fn drain_timed_out(&self, revision: u32, pending: &[DocId]) -> Option<QuitStatus> {
         let mut gate = self.lock();
         if !matches!(gate.phase, Phase::Draining { completing: false }) || gate.revision != revision

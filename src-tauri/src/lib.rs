@@ -118,8 +118,6 @@ fn publish_index<R: Runtime>(app: &AppHandle<R>, event: &IndexEvent) {
     }
 }
 
-/// Every native quit route asks here. Once the webview registered, no route exits before the
-/// quit is confirmed: the first request starts a drain and is refused without blocking.
 fn flush_then_allow_quit<R: Runtime>(app: &AppHandle<R>, via: &str) -> bool {
     let Some(storage) = app.try_state::<Storage>() else {
         return true;
@@ -157,8 +155,6 @@ fn publish_quit<R: Runtime>(app: &AppHandle<R>, status: &QuitStatus) {
     let _ = QuitStatusChanged(status.clone()).emit(app);
 }
 
-/// Tells the webview to drain, and asks the user if it cannot be told or does not finish in
-/// time.
 fn start_drain<R: Runtime>(app: &AppHandle<R>, status: QuitStatus) {
     let revision = status.revision;
     if QuitStatusChanged(status).emit(app).is_err() {
@@ -261,7 +257,6 @@ pub(crate) mod tests {
         app
     }
 
-    /// An app whose storage writes succeed, with a registered webview that has not yet drained.
     fn app_with_webview(disk: &SimDisk, drain_timeout: Duration) -> BlockedApp {
         let app = mock_builder()
             .build(mock_context(noop_assets()))

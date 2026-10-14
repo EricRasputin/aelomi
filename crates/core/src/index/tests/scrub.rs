@@ -21,8 +21,6 @@ const NAMES: [&str; 4] = [
     "index.sqlite-journal",
 ];
 
-/// The index fixture plus `secret`, whose title and body hold the marker, a neighbor term that
-/// shares its first five letters, and a link to `secret` from `daily` that renders its title.
 fn secret_updates() -> Vec<(DocId, Vec<u8>)> {
     let mut updates = index_fixture();
     let mut editor = Editor::new(31);
@@ -94,8 +92,6 @@ fn erase_secret(workspace: &crate::workspace::Workspace) {
     );
 }
 
-/// Every place the marker could survive in the cache: raw, case-folded, or prefix-compressed
-/// bytes in any of the four files, and FTS vocabulary.
 fn marker_traces(dir: &Path) -> Vec<String> {
     let mut traces = Vec::new();
     let root = std::fs::canonicalize(dir).unwrap();
@@ -261,7 +257,6 @@ fn erasing_a_page_replaces_the_cache_and_leaves_none_of_its_bytes() {
     assert_converged(dir.path());
 }
 
-/// Erases the record with no index running, as a crash right after the erase would leave it.
 fn erase_without_an_index(dir: &Path) {
     let store = Store::open(dir).unwrap();
     let id = DocId::workspace();

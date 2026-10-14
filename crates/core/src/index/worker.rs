@@ -21,8 +21,6 @@ use crate::workspace::tree::forest;
 const RETRY_FIRST: Duration = Duration::from_millis(100);
 const RETRY_MAX: Duration = Duration::from_secs(30);
 const PAGES_PER_TRANSACTION: usize = 128;
-/// Replacing the cache again before it ever became Ready means replacing does not help, so the
-/// worker backs off as for any failure.
 const REPLACES_WITHOUT_READY: u32 = 2;
 
 pub(super) fn run(shared: &Shared, source: &dyn Source, path: &Path) {
@@ -73,13 +71,10 @@ struct Worker<'a> {
     shared: &'a Shared,
     source: &'a dyn Source,
     path: &'a Path,
-    /// The pages the cache holds, as last committed.
     committed_rows: BTreeMap<PageId, CachedPage>,
     order: BTreeMap<OrderKey, PageKey>,
     reconciled: bool,
-    /// Why the workspace doc could not be read. Membership is unknown, so the index is Failed.
     workspace_failure: Option<String>,
-    /// Pages whose current body the index holds only in part.
     page_issues: BTreeMap<PageId, PageIssue>,
     retry: &'a mut Duration,
     ready: bool,
@@ -379,8 +374,6 @@ impl Shared {
         self.lock().shutdown
     }
 
-    /// Stops answering from the cache before the worker closes or deletes it: sets `status`,
-    /// clears the workspace pass and any replace request, then closes the reader.
     fn stop_serving(&self, status: IndexStatus) {
         let mut state = self.lock();
         state.workspace_in_flight = false;

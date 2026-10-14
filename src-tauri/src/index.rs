@@ -741,8 +741,6 @@ mod measure {
         samples[(samples.len() * percent).div_ceil(100).max(1) - 1]
     }
 
-    /// How much of a search reply's cost is the shell's: converting core hits to IPC types and
-    /// serializing them, apart from the core query. Prints, never fails.
     #[test]
     #[ignore = "a release-build measurement: cargo nextest run -p aelomi --cargo-profile release --run-ignored only --no-capture measure_search_reply"]
     fn measure_search_reply_conversion_and_serialization() {

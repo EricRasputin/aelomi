@@ -1,6 +1,3 @@
-//! The backlink rule computed from scratch from the Y.Docs. It shares no code with the index or
-//! the page tree: it normalizes parents itself, with its own bounded cycle search.
-
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Arc;
 use std::time::Duration;
@@ -18,8 +15,6 @@ use crate::workspace::records::{PageId, PageRecord, Placement, Trash, read_pages
 
 type Backlinks = Vec<(String, Vec<(String, String)>)>;
 
-/// Each page's parent after the documented rule: a parent with no record makes the page top
-/// level, and each parent cycle is cut at its smallest page ID.
 fn normalized_parents(records: &BTreeMap<PageId, PageRecord>) -> BTreeMap<PageId, Option<PageId>> {
     let mut parents: BTreeMap<PageId, Option<PageId>> = records
         .iter()
@@ -29,8 +24,6 @@ fn normalized_parents(records: &BTreeMap<PageId, PageRecord>) -> BTreeMap<PageId
         })
         .collect();
     let bound = records.len() + 1;
-    // A page is on a cycle when its chain returns to it within as many steps as there are
-    // pages. A page that only leads into a cycle never returns.
     let returns_to_itself = |parents: &BTreeMap<PageId, Option<PageId>>, start: &PageId| {
         let mut at = parents[start].clone();
         for _ in 0..bound {
@@ -63,7 +56,6 @@ fn normalized_parents(records: &BTreeMap<PageId, PageRecord>) -> BTreeMap<PageId
     parents
 }
 
-/// Active when neither the page nor any ancestor after normalization is trashed.
 fn active_pages(records: &BTreeMap<PageId, PageRecord>) -> BTreeSet<PageId> {
     let parents = normalized_parents(records);
     records
@@ -168,7 +160,6 @@ enum Op {
     Restore {
         page: usize,
     },
-    /// Sets any parent, including the page itself or a descendant, so cycles form.
     Move {
         page: usize,
         parent: Option<usize>,
@@ -385,7 +376,6 @@ proptest! {
     }
 }
 
-/// Every active page with its parent, as the sidebar tree holds them.
 fn tree_of(workspace: &Workspace) -> BTreeMap<PageId, Option<PageId>> {
     workspace
         .tree()
@@ -433,8 +423,6 @@ fn trashed(mut record: PageRecord) -> PageRecord {
     record
 }
 
-/// Seeds `pages` and `bodies`, checks `expect` on the live index, then deletes every cache file,
-/// rebuilds, and checks it again with the source files unchanged.
 fn before_and_after_rebuild(
     pages: &[(&str, PageRecord)],
     bodies: &[(&str, Vec<Inline>)],

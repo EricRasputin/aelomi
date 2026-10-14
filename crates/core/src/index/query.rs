@@ -8,11 +8,9 @@ use super::tokenizer::{Tokenizer, TokenizerError};
 use super::{Backlink, BacklinkBlock, BlockHit, SearchHit, TextPart};
 use crate::workspace::records::PageId;
 
-/// Why a query could not answer from the cache.
 #[derive(Debug)]
 pub(crate) enum QueryFault {
     Sql(rusqlite::Error),
-    /// A stored value is invalid: the cache must be replaced.
     Corrupt(Corrupt),
     Tokenizer(TokenizerError),
 }
@@ -35,8 +33,6 @@ impl From<TokenizerError> for QueryFault {
     }
 }
 
-/// A validated search: the FTS5 expression, the words it came from, the clamped limit, and, for
-/// a content search, the pages to skip.
 pub(crate) struct Plan<'a> {
     pub expression: &'a str,
     pub words: &'a [&'a str],
@@ -49,7 +45,6 @@ pub(crate) enum Scope<'a> {
     Content { exclude: &'a [&'a PageId] },
 }
 
-/// How much of the FTS indexes a search read.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) struct Walk {
     pub title_rows: usize,
@@ -58,13 +53,9 @@ pub(crate) struct Walk {
 
 struct Winner {
     page: PageKey,
-    /// The page's first matching block in document order, for a body match.
     block: Option<i64>,
 }
 
-/// Pages in the content order, newest created first: for `All`, title matches before body
-/// matches. Reads FTS rowids only, in descending order, and stops after the group that fills
-/// the limit, so it visits the matches of the pages it returns and skips, not all matches.
 pub(crate) fn search(
     conn: &mut Connection,
     plan: &Plan,
@@ -152,7 +143,6 @@ pub(crate) fn search(
     finish(tx, plan, winners, walk)
 }
 
-/// Reads and highlights the winners' titles and blocks.
 fn finish(
     tx: Transaction,
     plan: &Plan,

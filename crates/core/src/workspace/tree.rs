@@ -1,5 +1,3 @@
-//! The page tree as the sidebar shows it, projected from the page records.
-
 use std::collections::{BTreeMap, BTreeSet};
 
 use super::records::{PageId, PageRecord};
@@ -44,7 +42,6 @@ pub(crate) fn forest(records: &BTreeMap<PageId, PageRecord>) -> Forest {
     Forest { parent, active }
 }
 
-/// A parent with no record makes its page top level.
 fn drop_missing_parents(
     records: &BTreeMap<PageId, PageRecord>,
 ) -> BTreeMap<PageId, Option<PageId>> {
@@ -61,7 +58,6 @@ fn drop_missing_parents(
         .collect()
 }
 
-/// Each parent cycle loses the parent of its smallest page ID, so no page disappears.
 fn cut_cycles_at_min_id(
     records: &BTreeMap<PageId, PageRecord>,
     parent: &mut BTreeMap<PageId, Option<PageId>>,
@@ -86,7 +82,6 @@ fn cut_cycles_at_min_id(
     }
 }
 
-/// A page is active when neither it nor any ancestor is trashed.
 fn mark_active(
     records: &BTreeMap<PageId, PageRecord>,
     parent: &BTreeMap<PageId, Option<PageId>>,

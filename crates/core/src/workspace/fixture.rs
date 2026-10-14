@@ -1,6 +1,3 @@
-//! Writers for workspace records and BlockNote bodies, and the index fixture, for tests and
-//! `examples/seed_index.rs`. The app's editor and tree commands write these docs in production.
-
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 use std::sync::Arc;
@@ -297,7 +294,6 @@ fn insert_into(txn: &mut TransactionMut, group: &XmlElementRef, index: u32, spec
     }
 }
 
-/// A broken index file, for rebuild tests and native checks.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BrokenIndex {
     Missing,

@@ -1,6 +1,3 @@
-//! The app's view of a data folder: the store, which holds the Y.Docs, and the index derived
-//! from them. See `ARCHITECTURE.md`, "The index".
-
 pub mod body;
 pub mod records;
 pub mod tree;
@@ -28,11 +25,9 @@ use crate::storage::{AppendError, DocId, Health, OpenError, Seq, Store};
 use records::{PageId, RecordError, read_pages};
 use tree::Tree;
 
-/// Every append goes through here, so the index learns of each change the store accepts.
 pub struct Workspace {
     index: Index,
     store: Arc<Store>,
-    /// Counts accepted workspace doc appends, so a tree is reused only while it is current.
     revision: AtomicU64,
     tree: Mutex<Option<(u64, Arc<Tree>)>>,
 }

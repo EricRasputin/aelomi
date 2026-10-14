@@ -1,6 +1,3 @@
-//! SQLite's own `unicode61` tokenizer, borrowed from a connection, so highlights mark exactly the
-//! tokens FTS5 matched. Handles stay on the thread and inside the borrow that made them.
-
 use std::ffi::{c_char, c_int, c_void};
 use std::marker::PhantomData;
 use std::panic::{self, AssertUnwindSafe};
@@ -8,7 +5,6 @@ use std::ptr;
 
 use rusqlite::{Connection, ffi};
 
-/// One token: its folded term and its byte range in the text.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Token {
     pub term: String,
@@ -25,7 +21,6 @@ pub(crate) enum Mode {
 #[derive(Debug)]
 pub(crate) struct TokenizerError(pub String);
 
-/// `unicode61 remove_diacritics 2`, the tokenizer both FTS tables use.
 pub(crate) struct Tokenizer<'conn> {
     table: ffi::fts5_tokenizer,
     handle: *mut ffi::Fts5Tokenizer,
@@ -200,7 +195,6 @@ impl Sink<'_> {
     }
 }
 
-/// Never unwinds into C: a panic or an invalid token stops tokenizing with an error.
 unsafe extern "C" fn collect(
     ctx: *mut c_void,
     _flags: c_int,

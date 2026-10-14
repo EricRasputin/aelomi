@@ -162,7 +162,6 @@ impl Storage {
         )
     }
 
-    /// Docs whose updates the store has not yet written, without waiting.
     pub fn pending_docs(&self) -> Vec<DocId> {
         match self.workspace().map(|workspace| workspace.health()) {
             Ok(core::Health::Failing { pending_docs, .. }) => pending_docs,

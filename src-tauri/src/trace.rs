@@ -1,12 +1,8 @@
-//! Content-free timing lines for native measurement: process-relative times on index log lines,
-//! and per-command timings and byte counts when `AELOMI_TRACE_IPC=1`.
-
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
 use aelomi_core::index::StartupReport;
 
-/// Milliseconds since the process started, for log lines.
 pub fn since_start_ms() -> f64 {
     static START_US: OnceLock<u64> = OnceLock::new();
     let start = *START_US.get_or_init(crate::perf::process_start_us);
@@ -26,7 +22,6 @@ pub fn ms(duration: Duration) -> String {
     format!("{:.3}", duration.as_secs_f64() * 1000.0)
 }
 
-/// Prints `ipc <command> ms=<since started> <fields>` when tracing is on.
 pub fn ipc(command: &str, started: Instant, fields: impl FnOnce() -> String) {
     if ipc_enabled() {
         println!("ipc {command} ms={} {}", ms(started.elapsed()), fields());

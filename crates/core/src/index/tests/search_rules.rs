@@ -29,8 +29,6 @@ fn record(title: &str, created_at: u64, trashed: bool) -> PageRecord {
     }
 }
 
-/// a is oldest: title Alpha, two roadmap blocks. b: title Roadmap, no body. c: title Roadmap and a
-/// "roadmaps" block. d, newest, is trashed. e repeats a block ID.
 fn ranked(dir: &std::path::Path) -> Opened {
     let opened = open(dir);
     let mut editor = Editor::new(21);

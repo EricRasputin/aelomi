@@ -12,7 +12,6 @@ const MARKERS: [(char, char); 4] = [
     ('\u{10FFFD}', '\u{10FFFC}'),
 ];
 
-/// SQLite's own `highlight()` output, split into parts at markers the text does not contain.
 fn sqlite_parts(conn: &Connection, expression: &str, rowid: i64, text: &str) -> Vec<TextPart> {
     let (open, close) = MARKERS
         .into_iter()
@@ -50,8 +49,6 @@ fn sqlite_parts(conn: &Connection, expression: &str, rowid: i64, text: &str) -> 
     parts
 }
 
-/// For every query, the texts SQLite matches are exactly the texts the highlighter matches, and
-/// their parts are identical to SQLite's `highlight()`.
 fn assert_parity(texts: &[String], queries: &[&str]) -> usize {
     let conn = Connection::open_in_memory().unwrap();
     conn.execute_batch(

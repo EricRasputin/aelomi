@@ -159,7 +159,6 @@ pub(crate) fn ready_with_issues<T>(reply: Reply<T>) -> (T, Vec<PageIssue>) {
     }
 }
 
-/// A search of titles and bodies, as core callers other than the palette make.
 pub(crate) fn all(text: &str, limit: usize) -> SearchQuery<'_> {
     SearchQuery {
         text,
@@ -168,7 +167,6 @@ pub(crate) fn all(text: &str, limit: usize) -> SearchQuery<'_> {
     }
 }
 
-/// A search of bodies only, skipping `exclude`, as the palette makes.
 pub(crate) fn content<'a>(text: &'a str, limit: usize, exclude: &'a [PageId]) -> SearchQuery<'a> {
     SearchQuery {
         text,
@@ -242,7 +240,6 @@ pub(crate) fn eventually<T>(timeout: Duration, mut f: impl FnMut() -> Option<T>)
     }
 }
 
-/// Every file in the data folder except the index's and the store's lock, by relative path.
 pub(crate) fn source_files(dir: &Path) -> BTreeMap<String, Vec<u8>> {
     let mut files = BTreeMap::new();
     let mut stack = vec![dir.to_path_buf()];

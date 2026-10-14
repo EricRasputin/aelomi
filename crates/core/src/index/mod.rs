@@ -102,7 +102,7 @@ pub enum Reply<T> {
     },
 }
 
-/// What [`Index::search`] looks for (CMD-3, CMD-5).
+/// What [`Workspace::search`](crate::workspace::Workspace::search) looks for (CMD-3, CMD-5).
 #[derive(Clone, Copy, Debug)]
 pub struct SearchQuery<'a> {
     pub text: &'a str,
@@ -173,7 +173,6 @@ impl fmt::Display for QueryError {
 
 impl std::error::Error for QueryError {}
 
-/// One page that matches a search.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SearchHit {
     pub page_id: PageId,
@@ -210,7 +209,6 @@ pub struct BacklinkBlock {
     pub text: String,
 }
 
-/// A place the worker or the tree projection can be held in tests.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) enum HoldPoint {
     BeforeLoad(DocId),
@@ -227,13 +225,11 @@ pub(crate) trait Source: Send + Sync + 'static {
 
 type Listener = Arc<dyn Fn(&IndexEvent) + Send + Sync>;
 
-/// Starts the worker thread. A seam, so tests can make it fail.
 pub(crate) type Spawn =
     fn(std::thread::Builder, Box<dyn FnOnce() + Send>) -> io::Result<JoinHandle<()>>;
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Config {
-    /// A page is indexed this long after its first unindexed edit. Later edits don't extend it.
     pub first_edit_delay: Duration,
     pub spawn: Spawn,
 }
@@ -257,19 +253,16 @@ pub(crate) struct Shared {
 
 struct State {
     status: IndexStatus,
-    /// Every active page with a partial body, sorted, as Ready replies carry it.
     issues: Arc<[PageIssue]>,
     workspace_dirty: bool,
     workspace_in_flight: bool,
     workspace_generation: u64,
     pending_bodies: BTreeMap<DocId, Instant>,
-    /// A query found the cache corrupt. Until the worker replaces it, queries answer Indexing.
     replace: Option<CacheProblem>,
     busy: bool,
     shutdown: bool,
 }
 
-/// The index can answer from data as of workspace `generation`, with these issues.
 struct Current {
     generation: u64,
     issues: Arc<[PageIssue]>,
@@ -281,8 +274,6 @@ pub(crate) struct Index {
 }
 
 impl Index {
-    /// Starts the worker. If the thread cannot start, the index is Failed for this launch and
-    /// says so once, on this thread; docs keep loading, appending, and flushing.
     pub fn start(
         source: Arc<dyn Source>,
         path: PathBuf,
@@ -412,9 +403,6 @@ impl Shared {
         self.reader.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    /// Runs `f` on the reader if the index is current before and after it. The reader opens on
-    /// first use after Ready. A corrupt cache is reported to the worker for replacement, and
-    /// the query answers Indexing.
     fn read_if_current<T>(
         &self,
         f: impl FnOnce(&mut Connection) -> Result<T, QueryFault>,
@@ -502,7 +490,6 @@ impl Shared {
         !state.workspace_dirty && state.pending_bodies.is_empty()
     }
 
-    /// Closes the reader so the next query opens a new one, as after a rebuild.
     #[cfg(test)]
     pub fn close_reader(&self) {
         self.lock_reader().take();

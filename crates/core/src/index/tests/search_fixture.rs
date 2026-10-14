@@ -16,7 +16,6 @@ use crate::workspace::records::{PageId, PageRecord, Placement};
 pub(crate) const BIG_PAGE: &str = "big-page";
 const BIG_TITLE: &str = "Kestrel field notes";
 
-/// The newest page: the 5,000-block page, created after every fixture page.
 fn big_created_at() -> u64 {
     SEARCH_CREATED_AT + 10_000 * 1000
 }
@@ -120,7 +119,6 @@ fn expected() -> Vec<(String, Vec<String>)> {
         .collect()
 }
 
-/// Fixed, common, prefix and multi-word classes the gate and goldens cover.
 pub(crate) const QUERIES: [&str; 16] = [
     "zorvak",
     "quillmere",
@@ -154,8 +152,6 @@ fn the_10k_search_fixture_returns_the_expected_page_ids() {
     }
 }
 
-/// The 200 IDs a palette might exclude: every title match of `query`, then the newest pages
-/// whose body matches, up to 200.
 pub(crate) fn title_group(pages: &[Page], index: &Index, query: &str) -> Vec<PageId> {
     let mut ids: Vec<PageId> = ready(index.search(&all(query, 200)).unwrap())
         .into_iter()
@@ -289,8 +285,6 @@ fn golden_path() -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/index/search-10k-golden.json")
 }
 
-/// The reviewed golden: limit 20 with full parts, and limit 200 as ordered page and block IDs,
-/// for titles-then-bodies and bodies-only searches over the fixture plus the 5,000-block page.
 fn golden_of(search: impl Fn(&str, usize, bool) -> Vec<Hit>) -> serde_json::Value {
     let mut cases = Vec::new();
     for query in GOLDEN_FULL {

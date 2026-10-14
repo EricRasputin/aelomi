@@ -1,12 +1,3 @@
-//! The section 5 content-search budget, gated through `Workspace::search` in a release build:
-//! `cargo nextest run -p aelomi-core --cargo-profile release --run-ignored only --test-threads 1
-//! index::tests::search_gate`. Every sample consumes its whole answer. A first-query sample
-//! closes the reader before the clock starts, so it pays the open, the statement preparation,
-//! and the tokenizer; the OS file cache stays warm.
-//!
-//! `AELOMI_SEARCH_GATE_BUDGET_MS` replaces the 5 ms budget, for a calibrated hosted runner only.
-//! `AELOMI_SEARCH_GATE_FIRST_SAMPLES` raises the first-query samples per bucket above 30.
-
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -62,7 +53,6 @@ fn indexed(big: bool) -> (Opened, tempfile::TempDir, Duration) {
     (opened, dir, started.elapsed())
 }
 
-/// Reads every part of every hit, so no sample skips work the caller would do.
 fn consume(hits: &[SearchHit]) -> usize {
     hits.iter()
         .map(|hit| {

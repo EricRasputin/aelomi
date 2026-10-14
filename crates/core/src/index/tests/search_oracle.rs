@@ -1,21 +1,14 @@
-//! An independent model of the search rule, read straight from the fixture files, for comparing
-//! with the index. It shares no code with the index's query, highlighter, or tokenizer, nor with
-//! the workspace's tree or body reader: it tokenizes ASCII text itself and refuses anything else.
-
 use std::collections::{BTreeMap, HashSet};
 use std::path::Path;
 
-/// A page as the fixture defines it.
 pub(crate) struct Page {
     pub id: String,
     pub created_at: u64,
     pub title: String,
     pub active: bool,
-    /// Each block's ID and text, in document order, empty blocks included.
     pub blocks: Vec<(String, String)>,
 }
 
-/// One expected hit: page ID, title parts, and the block ID with its parts.
 pub(crate) type Hit = (String, Parts, Option<(String, Parts)>);
 pub(crate) type Parts = Vec<(String, bool)>;
 
@@ -26,7 +19,6 @@ pub(crate) fn generated(name: &str) -> String {
     std::fs::read_to_string(path).unwrap()
 }
 
-/// The 10,000 pages, created a second apart in file order from `created_at`.
 pub(crate) fn search_pages(created_at: u64) -> Vec<Page> {
     let lines: Vec<serde_json::Value> = generated("search-10k-pages.jsonl")
         .lines()
@@ -82,7 +74,6 @@ pub(crate) fn search_pages(created_at: u64) -> Vec<Page> {
         .collect()
 }
 
-/// `page-5000-blocks.json` as one page, its blocks flattened parents first.
 pub(crate) fn big_page(id: &str, title: &str, created_at: u64) -> Page {
     fn flatten(blocks: &serde_json::Value, out: &mut Vec<(String, String)>) {
         for block in blocks.as_array().into_iter().flatten() {
@@ -117,7 +108,6 @@ pub(crate) fn big_page(id: &str, title: &str, created_at: u64) -> Page {
     }
 }
 
-/// Maximal runs of ASCII letters and digits, lowercased, with their byte ranges.
 fn tokens(text: &str) -> Vec<(String, usize, usize)> {
     assert!(text.is_ascii(), "the oracle reads ASCII only: {text:?}");
     let mut out = Vec::new();
@@ -137,8 +127,6 @@ fn tokens(text: &str) -> Vec<(String, usize, usize)> {
     out
 }
 
-/// Each whitespace word with a letter or digit is a phrase; the last word's last token is a
-/// prefix; words without tokens are dropped.
 fn phrases(query: &str) -> Vec<(Vec<String>, bool)> {
     let words: Vec<&str> = query
         .split_whitespace()
@@ -157,7 +145,6 @@ fn phrases(query: &str) -> Vec<(Vec<String>, bool)> {
         .collect()
 }
 
-/// The highlighted parts of `text`, or `None` if some phrase does not occur.
 fn highlight(text: &str, phrases: &[(Vec<String>, bool)]) -> Option<Parts> {
     if phrases.is_empty() {
         return None;
@@ -225,8 +212,6 @@ pub(crate) enum Scope<'a> {
     Content(&'a HashSet<String>),
 }
 
-/// What a search must return, and how many block matches a walk that stops after the last
-/// returned page reads.
 pub(crate) fn expected(
     pages: &[Page],
     query: &str,
