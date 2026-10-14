@@ -25,6 +25,14 @@ export type Budgets = {
     hostedP95Ms: Budget;
     firstSamples: Budget;
   };
+  palette: {
+    p95Ms: Budget;
+    hostedAppOwnedP95Ms: Budget;
+  };
+  scroll: {
+    p95FrameMs: Budget;
+    maxFrameMs: Budget;
+  };
 };
 
 function section(raw: unknown, name: string): Record<string, unknown> {
@@ -58,6 +66,8 @@ export function readBudgets(): Budgets {
   const keystroke = section(raw.keystroke, "keystroke");
   const noise = section(raw.noise, "noise");
   const search = section(raw.search, "search");
+  const palette = section(raw.palette, "palette");
+  const scroll = section(raw.scroll, "scroll");
   return {
     coldStart: {
       specMs: budget(coldStart, "coldStart.specMs", isNumber),
@@ -93,6 +103,18 @@ export function readBudgets(): Budgets {
       p95Ms: budget(search, "search.p95Ms", isNumber),
       hostedP95Ms: budget(search, "search.hostedP95Ms", isNumber),
       firstSamples: budget(search, "search.firstSamples", isNumber),
+    },
+    palette: {
+      p95Ms: budget(palette, "palette.p95Ms", isNumber),
+      hostedAppOwnedP95Ms: budget(
+        palette,
+        "palette.hostedAppOwnedP95Ms",
+        isNumber,
+      ),
+    },
+    scroll: {
+      p95FrameMs: budget(scroll, "scroll.p95FrameMs", isNumber),
+      maxFrameMs: budget(scroll, "scroll.maxFrameMs", isNumber),
     },
   };
 }

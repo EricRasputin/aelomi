@@ -39,7 +39,10 @@ for (const [name, version] of Object.entries(versions)) {
 }
 
 const core = await importFromDeps("@blocknote/core");
-const { blocksToYXmlFragment } = await importFromDeps("@blocknote/core", "./yjs");
+const { blocksToYXmlFragment } = await importFromDeps(
+  "@blocknote/core",
+  "./yjs",
+);
 const Y = await importFromDeps("yjs");
 
 const pageLink = core.createInlineContentSpec(
