@@ -1,0 +1,16 @@
+storage status=Ready path=/private/tmp/aelomi-data5-final-native-MtjA/durability-data
+storage open ms=0.721 t_ms=274.5
+index status=Rebuilding t_ms=274.4
+index cache=reused t_ms=282.6
+index status=Ready t_ms=296.0
+index startup total_ms=21.587 check_open_ms=8.135 schema_ms=1.260 integrity_ms=2.972 title_fts_ms=0.075 block_fts_ms=0.339 workspace_load_ms=3.144 workspace_decode_ms=0.060 workspace_forest_ms=0.015 workspace_sql_ms=0.296 pages=8 loaded_bytes=2401 page_load_ms=8.258 page_decode_ms=0.218 page_project_ms=0.085 page_sql_ms=0.191 publish_ms=0.036 t_ms=296.1
+index main_peak_rss_bytes=100712448 t_ms=296.1
+ipc page_tree ms=0.207 pages=6 bytes=816
+ping seq=1
+quit frontend ready
+ipc doc_load ms=0.093 bytes=480
+quit draining via=ExitRequested revision=1
+quit flush via=CompleteQuit pending=[]
+quit confirmed via=drain
+quit allowed via=ExitRequested confirmed=true
+quit flush via=Exit pending=[]

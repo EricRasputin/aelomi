@@ -1,0 +1,20 @@
+ObjC.import("Foundation");
+ObjC.bindFunction("mach_continuous_time", ["unsigned long long", []]);
+function run(argv) {
+  const pid = Number(argv[0]);
+  const key = argv[1];
+  const quit = argv[2] || "none";
+  if (!Number.isInteger(pid) || pid <= 0 || !key || key.length !== 1) throw new Error("Use an owned app PID and one character.");
+  if (quit !== "none" && quit !== "command-q" && quit !== "command-w") throw new Error("Unknown route.");
+  const se = Application("System Events");
+  const procs = se.processes.whose({unixId: pid});
+  if (procs.length !== 1) throw new Error("Owned app process not found.");
+  const proc = procs[0];
+  if (!proc.frontmost() || proc.windows.length < 1) throw new Error("Focus the owned app and its editor before this timed call.");
+  const startTicks = Number($.mach_continuous_time());
+  se.keystroke(key);
+  const keyCallReturnTicks = Number($.mach_continuous_time());
+  if (quit === "command-q") se.keystroke("q", {using: ["command down"]});
+  if (quit === "command-w") se.keystroke("w", {using: ["command down"]});
+  return JSON.stringify({pid, key, route: quit, startTicks, keyCallReturnTicks, scriptReturnTicks: Number($.mach_continuous_time()), clock: "mach_continuous_time", startMeaning: "Before the System Events keystroke call, including automation overhead"});
+}

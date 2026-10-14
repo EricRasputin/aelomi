@@ -1,0 +1,247 @@
+[
+  {
+    "file": "README.md",
+    "bytes": 7519,
+    "sha256": "3388b778fe49017f77fbe09a5984e157dbece03dfa9fdd0fdb62a2c4951187b7"
+  },
+  {
+    "file": "context.json",
+    "bytes": 1195,
+    "sha256": "1021c7cef0e6d039a65f8788664ff36a02759a1f10e19fced8b5b4ad39abfbda"
+  },
+  {
+    "file": "durability-key-Z.json",
+    "bytes": 257,
+    "sha256": "372715c467d8fb8ae4dd67f6991f7f43738969ac290fea01a86115bbef3a7352"
+  },
+  {
+    "file": "durability-seed.log",
+    "bytes": 243,
+    "sha256": "cb8fc97ddbddacc5533be83b575bb593a480e988b27386ee394fc780e0c50d71"
+  },
+  {
+    "file": "exact-results.json",
+    "bytes": 1080,
+    "sha256": "770a643c7364e33066e189c24f4bf6835531c1087d01033b74d7b143e4995c11"
+  },
+  {
+    "file": "indexing-actions.log",
+    "bytes": 230,
+    "sha256": "79d9f3c8420e59effaa872cf7ec3f2379c7a579316348fa9c7b1cefd39a23bbf"
+  },
+  {
+    "file": "indexing-doctor.txt",
+    "bytes": 358,
+    "sha256": "3afb58a6a88ea8dd3af63fc1f6bb8b925858ae875c9aa9a8a3d7e984542b467b"
+  },
+  {
+    "file": "indexing-indexing.ax.txt",
+    "bytes": 254,
+    "sha256": "ace0788ef927994a73644db62257c189ef07babe8a6ba0bd7df1d2121b9fb4b2"
+  },
+  {
+    "file": "indexing-missed-capture-actions.log",
+    "bytes": 157,
+    "sha256": "75d0fd9b54591bcb0ab0cf2cc6a13f145fb97c69d3a1133145bdd2799da10e22"
+  },
+  {
+    "file": "indexing-missed-capture-doctor.txt",
+    "bytes": 358,
+    "sha256": "504e9480fa3fad6cf6e01d5ec9b307c60791a0cab5a89b38d1707603064a0fbb"
+  },
+  {
+    "file": "indexing-missed-capture-indexing.ax.txt",
+    "bytes": 565,
+    "sha256": "4430054d68504c9b834e7edc35719610d383cfb17726b3b92a261b09469b8ed0"
+  },
+  {
+    "file": "indexing-missed-capture-shell.log",
+    "bytes": 1683,
+    "sha256": "d6d74fe75874339ee7e863dac7217a80c459b76973d5f8312252bbaaff59d536"
+  },
+  {
+    "file": "indexing-ready-after.ax.txt",
+    "bytes": 549,
+    "sha256": "4b4db93f0ca7924fdaf93f9eaf682701cdb2cf905dbfe42a6b0c2e0608bea92c"
+  },
+  {
+    "file": "indexing-shell.log",
+    "bytes": 1122,
+    "sha256": "eefa28abd04626ffa79fa7e8c453c780b16179d2695d6d57abc5c9ff1fe2b4e7"
+  },
+  {
+    "file": "mach-timebase.json",
+    "bytes": 47,
+    "sha256": "1a4574331ee92442daf61c7d74793d7de4f9af8543195bc4161ff3a55c70cb20"
+  },
+  {
+    "file": "native-caret-end.js.txt",
+    "bytes": 431,
+    "sha256": "76c90c2668542ce186f6bf23b89129104bec0af36d2cf8ee79a0cb0771d4d561"
+  },
+  {
+    "file": "native-key-once.js.txt",
+    "bytes": 1311,
+    "sha256": "1d9eacaef3fd8f33c693abf47fc1af5b398055b444d91aaa9d144656ddbfa215"
+  },
+  {
+    "file": "native-quit-event.swift.txt",
+    "bytes": 1519,
+    "sha256": "c0f85c828dc9f92a02bed6bbb31430770952fe42d480a958aa483305744f40d3"
+  },
+  {
+    "file": "probe-not-loaded-actions.log",
+    "bytes": 129,
+    "sha256": "52e005789305478d108823b6603c928a2ce29673c2f5a963ebb2e9d55cd89295"
+  },
+  {
+    "file": "probe-not-loaded-doctor.txt",
+    "bytes": 358,
+    "sha256": "2c50b0b3df031bd1c30c115d34e0f9a8d15946f4f5de78614d1957d24490dd01"
+  },
+  {
+    "file": "probe-not-loaded-edit-Z.ax.txt",
+    "bytes": 543,
+    "sha256": "aa4d01661cc2e089500b9171021129ccb0a561fbd8e6e4a2dc907b0336548e56"
+  },
+  {
+    "file": "probe-not-loaded-shell.log",
+    "bytes": 926,
+    "sha256": "3602e3596798e4fdb2df94153f252b6bff2ebf74f47bc89d9ff48cd0debe1987"
+  },
+  {
+    "file": "quit-Q-actions.log",
+    "bytes": 108,
+    "sha256": "79b1cf440330235404a7377e9efb91f89911365148bd26c9ac9cb362544dc79a"
+  },
+  {
+    "file": "quit-Q-doctor.txt",
+    "bytes": 358,
+    "sha256": "f6343dafa97722903b547ceefdfd95841abfb1949421fb74f03b0f320a6bc2fa"
+  },
+  {
+    "file": "quit-Q-key.json",
+    "bytes": 262,
+    "sha256": "4bf63ba915ecd4522780ac36a58553f12904dce35d1fadb891a714f0c09c788c"
+  },
+  {
+    "file": "quit-Q-recovered-Z.ax.txt",
+    "bytes": 543,
+    "sha256": "c688f1d260a2b2e59a3f377504a4e45f4364990fb50f35a8c785234c33b29585"
+  },
+  {
+    "file": "quit-Q-shell.log",
+    "bytes": 941,
+    "sha256": "df7744de41cd0858aa3b7218275e4bb57061ea740593a7a245b4f281c72596eb"
+  },
+  {
+    "file": "quit-W-actions.log",
+    "bytes": 109,
+    "sha256": "61030ac69f4d73431fc290135732d32c7c74b2a8d1d68da965c49da3d8e12e56"
+  },
+  {
+    "file": "quit-W-doctor.txt",
+    "bytes": 358,
+    "sha256": "3e5e2b2f07656b29e35f11759838614b7e71133baefa73508c4382011b17fbf3"
+  },
+  {
+    "file": "quit-W-key.json",
+    "bytes": 262,
+    "sha256": "45af16754bef8b0365907c0b2dc382647363073b4837f5f440a0a94d26118cac"
+  },
+  {
+    "file": "quit-W-recovered-ZQ.ax.txt",
+    "bytes": 545,
+    "sha256": "19e78c2d60f3ba67a7ed404130e05b5a890164006a7538193b56402d6873db17"
+  },
+  {
+    "file": "quit-W-shell.log",
+    "bytes": 940,
+    "sha256": "d345b8f07ddf40b58f65eb1dc5abca10c7caca86fc46a08aa96856972d770840"
+  },
+  {
+    "file": "quit-apple-actions.log",
+    "bytes": 110,
+    "sha256": "aab58382dcf326ce6256ed3f2dd8db7482ab8ccec1f8db02b8b6bf5de221f5cb"
+  },
+  {
+    "file": "quit-apple-doctor.txt",
+    "bytes": 358,
+    "sha256": "255a8ca4039633d9bf03bb977f92ed72f5e6ab37e2182fef016d1f8665963f42"
+  },
+  {
+    "file": "quit-apple-event.txt",
+    "bytes": 79,
+    "sha256": "1f3e45049e856ae5a199bf354da7b548e48e809b0c8eed19b4ef1791e6f36c8d"
+  },
+  {
+    "file": "quit-apple-key.json",
+    "bytes": 257,
+    "sha256": "5d7b648e6f8605605c05ccb6a6cf0112fdada5894011fc194e49850114c77056"
+  },
+  {
+    "file": "quit-apple-recovered-ZQW.ax.txt",
+    "bytes": 547,
+    "sha256": "f6471fb635da836163a369d9820ad448da97f6ac7f0162f5d2a7e7b556d2e8d2"
+  },
+  {
+    "file": "quit-apple-shell.log",
+    "bytes": 934,
+    "sha256": "c217bec54e30b866b647abacba5ddfc62545066786beb8accd0096c56d99d0a6"
+  },
+  {
+    "file": "quit-final-reopen-actions.log",
+    "bytes": 111,
+    "sha256": "1ce2db0afc44c05e84bb83779e815b26157ccb270e3e45adcc180ee824250131"
+  },
+  {
+    "file": "quit-final-reopen-doctor.txt",
+    "bytes": 358,
+    "sha256": "c6deab703b70f33b74298fb183aef0d660821393bc50b725c4ac71e95dfb2813"
+  },
+  {
+    "file": "quit-final-reopen-recovered-ZQWAL.ax.txt",
+    "bytes": 551,
+    "sha256": "6e6da066dad30cdb62ffbd4d349041518af984d18469d8706ae672d2728bb849"
+  },
+  {
+    "file": "quit-final-reopen-shell.log",
+    "bytes": 905,
+    "sha256": "63d4a720ac8ec241b7f45c0bb958f8b3f97dce9cd7215a7f2e87e9917fed31fa"
+  },
+  {
+    "file": "quit-logout-actions.log",
+    "bytes": 111,
+    "sha256": "8c5ee5dbe97856f2b52ae5a5831047aa9f9477bffa53eebe05e3fb5f098b737d"
+  },
+  {
+    "file": "quit-logout-doctor.txt",
+    "bytes": 358,
+    "sha256": "dde4b1c7969364c226afc4d40ea6e78d3b0489738541d91c9c8bab864ca1d68c"
+  },
+  {
+    "file": "quit-logout-event.txt",
+    "bytes": 78,
+    "sha256": "c2022dd0ed75ebaec7b51ae8e064901ad8f57f12b9233c317610ec521843c9af"
+  },
+  {
+    "file": "quit-logout-key.json",
+    "bytes": 257,
+    "sha256": "f841365fcc70cc608aa60703b46a4f72a95208ebfc9b37c875620f550664c1df"
+  },
+  {
+    "file": "quit-logout-recovered-ZQWA.ax.txt",
+    "bytes": 549,
+    "sha256": "546f8113ade42ce33fb6630555225decb3b3694c36102526bf7cc9462e1dabf6"
+  },
+  {
+    "file": "quit-logout-shell.log",
+    "bytes": 936,
+    "sha256": "bfa4db57d4af1f099cd3a5221c80250722f6a5458db3c9ab09df326a9069bc13"
+  },
+  {
+    "file": "screenshots.json",
+    "bytes": 1183,
+    "sha256": "c2c6381f488c84cc44c9da153cc44eadc1f1841c4b13f350e8cd7cd278989eee"
+  }
+]

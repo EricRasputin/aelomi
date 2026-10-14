@@ -2,7 +2,7 @@
   "coldStart": {
     "specMs": {
       "value": 500,
-      "why": "CLAUDE.md budget: process launch to first usable content, median of 10. Populated workspaces require the editable page frame; an empty workspace reports its index screen. pnpm perf:cold enforces 500 ms on Apple Silicon, while CI gates its separately measured hosted budget."
+      "why": "CLAUDE.md budget: process launch to first usable content, median of 10. Populated workspaces require the editable page frame; an empty workspace reports its index screen. pnpm perf:cold enforces 500 ms on Apple Silicon, while CI gates its separately measured hosted budget. The maintainer accepted the current 10,001-page first-editable-frame result of 618 ms median on 2026-10-15 and deferred optimization. This value retains the 500 ms goal; the recorded local FAIL is not relabeled as a pass. Hosted CI budgets remain unchanged."
     },
     "hostedCiMs": {
       "value": 2500,
