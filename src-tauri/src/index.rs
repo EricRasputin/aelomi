@@ -511,7 +511,11 @@ mod tests {
         for (doc, update) in aelomi_core::workspace::fixture::index_fixture() {
             store.append(&doc, &update).unwrap();
         }
-        assert!(store.flush(Instant::now() + Duration::from_secs(2)).is_empty());
+        assert!(
+            store
+                .flush(Instant::now() + Duration::from_secs(2))
+                .is_empty()
+        );
         assert!(store.close(Instant::now() + Duration::from_secs(2)).is_ok());
         let shell = shell(Some(dir.path()));
         let workspace = shell.app.state::<Storage>().workspace().unwrap();
