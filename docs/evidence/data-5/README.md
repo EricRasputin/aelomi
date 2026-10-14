@@ -1,5 +1,9 @@
 # DATA-5 and SHELL-12 native verification
 
+Later records cover the [CI timing correction](ci-timing/README.md) and
+[issue 66's producer and workflow fixes](issue-66/README.md). Each record names
+its tested source commit. The observations below are from the original implementation.
+
 The release app opened with a missing, garbage, and old-schema index. Every run logged `Rebuilding` followed by `Ready`, kept all source files unchanged, and quit with no pending saves. The native window remained usable through a second IPC ping.
 
 The tested source commit is `6e7f10cddedf6169e392b613eb4539e890c7d047`. The separate commit that adds this record publishes evidence only. No product code changed after the source squash.

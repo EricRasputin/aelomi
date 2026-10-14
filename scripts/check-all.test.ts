@@ -10,14 +10,20 @@ const ci = readFileSync(
 );
 
 test("the workflow is valid YAML", () => {
-  const parsed = spawnSync("ruby", ["-ryaml", "-e", "YAML.parse(STDIN.read)"], {
+  const parser = "/usr/bin/ruby";
+  const parsed = spawnSync(parser, ["-ryaml", "-e", "YAML.parse(STDIN.read)"], {
     input: ci,
     encoding: "utf8",
   });
-  expect({ status: parsed.status, error: parsed.stderr }).toEqual({
-    status: 0,
-    error: "",
-  });
+  if (parsed.error) {
+    throw new Error(`Could not run the CI YAML parser ${parser}`, {
+      cause: parsed.error,
+    });
+  }
+  expect(
+    parsed.status,
+    `${parser} failed with ${parsed.signal ?? `exit ${parsed.status}`}: ${parsed.stderr}`,
+  ).toBe(0);
 });
 
 // One-line `run:` steps per job. Multi-line `run: |` blocks are CI's quiet-machine wait,
