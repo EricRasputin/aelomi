@@ -10,16 +10,20 @@ use aelomi_core::workspace::fixture::{
 };
 use aelomi_core::workspace::records::{PageId, PageRecord, Placement};
 
+const USAGE: &str = "usage: seed_index <new folder> <missing|garbage|old-schema|valid>
+       seed_index <new folder> search-10k [--copies <n>] [--big-page]
+then launch the app with AELOMI_DATA_DIR=<folder>";
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let Some((folder, rest)) = args.split_first() else {
-        fail("usage: seed_index <folder> <missing|garbage|old-schema|valid|search-10k>");
+        fail(USAGE);
     };
     let folder = new_folder(folder);
     match rest {
         [state] if state != "search-10k" => seed_fixture(&folder, state),
         [state, options @ ..] if state == "search-10k" => seed_search(&folder, options),
-        _ => fail("usage: seed_index <folder> <missing|garbage|old-schema|valid|search-10k>"),
+        _ => fail(USAGE),
     }
 }
 

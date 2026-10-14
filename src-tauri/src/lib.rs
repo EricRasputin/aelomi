@@ -127,13 +127,12 @@ fn flush_then_allow_quit<R: Runtime>(app: &AppHandle<R>, via: &str) -> bool {
             println!("quit allowed via={via} confirmed=true");
             return true;
         }
-        QuitRequest::Drain(started) => {
-            if let Some(status) = started {
-                println!("quit draining via={via} revision={}", status.revision);
-                start_drain(app, status);
-            }
+        QuitRequest::StartDrain(status) => {
+            println!("quit draining via={via} revision={}", status.revision);
+            start_drain(app, status);
             return false;
         }
+        QuitRequest::DrainInProgress => return false,
         QuitRequest::FlushStore => {}
     }
     let Err(pending) = flush_before_quit(app, via) else {

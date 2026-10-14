@@ -1,9 +1,41 @@
-use std::ffi::{c_char, c_int, c_void};
+use std::ffi::{CStr, c_char, c_int, c_void};
 use std::marker::PhantomData;
 use std::panic::{self, AssertUnwindSafe};
-use std::ptr;
+use std::ptr::{self, NonNull};
 
 use rusqlite::{Connection, ffi};
+
+macro_rules! with_tokenizer_spec {
+    ($emit:ident $(, $sql:literal)* $(,)?) => {
+        $emit!("unicode61", "remove_diacritics", "2" $(, $sql)*);
+    };
+}
+pub(super) use with_tokenizer_spec;
+
+struct TokenizerSpec {
+    name: &'static CStr,
+    arguments: [&'static CStr; 2],
+}
+
+const fn spec_cstr(text: &'static str) -> &'static CStr {
+    match CStr::from_bytes_with_nul(text.as_bytes()) {
+        Ok(text) => text,
+        Err(_) => panic!("a tokenizer setting cannot contain NUL"),
+    }
+}
+
+macro_rules! define_spec {
+    ($name:literal, $option:literal, $value:literal) => {
+        const SPEC: TokenizerSpec = TokenizerSpec {
+            name: spec_cstr(concat!($name, "\0")),
+            arguments: [
+                spec_cstr(concat!($option, "\0")),
+                spec_cstr(concat!($value, "\0")),
+            ],
+        };
+    };
+}
+with_tokenizer_spec!(define_spec);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Token {
@@ -48,9 +80,16 @@ impl<'conn> Tokenizer<'conn> {
             xTokenize: None,
         };
         let mut user_data: *mut c_void = ptr::null_mut();
-        let find = unsafe { (*api).xFindTokenizer }
+        let find = unsafe { (*api.raw.as_ptr()).xFindTokenizer }
             .ok_or_else(|| TokenizerError("FTS5 has no xFindTokenizer".into()))?;
-        let code = unsafe { find(api, c"unicode61".as_ptr(), &mut user_data, &mut table) };
+        let code = unsafe {
+            find(
+                api.raw.as_ptr(),
+                SPEC.name.as_ptr(),
+                &mut user_data,
+                &mut table,
+            )
+        };
         if code != ffi::SQLITE_OK {
             return Err(error("finding unicode61", code));
         }
@@ -58,9 +97,11 @@ impl<'conn> Tokenizer<'conn> {
         else {
             return Err(TokenizerError("unicode61 lacks a tokenizer method".into()));
         };
-        let mut args = [c"remove_diacritics".as_ptr(), c"2".as_ptr()];
+        let mut args = SPEC.arguments.map(CStr::as_ptr);
+        let argc = c_int::try_from(args.len())
+            .map_err(|_| TokenizerError("unicode61 has too many arguments".into()))?;
         let mut handle = ptr::null_mut();
-        let code = unsafe { create(user_data, args.as_mut_ptr(), 2, &mut handle) };
+        let code = unsafe { create(user_data, args.as_mut_ptr(), argc, &mut handle) };
         if code != ffi::SQLITE_OK || handle.is_null() {
             return Err(error("creating unicode61", code));
         }
@@ -115,8 +156,13 @@ impl Drop for Tokenizer<'_> {
     }
 }
 
+struct Fts5Api<'conn> {
+    raw: NonNull<ffi::fts5_api>,
+    _conn: PhantomData<&'conn Connection>,
+}
+
 /// FTS5's API table, which lives as long as the connection.
-fn fts5_api(conn: &Connection) -> Result<*mut ffi::fts5_api, TokenizerError> {
+fn fts5_api(conn: &Connection) -> Result<Fts5Api<'_>, TokenizerError> {
     let db = unsafe { conn.handle() };
     let mut raw = ptr::null_mut();
     let code = unsafe {
@@ -150,10 +196,12 @@ fn fts5_api(conn: &Connection) -> Result<*mut ffi::fts5_api, TokenizerError> {
         return Err(error("reading fts5()", code));
     }
     drop(statement);
-    if api.is_null() {
-        return Err(TokenizerError("FTS5 returned no API".into()));
-    }
-    Ok(api)
+    NonNull::new(api)
+        .map(|raw| Fts5Api {
+            raw,
+            _conn: PhantomData,
+        })
+        .ok_or_else(|| TokenizerError("FTS5 returned no API".into()))
 }
 
 struct Sink<'t> {

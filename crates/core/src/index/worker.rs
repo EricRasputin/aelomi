@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 use yrs::updates::decoder::Decode;
 use yrs::{Doc, Transact, Update};
 
-use super::db::{self, CacheProblem, CachedPage, OrderKey, PageKey, RunError, Writer};
+use super::db::{self, CacheOpen, CacheProblem, CachedPage, OrderKey, PageKey, RunError, Writer};
 use super::{
     HoldPoint, IndexChange, IndexEvent, IndexStatus, PageIssue, PageProblem, Shared, Source,
     StartupReport,
@@ -26,7 +26,7 @@ const REPLACES_WITHOUT_READY: u32 = 2;
 pub(super) fn run(shared: &Shared, source: &dyn Source, path: &Path) {
     shared.emit(&IndexEvent::Status(IndexStatus::Rebuilding));
     let mut retry = RETRY_FIRST;
-    let mut replace: Option<CacheProblem> = None;
+    let mut opening = CacheOpen::ReuseOrCreate;
     let mut replaces = 0;
     loop {
         let mut worker = Worker {
@@ -42,7 +42,9 @@ pub(super) fn run(shared: &Shared, source: &dyn Source, path: &Path) {
             ready: false,
             report: StartupReport::default(),
         };
-        let outcome = panic::catch_unwind(AssertUnwindSafe(|| worker.run(replace.take())));
+        let outcome = panic::catch_unwind(AssertUnwindSafe(|| {
+            worker.run(std::mem::take(&mut opening))
+        }));
         let ready = worker.ready;
         let reason = match outcome {
             Ok(Ok(())) => return,
@@ -50,7 +52,7 @@ pub(super) fn run(shared: &Shared, source: &dyn Source, path: &Path) {
                 shared.stop_serving(IndexStatus::Rebuilding);
                 replaces = if ready { 1 } else { replaces + 1 };
                 let reason = format!("the index was replaced repeatedly: {problem}");
-                replace = Some(problem);
+                opening = CacheOpen::ForceReplace(problem);
                 if replaces <= REPLACES_WITHOUT_READY {
                     continue;
                 }
@@ -87,11 +89,11 @@ enum Bodies {
 }
 
 impl Worker<'_> {
-    fn run(&mut self, replace: Option<CacheProblem>) -> Result<(), RunError> {
+    fn run(&mut self, opening: CacheOpen) -> Result<(), RunError> {
         let started = Instant::now();
         let gate = self.shared.gate.clone();
         let hold = move |point| gate.pass(point);
-        let opened = Writer::open(self.path, replace, &hold)?;
+        let opened = Writer::open(self.path, opening, &hold)?;
         let mut db = opened.writer;
         self.report.check = opened.timings;
         self.shared.emit(&IndexEvent::Cache(opened.state));

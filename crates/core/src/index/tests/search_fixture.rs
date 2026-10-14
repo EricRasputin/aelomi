@@ -385,3 +385,12 @@ fn match_cardinalities_equal_the_oracle_and_the_measured_figures() {
     assert_eq!(find("dapoku go"), &("dapoku go", 3_509, 3_097));
     assert_eq!(find("kestrel"), &("kestrel", 4, 4));
 }
+
+#[test]
+fn the_search_oracle_uses_no_crate_code() {
+    let oracle = include_str!("search_oracle.rs");
+    assert!(oracle.contains("pub(crate) fn expected("));
+    for path in ["crate::", "super::", "aelomi_core::"] {
+        assert!(!oracle.contains(path), "the search oracle uses {path}");
+    }
+}

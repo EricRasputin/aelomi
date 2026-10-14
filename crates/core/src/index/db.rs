@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 use rusqlite::{Connection, OpenFlags, OptionalExtension, Transaction, params};
 
 use super::HoldPoint;
+use super::tokenizer::with_tokenizer_spec;
 use crate::workspace::body::{Block, BlockId, Segment, render};
 use crate::workspace::records::{MAX_SAFE_INTEGER, PageId, PageRecord};
 use crate::workspace::tree::Forest;
@@ -23,7 +24,24 @@ pub(crate) const SLOTS: i64 = 1 << SLOT_BITS;
 pub(crate) const PAGE_KEYS: i64 = 1 << (63 - SLOT_BITS);
 pub(crate) const KEY_SPACING: i64 = 1 << 16;
 
-pub(crate) const SCHEMA: &str = r#"
+macro_rules! define_schema {
+    (
+        $name:literal, $option:literal, $value:literal,
+        $before_title:literal, $between_tables:literal, $after_block:literal
+    ) => {
+        pub(crate) const SCHEMA: &str = concat!(
+            $before_title,
+            concat!($name, " ", $option, " ", $value),
+            $between_tables,
+            concat!($name, " ", $option, " ", $value),
+            $after_block,
+        );
+    };
+}
+
+with_tokenizer_spec!(
+    define_schema,
+    r#"
 CREATE TABLE pages (
   rowid INTEGER PRIMARY KEY,
   page_id TEXT NOT NULL UNIQUE,
@@ -61,11 +79,13 @@ CREATE TABLE links (
 CREATE INDEX links_by_block ON links (block_rowid);
 CREATE VIRTUAL TABLE title_fts USING fts5 (
   title, content = 'title_text', content_rowid = 'rowid',
-  tokenize = 'unicode61 remove_diacritics 2', prefix = '1 2 3'
+  tokenize = '"#,
+    r#"', prefix = '1 2 3'
 );
 CREATE VIRTUAL TABLE block_fts USING fts5 (
   text, content = 'block_text', content_rowid = 'rowid',
-  tokenize = 'unicode61 remove_diacritics 2', prefix = '1 2 3'
+  tokenize = '"#,
+    r#"', prefix = '1 2 3'
 );
 CREATE TRIGGER title_text_insert AFTER INSERT ON title_text BEGIN
   INSERT INTO title_fts (rowid, title) VALUES (new.rowid, new.title);
@@ -89,7 +109,8 @@ WHEN old.text IS NOT new.text BEGIN
   INSERT INTO block_fts (block_fts, rowid, text) VALUES ('delete', old.rowid, old.text);
   INSERT INTO block_fts (rowid, text) VALUES (new.rowid, new.text);
 END;
-"#;
+"#
+);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CacheState {
@@ -230,6 +251,13 @@ pub struct CheckTimings {
     pub block_fts: Option<Duration>,
 }
 
+#[derive(Default)]
+pub(crate) enum CacheOpen {
+    #[default]
+    ReuseOrCreate,
+    ForceReplace(CacheProblem),
+}
+
 pub(crate) struct Writer(Connection);
 
 pub(crate) struct Opened {
@@ -250,28 +278,29 @@ fn connect(path: &Path) -> Result<Connection, RunError> {
 impl Writer {
     pub fn open(
         path: &Path,
-        replace: Option<CacheProblem>,
+        opening: CacheOpen,
         hold: &dyn Fn(HoldPoint),
     ) -> Result<Opened, RunError> {
         let started = Instant::now();
+        let files = CacheFiles::new(path);
         let mut timings = CheckTimings::default();
-        let mut state = match (replace, entries(path)?) {
+        let mut state = match (opening, files.entries()?) {
             (_, Entries::NotFiles) => {
-                remove(path, hold)?;
+                files.remove(hold)?;
                 CacheState::Replaced(CacheProblem::NotAFile)
             }
-            (Some(problem), _) => {
-                remove(path, hold)?;
+            (CacheOpen::ForceReplace(problem), _) => {
+                files.remove(hold)?;
                 CacheState::Replaced(problem)
             }
-            (None, Entries::Missing) => {
-                remove(path, hold)?;
+            (CacheOpen::ReuseOrCreate, Entries::Missing) => {
+                files.remove(hold)?;
                 CacheState::Created
             }
-            (None, Entries::Files) => match check(path, &mut timings) {
+            (CacheOpen::ReuseOrCreate, Entries::Files) => match check(path, &mut timings) {
                 Ok(()) => CacheState::Reused,
                 Err(problem) => {
-                    remove(path, hold)?;
+                    files.remove(hold)?;
                     CacheState::Replaced(problem)
                 }
             },
@@ -283,7 +312,7 @@ impl Writer {
                 Ok(cached) => pages = cached,
                 Err(RunError::Replace(problem)) => {
                     drop(writer);
-                    remove(path, hold)?;
+                    files.remove(hold)?;
                     writer = Self(connect(path)?);
                     state = CacheState::Replaced(problem);
                 }
@@ -341,7 +370,7 @@ impl Writer {
             };
             let columns = PageColumns {
                 title: row.get(2)?,
-                parent: row
+                normalized_parent: row
                     .get::<_, Option<String>>(3)?
                     .map(stored_page_id)
                     .transpose()?,
@@ -388,57 +417,80 @@ fn write_flags() -> OpenFlags {
         | OpenFlags::SQLITE_OPEN_NO_MUTEX
 }
 
+struct CacheFiles<'path> {
+    main: &'path Path,
+    sidecars: [PathBuf; 3],
+}
+
 enum Entries {
     Missing,
     Files,
     NotFiles,
 }
 
-fn names(path: &Path) -> impl Iterator<Item = PathBuf> + '_ {
-    std::iter::once(path.to_path_buf()).chain(SIDECARS.iter().map(move |suffix| {
-        let mut name = path.as_os_str().to_owned();
-        name.push(suffix);
-        PathBuf::from(name)
-    }))
+enum Entry {
+    Missing,
+    File,
+    Other,
 }
 
-fn entries(path: &Path) -> Result<Entries, RunError> {
-    let mut main = false;
-    for (i, name) in names(path).enumerate() {
-        match std::fs::symlink_metadata(&name) {
-            Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-            Err(e) => return Err(e.into()),
-            Ok(meta) if meta.is_dir() => return Err(RunError::Folder(file_name(&name))),
-            Ok(meta) if meta.is_file() => main |= i == 0,
-            Ok(_) => return Ok(Entries::NotFiles),
+impl<'path> CacheFiles<'path> {
+    fn new(main: &'path Path) -> Self {
+        Self {
+            main,
+            sidecars: SIDECARS.map(|suffix| {
+                let mut name = main.as_os_str().to_owned();
+                name.push(suffix);
+                PathBuf::from(name)
+            }),
         }
     }
-    Ok(if main {
-        Entries::Files
-    } else {
-        Entries::Missing
-    })
+
+    fn entries(&self) -> Result<Entries, RunError> {
+        let main = match entry_kind(self.main)? {
+            Entry::Missing => Entries::Missing,
+            Entry::File => Entries::Files,
+            Entry::Other => return Ok(Entries::NotFiles),
+        };
+        for sidecar in &self.sidecars {
+            if matches!(entry_kind(sidecar)?, Entry::Other) {
+                return Ok(Entries::NotFiles);
+            }
+        }
+        Ok(main)
+    }
+
+    fn remove(&self, hold: &dyn Fn(HoldPoint)) -> Result<(), RunError> {
+        hold(HoldPoint::BeforeRemove);
+        unlink(self.main)?;
+        hold(HoldPoint::AfterRemovingMain);
+        for sidecar in &self.sidecars {
+            unlink(sidecar)?;
+        }
+        Ok(())
+    }
+}
+
+fn entry_kind(path: &Path) -> Result<Entry, RunError> {
+    match std::fs::symlink_metadata(path) {
+        Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(Entry::Missing),
+        Err(e) => Err(e.into()),
+        Ok(meta) if meta.is_dir() => Err(RunError::Folder(file_name(path))),
+        Ok(meta) if meta.is_file() => Ok(Entry::File),
+        Ok(_) => Ok(Entry::Other),
+    }
+}
+
+fn unlink(path: &Path) -> Result<(), RunError> {
+    match entry_kind(path)? {
+        Entry::Missing => Ok(()),
+        Entry::File | Entry::Other => Ok(std::fs::remove_file(path)?),
+    }
 }
 
 fn file_name(path: &Path) -> String {
     path.file_name()
         .map_or_else(String::new, |n| n.to_string_lossy().into_owned())
-}
-
-fn remove(path: &Path, hold: &dyn Fn(HoldPoint)) -> Result<(), RunError> {
-    hold(HoldPoint::BeforeRemove);
-    for (i, name) in names(path).enumerate() {
-        match std::fs::symlink_metadata(&name) {
-            Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-            Err(e) => return Err(e.into()),
-            Ok(meta) if meta.is_dir() => return Err(RunError::Folder(file_name(&name))),
-            Ok(_) => std::fs::remove_file(&name)?,
-        }
-        if i == 0 {
-            hold(HoldPoint::AfterRemovingMain);
-        }
-    }
-    Ok(())
 }
 
 fn check(path: &Path, timings: &mut CheckTimings) -> Result<(), CacheProblem> {
@@ -577,7 +629,7 @@ pub(crate) fn allocate(
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct PageColumns {
     pub title: String,
-    pub parent: Option<PageId>,
+    pub normalized_parent: Option<PageId>,
     pub sibling_order: u64,
     pub favorite_order: Option<u64>,
     pub trash: Option<TrashColumns>,
@@ -614,7 +666,7 @@ pub(crate) fn page_columns(
         .into_iter()
         .map(|(id, record)| {
             let columns = PageColumns {
-                parent: forest.parent[&id].clone(),
+                normalized_parent: forest.parent[&id].clone(),
                 active: forest.active.contains(&id),
                 sibling_order: record.placement.order,
                 favorite_order: record.favorite.map(|f| f.order),
@@ -664,7 +716,7 @@ pub(crate) fn write_page(
         page.key.0,
         id.as_str(),
         c.title,
-        c.parent.as_ref().map(PageId::as_str),
+        c.normalized_parent.as_ref().map(PageId::as_str),
         c.sibling_order as i64,
         c.favorite_order.map(|o| o as i64),
         trash.map(|t| t.batch_id.as_str()),

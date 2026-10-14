@@ -9,7 +9,7 @@ use std::time::Instant;
 use tauri::State;
 
 use crate::storage::Storage;
-use crate::trace;
+use crate::trace::{self, IpcMeasurements, SearchHits};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Type)]
 pub enum IndexStatus {
@@ -183,8 +183,9 @@ pub async fn page_tree(storage: State<'_, Storage>) -> Result<PageTree, QueryErr
     off_main(storage.workspace()?, |w| {
         let started = Instant::now();
         let tree: PageTree = w.tree()?.into();
-        trace::ipc("page_tree", started, || {
-            format!("pages={} bytes={}", tree.pages.len(), json_len(&tree))
+        trace::ipc(started, || IpcMeasurements::PageTree {
+            pages: tree.pages.len(),
+            json_bytes: json_len(&tree),
         });
         Ok(tree)
     })
@@ -228,17 +229,14 @@ pub async fn search(
             },
         };
         let dto_time = started.elapsed() - core_time;
-        trace::ipc("search", started, || {
-            let hits = match &reply {
-                SearchReply::Indexing => "indexing".to_owned(),
-                SearchReply::Ready { hits, .. } => hits.len().to_string(),
-            };
-            format!(
-                "core_ms={} dto_ms={} hits={hits} bytes={}",
-                trace::ms(core_time),
-                trace::ms(dto_time),
-                json_len(&reply)
-            )
+        trace::ipc(started, || IpcMeasurements::Search {
+            core: core_time,
+            dto: dto_time,
+            hits: match &reply {
+                SearchReply::Indexing => SearchHits::Indexing,
+                SearchReply::Ready { hits, .. } => SearchHits::Count(hits.len()),
+            },
+            json_bytes: json_len(&reply),
         });
         Ok(reply)
     })
@@ -262,8 +260,8 @@ pub async fn backlinks(
                 issues: issues.iter().map(Into::into).collect(),
             },
         };
-        trace::ipc("backlinks", started, || {
-            format!("bytes={}", json_len(&reply))
+        trace::ipc(started, || IpcMeasurements::Backlinks {
+            json_bytes: json_len(&reply),
         });
         Ok(reply)
     })

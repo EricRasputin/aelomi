@@ -22,9 +22,71 @@ pub fn ms(duration: Duration) -> String {
     format!("{:.3}", duration.as_secs_f64() * 1000.0)
 }
 
-pub fn ipc(command: &str, started: Instant, fields: impl FnOnce() -> String) {
+pub enum SearchHits {
+    Indexing,
+    Count(usize),
+}
+
+pub enum IpcMeasurements {
+    DocLoad {
+        base64_bytes: usize,
+    },
+    DocAppend {
+        delta_bytes: usize,
+    },
+    PageTree {
+        pages: usize,
+        json_bytes: usize,
+    },
+    Search {
+        core: Duration,
+        dto: Duration,
+        hits: SearchHits,
+        json_bytes: usize,
+    },
+    Backlinks {
+        json_bytes: usize,
+    },
+}
+
+pub fn ipc(started: Instant, measure: impl FnOnce() -> IpcMeasurements) {
     if ipc_enabled() {
-        println!("ipc {command} ms={} {}", ms(started.elapsed()), fields());
+        let elapsed = started.elapsed();
+        println!("{}", format_ipc(elapsed, measure()));
+    }
+}
+
+fn format_ipc(elapsed: Duration, measurements: IpcMeasurements) -> String {
+    let total = ms(elapsed);
+    match measurements {
+        IpcMeasurements::DocLoad { base64_bytes } => {
+            format!("ipc doc_load ms={total} bytes={base64_bytes}")
+        }
+        IpcMeasurements::DocAppend { delta_bytes } => {
+            format!("ipc doc_append ms={total} bytes={delta_bytes}")
+        }
+        IpcMeasurements::PageTree { pages, json_bytes } => {
+            format!("ipc page_tree ms={total} pages={pages} bytes={json_bytes}")
+        }
+        IpcMeasurements::Search {
+            core,
+            dto,
+            hits,
+            json_bytes,
+        } => {
+            let hits = match hits {
+                SearchHits::Indexing => "indexing".to_owned(),
+                SearchHits::Count(count) => count.to_string(),
+            };
+            format!(
+                "ipc search ms={total} core_ms={} dto_ms={} hits={hits} bytes={json_bytes}",
+                ms(core),
+                ms(dto)
+            )
+        }
+        IpcMeasurements::Backlinks { json_bytes } => {
+            format!("ipc backlinks ms={total} bytes={json_bytes}")
+        }
     }
 }
 
@@ -54,4 +116,48 @@ pub fn startup_line(report: &StartupReport) -> String {
         ms(report.publish),
         since_start_ms(),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn each_ipc_line_names_its_command_and_only_numbers() {
+        let lines: Vec<String> = [
+            IpcMeasurements::DocLoad { base64_bytes: 344 },
+            IpcMeasurements::DocAppend { delta_bytes: 27 },
+            IpcMeasurements::PageTree {
+                pages: 6,
+                json_bytes: 1_203,
+            },
+            IpcMeasurements::Search {
+                core: Duration::from_micros(812),
+                dto: Duration::from_nanos(45_678),
+                hits: SearchHits::Count(3),
+                json_bytes: 2_048,
+            },
+            IpcMeasurements::Search {
+                core: Duration::from_micros(90),
+                dto: Duration::ZERO,
+                hits: SearchHits::Indexing,
+                json_bytes: 10,
+            },
+            IpcMeasurements::Backlinks { json_bytes: 77 },
+        ]
+        .into_iter()
+        .map(|measurements| format_ipc(Duration::from_nanos(2_345_678), measurements))
+        .collect();
+        assert_eq!(
+            lines,
+            [
+                "ipc doc_load ms=2.346 bytes=344",
+                "ipc doc_append ms=2.346 bytes=27",
+                "ipc page_tree ms=2.346 pages=6 bytes=1203",
+                "ipc search ms=2.346 core_ms=0.812 dto_ms=0.046 hits=3 bytes=2048",
+                "ipc search ms=2.346 core_ms=0.090 dto_ms=0.000 hits=indexing bytes=10",
+                "ipc backlinks ms=2.346 bytes=77",
+            ]
+        );
+    }
 }

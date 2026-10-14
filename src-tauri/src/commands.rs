@@ -10,6 +10,7 @@ use tauri::{AppHandle, Manager, Runtime, State};
 use crate::index::{self, IndexChanged, IndexStatusChanged};
 use crate::quit::{QuitPhase, QuitStatus, QuitStatusChanged};
 use crate::storage::{Health, Storage, StorageError, StorageHealthChanged, StorageStatus};
+use crate::trace::IpcMeasurements;
 
 #[derive(Deserialize, Type)]
 pub struct PingRequest {
@@ -187,7 +188,9 @@ pub async fn doc_load(storage: State<'_, Storage>, doc_id: String) -> Result<Str
     tauri::async_runtime::spawn_blocking(move || {
         let started = Instant::now();
         let state = BASE64.encode(workspace.load(&doc)?);
-        crate::trace::ipc("doc_load", started, || format!("bytes={}", state.len()));
+        crate::trace::ipc(started, || IpcMeasurements::DocLoad {
+            base64_bytes: state.len(),
+        });
         Ok(state)
     })
     .await
@@ -209,7 +212,9 @@ pub fn doc_append(
         .decode(update)
         .map_err(|_| StorageError::InvalidUpdate)?;
     let seq = storage.workspace()?.append(&DocId::new(doc_id)?, &update)?;
-    crate::trace::ipc("doc_append", started, || format!("bytes={}", update.len()));
+    crate::trace::ipc(started, || IpcMeasurements::DocAppend {
+        delta_bytes: update.len(),
+    });
     Ok(seq.0 as f64)
 }
 
