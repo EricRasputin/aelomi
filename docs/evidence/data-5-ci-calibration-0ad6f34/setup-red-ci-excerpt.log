@@ -1,0 +1,91 @@
+2026-10-14T23:09:02.2256160Z ##[group]Run pnpm perf:keystroke
+2026-10-14T23:09:02.2256690Z pnpm perf:keystroke
+2026-10-14T23:09:02.2327840Z shell: /bin/bash -e {0}
+2026-10-14T23:09:02.2330940Z env:
+2026-10-14T23:09:02.2331990Z   E2E_TELEMETRY_DISABLED: 1
+2026-10-14T23:09:02.2333090Z   DO_NOT_TRACK: 1
+2026-10-14T23:09:02.2333970Z   PNPM_HOME: /Users/runner/setup-pnpm/node_modules/.bin
+2026-10-14T23:09:02.2334490Z   AELOMI_PERF_CI: 1
+2026-10-14T23:09:02.2334870Z ##[endgroup]
+2026-10-14T23:09:02.3546190Z $ playwright test --project perf --workers 1
+2026-10-14T23:09:03.7897190Z [WebServer] $ vite preview --mode mock --host 127.0.0.1 --port 4173 --strictPort
+2026-10-14T23:09:04.2506840Z
+2026-10-14T23:09:04.2507570Z Running 6 tests using 1 worker
+2026-10-14T23:09:04.2508130Z
+2026-10-14T23:09:07.9550880Z editor-empty: NOISY: load 8.84 on 3 cores
+2026-10-14T23:10:35.3693250Z editor-empty: full key-to-paint p95 20 ms > 19 ms FAIL (local budget, information) | NOISY: load 8.84 on 3 cores
+2026-10-14T23:10:35.3697060Z   app-owned p95 8 ms <= 19 ms PASS (hosted budget, gate)
+2026-10-14T23:10:35.3699120Z   tick wait p50 6 ms p95 15 ms, key-to-input p50 3 ms p95 6 ms, render p50 1 ms p95 3 ms, frame start to the recorder's rAF p50 0 ms p95 0 ms
+2026-10-14T23:10:35.3704540Z   full key-to-paint p50 11 ms, range 3.0 to 45.0 ms, per-load appOwned p95 7, 10, 8, double rAF p95 35 ms
+2026-10-14T23:10:35.3705440Z   split check: max |app-owned + tick wait - full| 0.000 ms over 405 samples from 3 loads
+2026-10-14T23:10:35.3706510Z   idle rAF cadence per load 17.0, 17.0, 17.0 ms, load average 14.40 12.54 8.08
+2026-10-14T23:10:35.3707350Z   editor-empty: NOISY: load 14.40 on 3 cores
+2026-10-14T23:10:35.4878140Z   ✓  1 [perf] › tests/playwright/perf/keystroke.spec.ts:105:3 › EDIT-14 keystroke-to-paint on the editor-empty surface (1.5m)
+2026-10-14T23:10:36.1634980Z editor-page-5000-blocks: NOISY: load 14.40 on 3 cores
+2026-10-14T23:10:41.4962210Z   ✘  2 [perf] › tests/playwright/perf/keystroke.spec.ts:105:3 › EDIT-14 keystroke-to-paint on the editor-page-5000-blocks surface (5.9s)
+2026-10-14T23:10:43.6476740Z empty: NOISY: load 13.08 on 3 cores
+2026-10-14T23:12:08.5637710Z empty: full key-to-paint p95 20 ms > 19 ms FAIL (local budget, information) | NOISY: load 13.08 on 3 cores
+2026-10-14T23:12:08.5638640Z   app-owned p95 4 ms <= 19 ms PASS (hosted budget, information)
+2026-10-14T23:12:08.5639450Z   tick wait p50 9 ms p95 17 ms, key-to-input p50 1 ms p95 2 ms, render p50 1 ms p95 3 ms, frame start to the recorder's rAF p50 0 ms p95 0 ms
+2026-10-14T23:12:08.5640540Z   full key-to-paint p50 12 ms, range 2.0 to 29.0 ms, per-load appOwned p95 5, 4, 5, double rAF p95 35 ms
+2026-10-14T23:14:02.8168450Z     Locator: getByTestId('page-editor')
+2026-10-14T23:14:02.8169190Z     Expected: visible
+2026-10-14T23:14:02.8169660Z     Timeout: 5000ms
+2026-10-14T23:14:02.8170180Z     Error: element(s) not found
+2026-10-14T23:14:02.8170490Z
+2026-10-14T23:14:02.8170710Z     Call log:
+2026-10-14T23:14:02.8171300Z       - Expect "toBeVisible" getByTestId('page-editor') with timeout 5000ms
+2026-10-14T23:14:02.8174240Z       - waiting for getByTestId('page-editor')
+2026-10-14T23:14:02.8174630Z
+2026-10-14T23:14:02.8174740Z
+2026-10-14T23:14:02.8175140Z       114 |       await page.goto(`/perf/keystroke/${surface}`);
+2026-10-14T23:14:02.8175750Z       115 |       const surfaceEl = page.getByTestId(testId);
+2026-10-14T23:14:02.8176350Z     > 116 |       await expect(surfaceEl).toBeVisible();
+2026-10-14T23:14:02.8176870Z           |                               ^
+2026-10-14T23:14:02.8177430Z       117 |       const before = await surfaceEl.evaluate((el) => {
+2026-10-14T23:14:02.8177900Z       118 |         el.focus();
+2026-10-14T23:14:02.8178460Z       119 |         const texts = el.querySelectorAll(".bn-inline-content");
+2026-10-14T23:14:02.8179400Z         at /Users/runner/work/aelomi/aelomi/tests/playwright/perf/keystroke.spec.ts:116:31
+2026-10-14T23:14:02.8179930Z
+2026-10-14T23:14:02.8180520Z     Error Context: test-results/perf-keystroke-EDIT-14-key-eef20-or-page-5000-blocks-surface-perf/error-context.md
+2026-10-14T23:14:02.8181090Z
+2026-10-14T23:14:02.8181930Z   2) [perf] › tests/playwright/perf/palette.spec.ts:65:1 › CMD-4 and CMD-5 the palette shows results within one frame of each keystroke on the 10,000-page fixture
+2026-10-14T23:14:02.8182610Z
+2026-10-14T23:14:02.8183000Z     Error: CMD palette results p95 (ci mode) | NOISY: load 15.19 on 3 cores
+2026-10-14T23:14:02.8183410Z
+2026-10-14T23:14:02.8183720Z     expect(received).toBeLessThanOrEqual(expected)
+2026-10-14T23:14:02.8184070Z
+--- artifact header (lines 1-32) of /tmp/aelomi-data5-ci-keystroke-0ad6f34-r2-artifact/test-results/perf-keystroke-EDIT-14-key-eef20-or-page-5000-blocks-surface-perf/error-context.md
+# Instructions
+
+- Following Playwright test failed.
+- Explain why, be concise, respect Playwright best practices.
+- Provide a snippet of code with the fix, if possible.
+
+# Test info
+
+- Name: perf/keystroke.spec.ts >> EDIT-14 keystroke-to-paint on the editor-page-5000-blocks surface
+- Location: tests/playwright/perf/keystroke.spec.ts:105:3
+
+# Error details
+
+```
+Error: expect(locator).toBeVisible() failed
+
+Locator: getByTestId('page-editor')
+Expected: visible
+Timeout: 5000ms
+Error: element(s) not found
+
+Call log:
+  - Expect "toBeVisible" getByTestId('page-editor') with timeout 5000ms
+  - waiting for getByTestId('page-editor')
+
+```
+
+```yaml
+- banner: Aelomi
+- status: IPC ok · core 0.1.0-mock · seq 1
+- main:
+  - article "Page":
+--- artifact grep for read-only/paused/alert notices: 0 matches

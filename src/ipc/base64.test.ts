@@ -1,3 +1,4 @@
+import { Buffer } from "node:buffer";
 import { expect, test } from "vitest";
 import { fromBase64, toBase64 } from "./base64";
 
@@ -13,7 +14,7 @@ test("round-trips random bytes across chunk boundaries", () => {
     const bytes = new Uint8Array(length);
     for (let i = 0; i < length; i += 65_536)
       crypto.getRandomValues(bytes.subarray(i, i + 65_536));
-    expect(fromBase64(toBase64(bytes))).toEqual(bytes);
+    expect(Buffer.compare(fromBase64(toBase64(bytes)), bytes)).toBe(0);
   }
 });
 

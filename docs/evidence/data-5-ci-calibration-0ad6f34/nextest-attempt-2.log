@@ -1,0 +1,936 @@
+2026-10-14T23:06:35.5415210Z Current runner version: '2.337.0'
+2026-10-14T23:06:35.5479960Z ##[group]Runner Image Provisioner
+2026-10-14T23:06:35.5480950Z Hosted Compute Agent
+2026-10-14T23:06:35.5481370Z Version: 20260828.587
+2026-10-14T23:06:35.5481970Z Commit: abac92662cab4cc7352de4f9f9d2e2419aad9c29
+2026-10-14T23:06:35.5482530Z Build Date: 2026-08-28T16:44:25Z
+2026-10-14T23:06:35.5483080Z Worker ID: {a24dc8e5-2e6b-47f9-93b8-be4a0efcc1a9}
+2026-10-14T23:06:35.5483580Z Azure Region: westus
+2026-10-14T23:06:35.5484080Z ##[endgroup]
+2026-10-14T23:06:35.5485310Z ##[group]Operating System
+2026-10-14T23:06:35.5485710Z macOS
+2026-10-14T23:06:35.5486110Z 15.7.9
+2026-10-14T23:06:35.5486460Z 24G830
+2026-10-14T23:06:35.5487720Z ##[endgroup]
+2026-10-14T23:06:35.5489370Z ##[group]Runner Image
+2026-10-14T23:06:35.5491340Z Image: macos-15-arm64
+2026-10-14T23:06:35.5492560Z Version: 20260907.0337.1
+2026-10-14T23:06:35.5495540Z Included Software: https://github.com/actions/runner-images/blob/macos-15-arm64/20260907.0337/images/macos/macos-15-arm64-Readme.md
+2026-10-14T23:06:35.5497280Z Image Release: https://github.com/actions/runner-images/releases/tag/macos-15-arm64%2F20260907.0337
+2026-10-14T23:06:35.5498130Z ##[endgroup]
+2026-10-14T23:06:35.5499230Z ##[group]GITHUB_TOKEN Permissions
+2026-10-14T23:06:35.5502270Z Contents: read
+2026-10-14T23:06:35.5502800Z Metadata: read
+2026-10-14T23:06:35.5503180Z ##[endgroup]
+2026-10-14T23:06:35.5505130Z Secret source: Actions
+2026-10-14T23:06:35.5505860Z Cache mode: write
+2026-10-14T23:06:35.5507910Z Prepare workflow directory
+2026-10-14T23:06:35.6258720Z Prepare all required actions
+2026-10-14T23:06:35.6313830Z Getting action download info
+2026-10-14T23:06:36.0363740Z Download action repository 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1' (SHA:3d3c42e5aac5ba805825da76410c181273ba90b1)
+2026-10-14T23:06:36.2844640Z Download action repository 'actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1' (SHA:949feb2413d6458794dcd2491c4babbbce0c15c1)
+2026-10-14T23:06:36.7631560Z Download action repository 'Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6' (SHA:6323deb102c322ba6fcbdcafc7e3dddab59af2b6)
+2026-10-14T23:06:37.2050970Z Download action repository 'taiki-e/install-action@ab6895351a88b908e96a4697860d4ffea5e57dbe' (SHA:ab6895351a88b908e96a4697860d4ffea5e57dbe)
+2026-10-14T23:06:37.8253210Z Complete job name: nextest
+2026-10-14T23:06:37.9017370Z ##[group]Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+2026-10-14T23:06:37.9018530Z with:
+2026-10-14T23:06:37.9019110Z   repository: aelomi/aelomi
+2026-10-14T23:06:37.9024550Z   token: ***
+2026-10-14T23:06:37.9025120Z   ssh-strict: true
+2026-10-14T23:06:37.9025690Z   ssh-user: git
+2026-10-14T23:06:37.9026280Z   persist-credentials: true
+2026-10-14T23:06:37.9026940Z   clean: true
+2026-10-14T23:06:37.9027550Z   sparse-checkout-cone-mode: true
+2026-10-14T23:06:37.9028250Z   fetch-depth: 1
+2026-10-14T23:06:37.9028850Z   fetch-tags: false
+2026-10-14T23:06:37.9029450Z   show-progress: true
+2026-10-14T23:06:37.9030060Z   lfs: false
+2026-10-14T23:06:37.9030770Z   submodules: false
+2026-10-14T23:06:37.9031370Z   set-safe-directory: true
+2026-10-14T23:06:37.9032040Z   allow-unsafe-pr-checkout: false
+2026-10-14T23:06:37.9033080Z env:
+2026-10-14T23:06:37.9033660Z   E2E_TELEMETRY_DISABLED: 1
+2026-10-14T23:06:37.9034310Z   DO_NOT_TRACK: 1
+2026-10-14T23:06:37.9034950Z ##[endgroup]
+2026-10-14T23:06:38.2964950Z Syncing repository: aelomi/aelomi
+2026-10-14T23:06:38.2969390Z ##[group]Getting Git version info
+2026-10-14T23:06:38.2971450Z Working directory is '/Users/runner/work/aelomi/aelomi'
+2026-10-14T23:06:38.2974490Z [command]/opt/homebrew/bin/git version
+2026-10-14T23:06:38.3479390Z git version 2.55.0
+2026-10-14T23:06:38.3488040Z ##[endgroup]
+2026-10-14T23:06:38.3494060Z Copying '/Users/runner/.gitconfig' to '/Users/runner/work/_temp/124110ea-788f-43ed-b090-47e6e7617029/.gitconfig'
+2026-10-14T23:06:38.3505600Z Temporarily overriding HOME='/Users/runner/work/_temp/124110ea-788f-43ed-b090-47e6e7617029' before making global git config changes
+2026-10-14T23:06:38.3511110Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-14T23:06:38.3513130Z [command]/opt/homebrew/bin/git config --global --add safe.directory /Users/runner/work/aelomi/aelomi
+2026-10-14T23:06:38.3644600Z Deleting the contents of '/Users/runner/work/aelomi/aelomi'
+2026-10-14T23:06:38.3648560Z ##[group]Determining repository object format
+2026-10-14T23:06:38.3651360Z ##[endgroup]
+2026-10-14T23:06:38.3653630Z ##[group]Initializing the repository
+2026-10-14T23:06:38.3655880Z [command]/opt/homebrew/bin/git init /Users/runner/work/aelomi/aelomi
+2026-10-14T23:06:38.3872730Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-10-14T23:06:38.3874210Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-10-14T23:06:38.3875400Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-10-14T23:06:38.3876340Z hint: call:
+2026-10-14T23:06:38.3876890Z hint:
+2026-10-14T23:06:38.3877570Z hint: 	git config --global init.defaultBranch <name>
+2026-10-14T23:06:38.3878380Z hint:
+2026-10-14T23:06:38.3879630Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-10-14T23:06:38.3881050Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-10-14T23:06:38.3882750Z hint:
+2026-10-14T23:06:38.3884690Z hint: 	git branch -m <name>
+2026-10-14T23:06:38.3886370Z hint:
+2026-10-14T23:06:38.3888460Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-10-14T23:06:38.3892050Z Initialized empty Git repository in /Users/runner/work/aelomi/aelomi/.git/
+2026-10-14T23:06:38.3897530Z [command]/opt/homebrew/bin/git remote add origin https://github.com/aelomi/aelomi
+2026-10-14T23:06:38.3957400Z ##[endgroup]
+2026-10-14T23:06:38.3958620Z ##[group]Disabling automatic garbage collection
+2026-10-14T23:06:38.3960870Z [command]/opt/homebrew/bin/git config --local gc.auto 0
+2026-10-14T23:06:38.4094870Z ##[endgroup]
+2026-10-14T23:06:38.4099580Z ##[group]Setting up auth
+2026-10-14T23:06:38.4108990Z Removing SSH command configuration
+2026-10-14T23:06:38.4110590Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-14T23:06:38.4178340Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-14T23:06:38.5391630Z Removing HTTP extra header
+2026-10-14T23:06:38.5398330Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-14T23:06:38.5469510Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-14T23:06:38.6558950Z Removing includeIf entries pointing to credentials config files
+2026-10-14T23:06:38.6562520Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-14T23:06:38.6610060Z [command]/opt/homebrew/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-14T23:06:38.7579460Z [command]/opt/homebrew/bin/git config --file /Users/runner/work/_temp/git-credentials-7404665a-ae67-4044-a895-c407a1797761.config http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-10-14T23:06:38.7703300Z [command]/opt/homebrew/bin/git config --local includeIf.gitdir:/Users/runner/work/aelomi/aelomi/.git.path /Users/runner/work/_temp/git-credentials-7404665a-ae67-4044-a895-c407a1797761.config
+2026-10-14T23:06:38.7812190Z [command]/opt/homebrew/bin/git config --local includeIf.gitdir:/Users/runner/work/aelomi/aelomi/.git/worktrees/*.path /Users/runner/work/_temp/git-credentials-7404665a-ae67-4044-a895-c407a1797761.config
+2026-10-14T23:06:38.7852980Z [command]/opt/homebrew/bin/git config --local includeIf.gitdir:/github/workspace/.git.path /github/runner_temp/git-credentials-7404665a-ae67-4044-a895-c407a1797761.config
+2026-10-14T23:06:38.7982110Z [command]/opt/homebrew/bin/git config --local includeIf.gitdir:/github/workspace/.git/worktrees/*.path /github/runner_temp/git-credentials-7404665a-ae67-4044-a895-c407a1797761.config
+2026-10-14T23:06:38.8164530Z ##[endgroup]
+2026-10-14T23:06:38.8166130Z ##[group]Fetching the repository
+2026-10-14T23:06:38.8174230Z [command]/opt/homebrew/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +64be23dac9baaf6f3d9e84fab7b02c03db6b664e:refs/remotes/pull/68/merge
+2026-10-14T23:06:39.5357180Z From https://github.com/aelomi/aelomi
+2026-10-14T23:06:39.5359350Z  * [new ref]         64be23dac9baaf6f3d9e84fab7b02c03db6b664e -> pull/68/merge
+2026-10-14T23:06:39.5364400Z ##[endgroup]
+2026-10-14T23:06:39.5365550Z ##[group]Determining the checkout info
+2026-10-14T23:06:39.5366790Z ##[endgroup]
+2026-10-14T23:06:39.5373180Z [command]/opt/homebrew/bin/git sparse-checkout disable
+2026-10-14T23:06:39.5500910Z [command]/opt/homebrew/bin/git config --local --unset-all extensions.worktreeConfig
+2026-10-14T23:06:39.5597310Z ##[group]Checking out the ref
+2026-10-14T23:06:39.5600620Z [command]/opt/homebrew/bin/git checkout --progress --force refs/remotes/pull/68/merge
+2026-10-14T23:06:39.6754000Z HEAD is now at 64be23d Merge 0ad6f34dd1b931715e4a086bf3b43e2cde85e582 into 0c5bb572adc87c5f551b59692f842b9b2c5ace3e
+2026-10-14T23:06:39.6774490Z ##[endgroup]
+2026-10-14T23:06:39.6884410Z [command]/opt/homebrew/bin/git log -1 --format=%H
+2026-10-14T23:06:39.6970460Z 64be23dac9baaf6f3d9e84fab7b02c03db6b664e
+2026-10-14T23:06:39.7509010Z ##[group]Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+2026-10-14T23:06:39.7510060Z with:
+2026-10-14T23:06:39.7510630Z   node-version-file: .node-version
+2026-10-14T23:06:39.7511310Z   check-latest: false
+2026-10-14T23:06:39.7516710Z   token: ***
+2026-10-14T23:06:39.7517300Z   package-manager-cache: true
+2026-10-14T23:06:39.7517950Z env:
+2026-10-14T23:06:39.7518500Z   E2E_TELEMETRY_DISABLED: 1
+2026-10-14T23:06:39.7519110Z   DO_NOT_TRACK: 1
+2026-10-14T23:06:39.7519660Z ##[endgroup]
+2026-10-14T23:06:39.8739470Z Node version file is not TOML file
+2026-10-14T23:06:39.8741510Z Resolved .node-version as 24
+2026-10-14T23:06:39.8794230Z Found in cache @ /Users/runner/hostedtoolcache/node/24.20.0/arm64
+2026-10-14T23:06:40.0781850Z ##[group]Environment details
+2026-10-14T23:06:40.6484350Z node: v24.20.0
+2026-10-14T23:06:40.6485350Z npm: 11.19.0
+2026-10-14T23:06:40.6485940Z yarn: 1.22.22
+2026-10-14T23:06:40.6488210Z ##[endgroup]
+2026-10-14T23:06:40.6567170Z ##[group]Run rustup show active-toolchain
+2026-10-14T23:06:40.6567530Z rustup show active-toolchain
+2026-10-14T23:06:40.6609380Z shell: /bin/bash -e {0}
+2026-10-14T23:06:40.6609750Z env:
+2026-10-14T23:06:40.6609980Z   E2E_TELEMETRY_DISABLED: 1
+2026-10-14T23:06:40.6610200Z   DO_NOT_TRACK: 1
+2026-10-14T23:06:40.6610390Z ##[endgroup]
+2026-10-14T23:06:40.7665800Z info: syncing channel updates for 1.98.1-aarch64-apple-darwin
+2026-10-14T23:06:40.8920810Z info: latest update on 2026-09-03 for version 1.98.1 (48a229cea 2026-09-01)
+2026-10-14T23:06:40.8923450Z info: downloading 3 components
+2026-10-14T23:06:47.6249580Z 1.98.1-aarch64-apple-darwin (overridden by '/Users/runner/work/aelomi/aelomi/rust-toolchain.toml')
+2026-10-14T23:06:47.6680240Z ##[group]Run Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+2026-10-14T23:06:47.6680840Z with:
+2026-10-14T23:06:47.6681020Z   prefix-key: v0-rust
+2026-10-14T23:06:47.6681340Z   add-job-id-key: true
+2026-10-14T23:06:47.6681620Z   add-rust-environment-hash-key: true
+2026-10-14T23:06:47.6681860Z   cache-targets: true
+2026-10-14T23:06:47.6682100Z   cache-all-crates: false
+2026-10-14T23:06:47.6682360Z   cache-workspace-crates: false
+2026-10-14T23:06:47.6682660Z   save-if: true
+2026-10-14T23:06:47.6682890Z   cache-provider: github
+2026-10-14T23:06:47.6683210Z   cache-bin: true
+2026-10-14T23:06:47.6683410Z   lookup-only: false
+2026-10-14T23:06:47.6699250Z   cmd-format: {0}
+2026-10-14T23:06:47.6699990Z env:
+2026-10-14T23:06:47.6700480Z   E2E_TELEMETRY_DISABLED: 1
+2026-10-14T23:06:47.6701170Z   DO_NOT_TRACK: 1
+2026-10-14T23:06:47.6701670Z ##[endgroup]
+2026-10-14T23:06:48.7054690Z ##[group]Cache Configuration
+2026-10-14T23:06:48.7071710Z Cache Provider:
+2026-10-14T23:06:48.7086550Z     github
+2026-10-14T23:06:48.7088530Z Workspaces:
+2026-10-14T23:06:48.7089520Z     /Users/runner/work/aelomi/aelomi
+2026-10-14T23:06:48.7090050Z Cache Paths:
+2026-10-14T23:06:48.7090470Z     /Users/runner/.cargo/bin
+2026-10-14T23:06:48.7091090Z     /Users/runner/.cargo/.crates.toml
+2026-10-14T23:06:48.7091800Z     /Users/runner/.cargo/.crates2.json
+2026-10-14T23:06:48.7093290Z     /Users/runner/.cargo/registry
+2026-10-14T23:06:48.7093940Z     /Users/runner/.cargo/git
+2026-10-14T23:06:48.7094400Z     /Users/runner/work/aelomi/aelomi/target
+2026-10-14T23:06:48.7094920Z Restore Key:
+2026-10-14T23:06:48.7095280Z     v0-rust-nextest-Darwin-arm64-4d367070
+2026-10-14T23:06:48.7096220Z Cache Key:
+2026-10-14T23:06:48.7107390Z     v0-rust-nextest-Darwin-arm64-4d367070-d9467875
+2026-10-14T23:06:48.7121620Z .. Prefix:
+2026-10-14T23:06:48.7122160Z   - v0-rust-nextest-Darwin-arm64
+2026-10-14T23:06:48.7122710Z .. Environment considered:
+2026-10-14T23:06:48.7123530Z   - Rust Versions:
+2026-10-14T23:06:48.7124100Z     - 1.98.1 aarch64-apple-darwin 48a229ceaefd4985c50990b14116b6d856af0985
+2026-10-14T23:06:48.7126060Z   - CARGO_INCREMENTAL
+2026-10-14T23:06:48.7126470Z .. Lockfiles considered:
+2026-10-14T23:06:48.7127020Z   - /Users/runner/work/aelomi/aelomi/Cargo.lock
+2026-10-14T23:06:48.7128260Z   - /Users/runner/work/aelomi/aelomi/crates/core/Cargo.toml
+2026-10-14T23:06:48.7129350Z   - /Users/runner/work/aelomi/aelomi/rust-toolchain.toml
+2026-10-14T23:06:48.7129870Z   - /Users/runner/work/aelomi/aelomi/src-tauri/Cargo.toml
+2026-10-14T23:06:48.7130840Z ##[endgroup]
+2026-10-14T23:06:48.7131210Z
+2026-10-14T23:06:48.7131740Z ... Restoring cache ...
+2026-10-14T23:06:49.0989860Z Cache hit for: v0-rust-nextest-Darwin-arm64-4d367070-d9467875
+2026-10-14T23:06:50.4092520Z Received 0 of 628516142 (0.0%), 0.0 MBs/sec
+2026-10-14T23:06:51.4120060Z Received 58720256 of 628516142 (9.3%), 27.9 MBs/sec
+2026-10-14T23:06:52.4132750Z Received 134217728 of 628516142 (21.4%), 42.6 MBs/sec
+2026-10-14T23:06:53.4191490Z Received 184549376 of 628516142 (29.4%), 43.9 MBs/sec
+2026-10-14T23:06:54.4165360Z Received 264241152 of 628516142 (42.0%), 50.3 MBs/sec
+2026-10-14T23:06:55.4185030Z Received 285212672 of 628516142 (45.4%), 45.2 MBs/sec
+2026-10-14T23:06:56.4204340Z Received 360710144 of 628516142 (57.4%), 49.0 MBs/sec
+2026-10-14T23:06:57.4207410Z Received 419430400 of 628516142 (66.7%), 49.9 MBs/sec
+2026-10-14T23:06:58.4242390Z Received 503316480 of 628516142 (80.1%), 53.2 MBs/sec
+2026-10-14T23:06:59.4243790Z Received 541065216 of 628516142 (86.1%), 51.5 MBs/sec
+2026-10-14T23:07:00.4262080Z Received 624321838 of 628516142 (99.3%), 54.0 MBs/sec
+2026-10-14T23:07:00.7464800Z Received 628516142 of 628516142 (100.0%), 52.9 MBs/sec
+2026-10-14T23:07:00.7549590Z Cache Size: ~599 MB (628516142 B)
+2026-10-14T23:07:00.7900130Z [command]/opt/homebrew/bin/gtar -xf /Users/runner/work/_temp/acf5cda5-08f8-430a-a54a-08ba101bb84a/cache.tzst -P -C /Users/runner/work/aelomi/aelomi --delay-directory-restore --use-compress-program unzstd
+2026-10-14T23:07:09.5364090Z Cache restored successfully
+2026-10-14T23:07:09.5863190Z Restored from cache key "v0-rust-nextest-Darwin-arm64-4d367070-d9467875" full match: true.
+2026-10-14T23:07:09.6405400Z ##[group]Run taiki-e/install-action@ab6895351a88b908e96a4697860d4ffea5e57dbe
+2026-10-14T23:07:09.6406390Z with:
+2026-10-14T23:07:09.6407080Z   tool: cargo-nextest@0.9.148
+2026-10-14T23:07:09.6407720Z   fallback: none
+2026-10-14T23:07:09.6408410Z   checksum: true
+2026-10-14T23:07:09.6409080Z env:
+2026-10-14T23:07:09.6409590Z   E2E_TELEMETRY_DISABLED: 1
+2026-10-14T23:07:09.6410320Z   DO_NOT_TRACK: 1
+2026-10-14T23:07:09.6411070Z   CACHE_ON_FAILURE: false
+2026-10-14T23:07:09.6411690Z   CARGO_INCREMENTAL: 0
+2026-10-14T23:07:09.6424990Z ##[endgroup]
+2026-10-14T23:07:09.6679930Z ##[start-action display=Run bail() {;id=__taiki-e_install-action.__run]
+2026-10-14T23:07:09.6846010Z ##[group]Run bail() {
+2026-10-14T23:07:09.6846770Z bail() {
+2026-10-14T23:07:09.6847490Z   printf '::error::install-action: %s\n' "$*"
+2026-10-14T23:07:09.6848220Z   exit 1
+2026-10-14T23:07:09.6849470Z }
+2026-10-14T23:07:09.6850650Z # If /bin/sh is dash, environment variable containing % is not imported, but is fine
+2026-10-14T23:07:09.6852520Z # because it also means that it will not be exposed to subprocess.
+2026-10-14T23:07:09.6853670Z if /usr/bin/env | grep -Eq '^BASH_FUNC_'; then
+2026-10-14T23:07:09.6854920Z   bail 'bash function injection via BASH_FUNC_ environment variable is not allowed for security reasons'
+2026-10-14T23:07:09.6856180Z fi
+2026-10-14T23:07:09.6856790Z if ! command -v bash >/dev/null; then
+2026-10-14T23:07:09.6857610Z   if grep -Eq '^ID=alpine' /etc/os-release; then
+2026-10-14T23:07:09.6858790Z     printf '::group::Install packages required for install-action (bash)\n'
+2026-10-14T23:07:09.6860000Z     # NB: sync with apk_install in main.sh
+2026-10-14T23:07:09.6860830Z     if command -v sudo >/dev/null; then
+2026-10-14T23:07:09.6861760Z       sudo apk --no-cache add bash
+2026-10-14T23:07:09.6862560Z     elif command -v doas >/dev/null; then
+2026-10-14T23:07:09.6863520Z       doas apk --no-cache add bash
+2026-10-14T23:07:09.6864310Z     else
+2026-10-14T23:07:09.6864870Z       apk --no-cache add bash
+2026-10-14T23:07:09.6865590Z     fi
+2026-10-14T23:07:09.6867330Z     printf '::endgroup::\n'
+2026-10-14T23:07:09.6868470Z   else
+2026-10-14T23:07:09.6869140Z     bail 'this action requires bash'
+2026-10-14T23:07:09.6869820Z   fi
+2026-10-14T23:07:09.6870320Z fi
+2026-10-14T23:07:09.6871140Z bash --noprofile --norc "${GITHUB_ACTION_PATH:?}/main.sh"
+2026-10-14T23:07:09.6889730Z shell: /usr/bin/env -u ENV -u BASH_ENV -u CDPATH -u SHELLOPTS -u BASHOPTS /bin/sh -eu {0}
+2026-10-14T23:07:09.6890830Z env:
+2026-10-14T23:07:09.6891490Z   E2E_TELEMETRY_DISABLED: 1
+2026-10-14T23:07:09.6892080Z   DO_NOT_TRACK: 1
+2026-10-14T23:07:09.6892680Z   CACHE_ON_FAILURE: false
+2026-10-14T23:07:09.6893370Z   CARGO_INCREMENTAL: 0
+2026-10-14T23:07:09.6894030Z   INPUT_TOOL: cargo-nextest@0.9.148
+2026-10-14T23:07:09.6894700Z   INPUT_CHECKSUM: true
+2026-10-14T23:07:09.6895220Z   INPUT_FALLBACK: none
+2026-10-14T23:07:09.6895780Z   DEFAULT_GITHUB_TOKEN:
+2026-10-14T23:07:09.6896810Z   ACTION_USER_AGENT: taiki-e/install-action (ab6895351a88b908e96a4697860d4ffea5e57dbe)
+2026-10-14T23:07:09.6897810Z   RUNNER_OS: macOS
+2026-10-14T23:07:09.6898430Z   RUNNER_ARCH: ARM64
+2026-10-14T23:07:09.6898960Z ##[endgroup]
+2026-10-14T23:07:09.7933220Z info: host platform: aarch64_macos
+2026-10-14T23:07:09.8341220Z info: installing cargo-nextest@0.9.148
+2026-10-14T23:07:09.8745730Z info: downloading https://github.com/nextest-rs/nextest/releases/download/cargo-nextest-0.9.148/cargo-nextest-0.9.148-universal-apple-darwin.tar.gz
+2026-10-14T23:07:10.2248210Z info: verifying sha256 checksum for cargo-nextest-0.9.148-universal-apple-darwin.tar.gz
+2026-10-14T23:07:10.4280080Z info: cargo-nextest installed at /Users/runner/.cargo/bin/cargo-nextest
+2026-10-14T23:07:10.4301170Z + cargo-nextest nextest --version
+2026-10-14T23:07:10.4405500Z cargo-nextest 0.9.148 (cd1d6d546 2026-10-07)
+2026-10-14T23:07:10.4406140Z release: 0.9.148
+2026-10-14T23:07:10.4406640Z commit-hash: cd1d6d5467322dbc0d39a80cb671d000ac302798
+2026-10-14T23:07:10.4407090Z commit-date: 2026-10-07
+2026-10-14T23:07:10.4407420Z host: aarch64-apple-darwin
+2026-10-14T23:07:10.4410430Z
+2026-10-14T23:07:10.4455320Z ##[end-action id=__taiki-e_install-action.__run;outcome=success;conclusion=success;duration_ms=776]
+2026-10-14T23:07:10.4460630Z ##[start-action display=Run Set-StrictMode -Version Latest;id=__taiki-e_install-action.__run_2]
+2026-10-14T23:07:10.4465530Z ##[end-action id=__taiki-e_install-action.__run_2;outcome=skipped;conclusion=skipped;duration_ms=0]
+2026-10-14T23:07:10.4505160Z ##[group]Run cargo nextest run --workspace --locked
+2026-10-14T23:07:10.4505510Z cargo nextest run --workspace --locked
+2026-10-14T23:07:10.4756940Z shell: /bin/bash -e {0}
+2026-10-14T23:07:10.4757170Z env:
+2026-10-14T23:07:10.4757340Z   E2E_TELEMETRY_DISABLED: 1
+2026-10-14T23:07:10.4757700Z   DO_NOT_TRACK: 1
+2026-10-14T23:07:10.4757950Z   CACHE_ON_FAILURE: false
+2026-10-14T23:07:10.4758260Z   CARGO_INCREMENTAL: 0
+2026-10-14T23:07:10.4758520Z ##[endgroup]
+2026-10-14T23:07:11.3635250Z     Updating crates.io index
+2026-10-14T23:07:15.9685640Z    Compiling aelomi-core v0.1.0 (/Users/runner/work/aelomi/aelomi/crates/core)
+2026-10-14T23:07:15.9690530Z    Compiling aelomi v0.1.0 (/Users/runner/work/aelomi/aelomi/src-tauri)
+2026-10-14T23:07:39.3077700Z     Finished `test` profile [unoptimized + debuginfo] target(s) in 23.85s
+2026-10-14T23:07:39.3981490Z ────────────
+2026-10-14T23:07:39.3982220Z  Nextest run ID 4f97270b-bcc8-4c45-bb34-19bd2905df65 with nextest profile: default
+2026-10-14T23:07:39.3983150Z     Starting 331 tests across 3 binaries (8 tests skipped)
+2026-10-14T23:07:39.4168130Z         PASS [   0.015s] (  1/331) aelomi commands::tests::ping_echoes_sequence_and_core_version
+2026-10-14T23:07:39.4272330Z         PASS [   0.027s] (  2/331) aelomi commands::tests::bindings_are_current
+2026-10-14T23:07:39.4377090Z         PASS [   0.020s] (  3/331) aelomi index::tests::index_commands_without_a_data_folder_say_why
+2026-10-14T23:07:39.4411480Z         PASS [   0.014s] (  4/331) aelomi index::tests::replies_and_statuses_serialize_as_the_bindings_say
+2026-10-14T23:07:39.5572000Z         PASS [   0.157s] (  5/331) aelomi index::tests::index_commands_and_events_round_trip_over_ipc
+2026-10-14T23:07:39.5720720Z         PASS [   0.015s] (  6/331) aelomi macos::tests::terminating_waits_for_a_registered_webview_without_blocking
+2026-10-14T23:07:39.5834380Z         PASS [   0.011s] (  7/331) aelomi macos::tests::the_hook_installs_once_on_the_delegate_class
+2026-10-14T23:07:39.5936190Z         PASS [   0.010s] (  8/331) aelomi quit::tests::a_completing_drain_refuses_repeats_and_its_deadline_but_accepts_its_results
+2026-10-14T23:07:39.6101890Z         PASS [   0.016s] (  9/331) aelomi quit::tests::a_drain_that_fails_or_times_out_asks_and_a_late_reply_changes_nothing
+2026-10-14T23:07:39.6208070Z         PASS [   0.011s] ( 10/331) aelomi quit::tests::a_registered_webview_drains_before_any_quit_and_repeats_keep_the_revision
+2026-10-14T23:07:39.6323890Z         PASS [   0.012s] ( 11/331) aelomi quit::tests::each_refusal_asks_a_newer_question_with_its_own_docs
+2026-10-14T23:07:39.6486930Z         PASS [   0.016s] ( 12/331) aelomi quit::tests::keep_open_answers_only_the_question_the_user_saw
+2026-10-14T23:07:39.6644210Z         PASS [   0.016s] ( 13/331) aelomi quit::tests::quit_anyway_is_sticky_and_outranks_every_answer
+2026-10-14T23:07:39.6886860Z         PASS [   0.018s] ( 14/331) aelomi storage::tests::only_debug_builds_replace_the_cloud_roots
+2026-10-14T23:07:39.7080380Z         PASS [   0.025s] ( 15/331) aelomi storage::tests::opening_a_folder_held_by_another_store_is_locked
+2026-10-14T23:07:39.7216540Z         PASS [   0.014s] ( 16/331) aelomi storage::tests::opening_a_newer_format_is_refused
+2026-10-14T23:07:39.7327310Z         PASS [   0.011s] ( 17/331) aelomi storage::tests::opening_a_regular_file_reports_io
+2026-10-14T23:07:39.7433950Z         PASS [   0.011s] ( 18/331) aelomi storage::tests::opening_a_symlink_into_a_cloud_root_reports_the_resolved_path
+2026-10-14T23:07:39.7689390Z         PASS [   0.025s] ( 19/331) aelomi storage::tests::opening_an_empty_folder_is_ready
+2026-10-14T23:07:39.7816170Z         PASS [   0.013s] ( 20/331) aelomi storage::tests::opening_an_unknown_format_is_refused
+2026-10-14T23:07:39.8061350Z         PASS [   0.024s] ( 21/331) aelomi storage::tests::quitting_goes_ahead_when_the_store_never_opened
+2026-10-14T23:07:40.2161380Z         PASS [   0.410s] ( 22/331) aelomi storage::tests::quitting_is_refused_while_updates_are_pending
+2026-10-14T23:07:41.3049340Z         PASS [   1.088s] ( 23/331) aelomi storage::tests::quitting_waits_for_the_flush_and_leaves_the_update_durable
+2026-10-14T23:07:41.3210980Z         PASS [   0.016s] ( 24/331) aelomi storage::tests::the_data_dir_override_applies_in_every_build
+2026-10-14T23:07:41.4183300Z         PASS [   0.097s] ( 25/331) aelomi tests::a_drain_the_webview_never_finishes_asks_after_the_timeout
+2026-10-14T23:07:41.5273710Z         PASS [   2.085s] ( 26/331) aelomi macos::tests::terminating_is_cancelled_while_updates_are_pending
+2026-10-14T23:07:41.5308210Z         PASS [   2.091s] ( 27/331) aelomi macos::tests::confirming_after_cancel_allows_terminate_while_writes_still_fail
+2026-10-14T23:07:41.5442170Z         PASS [   0.014s] ( 28/331) aelomi tests::a_registered_webview_drains_every_route_before_the_app_exits
+2026-10-14T23:07:42.7229610Z         PASS [   1.178s] ( 29/331) aelomi tests::an_accepted_completion_is_not_cut_short_by_the_timeout
+2026-10-14T23:07:43.4969330Z         PASS [   2.077s] ( 30/331) aelomi tests::a_drain_with_unsaved_docs_asks_and_keep_open_reopens_editing
+2026-10-14T23:07:45.6163310Z         PASS [   4.087s] ( 31/331) aelomi tests::a_refusal_without_a_listener_stays_outstanding_until_kept_open
+2026-10-14T23:07:46.9237590Z         PASS [   4.199s] ( 32/331) aelomi tests::closing_the_last_window_waits_until_pending_updates_are_written
+2026-10-14T23:07:48.9711650Z         PASS [   2.046s] ( 33/331) aelomi tests::final_exit_flush_saves_recovered_writes_and_appends_after_confirmation
+2026-10-14T23:07:48.9849610Z         PASS [   0.014s] ( 34/331) aelomi trace::tests::each_ipc_line_names_its_command_and_only_numbers
+2026-10-14T23:07:49.0185890Z         PASS [   0.033s] ( 35/331) aelomi-core index::tests::cache::a_folder_at_a_sidecar_name_fails_and_is_never_removed
+2026-10-14T23:07:49.0330570Z         PASS [   0.014s] ( 36/331) aelomi-core index::tests::cache::a_full_gap_or_key_space_has_no_key
+2026-10-14T23:07:49.0580600Z         PASS [   0.025s] ( 37/331) aelomi-core index::tests::cache::a_missing_main_file_still_passes_both_hold_points
+2026-10-14T23:07:49.0769410Z         PASS [   0.019s] ( 38/331) aelomi-core index::tests::cache::a_new_cache_spaces_its_keys_in_content_order
+2026-10-14T23:07:49.0923360Z         PASS [   0.015s] ( 39/331) aelomi-core index::tests::cache::a_special_entry_outranks_a_requested_replacement
+2026-10-14T23:07:49.1036230Z         PASS [   0.011s] ( 40/331) aelomi-core index::tests::cache::a_thousand_pages_in_one_gap_spread_evenly_in_order
+2026-10-14T23:07:49.1133390Z         PASS [   0.010s] ( 41/331) aelomi-core index::tests::cache::block_rowids_pack_a_page_key_and_a_slot_into_a_positive_integer
+2026-10-14T23:07:49.1231590Z         PASS [   0.010s] ( 42/331) aelomi-core index::tests::cache::cache_problems_read_as_their_log_labels
+2026-10-14T23:07:49.1336300Z         PASS [   0.010s] ( 43/331) aelomi-core index::tests::cache::new_pages_append_after_the_newest_or_split_a_gap
+2026-10-14T23:07:49.1489380Z         PASS [   0.015s] ( 44/331) aelomi-core index::tests::cache::stored_segments_round_trip_and_reject_anything_else
+2026-10-14T23:07:49.1662560Z         PASS [   0.017s] ( 45/331) aelomi-core index::tests::cache::the_schema_text_is_pinned_to_its_version
+2026-10-14T23:07:49.3557830Z         PASS [   0.189s] ( 46/331) aelomi-core index::tests::failures::a_body_under_another_root_or_not_a_yjs_update_is_named_with_no_blocks
+2026-10-14T23:07:49.4483910Z         PASS [   0.092s] ( 47/331) aelomi-core index::tests::failures::a_cache_whose_keys_break_the_content_order_is_replaced_at_startup
+2026-10-14T23:07:49.6229510Z         PASS [   0.174s] ( 48/331) aelomi-core index::tests::failures::a_malformed_body_reports_an_issue_and_keeps_every_other_result
+2026-10-14T23:07:49.6521100Z         PASS [   0.029s] ( 49/331) aelomi-core index::tests::failures::a_malformed_record_fails_the_index_and_the_tree_until_fixed
+2026-10-14T23:07:49.6584490Z         PASS [   6.158s] ( 50/331) aelomi tests::confirmed_quit_bypasses_close_and_exit_holds_while_writes_still_fail
+2026-10-14T23:07:49.7288540Z         PASS [   0.076s] ( 51/331) aelomi-core index::tests::failures::a_panicking_listener_stops_nothing
+2026-10-14T23:07:50.0618970Z         PASS [   0.332s] ( 52/331) aelomi-core index::tests::failures::a_valid_index_that_holds_an_edit_lost_in_a_crash_is_repaired_at_startup
+2026-10-14T23:07:50.1375920Z         PASS [   0.076s] ( 53/331) aelomi-core index::tests::failures::a_valid_index_that_lacks_a_flushed_edit_is_repaired_at_startup
+2026-10-14T23:07:50.2207890Z         PASS [   0.562s] ( 54/331) aelomi-core index::tests::failures::a_query_that_finds_a_corrupt_stored_value_replaces_the_cache_in_the_same_session
+2026-10-14T23:07:50.5040320Z         PASS [   0.283s] ( 55/331) aelomi-core index::tests::failures::a_wrong_sqlite_field_type_is_replaced_at_startup
+2026-10-14T23:07:50.5809560Z         PASS [   0.443s] ( 56/331) aelomi-core index::tests::failures::a_worker_panic_or_read_error_reports_failed_then_retries_to_ready
+2026-10-14T23:07:50.6075670Z         PASS [   0.027s] ( 57/331) aelomi-core index::tests::failures::an_index_that_cannot_open_fails_while_docs_load_append_and_flush
+2026-10-14T23:07:50.6307510Z         PASS [   0.127s] ( 58/331) aelomi-core index::tests::failures::an_incremental_read_of_a_wrong_sqlite_field_type_rebuilds
+2026-10-14T23:07:50.6670860Z         PASS [   0.059s] ( 59/331) aelomi-core index::tests::failures::an_index_worker_that_cannot_start_fails_once_and_docs_stay_usable
+2026-10-14T23:07:50.7322170Z         PASS [   5.113s] ( 60/331) aelomi tests::exiting_waits_until_pending_updates_are_written
+2026-10-14T23:07:50.8946040Z         PASS [   0.227s] ( 61/331) aelomi-core index::tests::failures::dropping_the_index_mid_reconcile_returns_between_pages
+2026-10-14T23:07:50.9068610Z         PASS [   0.174s] ( 62/331) aelomi-core index::tests::failures::the_worker_replaces_the_cache_when_it_reads_corrupt_segments
+2026-10-14T23:07:50.9406510Z         PASS [   0.034s] ( 63/331) aelomi-core index::tests::highlight_parity::highlights_equal_sqlite_highlight_on_unicode_punctuation_and_marker_text
+2026-10-14T23:07:50.9544550Z         PASS [   0.013s] ( 64/331) aelomi-core index::tests::highlight_parity::the_tokenizer_returns_folded_terms_with_byte_ranges
+2026-10-14T23:07:51.0274790Z         PASS [   0.394s] ( 65/331) aelomi-core index::tests::failures::backlinks_with_a_wrong_sqlite_field_type_rebuild_in_the_same_session
+2026-10-14T23:07:51.0327590Z         PASS [   0.078s] ( 66/331) aelomi-core index::tests::independent_oracle::a_cycle_cut_at_its_smallest_id_decides_which_pages_a_trash_hides
+2026-10-14T23:07:51.0717220Z         PASS [   0.047s] ( 67/331) aelomi-core index::tests::independent_oracle::a_page_that_is_its_own_parent_is_top_level
+2026-10-14T23:07:51.0808500Z         PASS [   0.049s] ( 68/331) aelomi-core index::tests::independent_oracle::a_trashed_page_inside_a_cut_cycle_hides_only_its_own_descendants
+2026-10-14T23:07:51.0922090Z         PASS [   0.011s] ( 69/331) aelomi-core index::tests::independent_oracle::the_oracle_imports_no_tree_or_index_code
+2026-10-14T23:07:51.1345500Z         PASS [   0.041s] ( 70/331) aelomi-core index::tests::races::a_query_while_a_trash_is_unapplied_answers_indexing_never_the_trashed_page
+2026-10-14T23:07:51.1759380Z         PASS [   0.042s] ( 71/331) aelomi-core index::tests::races::a_refused_append_marks_nothing
+2026-10-14T23:07:51.2156230Z         PASS [   0.040s] ( 72/331) aelomi-core index::tests::races::a_workspace_mark_during_a_query_turns_its_answer_into_indexing
+2026-10-14T23:07:51.3603950Z         PASS [   0.145s] ( 73/331) aelomi-core index::tests::races::an_append_while_the_worker_holds_a_taken_mark_is_indexed
+2026-10-14T23:07:51.5241430Z         PASS [   0.163s] ( 74/331) aelomi-core index::tests::races::an_append_while_the_worker_holds_its_commit_is_indexed
+2026-10-14T23:07:51.6881220Z         PASS [   0.164s] ( 75/331) aelomi-core index::tests::races::continuous_edits_never_starve_the_coalesced_update
+2026-10-14T23:07:51.7741040Z         PASS [   0.085s] ( 76/331) aelomi-core index::tests::races::edits_during_the_startup_reconcile_converge_to_a_fresh_rebuild
+2026-10-14T23:07:51.9769950Z         PASS [   0.203s] ( 77/331) aelomi-core index::tests::races::the_index_never_delays_an_acknowledgement
+2026-10-14T23:07:52.0864530Z         PASS [   0.109s] ( 78/331) aelomi-core index::tests::rebuild::a_cache_from_a_newer_build_is_replaced_and_says_so
+2026-10-14T23:07:52.1291780Z         PASS [   0.043s] ( 79/331) aelomi-core index::tests::rebuild::a_symlink_at_an_index_name_is_removed_and_its_target_never_touched
+2026-10-14T23:07:52.2801250Z         PASS [   0.151s] ( 80/331) aelomi-core index::tests::rebuild::every_broken_index_rebuilds_to_the_same_results_and_source_files_never_change
+2026-10-14T23:07:52.3344790Z         PASS [   0.054s] ( 81/331) aelomi-core index::tests::rebuild::reconciling_an_unchanged_cache_writes_no_row
+2026-10-14T23:07:52.3672600Z         PASS [   0.033s] ( 82/331) aelomi-core index::tests::rebuild::sidecars_left_without_an_index_are_deleted_before_it_is_created
+2026-10-14T23:07:52.3844200Z         PASS [   0.017s] ( 83/331) aelomi-core index::tests::rebuild::startup_reports_rebuilding_on_the_worker_before_opening_sqlite
+2026-10-14T23:07:52.4538150Z         PASS [   0.069s] ( 84/331) aelomi-core index::tests::rebuild::the_fixture_indexes_to_its_exact_tree_backlinks_and_searches
+2026-10-14T23:07:52.5171210Z         PASS [   0.063s] ( 85/331) aelomi-core index::tests::rebuild::trashed_and_erased_pages_never_appear_as_source_or_target
+2026-10-14T23:07:52.6082560Z         PASS [   0.091s] ( 86/331) aelomi-core index::tests::scrub::a_legacy_cache_with_freed_marker_bytes_is_replaced_whole
+2026-10-14T23:07:52.9391450Z         PASS [   0.330s] ( 87/331) aelomi-core index::tests::scrub::an_erase_interrupted_at_any_step_converges_on_restart
+2026-10-14T23:07:53.0502900Z         PASS [   0.111s] ( 88/331) aelomi-core index::tests::scrub::erasing_a_page_replaces_the_cache_and_leaves_none_of_its_bytes
+2026-10-14T23:07:53.1790850Z         PASS [   0.129s] ( 89/331) aelomi-core index::tests::scrub::sidecars_left_without_the_main_file_are_removed_before_sqlite_opens_them
+2026-10-14T23:07:53.2603720Z         PASS [   0.081s] ( 90/331) aelomi-core index::tests::scrub::startup_replaces_a_cache_holding_a_page_with_no_record
+2026-10-14T23:07:54.3139790Z         PASS [   3.418s] ( 91/331) aelomi-core index::tests::highlight_parity::highlights_equal_sqlite_highlight_on_every_block_of_the_5000_block_page
+2026-10-14T23:07:55.2813610Z         PASS [   4.199s] ( 92/331) aelomi-core index::tests::independent_oracle::backlinks_equal_a_from_scratch_computation_after_every_step
+2026-10-14T23:08:04.7058030Z         PASS [  11.437s] ( 93/331) aelomi-core index::tests::search_fixture::a_walk_reads_only_the_matches_of_the_pages_it_returns_or_skips
+2026-10-14T23:08:07.2943710Z         PASS [  12.005s] ( 94/331) aelomi-core index::tests::search_fixture::match_cardinalities_equal_the_oracle_and_the_measured_figures
+2026-10-14T23:08:12.0981220Z         PASS [  17.764s] ( 95/331) aelomi-core index::tests::search_fixture::every_query_scope_limit_and_exclusion_equals_the_independent_oracle
+2026-10-14T23:08:12.1187210Z         PASS [   0.023s] ( 96/331) aelomi-core index::tests::search_fixture::the_search_oracle_uses_no_crate_code
+2026-10-14T23:08:14.7317350Z         PASS [  10.017s] ( 97/331) aelomi-core index::tests::search_fixture::the_10k_search_fixture_returns_the_expected_page_ids
+2026-10-14T23:08:14.8723810Z         PASS [   0.142s] ( 98/331) aelomi-core index::tests::search_rules::a_content_search_names_at_most_200_distinct_pages_to_skip
+2026-10-14T23:08:14.9381840Z         PASS [   0.056s] ( 99/331) aelomi-core index::tests::search_rules::limits_clamp_to_one_through_two_hundred
+2026-10-14T23:08:15.2379530Z         PASS [   0.309s] (100/331) aelomi-core index::tests::search_rules::removing_a_winner_promotes_the_next_page_in_order
+2026-10-14T23:08:15.2902010Z         PASS [   0.053s] (101/331) aelomi-core index::tests::search_rules::titles_come_first_then_bodies_newest_first_with_their_first_matching_block
+2026-10-14T23:08:15.4480770Z         PASS [   0.150s] (102/331) aelomi-core index::tests::tree_memo::a_tree_installed_just_before_an_append_is_replaced_on_the_next_call
+2026-10-14T23:08:15.6987110Z         PASS [   0.253s] (103/331) aelomi-core index::tests::tree_memo::an_append_racing_the_projection_is_never_hidden_by_the_memo
+2026-10-14T23:08:15.8127410Z         PASS [   0.108s] (104/331) aelomi-core index::tests::tree_memo::concurrent_projections_and_appends_end_on_the_last_title
+2026-10-14T23:08:15.9460980Z         PASS [   0.141s] (105/331) aelomi-core index::tests::tree_memo::the_tree_is_reused_until_a_workspace_append_is_accepted
+2026-10-14T23:08:16.0007650Z         PASS [   0.056s] (106/331) aelomi-core index::tokenizer::tests::an_invalid_token_stops_tokenizing_with_an_error
+2026-10-14T23:08:16.0627170Z         PASS [   0.052s] (107/331) aelomi-core storage::compact::tests::a_merge_verifies_only_when_it_holds_exactly_and_loads_every_operation_merged
+2026-10-14T23:08:16.0958360Z         PASS [   0.037s] (108/331) aelomi-core storage::data_path::tests::a_forbidden_root_that_does_not_exist_yet_matches_any_case
+2026-10-14T23:08:16.1163090Z         PASS [   0.024s] (109/331) aelomi-core storage::data_path::tests::accepts_a_normal_path_and_one_that_does_not_exist_yet
+2026-10-14T23:08:16.1368340Z         PASS [   0.020s] (110/331) aelomi-core storage::data_path::tests::compares_whole_components_not_string_prefixes
+2026-10-14T23:08:16.1683790Z         PASS [   0.030s] (111/331) aelomi-core storage::data_path::tests::rejects_a_dangling_symlink_into_a_cloud_folder
+2026-10-14T23:08:16.2066390Z         PASS [   0.037s] (112/331) aelomi-core storage::data_path::tests::rejects_a_path_inside_a_forbidden_root_that_is_itself_a_symlink
+2026-10-14T23:08:16.2173320Z         PASS [   0.016s] (113/331) aelomi-core storage::data_path::tests::rejects_a_symlinked_data_folder_that_resolves_into_icloud
+2026-10-14T23:08:16.2377910Z         PASS [   0.020s] (114/331) aelomi-core storage::data_path::tests::rejects_a_symlinked_parent_that_resolves_into_cloud_storage
+2026-10-14T23:08:16.2682010Z         PASS [   0.028s] (115/331) aelomi-core storage::data_path::tests::resolves_a_symlink_reached_through_dot_dot_out_of_a_missing_folder
+2026-10-14T23:08:16.2884860Z         PASS [   0.020s] (116/331) aelomi-core storage::decode::tests::decode_guard_accepts_minimum_and_overlong_encodings
+2026-10-14T23:08:16.4383040Z         PASS [   0.155s] (117/331) aelomi-core storage::decode::tests::decode_guard_accepts_realistic_yrs_updates_without_allocating
+2026-10-14T23:08:16.4686980Z         PASS [   0.024s] (118/331) aelomi-core storage::decode::tests::decode_guard_accepts_repo_yjs_wire_fixtures
+2026-10-14T23:08:16.4819890Z         PASS [   0.015s] (119/331) aelomi-core storage::decode::tests::decode_guard_checks_every_reservation_count
+2026-10-14T23:08:16.5024380Z         PASS [   0.019s] (120/331) aelomi-core storage::decode::tests::decode_guard_exact_decode_rejects_trailing_bytes
+2026-10-14T23:08:16.5192160Z         PASS [   0.015s] (121/331) aelomi-core storage::decode::tests::decode_guard_mirrors_the_pinned_yrs_version
+2026-10-14T23:08:19.4933850Z         PASS [   2.968s] (122/331) aelomi-core storage::decode::tests::decode_guard_rejects_only_bytes_yrs_cannot_decode
+2026-10-14T23:08:19.5183510Z         PASS [   0.029s] (123/331) aelomi-core storage::decode::tests::decode_guard_runtime_json_keeps_its_recursion_limit
+2026-10-14T23:08:19.5279550Z         PASS [   0.014s] (124/331) aelomi-core storage::doc_id::tests::accepts_only_safe_folder_names
+2026-10-14T23:08:19.5522840Z         PASS [   0.022s] (125/331) aelomi-core storage::format::tests::format_json_round_trips_and_reads_only_its_format
+2026-10-14T23:08:19.5636720Z         PASS [   0.015s] (126/331) aelomi-core storage::fs::tests::format_publication_os_plain_rename_preserves_existing_entries
+2026-10-14T23:08:19.6023270Z         PASS [   0.038s] (127/331) aelomi-core storage::fs::tests::format_publication_os_replace_preserves_the_old_marker_on_invalid_source
+2026-10-14T23:08:19.6247470Z         PASS [   0.022s] (128/331) aelomi-core storage::fs::tests::format_publication_os_replace_publishes_a_complete_marker
+2026-10-14T23:08:19.6451990Z         PASS [   0.020s] (129/331) aelomi-core storage::health::tests::os_errors_map_to_reasons
+2026-10-14T23:08:19.6654490Z         PASS [   0.021s] (130/331) aelomi-core storage::health::tests::retries_back_off_from_100_ms_doubling_to_5_s
+2026-10-14T23:08:19.6846160Z         PASS [   0.018s] (131/331) aelomi-core storage::layout::tests::file_names_round_trip_and_sort_by_number
+2026-10-14T23:08:19.7049780Z         PASS [   0.016s] (132/331) aelomi-core storage::layout::tests::foreign_names_are_not_store_files
+2026-10-14T23:08:19.7267000Z         PASS [   0.025s] (133/331) aelomi-core storage::log::v1::tests::a_frame_salted_inside_a_damaged_record_never_loads
+2026-10-14T23:08:19.7573690Z         PASS [   0.027s] (134/331) aelomi-core storage::log::v1::tests::a_frame_that_ends_its_host_never_loads_after_a_crc_flip
+2026-10-14T23:08:19.7677360Z         PASS [   0.015s] (135/331) aelomi-core storage::log::v1::tests::a_recovered_length_never_stretches_over_an_intact_record
+2026-10-14T23:08:19.7881160Z         PASS [   0.021s] (136/331) aelomi-core storage::log::v1::tests::a_resync_skips_records_it_cannot_afford_to_decode_and_never_calls_that_torn
+2026-10-14T23:08:19.8437260Z         PASS [   0.048s] (137/331) aelomi-core storage::log::v1::tests::a_salted_crc_from_prefixes_matches_hashing_the_range
+2026-10-14T23:08:19.8639550Z         PASS [   0.021s] (138/331) aelomi-core storage::log::v1::tests::classifies_damaged_segments_and_reads_every_update_around_the_damage
+2026-10-14T23:08:20.0859090Z         PASS [   0.225s] (139/331) aelomi-core storage::log::v1::tests::crafted_files_exhaust_length_recovery_and_every_intact_record_still_loads
+2026-10-14T23:08:20.9230580Z         PASS [   0.834s] (140/331) aelomi-core storage::log::v1::tests::every_flipped_bit_in_a_record_loads_every_intact_record_and_no_planted_frame
+2026-10-14T23:08:21.0113800Z         PASS [   0.094s] (141/331) aelomi-core storage::log::v1::tests::header_like_note_text_never_hides_the_record_after_it
+2026-10-14T23:08:21.0348200Z         PASS [   0.019s] (142/331) aelomi-core storage::log::v1::tests::header_magic_damage_loads_every_record_as_corrupt
+2026-10-14T23:08:21.4085760Z         PASS [   0.374s] (143/331) aelomi-core storage::log::v1::tests::header_random_bursts_load_every_record_with_two_confirmations
+2026-10-14T23:08:21.4390690Z         PASS [   0.029s] (144/331) aelomi-core storage::log::v1::tests::header_salt_damage_loads_every_record_as_corrupt
+2026-10-14T23:08:21.4634880Z         PASS [   0.019s] (145/331) aelomi-core storage::log::v1::tests::header_salt_damage_needs_two_agreeing_records
+2026-10-14T23:08:21.6257640Z         PASS [   0.167s] (146/331) aelomi-core storage::log::v1::tests::header_salt_recovery_handles_varied_record_lengths
+2026-10-14T23:08:21.6460520Z         PASS [   0.022s] (147/331) aelomi-core storage::log::v1::tests::header_salvage_checks_each_records_crc_and_decode
+2026-10-14T23:08:21.6667580Z         PASS [   0.022s] (148/331) aelomi-core storage::log::v1::tests::records_round_trip
+2026-10-14T23:08:21.8445020Z         PASS [   0.180s] (149/331) aelomi-core storage::log::v2::tests::a_complete_final_frame_with_damage_reads_corrupt_unless_its_image_is_a_tear
+2026-10-14T23:08:22.0959520Z         PASS [   0.244s] (150/331) aelomi-core storage::log::v2::tests::a_crafted_log_hashes_at_most_two_bytes_per_byte
+2026-10-14T23:08:22.1171870Z         PASS [   0.026s] (151/331) aelomi-core storage::log::v2::tests::a_frame_is_forty_bytes_plus_one_per_seven_and_keeps_its_alphabets
+2026-10-14T23:08:22.1477530Z         PASS [   0.027s] (152/331) aelomi-core storage::log::v2::tests::a_one_record_log_survives_any_damage_to_its_first_twenty_bytes
+2026-10-14T23:08:22.1778860Z         PASS [   0.033s] (153/331) aelomi-core storage::log::v2::tests::a_strict_prefix_of_a_final_frame_then_zeros_reads_torn
+2026-10-14T23:08:22.2629120Z         PASS [   0.078s] (154/331) aelomi-core storage::log::v2::tests::damage_confined_to_one_anchor_never_loses_its_record
+2026-10-14T23:08:22.3674660Z         PASS [   0.112s] (155/331) aelomi-core storage::log::v2::tests::every_accepted_record_passes_its_crc_64
+2026-10-14T23:08:22.4180020Z         PASS [   0.045s] (156/331) aelomi-core storage::log::v2::tests::every_cut_of_a_log_reads_clean_at_boundaries_and_torn_inside
+2026-10-14T23:08:22.4282440Z         PASS [   0.016s] (157/331) aelomi-core storage::log::v2::tests::forcing_bit_7_on_twenty_author_chosen_anchor_bytes_can_load_a_planted_frame
+2026-10-14T23:08:23.1616350Z         PASS [  15.870s] (158/331) aelomi-core index::tests::search_fixture::the_ordered_results_and_highlights_equal_the_reviewed_golden
+2026-10-14T23:08:23.1819740Z         PASS [   0.020s] (159/331) aelomi-core storage::sim_fs::tests::a_format_2_snapshot_covers_through_either_copy_and_leaves_only_whole
+2026-10-14T23:08:23.4403980Z         PASS [   0.257s] (160/331) aelomi-core storage::sim_fs::tests::a_hold_whose_signal_never_comes_fails_instead_of_hanging
+2026-10-14T23:08:23.4567380Z         PASS [   0.017s] (161/331) aelomi-core storage::sim_fs::tests::a_log_a_failed_write_tore_this_session_may_be_removed_unless_damage_precedes_the_failure
+2026-10-14T23:08:23.4680880Z         PASS [   0.011s] (162/331) aelomi-core storage::sim_fs::tests::a_log_holding_no_record_bytes_may_be_removed_once_a_durable_snapshot_is_newer
+2026-10-14T23:08:23.4808840Z         PASS [   0.013s] (163/331) aelomi-core storage::sim_fs::tests::append_only_rules_are_checked_as_operations_run
+2026-10-14T23:08:23.4965730Z         PASS [   0.016s] (164/331) aelomi-core storage::sim_fs::tests::append_only_rules_are_checked_before_faults_are_injected
+2026-10-14T23:08:23.5201820Z         PASS [   0.016s] (165/331) aelomi-core storage::sim_fs::tests::crash_can_keep_a_torn_prefix
+2026-10-14T23:08:23.5318210Z         PASS [   0.019s] (166/331) aelomi-core storage::sim_fs::tests::crash_keeps_only_what_full_sync_made_durable
+2026-10-14T23:08:23.5524670Z         PASS [   0.015s] (167/331) aelomi-core storage::sim_fs::tests::faults_and_death_fail_operations
+2026-10-14T23:08:23.5726280Z         PASS [   0.019s] (168/331) aelomi-core storage::sim_fs::tests::format_publication_checks_format_2_at_create
+2026-10-14T23:08:23.5946240Z         PASS [   0.022s] (169/331) aelomi-core storage::sim_fs::tests::format_publication_create_waits_for_the_directory_barrier
+2026-10-14T23:08:23.6149910Z         PASS [   0.018s] (170/331) aelomi-core storage::sim_fs::tests::format_publication_plain_rename_still_rejects_overwrite
+2026-10-14T23:08:23.6259350Z         PASS [   0.016s] (171/331) aelomi-core storage::sim_fs::tests::format_publication_replace_refuses_invalid_or_unsynced_sources
+2026-10-14T23:08:23.6570730Z         PASS [   0.026s] (172/331) aelomi-core storage::sim_fs::tests::format_publication_replace_survives_every_crash_step
+2026-10-14T23:08:23.6672640Z         PASS [   0.014s] (173/331) aelomi-core storage::sim_fs::tests::latency_advances_the_clock
+2026-10-14T23:08:23.6778220Z         PASS [   0.014s] (174/331) aelomi-core storage::sim_fs::tests::locks_conflict_until_dropped_or_crashed
+2026-10-14T23:08:23.6988150Z         PASS [   0.012s] (175/331) aelomi-core storage::sim_fs::tests::rename_and_remove_follow_durable_directory_entries
+2026-10-14T23:08:23.7090410Z         PASS [   0.014s] (176/331) aelomi-core storage::snapshot::tests::a_file_whose_length_moved_loads_only_through_a_copy_its_head_still_names
+2026-10-14T23:08:23.7191050Z         PASS [   0.014s] (177/331) aelomi-core storage::snapshot::tests::a_format_2_snapshot_puts_its_anchors_and_copies_at_fixed_offsets
+2026-10-14T23:08:23.7290470Z         PASS [   0.012s] (178/331) aelomi-core storage::snapshot::tests::an_intact_head_rejects_a_forged_tail_after_a_block_aligned_cut
+2026-10-14T23:08:23.7401240Z         PASS [   0.011s] (179/331) aelomi-core storage::snapshot::tests::damage_to_both_copies_or_both_anchors_reads_nothing
+2026-10-14T23:08:23.7543330Z         PASS [   0.013s] (180/331) aelomi-core storage::snapshot::tests::each_format_reads_only_its_own_files
+2026-10-14T23:08:23.9335930Z         PASS [   0.179s] (181/331) aelomi-core storage::snapshot::tests::every_aligned_block_or_64_byte_zero_fill_leaves_the_exact_payload
+2026-10-14T23:08:24.3808670Z         PASS [   1.950s] (182/331) aelomi-core storage::log::v2::tests::no_single_damage_loads_a_frame_planted_in_a_payload
+2026-10-14T23:08:24.6019090Z         PASS [  12.481s] (183/331) aelomi-core index::tests::search_fixture::the_walks_read_fts_rowids_in_order_without_sorting
+2026-10-14T23:08:24.6126230Z         PASS [   0.223s] (184/331) aelomi-core storage::snapshot::tests::no_aligned_4_kib_block_touches_both_copies
+2026-10-14T23:08:24.6250560Z         PASS [   0.012s] (185/331) aelomi-core storage::snapshot::tests::snapshot_round_trips_and_rejects_any_damage
+2026-10-14T23:08:24.6353440Z         PASS [   0.016s] (186/331) aelomi-core storage::snapshot::tests::the_judges_64_zero_bytes_between_the_copies_leave_a_copy
+2026-10-14T23:08:24.6554760Z         PASS [   0.036s] (187/331) aelomi-core storage::tests::ack::a_doc_whose_files_are_busy_never_delays_another_docs_acknowledgement
+2026-10-14T23:08:24.6782940Z         PASS [   0.021s] (188/331) aelomi-core storage::tests::ack::a_docs_first_load_from_a_slow_disk_never_delays_another_docs_acknowledgement
+2026-10-14T23:08:24.7590280Z         PASS [   0.144s] (189/331) aelomi-core storage::tests::ack::a_burst_of_1_000_appends_in_10_ms_is_acknowledged_within_100_ms
+2026-10-14T23:08:24.8508940Z         PASS [   0.172s] (190/331) aelomi-core storage::tests::ack::appends_across_50_docs_are_acknowledged_within_100_ms
+2026-10-14T23:08:24.8609160Z         PASS [   0.015s] (191/331) aelomi-core storage::tests::ack::single_appends_are_acknowledged_within_100_ms
+2026-10-14T23:08:24.9439420Z         PASS [   0.184s] (192/331) aelomi-core storage::tests::ack::appends_during_compaction_are_acknowledged_within_100_ms
+2026-10-14T23:08:24.9847330Z         PASS [   0.039s] (193/331) aelomi-core storage::tests::compaction::a_corrupt_snapshot_is_never_used_and_is_quarantined
+2026-10-14T23:08:25.0050100Z         PASS [   0.020s] (194/331) aelomi-core storage::tests::compaction::a_damaged_format_2_log_moves_to_quarantine_byte_for_byte_and_loses_nothing
+2026-10-14T23:08:25.0154310Z         PASS [   0.148s] (195/331) aelomi-core storage::tests::ack::the_writer_thread_writes_a_skipped_doc_once_its_files_free
+2026-10-14T23:08:25.0358970Z         PASS [   0.019s] (196/331) aelomi-core storage::tests::compaction::a_doc_whose_snapshot_passes_the_payload_limit_skips_compaction_and_keeps_writing
+2026-10-14T23:08:25.0463610Z         PASS [   0.040s] (197/331) aelomi-core storage::tests::compaction::a_damaged_log_loads_every_record_around_the_damage_and_is_quarantined_not_deleted
+2026-10-14T23:08:25.0566920Z         PASS [   0.016s] (198/331) aelomi-core storage::tests::compaction::a_doc_with_pending_structs_whose_merge_passes_the_payload_limit_keeps_its_files
+2026-10-14T23:08:25.0984340Z         PASS [   0.034s] (199/331) aelomi-core storage::tests::compaction::a_log_damaged_at_its_end_is_quarantined_at_compaction_not_deleted
+2026-10-14T23:08:25.1216480Z         PASS [   0.027s] (200/331) aelomi-core storage::tests::compaction::a_panic_compacting_one_doc_leaves_its_files_and_the_next_doc_still_compacts
+2026-10-14T23:08:25.1434000Z         PASS [   0.023s] (201/331) aelomi-core storage::tests::compaction::a_quarantined_file_survives_a_failed_sync_of_any_folder_it_moved_into
+2026-10-14T23:08:25.1943160Z         PASS [   0.054s] (202/331) aelomi-core storage::tests::compaction::a_snapshot_damaged_on_its_way_to_disk_is_refused_and_leaves_every_file
+2026-10-14T23:08:25.2173710Z         PASS [   0.017s] (203/331) aelomi-core storage::tests::compaction::a_torn_tail_left_by_a_crash_is_quarantined_at_compaction
+2026-10-14T23:08:25.2376470Z         PASS [   0.202s] (204/331) aelomi-core storage::tests::compaction::a_doc_with_pending_structs_compacts_to_a_snapshot_of_exactly_its_operations
+2026-10-14T23:08:25.2480070Z         PASS [   0.018s] (205/331) aelomi-core storage::tests::compaction::compaction_deletes_a_log_holding_no_record_bytes_but_quarantines_a_short_corrupt_one
+2026-10-14T23:08:25.2581360Z         PASS [   0.024s] (206/331) aelomi-core storage::tests::compaction::compaction_keeps_a_damaged_log_until_the_doc_holds_what_it_salvages
+2026-10-14T23:08:25.2784290Z         PASS [   0.018s] (207/331) aelomi-core storage::tests::compaction::compaction_keeps_a_deletion_only_log_until_the_snapshot_holds_the_deletion
+2026-10-14T23:08:25.2987040Z         PASS [   0.018s] (208/331) aelomi-core storage::tests::compaction::compaction_keeps_a_log_a_merged_load_marked_corrupt_until_the_snapshot_holds_what_it_salvages
+2026-10-14T23:08:26.5249940Z         PASS [   1.288s] (209/331) aelomi-core storage::tests::compaction::compaction_interrupted_at_every_step_loses_nothing
+2026-10-14T23:08:26.5565400Z         PASS [   0.029s] (210/331) aelomi-core storage::tests::compaction::compaction_quarantines_damage_no_load_read_when_the_snapshot_holds_every_record
+2026-10-14T23:08:26.5969470Z         PASS [   0.047s] (211/331) aelomi-core storage::tests::compaction::compaction_runs_beside_the_writer_without_losing_updates
+2026-10-14T23:08:27.1416930Z         PASS [   1.847s] (212/331) aelomi-core storage::tests::compaction::compaction_of_a_doc_with_pending_structs_interrupted_at_every_step_loses_nothing
+2026-10-14T23:08:28.6227890Z         PASS [   2.025s] (213/331) aelomi-core storage::tests::compaction::passing_10_000_records_triggers_compaction
+2026-10-14T23:08:28.6736890Z         PASS [   0.050s] (214/331) aelomi-core storage::tests::compaction::pending_structs_still_let_compaction_delete_the_old_generation
+2026-10-14T23:08:28.7002680Z         PASS [   0.025s] (215/331) aelomi-core storage::tests::compaction::pending_structs_survive_compaction
+2026-10-14T23:08:28.7336000Z         PASS [   0.033s] (216/331) aelomi-core storage::tests::compaction::recovery_loads_the_union_of_every_valid_snapshot
+2026-10-14T23:08:30.1876160Z         PASS [   3.042s] (217/331) aelomi-core storage::tests::compaction::passing_1_mb_of_logs_triggers_compaction
+2026-10-14T23:08:32.0078660Z         PASS [   1.825s] (218/331) aelomi-core storage::tests::crash::the_threaded_writer_reports_an_update_durable_only_after_a_full_sync
+2026-10-14T23:08:32.0830620Z         PASS [   0.062s] (219/331) aelomi-core storage::tests::decode_guard::decode_guard_append_bounds_resident_memory
+2026-10-14T23:08:32.1479550Z         PASS [   0.069s] (220/331) aelomi-core storage::tests::decode_guard::decode_guard_append_rejects_above_the_limit
+2026-10-14T23:08:32.2473620Z         PASS [   0.102s] (221/331) aelomi-core storage::tests::decode_guard::decode_guard_at_the_limit_survives_compaction_and_reopen
+2026-10-14T23:08:32.2680370Z         PASS [   0.019s] (222/331) aelomi-core storage::tests::decode_guard::decode_guard_child
+2026-10-14T23:08:32.3306490Z         PASS [   0.069s] (223/331) aelomi-core storage::tests::decode_guard::decode_guard_length_recovery_bounds_next_record_memory
+2026-10-14T23:08:32.3938310Z         PASS [   0.055s] (224/331) aelomi-core storage::tests::decode_guard::decode_guard_length_recovery_bounds_resident_memory
+2026-10-14T23:08:32.4835260Z         PASS [   0.093s] (225/331) aelomi-core storage::tests::decode_guard::decode_guard_length_recovery_keeps_overdeep_records
+2026-10-14T23:08:32.5346110Z         PASS [   0.049s] (226/331) aelomi-core storage::tests::decode_guard::decode_guard_overdeep_disk_records_survive_recovery_and_compaction
+2026-10-14T23:08:32.6157230Z         PASS [   0.080s] (227/331) aelomi-core storage::tests::decode_guard::decode_guard_resync_keeps_an_overdeep_record_without_decoding_it
+2026-10-14T23:08:32.6665980Z         PASS [   0.050s] (228/331) aelomi-core storage::tests::decode_guard::decode_guard_small_caller_stack_survives_the_boundary
+2026-10-14T23:08:32.7480320Z         PASS [   0.084s] (229/331) aelomi-core storage::tests::decode_guard::decode_guard_threaded_compactor_survives_the_boundary
+2026-10-14T23:08:32.7692010Z         PASS [   0.023s] (230/331) aelomi-core storage::tests::dirs::a_doc_folder_an_earlier_session_left_unsynced_is_synced_before_an_acknowledgement
+2026-10-14T23:08:32.8036200Z         PASS [   0.033s] (231/331) aelomi-core storage::tests::dirs::a_retried_open_syncs_the_entries_a_failed_open_left_unsynced
+2026-10-14T23:08:32.8251160Z         PASS [   0.026s] (232/331) aelomi-core storage::tests::failures::a_damaged_head_in_a_segment_a_failed_write_tore_moves_it_to_quarantine_not_deletion
+2026-10-14T23:08:32.8585390Z         PASS [   0.027s] (233/331) aelomi-core storage::tests::failures::a_failed_full_sync_leaves_the_whole_batch_pending
+2026-10-14T23:08:32.8788680Z         PASS [   0.020s] (234/331) aelomi-core storage::tests::failures::a_failing_doc_stays_pending_while_other_docs_are_acknowledged
+2026-10-14T23:08:32.9095490Z         PASS [   0.032s] (235/331) aelomi-core storage::tests::failures::a_flush_retries_a_failing_doc_whose_files_were_busy_as_soon_as_they_free
+2026-10-14T23:08:32.9296980Z         PASS [   0.023s] (236/331) aelomi-core storage::tests::failures::a_panic_holding_a_docs_state_stops_neither_its_writes_nor_any_others
+2026-10-14T23:08:32.9601680Z         PASS [   0.023s] (237/331) aelomi-core storage::tests::failures::a_panic_in_a_writer_step_leaves_every_update_queued_for_the_retry
+2026-10-14T23:08:32.9803630Z         PASS [   0.023s] (238/331) aelomi-core storage::tests::failures::a_panicking_health_subscriber_stops_neither_writes_nor_other_subscribers
+2026-10-14T23:08:33.0007910Z         PASS [   0.024s] (239/331) aelomi-core storage::tests::failures::a_segment_a_failed_write_tore_in_an_earlier_session_is_quarantined_not_deleted
+2026-10-14T23:08:33.0216060Z         PASS [   0.022s] (240/331) aelomi-core storage::tests::failures::close_never_discards_a_pending_update
+2026-10-14T23:08:33.0727790Z         PASS [   0.045s] (241/331) aelomi-core storage::tests::failures::compaction_deletes_the_segments_this_sessions_failed_writes_left_instead_of_quarantining_them
+2026-10-14T23:08:33.0932090Z         PASS [   0.025s] (242/331) aelomi-core storage::tests::failures::flush_retries_a_failing_doc_at_once_whatever_its_backoff
+2026-10-14T23:08:33.1348950Z         PASS [   0.040s] (243/331) aelomi-core storage::tests::failures::queued_updates_reach_disk_in_order_once_writes_recover
+2026-10-14T23:08:33.3278990Z         PASS [   0.195s] (244/331) aelomi-core storage::tests::failures::the_writer_thread_retries_on_its_own
+2026-10-14T23:08:33.3587270Z         PASS [   0.028s] (245/331) aelomi-core storage::tests::failures::the_writer_thread_survives_a_panic
+2026-10-14T23:08:33.9112970Z         PASS [   0.552s] (246/331) aelomi-core storage::tests::fixture::a_crash_anywhere_in_the_first_format_2_write_keeps_the_fixture_and_every_acknowledged_update
+2026-10-14T23:08:33.9521240Z         PASS [   0.046s] (247/331) aelomi-core storage::tests::fixture::appending_to_the_format_1_fixture_publishes_format_2_and_never_rewrites_a_format_1_file
+2026-10-14T23:08:33.9831580Z         PASS [   0.027s] (248/331) aelomi-core storage::tests::fixture::the_format_1_fixture_opens_with_its_exact_contents
+2026-10-14T23:08:34.0044270Z         PASS [   0.025s] (249/331) aelomi-core storage::tests::fixture::the_format_2_fixture_opens_with_its_exact_contents
+2026-10-14T23:08:34.0336470Z         PASS [   0.022s] (250/331) aelomi-core storage::tests::publication::a_format_2_marker_left_in_the_drive_cache_by_an_exit_is_confirmed_by_the_next_session
+2026-10-14T23:08:34.0449450Z         PASS [   0.019s] (251/331) aelomi-core storage::tests::publication::a_format_tmp_left_by_a_failed_append_is_replaced_when_the_write_retries
+2026-10-14T23:08:34.0654240Z         PASS [   0.021s] (252/331) aelomi-core storage::tests::publication::a_marker_whose_folder_sync_failed_after_the_rename_is_confirmed_again_on_retry
+2026-10-14T23:08:34.0860090Z         PASS [   0.020s] (253/331) aelomi-core storage::tests::publication::a_stale_format_tmp_beside_a_format_1_marker_is_replaced_by_the_first_segment
+2026-10-14T23:08:34.1142860Z         PASS [   0.024s] (254/331) aelomi-core storage::tests::publication::compaction_after_a_lifetimes_first_segment_writes_a_whole_format_2_snapshot
+2026-10-14T23:08:34.1451100Z         PASS [   0.029s] (255/331) aelomi-core storage::tests::publication::compaction_before_a_lifetimes_first_segment_writes_format_1_in_a_format_2_folder
+2026-10-14T23:08:34.1657130Z         PASS [   0.025s] (256/331) aelomi-core storage::tests::publication::compaction_in_a_format_1_folder_writes_format_1_and_leaves_the_marker
+2026-10-14T23:08:34.1861580Z         PASS [   0.020s] (257/331) aelomi-core storage::tests::publication::opening_leaves_format_1_and_the_first_segment_publishes_format_2
+2026-10-14T23:08:34.2472940Z         PASS [   0.057s] (258/331) aelomi-core storage::tests::real_disk::compaction_and_quarantine_work_on_a_real_disk
+2026-10-14T23:08:34.7405910Z         PASS [   0.490s] (259/331) aelomi-core storage::tests::real_disk::every_append_is_acknowledged_on_a_real_disk
+2026-10-14T23:08:34.7717180Z         PASS [   0.033s] (260/331) aelomi-core storage::tests::refusals::a_folder_with_data_but_no_readable_format_is_refused
+2026-10-14T23:08:34.7928590Z         PASS [   0.020s] (261/331) aelomi-core storage::tests::refusals::a_format_1_build_refuses_a_folder_the_writer_moved_to_format_2_before_any_write
+2026-10-14T23:08:34.8134180Z         PASS [   0.024s] (262/331) aelomi-core storage::tests::refusals::a_format_2_folder_opens_and_loads_without_a_write
+2026-10-14T23:08:34.8339420Z         PASS [   0.024s] (263/331) aelomi-core storage::tests::refusals::a_format_above_u32_max_is_refused_as_newer_and_the_folder_is_left_byte_for_byte_unchanged
+2026-10-14T23:08:34.8550520Z         PASS [   0.015s] (264/331) aelomi-core storage::tests::refusals::a_format_json_left_half_written_by_a_crash_is_redone
+2026-10-14T23:08:34.8875780Z         PASS [   0.032s] (265/331) aelomi-core storage::tests::refusals::a_new_or_empty_folder_gets_format_json_and_docs
+2026-10-14T23:08:34.9086900Z         PASS [   0.027s] (266/331) aelomi-core storage::tests::refusals::a_newer_format_is_refused_and_the_folder_is_left_byte_for_byte_unchanged
+2026-10-14T23:08:34.9395970Z         PASS [   0.026s] (267/331) aelomi-core storage::tests::refusals::a_second_open_of_the_same_folder_is_locked
+2026-10-14T23:08:35.2780410Z         PASS [   0.335s] (268/331) aelomi-core storage::tests::salvage::a_flipped_bit_anywhere_in_a_segment_loads_nothing_that_was_never_appended
+2026-10-14T23:08:35.2981970Z         PASS [   0.023s] (269/331) aelomi-core storage::tests::salvage::a_flipped_length_bit_loads_every_record
+2026-10-14T23:08:35.3183770Z         PASS [   0.018s] (270/331) aelomi-core storage::tests::salvage::a_frame_salted_by_an_author_who_read_the_segment_never_loads_after_damage
+2026-10-14T23:08:35.3818270Z         PASS [   0.062s] (271/331) aelomi-core storage::tests::salvage::a_frame_the_unsalted_format_accepts_never_loads_after_damage_whatever_the_salt
+2026-10-14T23:08:35.4039240Z         PASS [   0.022s] (272/331) aelomi-core storage::tests::salvage::a_length_flip_loads_its_own_record_wherever_the_new_length_ends
+2026-10-14T23:08:35.4246850Z         PASS [   0.023s] (273/331) aelomi-core storage::tests::salvage::a_length_flip_that_reaches_eof_loads_its_own_record
+2026-10-14T23:08:35.4452770Z         PASS [   0.019s] (274/331) aelomi-core storage::tests::salvage::a_record_written_inside_note_text_never_loads_after_damage
+2026-10-14T23:08:35.4674090Z         PASS [   0.022s] (275/331) aelomi-core storage::tests::salvage::header_damage_is_quarantined_after_verified_compaction
+2026-10-14T23:08:35.4880890Z         PASS [   0.020s] (276/331) aelomi-core storage::tests::salvage::header_salt_damage_preserves_every_saved_operation
+2026-10-14T23:08:35.5083540Z         PASS [   0.023s] (277/331) aelomi-core storage::tests::snapshot_copies::a_damaged_newest_snapshot_queues_compaction_and_keeps_its_bytes
+2026-10-14T23:08:35.5187100Z         PASS [   0.016s] (278/331) aelomi-core storage::tests::snapshot_copies::a_folder_mixing_snapshot_formats_loads_both_and_compacts_above_both
+2026-10-14T23:08:35.5391290Z         PASS [   0.019s] (279/331) aelomi-core storage::tests::snapshot_copies::a_merged_load_reads_a_format_2_snapshot
+2026-10-14T23:08:35.5595640Z         PASS [   0.017s] (280/331) aelomi-core storage::tests::snapshot_copies::a_planted_format_2_snapshot_loads_through_recovery
+2026-10-14T23:08:35.5799350Z         PASS [   0.023s] (281/331) aelomi-core storage::tests::snapshot_copies::compaction_deletes_a_whole_format_2_snapshot_it_holds_and_quarantines_a_damaged_one
+2026-10-14T23:08:35.6000540Z         PASS [   0.018s] (282/331) aelomi-core storage::tests::snapshot_copies::compaction_keeps_a_format_2_snapshot_holding_changes_it_lacks
+2026-10-14T23:08:35.6209150Z         PASS [   0.015s] (283/331) aelomi-core storage::tests::snapshot_copies::compaction_quarantines_a_format_2_snapshot_a_load_found_damaged
+2026-10-14T23:08:35.6622570Z         PASS [   0.046s] (284/331) aelomi-core storage::tests::snapshot_copies::one_fault_in_a_compactor_written_format_2_snapshot_loses_no_update
+2026-10-14T23:08:35.6725320Z         PASS [   0.016s] (285/331) aelomi-core storage::tests::snapshot_copies::recovery_rejects_a_forged_tail_after_a_block_aligned_cut
+2026-10-14T23:08:35.7039690Z         PASS [   0.027s] (286/331) aelomi-core storage::tests::store::a_batch_makes_one_full_sync_after_fsyncing_every_file_and_new_entry
+2026-10-14T23:08:35.7248180Z         PASS [   0.015s] (287/331) aelomi-core storage::tests::store::a_compaction_asked_for_while_one_runs_is_queued_once_when_it_ends
+2026-10-14T23:08:35.7552670Z         PASS [   0.036s] (288/331) aelomi-core storage::tests::store::a_doc_missing_an_update_loads_every_operation_and_settles_once_it_arrives
+2026-10-14T23:08:35.7654570Z         PASS [   0.012s] (289/331) aelomi-core storage::tests::store::a_doc_that_fails_to_rebuild_stays_stale_until_a_rebuild_succeeds
+2026-10-14T23:08:35.7861560Z         PASS [   0.012s] (290/331) aelomi-core storage::tests::store::a_doc_with_both_log_formats_loads_every_update_and_continues_numbering
+2026-10-14T23:08:35.9417390Z         PASS [   0.165s] (291/331) aelomi-core storage::tests::store::a_doc_with_pending_structs_loads_as_bytes_that_apply_and_hold_exactly_its_operations
+2026-10-14T23:08:35.9721860Z         PASS [   0.026s] (292/331) aelomi-core storage::tests::store::a_doc_without_pending_structs_loads_from_memory_without_reading_its_files
+2026-10-14T23:08:35.9930210Z         PASS [   0.013s] (293/331) aelomi-core storage::tests::store::a_kept_record_that_never_applies_costs_no_compaction_per_edit
+2026-10-14T23:08:36.0029620Z         PASS [   0.013s] (294/331) aelomi-core storage::tests::store::a_kept_snapshot_merges_back_even_if_a_sync_after_the_keep_fails
+2026-10-14T23:08:36.0131280Z         PASS [   0.014s] (295/331) aelomi-core storage::tests::store::a_kept_snapshot_merges_back_without_reopening
+2026-10-14T23:08:36.0344630Z         PASS [   0.017s] (296/331) aelomi-core storage::tests::store::a_later_compaction_keeps_a_snapshot_the_loaded_doc_lacks
+2026-10-14T23:08:36.0448360Z         PASS [   0.016s] (297/331) aelomi-core storage::tests::store::a_queue_written_while_a_rebuild_fails_survives_damage_in_the_open_segment
+2026-10-14T23:08:36.0649800Z         PASS [   0.016s] (298/331) aelomi-core storage::tests::store::a_rebuild_keeps_damage_it_finds_for_quarantine
+2026-10-14T23:08:36.0754150Z         PASS [   0.018s] (299/331) aelomi-core storage::tests::store::a_rebuild_queues_the_compaction_a_stale_doc_skipped
+2026-10-14T23:08:36.1268630Z         PASS [   0.052s] (300/331) aelomi-core storage::tests::store::an_update_after_a_pending_doc_loads_survives_damage_the_load_read_in_the_open_segment
+2026-10-14T23:08:36.1572200Z         PASS [   0.027s] (301/331) aelomi-core storage::tests::store::an_update_after_a_rebuild_survives_damage_the_rebuild_read_in_the_open_segment
+2026-10-14T23:08:36.1675430Z         PASS [   0.013s] (302/331) aelomi-core storage::tests::store::an_update_larger_than_a_record_holds_is_rejected_and_stores_nothing
+2026-10-14T23:08:36.1880400Z         PASS [   0.016s] (303/331) aelomi-core storage::tests::store::an_update_that_fails_to_apply_is_rejected_and_leaves_no_trace_in_memory
+2026-10-14T23:08:36.2091670Z         PASS [   0.021s] (304/331) aelomi-core storage::tests::store::an_update_written_behind_damage_in_the_open_segment_survives_a_crash
+2026-10-14T23:08:36.2203920Z         PASS [   0.016s] (305/331) aelomi-core storage::tests::store::bytes_that_do_not_decode_are_rejected_and_write_nothing
+2026-10-14T23:08:36.2502640Z         PASS [   0.024s] (306/331) aelomi-core storage::tests::store::compaction_quarantines_damage_a_rebuild_finds_while_it_runs
+2026-10-14T23:08:36.3006550Z         PASS [   0.054s] (307/331) aelomi-core storage::tests::store::docs_round_trip_through_close_and_reopen
+2026-10-14T23:08:36.5035150Z         PASS [   0.198s] (308/331) aelomi-core storage::tests::store::flush_then_close_keeps_every_update
+2026-10-14T23:08:36.5139610Z         PASS [   0.016s] (309/331) aelomi-core storage::tests::store::loading_writes_nothing_and_the_first_append_starts_a_new_segment
+2026-10-14T23:08:36.5653560Z         PASS [   0.045s] (310/331) aelomi-core storage::tests::store::the_next_compaction_quarantines_damage_a_pending_doc_load_reads
+2026-10-14T23:08:36.5756730Z         PASS [   0.016s] (311/331) aelomi-core workspace::tests::body::a_block_without_an_id_is_skipped_and_its_children_are_read
+2026-10-14T23:08:36.5959260Z         PASS [   0.018s] (312/331) aelomi-core workspace::tests::body::a_link_without_a_valid_target_reads_as_a_space
+2026-10-14T23:08:36.6063760Z         PASS [   0.012s] (313/331) aelomi-core workspace::tests::body::an_empty_doc_has_no_blocks
+2026-10-14T23:08:36.6267450Z         PASS [   0.021s] (314/331) aelomi-core workspace::tests::body::content_under_another_root_is_named_not_read_as_empty
+2026-10-14T23:08:36.6470160Z         PASS [   0.017s] (315/331) aelomi-core workspace::tests::body::the_most_serious_problem_is_named
+2026-10-14T23:08:36.6673860Z         PASS [   0.018s] (316/331) aelomi-core workspace::tests::body::the_real_blocknote_fixture_reads_as_its_blocks
+2026-10-14T23:08:36.6778450Z         PASS [   0.013s] (317/331) aelomi-core workspace::tests::body::the_rust_builder_writes_the_layout_the_real_binding_writes
+2026-10-14T23:08:36.6881310Z         PASS [   0.014s] (318/331) aelomi-core workspace::tests::body::unknown_nodes_keep_their_text_and_attributes_are_not_text
+2026-10-14T23:08:36.6993660Z         PASS [   0.011s] (319/331) aelomi-core workspace::tests::records::a_doc_without_pages_has_no_records
+2026-10-14T23:08:36.7199030Z         PASS [   0.016s] (320/331) aelomi-core workspace::tests::records::erasing_removes_the_record
+2026-10-14T23:08:36.7301150Z         PASS [   0.014s] (321/331) aelomi-core workspace::tests::records::every_field_round_trips
+2026-10-14T23:08:36.7517990Z         PASS [   0.018s] (322/331) aelomi-core workspace::tests::records::javascript_numbers_read_as_integers
+2026-10-14T23:08:36.7619970Z         PASS [   0.015s] (323/331) aelomi-core workspace::tests::records::malformed_known_fields_are_typed_failures
+2026-10-14T23:08:36.7829160Z         PASS [   0.017s] (324/331) aelomi-core workspace::tests::records::page_ids_are_doc_ids_except_the_workspace
+2026-10-14T23:08:36.7932190Z         PASS [   0.015s] (325/331) aelomi-core workspace::tests::records::writers_keep_fields_they_do_not_know_and_readers_ignore_them
+2026-10-14T23:08:36.8139810Z         PASS [   0.012s] (326/331) aelomi-core workspace::tests::tree::a_missing_parent_or_a_cycle_never_hides_a_page
+2026-10-14T23:08:36.8241460Z         PASS [   0.014s] (327/331) aelomi-core workspace::tests::tree::favorites_sort_by_favorite_order_then_id
+2026-10-14T23:08:36.8344800Z         PASS [   0.014s] (328/331) aelomi-core workspace::tests::tree::pages_come_depth_first_in_sibling_order
+2026-10-14T23:08:36.8446710Z         PASS [   0.011s] (329/331) aelomi-core workspace::tests::tree::trash_hides_the_page_and_every_descendant_and_lists_only_batch_roots
+2026-10-14T23:08:37.1727900Z         PASS [  13.224s] (330/331) aelomi-core storage::snapshot::tests::every_single_bit_flip_leaves_the_exact_payload
+2026-10-14T23:08:42.3558470Z         PASS [  13.619s] (331/331) aelomi-core storage::tests::crash::every_acknowledged_update_survives_a_crash_at_any_point
+2026-10-14T23:08:42.3563640Z ────────────
+2026-10-14T23:08:42.3564130Z      Summary [  62.928s] 331 tests run: 331 passed, 8 skipped
+2026-10-14T23:08:42.3799600Z ##[group]Run cargo nextest run -p aelomi-core --cargo-profile release --locked --run-ignored only --test-threads 1 index::tests::latency
+2026-10-14T23:08:42.3800500Z cargo nextest run -p aelomi-core --cargo-profile release --locked --run-ignored only --test-threads 1 index::tests::latency
+2026-10-14T23:08:42.4046840Z shell: /bin/bash -e {0}
+2026-10-14T23:08:42.4047100Z env:
+2026-10-14T23:08:42.4047370Z   E2E_TELEMETRY_DISABLED: 1
+2026-10-14T23:08:42.4047690Z   DO_NOT_TRACK: 1
+2026-10-14T23:08:42.4047890Z   CACHE_ON_FAILURE: false
+2026-10-14T23:08:42.4048180Z   CARGO_INCREMENTAL: 0
+2026-10-14T23:08:42.4048390Z ##[endgroup]
+2026-10-14T23:08:43.8456100Z    Compiling aelomi-core v0.1.0 (/Users/runner/work/aelomi/aelomi/crates/core)
+2026-10-14T23:09:24.9117800Z     Finished `release` profile [optimized] target(s) in 41.28s
+2026-10-14T23:09:24.9654150Z ────────────
+2026-10-14T23:09:24.9656560Z  Nextest run ID ca23886d-2d7a-4faa-908a-49de826d918c with nextest profile: default
+2026-10-14T23:09:24.9659980Z     Starting 2 tests across 1 binary (300 tests skipped)
+2026-10-14T23:09:25.7665840Z         PASS [   0.800s] (1/2) aelomi-core index::tests::latency::a_linking_edit_on_a_5000_block_page_reaches_the_backlinks_within_250_ms
+2026-10-14T23:09:27.4820220Z         PASS [   1.714s] (2/2) aelomi-core index::tests::latency::a_linking_edit_reaches_the_backlinks_within_250_ms_on_real_threads
+2026-10-14T23:09:27.4821830Z ────────────
+2026-10-14T23:09:27.4822600Z      Summary [   2.516s] 2 tests run: 2 passed, 300 skipped
+2026-10-14T23:09:27.5020960Z ##[group]Run node scripts/check-search.ts --ci
+2026-10-14T23:09:27.5021630Z node scripts/check-search.ts --ci
+2026-10-14T23:09:27.5124140Z shell: /bin/bash -e {0}
+2026-10-14T23:09:27.5124600Z env:
+2026-10-14T23:09:27.5124840Z   E2E_TELEMETRY_DISABLED: 1
+2026-10-14T23:09:27.5125190Z   DO_NOT_TRACK: 1
+2026-10-14T23:09:27.5125420Z   CACHE_ON_FAILURE: false
+2026-10-14T23:09:27.5125730Z   CARGO_INCREMENTAL: 0
+2026-10-14T23:09:27.5126020Z ##[endgroup]
+2026-10-14T23:09:27.9496190Z Search gate CI p95 < 5 ms. Initially the same 5 ms budget as the product gate. Any future hosted-runner calibration must cite measured hosted runs; no multiplier or unmeasured allowance is used.
+2026-10-14T23:09:28.5046440Z warning: ignoring --test-threads because --no-capture is specified
+2026-10-14T23:09:28.6828850Z     Finished `release` profile [optimized] target(s) in 0.16s
+2026-10-14T23:09:28.7376230Z ────────────
+2026-10-14T23:09:28.7482130Z  Nextest run ID 0d1d4ee2-2ee7-4dad-91bb-763a518afd69 with nextest profile: default
+2026-10-14T23:09:28.7524470Z     Starting 1 test across 1 binary (301 tests skipped)
+2026-10-14T23:09:28.7524880Z
+2026-10-14T23:09:28.7526420Z        START [         ] (1/1) aelomi-core index::tests::search_gate::search_answers_within_5_ms_p95_through_the_public_workspace
+2026-10-14T23:09:28.7527220Z running 1 test
+2026-10-14T23:09:28.7528750Z gate start profile=release sqlite=3.53.2 cores=3 budget_ms=5 first_samples=30 steady_samples=200 load=11.32 17.26 9.18
+2026-10-14T23:09:35.3000180Z gate fixture=10k indexed_ms=6516 load=11.70 17.24 9.22
+2026-10-14T23:09:35.3173230Z gate fixture=10k query="zorvak" scope=all limit=20 hits=1 matched_blocks=1 matched_pages=1 matched_titles=0 walked_title_rows=0 walked_block_rows=1 consumed_bytes=33000 first_p50_us=231 first_p95_us=292 first_max_us=326 steady_p50_us=35 steady_p95_us=45 steady_max_us=121
+2026-10-14T23:09:35.3302240Z gate fixture=10k query="zorvak" scope=content-0 limit=20 hits=1 matched_blocks=1 matched_pages=1 matched_titles=0 walked_title_rows=0 walked_block_rows=1 consumed_bytes=33000 first_p50_us=198 first_p95_us=348 first_max_us=368 steady_p50_us=24 steady_p95_us=33 steady_max_us=76
+2026-10-14T23:09:35.3644390Z gate fixture=10k query="zorvak" scope=content-200 limit=20 hits=0 matched_blocks=1 matched_pages=1 matched_titles=0 walked_title_rows=0 walked_block_rows=1 consumed_bytes=0 first_p50_us=342 first_p95_us=471 first_max_us=546 steady_p50_us=106 steady_p95_us=132 steady_max_us=254
+2026-10-14T23:09:35.3834980Z gate fixture=10k query="zorvak" scope=all limit=200 hits=1 matched_blocks=1 matched_pages=1 matched_titles=0 walked_title_rows=0 walked_block_rows=1 consumed_bytes=33000 first_p50_us=275 first_p95_us=565 first_max_us=648 steady_p50_us=35 steady_p95_us=55 steady_max_us=148
+2026-10-14T23:09:35.3973130Z gate fixture=10k query="zorvak" scope=content-0 limit=200 hits=1 matched_blocks=1 matched_pages=1 matched_titles=0 walked_title_rows=0 walked_block_rows=1 consumed_bytes=33000 first_p50_us=214 first_p95_us=374 first_max_us=805 steady_p50_us=24 steady_p95_us=31 steady_max_us=88
+2026-10-14T23:09:35.4316310Z gate fixture=10k query="zorvak" scope=content-200 limit=200 hits=0 matched_blocks=1 matched_pages=1 matched_titles=0 walked_title_rows=0 walked_block_rows=1 consumed_bytes=0 first_p50_us=348 first_p95_us=514 first_max_us=665 steady_p50_us=104 steady_p95_us=124 steady_max_us=226
+2026-10-14T23:09:35.4555120Z gate fixture=10k query="quillmere" scope=all limit=20 hits=7 matched_blocks=7 matched_pages=7 matched_titles=0 walked_title_rows=0 walked_block_rows=7 consumed_bytes=213000 first_p50_us=278 first_p95_us=875 first_max_us=1481 steady_p50_us=49 steady_p95_us=61 steady_max_us=251
+2026-10-14T23:09:35.4718300Z gate fixture=10k query="quillmere" scope=content-0 limit=20 hits=7 matched_blocks=7 matched_pages=7 matched_titles=0 walked_title_rows=0 walked_block_rows=7 consumed_bytes=213000 first_p50_us=214 first_p95_us=354 first_max_us=465 steady_p50_us=37 steady_p95_us=51 steady_max_us=296
+2026-10-14T23:09:35.5064790Z gate fixture=10k query="quillmere" scope=content-200 limit=20 hits=0 matched_blocks=7 matched_pages=7 matched_titles=0 walked_title_rows=0 walked_block_rows=7 consumed_bytes=0 first_p50_us=349 first_p95_us=504 first_max_us=575 steady_p50_us=106 steady_p95_us=122 steady_max_us=187
+2026-10-14T23:09:35.5312700Z gate fixture=10k query="quillmere" scope=all limit=200 hits=7 matched_blocks=7 matched_pages=7 matched_titles=0 walked_title_rows=0 walked_block_rows=7 consumed_bytes=213000 first_p50_us=308 first_p95_us=965 first_max_us=1088 steady_p50_us=50 steady_p95_us=70 steady_max_us=268
+2026-10-14T23:09:35.5516990Z gate fixture=10k query="quillmere" scope=content-0 limit=200 hits=7 matched_blocks=7 matched_pages=7 matched_titles=0 walked_title_rows=0 walked_block_rows=7 consumed_bytes=213000 first_p50_us=213 first_p95_us=262 first_max_us=462 steady_p50_us=38 steady_p95_us=146 steady_max_us=303
+2026-10-14T23:09:35.5940050Z gate fixture=10k query="quillmere" scope=content-200 limit=200 hits=0 matched_blocks=7 matched_pages=7 matched_titles=0 walked_title_rows=0 walked_block_rows=7 consumed_bytes=0 first_p50_us=415 first_p95_us=828 first_max_us=941 steady_p50_us=114 steady_p95_us=220 steady_max_us=423
+2026-10-14T23:09:35.6253630Z gate fixture=10k query="kestrel" scope=all limit=20 hits=4 matched_blocks=4 matched_pages=4 matched_titles=0 walked_title_rows=0 walked_block_rows=4 consumed_bytes=133200 first_p50_us=348 first_p95_us=577 first_max_us=619 steady_p50_us=48 steady_p95_us=147 steady_max_us=258
+2026-10-14T23:09:35.6459970Z gate fixture=10k query="kestrel" scope=content-0 limit=20 hits=4 matched_blocks=4 matched_pages=4 matched_titles=0 walked_title_rows=0 walked_block_rows=4 consumed_bytes=133200 first_p50_us=275 first_p95_us=442 first_max_us=446 steady_p50_us=33 steady_p95_us=123 steady_max_us=240
+2026-10-14T23:09:35.6962140Z gate fixture=10k query="kestrel" scope=content-200 limit=20 hits=0 matched_blocks=4 matched_pages=4 matched_titles=0 walked_title_rows=0 walked_block_rows=4 consumed_bytes=0 first_p50_us=407 first_p95_us=1634 first_max_us=1639 steady_p50_us=109 steady_p95_us=293 steady_max_us=512
+2026-10-14T23:09:35.7105790Z gate fixture=10k query="kestrel" scope=all limit=200 hits=4 matched_blocks=4 matched_pages=4 matched_titles=0 walked_title_rows=0 walked_block_rows=4 consumed_bytes=133200 first_p50_us=245 first_p95_us=382 first_max_us=471 steady_p50_us=48 steady_p95_us=182 steady_max_us=278
+2026-10-14T23:09:35.7270380Z gate fixture=10k query="kestrel" scope=content-0 limit=200 hits=4 matched_blocks=4 matched_pages=4 matched_titles=0 walked_title_rows=0 walked_block_rows=4 consumed_bytes=133200 first_p50_us=202 first_p95_us=730 first_max_us=857 steady_p50_us=31 steady_p95_us=38 steady_max_us=103
+2026-10-14T23:09:35.7605430Z gate fixture=10k query="kestrel" scope=content-200 limit=200 hits=0 matched_blocks=4 matched_pages=4 matched_titles=0 walked_title_rows=0 walked_block_rows=4 consumed_bytes=0 first_p50_us=348 first_p95_us=533 first_max_us=625 steady_p50_us=104 steady_p95_us=115 steady_max_us=128
+2026-10-14T23:09:35.7748960Z gate fixture=10k query="nonesuchword" scope=all limit=20 hits=0 matched_blocks=0 matched_pages=0 matched_titles=0 walked_title_rows=0 walked_block_rows=0 consumed_bytes=0 first_p50_us=203 first_p95_us=317 first_max_us=319 steady_p50_us=32 steady_p95_us=37 steady_max_us=42
+2026-10-14T23:09:35.7841230Z gate fixture=10k query="nonesuchword" scope=content-0 limit=20 hits=0 matched_blocks=0 matched_pages=0 matched_titles=0 walked_title_rows=0 walked_block_rows=0 consumed_bytes=0 first_p50_us=155 first_p95_us=179 first_max_us=187 steady_p50_us=19 steady_p95_us=19 steady_max_us=24
+2026-10-14T23:09:35.8154560Z gate fixture=10k query="nonesuchword" scope=content-200 limit=20 hits=0 matched_blocks=0 matched_pages=0 matched_titles=0 walked_title_rows=0 walked_block_rows=0 consumed_bytes=0 first_p50_us=307 first_p95_us=382 first_max_us=412 steady_p50_us=100 steady_p95_us=113 steady_max_us=128
+2026-10-14T23:09:35.8389430Z gate fixture=10k query="nonesuchword" scope=all limit=200 hits=0 matched_blocks=0 matched_pages=0 matched_titles=0 walked_title_rows=0 walked_block_rows=0 consumed_bytes=0 first_p50_us=208 first_p95_us=308 first_max_us=350 steady_p50_us=33 steady_p95_us=39 steady_max_us=190
+2026-10-14T23:09:35.8594160Z gate fixture=10k query="nonesuchword" scope=content-0 limit=200 hits=0 matched_blocks=0 matched_pages=0 matched_titles=0 walked_title_rows=0 walked_block_rows=0 consumed_bytes=0 first_p50_us=209 first_p95_us=902 first_max_us=1015 steady_p50_us=21 steady_p95_us=128 steady_max_us=630
+2026-10-14T23:09:35.8895750Z gate fixture=10k query="nonesuchword" scope=content-200 limit=200 hits=0 matched_blocks=0 matched_pages=0 matched_titles=0 walked_title_rows=0 walked_block_rows=0 consumed_bytes=0 first_p50_us=365 first_p95_us=525 first_max_us=585 steady_p50_us=107 steady_p95_us=157 steady_max_us=399
+2026-10-14T23:09:35.9387080Z gate fixture=10k query="zitida" scope=all limit=20 hits=20 matched_blocks=21553 matched_pages=9412 matched_titles=2424 walked_title_rows=20 walked_block_rows=0 consumed_bytes=224400 first_p50_us=327 first_p95_us=1071 first_max_us=1717 steady_p50_us=133 steady_p95_us=205 steady_max_us=393
+2026-10-14T23:09:36.2973720Z gate fixture=10k query="zitida" scope=content-0 limit=20 hits=20 matched_blocks=21553 matched_pages=9412 matched_titles=2424 walked_title_rows=0 walked_block_rows=45 consumed_bytes=655600 first_p50_us=1555 first_p95_us=6799 first_max_us=12463 steady_p50_us=1284 steady_p95_us=2073 steady_max_us=3663
+2026-10-14T23:09:36.7536280Z gate fixture=10k query="zitida" scope=content-200 limit=20 hits=20 matched_blocks=21553 matched_pages=9412 matched_titles=2424 walked_title_rows=0 walked_block_rows=70 consumed_bytes=648600 first_p50_us=2130 first_p95_us=5407 first_max_us=5726 steady_p50_us=1655 steady_p95_us=3186 steady_max_us=5487
+2026-10-14T23:09:36.8763480Z gate fixture=10k query="zitida" scope=all limit=200 hits=200 matched_blocks=21553 matched_pages=9412 matched_titles=2424 walked_title_rows=200 walked_block_rows=0 consumed_bytes=2134400 first_p50_us=652 first_p95_us=1934 first_max_us=2766 steady_p50_us=308 steady_p95_us=904 steady_max_us=1271
+2026-10-14T23:09:37.4363510Z gate fixture=10k query="zitida" scope=content-0 limit=200 hits=200 matched_blocks=21553 matched_pages=9412 matched_titles=2424 walked_title_rows=0 walked_block_rows=457 consumed_bytes=6604200 first_p50_us=2436 first_p95_us=3874 first_max_us=4447 steady_p50_us=1905 steady_p95_us=4460 steady_max_us=5209
+2026-10-14T23:09:37.9663250Z gate fixture=10k query="zitida" scope=content-200 limit=200 hits=200 matched_blocks=21553 matched_pages=9412 matched_titles=2424 walked_title_rows=0 walked_block_rows=633 consumed_bytes=6519600 first_p50_us=2425 first_p95_us=2667 first_max_us=3113 steady_p50_us=2044 steady_p95_us=3173 steady_max_us=7595
+2026-10-14T23:09:38.0208280Z gate fixture=10k query="rehada" scope=all limit=20 hits=20 matched_blocks=14295 matched_pages=8185 matched_titles=1259 walked_title_rows=20 walked_block_rows=0 consumed_bytes=205000 first_p50_us=353 first_p95_us=1135 first_max_us=1305 steady_p50_us=91 steady_p95_us=286 steady_max_us=361
+2026-10-14T23:09:38.2855650Z gate fixture=10k query="rehada" scope=content-0 limit=20 hits=20 matched_blocks=14295 matched_pages=8185 matched_titles=1259 walked_title_rows=0 walked_block_rows=33 consumed_bytes=647800 first_p50_us=1048 first_p95_us=1267 first_max_us=1275 steady_p50_us=859 steady_p95_us=1537 steady_max_us=21127
+2026-10-14T23:09:38.5443930Z gate fixture=10k query="rehada" scope=content-200 limit=20 hits=20 matched_blocks=14295 matched_pages=8185 matched_titles=1259 walked_title_rows=0 walked_block_rows=34 consumed_bytes=645000 first_p50_us=1353 first_p95_us=1745 first_max_us=1874 steady_p50_us=980 steady_p95_us=1604 steady_max_us=2589
+2026-10-14T23:09:38.6154120Z gate fixture=10k query="rehada" scope=all limit=200 hits=200 matched_blocks=14295 matched_pages=8185 matched_titles=1259 walked_title_rows=200 walked_block_rows=0 consumed_bytes=2152600 first_p50_us=426 first_p95_us=637 first_max_us=702 steady_p50_us=247 steady_p95_us=341 steady_max_us=947
+2026-10-14T23:09:39.0256140Z gate fixture=10k query="rehada" scope=content-0 limit=200 hits=200 matched_blocks=14295 matched_pages=8185 matched_titles=1259 walked_title_rows=0 walked_block_rows=351 consumed_bytes=6587400 first_p50_us=1738 first_p95_us=3342 first_max_us=4507 steady_p50_us=1457 steady_p95_us=3320 steady_max_us=6443
+2026-10-14T23:09:39.4492550Z gate fixture=10k query="rehada" scope=content-200 limit=200 hits=200 matched_blocks=14295 matched_pages=8185 matched_titles=1259 walked_title_rows=0 walked_block_rows=383 consumed_bytes=6627400 first_p50_us=2028 first_p95_us=2646 first_max_us=2752 steady_p50_us=1579 steady_p95_us=2629 steady_max_us=4669
+2026-10-14T23:09:39.4715800Z gate fixture=10k query="z" scope=all limit=20 hits=20 matched_blocks=25765 matched_pages=9660 matched_titles=3615 walked_title_rows=20 walked_block_rows=0 consumed_bytes=221200 first_p50_us=204 first_p95_us=322 first_max_us=342 steady_p50_us=49 steady_p95_us=59 steady_max_us=169
+2026-10-14T23:09:39.5337920Z gate fixture=10k query="z" scope=content-0 limit=20 hits=20 matched_blocks=25765 matched_pages=9660 matched_titles=3615 walked_title_rows=0 walked_block_rows=55 consumed_bytes=639200 first_p50_us=298 first_p95_us=450 first_max_us=478 steady_p50_us=115 steady_p95_us=435 steady_max_us=13293
+2026-10-14T23:09:39.5984240Z gate fixture=10k query="z" scope=content-200 limit=20 hits=20 matched_blocks=25765 matched_pages=9660 matched_titles=3615 walked_title_rows=0 walked_block_rows=117 consumed_bytes=658600 first_p50_us=520 first_p95_us=857 first_max_us=899 steady_p50_us=217 steady_p95_us=294 steady_max_us=692
+2026-10-14T23:09:39.6835930Z gate fixture=10k query="z" scope=all limit=200 hits=200 matched_blocks=25765 matched_pages=9660 matched_titles=3615 walked_title_rows=200 walked_block_rows=0 consumed_bytes=2118000 first_p50_us=403 first_p95_us=719 first_max_us=1026 steady_p50_us=209 steady_p95_us=633 steady_max_us=4120
+2026-10-14T23:09:39.8820200Z gate fixture=10k query="z" scope=content-0 limit=200 hits=200 matched_blocks=25765 matched_pages=9660 matched_titles=3615 walked_title_rows=0 walked_block_rows=544 consumed_bytes=6547400 first_p50_us=1006 first_p95_us=1161 first_max_us=1188 steady_p50_us=729 steady_p95_us=1103 steady_max_us=1693
+2026-10-14T23:09:40.1372180Z gate fixture=10k query="z" scope=content-200 limit=200 hits=200 matched_blocks=25765 matched_pages=9660 matched_titles=3615 walked_title_rows=0 walked_block_rows=875 consumed_bytes=6401400 first_p50_us=1335 first_p95_us=1491 first_max_us=1581 steady_p50_us=938 steady_p95_us=1226 steady_max_us=3254
+2026-10-14T23:09:40.1596720Z gate fixture=10k query="zi" scope=all limit=20 hits=20 matched_blocks=23390 matched_pages=9563 matched_titles=2867 walked_title_rows=20 walked_block_rows=0 consumed_bytes=224400 first_p50_us=198 first_p95_us=299 first_max_us=343 steady_p50_us=51 steady_p95_us=62 steady_max_us=163
+2026-10-14T23:09:40.2332560Z gate fixture=10k query="zi" scope=content-0 limit=20 hits=20 matched_blocks=23390 matched_pages=9563 matched_titles=2867 walked_title_rows=0 walked_block_rows=50 consumed_bytes=643400 first_p50_us=307 first_p95_us=436 first_max_us=606 steady_p50_us=117 steady_p95_us=370 steady_max_us=4202
+2026-10-14T23:09:40.3551850Z gate fixture=10k query="zi" scope=content-200 limit=20 hits=20 matched_blocks=23390 matched_pages=9563 matched_titles=2867 walked_title_rows=0 walked_block_rows=79 consumed_bytes=645400 first_p50_us=726 first_p95_us=6033 first_max_us=16179 steady_p50_us=250 steady_p95_us=1056 steady_max_us=2794
+2026-10-14T23:09:40.4347990Z gate fixture=10k query="zi" scope=all limit=200 hits=200 matched_blocks=23390 matched_pages=9563 matched_titles=2867 walked_title_rows=200 walked_block_rows=0 consumed_bytes=2120200 first_p50_us=389 first_p95_us=1079 first_max_us=1390 steady_p50_us=212 steady_p95_us=696 steady_max_us=6945
+2026-10-14T23:09:40.6588650Z gate fixture=10k query="zi" scope=content-0 limit=200 hits=200 matched_blocks=23390 matched_pages=9563 matched_titles=2867 walked_title_rows=0 walked_block_rows=489 consumed_bytes=6576800 first_p50_us=1239 first_p95_us=2684 first_max_us=5478 steady_p50_us=768 steady_p95_us=1431 steady_max_us=2643
+2026-10-14T23:09:40.9262910Z gate fixture=10k query="zi" scope=content-200 limit=200 hits=200 matched_blocks=23390 matched_pages=9563 matched_titles=2867 walked_title_rows=0 walked_block_rows=699 consumed_bytes=6486800 first_p50_us=1314 first_p95_us=2553 first_max_us=10852 steady_p50_us=908 steady_p95_us=1648 steady_max_us=3259
+2026-10-14T23:09:40.9504070Z gate fixture=10k query="zit" scope=all limit=20 hits=20 matched_blocks=21559 matched_pages=9412 matched_titles=2425 walked_title_rows=20 walked_block_rows=0 consumed_bytes=224400 first_p50_us=186 first_p95_us=312 first_max_us=406 steady_p50_us=45 steady_p95_us=52 steady_max_us=98
+2026-10-14T23:09:40.9834190Z gate fixture=10k query="zit" scope=content-0 limit=20 hits=20 matched_blocks=21559 matched_pages=9412 matched_titles=2425 walked_title_rows=0 walked_block_rows=45 consumed_bytes=655600 first_p50_us=281 first_p95_us=325 first_max_us=481 steady_p50_us=107 steady_p95_us=136 steady_max_us=221
+2026-10-14T23:09:41.0468110Z gate fixture=10k query="zit" scope=content-200 limit=20 hits=20 matched_blocks=21559 matched_pages=9412 matched_titles=2425 walked_title_rows=0 walked_block_rows=70 consumed_bytes=648600 first_p50_us=493 first_p95_us=583 first_max_us=1316 steady_p50_us=218 steady_p95_us=300 steady_max_us=439
+2026-10-14T23:09:41.1087320Z gate fixture=10k query="zit" scope=all limit=200 hits=200 matched_blocks=21559 matched_pages=9412 matched_titles=2425 walked_title_rows=200 walked_block_rows=0 consumed_bytes=2134400 first_p50_us=362 first_p95_us=434 first_max_us=581 steady_p50_us=215 steady_p95_us=353 steady_max_us=649
+2026-10-14T23:09:41.3038610Z gate fixture=10k query="zit" scope=content-0 limit=200 hits=200 matched_blocks=21559 matched_pages=9412 matched_titles=2425 walked_title_rows=0 walked_block_rows=457 consumed_bytes=6604200 first_p50_us=1057 first_p95_us=1564 first_max_us=1650 steady_p50_us=707 steady_p95_us=1006 steady_max_us=2245
+2026-10-14T23:09:41.6633620Z gate fixture=10k query="zit" scope=content-200 limit=200 hits=200 matched_blocks=21559 matched_pages=9412 matched_titles=2425 walked_title_rows=0 walked_block_rows=633 consumed_bytes=6519600 first_p50_us=1422 first_p95_us=18987 first_max_us=21295 steady_p50_us=905 steady_p95_us=1616 steady_max_us=18383
+2026-10-14T23:09:41.7189560Z gate fixture=10k query="ziti" scope=all limit=20 hits=20 matched_blocks=21553 matched_pages=9412 matched_titles=2424 walked_title_rows=20 walked_block_rows=0 consumed_bytes=224400 first_p50_us=352 first_p95_us=658 first_max_us=749 steady_p50_us=142 steady_p95_us=276 steady_max_us=974
+2026-10-14T23:09:42.1038740Z gate fixture=10k query="ziti" scope=content-0 limit=20 hits=20 matched_blocks=21553 matched_pages=9412 matched_titles=2424 walked_title_rows=0 walked_block_rows=45 consumed_bytes=655600 first_p50_us=1581 first_p95_us=5282 first_max_us=5981 steady_p50_us=1258 steady_p95_us=2818 steady_max_us=9266
+2026-10-14T23:09:42.5199240Z gate fixture=10k query="ziti" scope=content-200 limit=20 hits=20 matched_blocks=21553 matched_pages=9412 matched_titles=2424 walked_title_rows=0 walked_block_rows=70 consumed_bytes=648600 first_p50_us=2519 first_p95_us=5736 first_max_us=5909 steady_p50_us=1394 steady_p95_us=3027 steady_max_us=5763
+2026-10-14T23:09:42.6070920Z gate fixture=10k query="ziti" scope=all limit=200 hits=200 matched_blocks=21553 matched_pages=9412 matched_titles=2424 walked_title_rows=200 walked_block_rows=0 consumed_bytes=2134400 first_p50_us=523 first_p95_us=852 first_max_us=999 steady_p50_us=308 steady_p95_us=429 steady_max_us=733
+2026-10-14T23:09:43.1146430Z gate fixture=10k query="ziti" scope=content-0 limit=200 hits=200 matched_blocks=21553 matched_pages=9412 matched_titles=2424 walked_title_rows=0 walked_block_rows=457 consumed_bytes=6604200 first_p50_us=2278 first_p95_us=3446 first_max_us=3497 steady_p50_us=1910 steady_p95_us=3530 steady_max_us=6420
+2026-10-14T23:09:43.6935900Z gate fixture=10k query="ziti" scope=content-200 limit=200 hits=200 matched_blocks=21553 matched_pages=9412 matched_titles=2424 walked_title_rows=0 walked_block_rows=633 consumed_bytes=6519600 first_p50_us=2505 first_p95_us=5490 first_max_us=7049 steady_p50_us=2046 steady_p95_us=4251 steady_max_us=5125
+2026-10-14T23:09:43.7566820Z gate fixture=10k query="zitid" scope=all limit=20 hits=20 matched_blocks=21553 matched_pages=9412 matched_titles=2424 walked_title_rows=20 walked_block_rows=0 consumed_bytes=224400 first_p50_us=331 first_p95_us=972 first_max_us=1027 steady_p50_us=142 steady_p95_us=441 steady_max_us=1290
+2026-10-14T23:09:44.1447650Z gate fixture=10k query="zitid" scope=content-0 limit=20 hits=20 matched_blocks=21553 matched_pages=9412 matched_titles=2424 walked_title_rows=0 walked_block_rows=45 consumed_bytes=655600 first_p50_us=2186 first_p95_us=5087 first_max_us=5101 steady_p50_us=1270 steady_p95_us=2804 steady_max_us=4430
+2026-10-14T23:09:44.6500090Z gate fixture=10k query="zitid" scope=content-200 limit=20 hits=20 matched_blocks=21553 matched_pages=9412 matched_titles=2424 walked_title_rows=0 walked_block_rows=70 consumed_bytes=648600 first_p50_us=1935 first_p95_us=3950 first_max_us=4503 steady_p50_us=1506 steady_p95_us=3571 steady_max_us=22756
+2026-10-14T23:09:44.8419750Z gate fixture=10k query="zitid" scope=all limit=200 hits=200 matched_blocks=21553 matched_pages=9412 matched_titles=2424 walked_title_rows=200 walked_block_rows=0 consumed_bytes=2134400 first_p50_us=528 first_p95_us=1850 first_max_us=2868 steady_p50_us=376 steady_p95_us=1820 steady_max_us=18472
+2026-10-14T23:09:45.8342690Z gate fixture=10k query="zitid" scope=content-0 limit=200 hits=200 matched_blocks=21553 matched_pages=9412 matched_titles=2424 walked_title_rows=0 walked_block_rows=457 consumed_bytes=6604200 first_p50_us=4000 first_p95_us=12838 first_max_us=17767 steady_p50_us=2846 steady_p95_us=8418 steady_max_us=43432
+2026-10-14T23:09:46.9749540Z gate fixture=10k query="zitid" scope=content-200 limit=200 hits=200 matched_blocks=21553 matched_pages=9412 matched_titles=2424 walked_title_rows=0 walked_block_rows=633 consumed_bytes=6519600 first_p50_us=2798 first_p95_us=14685 first_max_us=473422 steady_p50_us=2405 steady_p95_us=4767 steady_max_us=6878
+2026-10-14T23:09:47.1449910Z gate fixture=10k query="dapoku go" scope=all limit=20 hits=20 matched_blocks=3509 matched_pages=3097 matched_titles=55 walked_title_rows=20 walked_block_rows=0 consumed_bytes=228600 first_p50_us=284 first_p95_us=621 first_max_us=672 steady_p50_us=104 steady_p95_us=287 steady_max_us=1549
+2026-10-14T23:09:47.2056570Z gate fixture=10k query="dapoku go" scope=content-0 limit=20 hits=20 matched_blocks=3509 matched_pages=3097 matched_titles=55 walked_title_rows=0 walked_block_rows=22 consumed_bytes=710800 first_p50_us=399 first_p95_us=957 first_max_us=1097 steady_p50_us=162 steady_p95_us=436 steady_max_us=672
+2026-10-14T23:09:47.4267350Z gate fixture=10k query="dapoku go" scope=content-200 limit=20 hits=20 matched_blocks=3509 matched_pages=3097 matched_titles=55 walked_title_rows=0 walked_block_rows=183 consumed_bytes=694600 first_p50_us=998 first_p95_us=2068 first_max_us=30367 steady_p50_us=460 steady_p95_us=2118 steady_max_us=8977
+2026-10-14T23:09:48.1410190Z gate fixture=10k query="dapoku go" scope=all limit=200 hits=200 matched_blocks=3509 matched_pages=3097 matched_titles=55 walked_title_rows=55 walked_block_rows=160 consumed_bytes=5583400 first_p50_us=3459 first_p95_us=21785 first_max_us=27333 steady_p50_us=1368 steady_p95_us=5103 steady_max_us=78549
+2026-10-14T23:09:48.6184130Z gate fixture=10k query="dapoku go" scope=content-0 limit=200 hits=200 matched_blocks=3509 matched_pages=3097 matched_titles=55 walked_title_rows=0 walked_block_rows=222 consumed_bytes=6844000 first_p50_us=2829 first_p95_us=7896 first_max_us=20483 steady_p50_us=1331 steady_p95_us=3996 steady_max_us=11121
+2026-10-14T23:09:49.3011910Z gate fixture=10k query="dapoku go" scope=content-200 limit=200 hits=200 matched_blocks=3509 matched_pages=3097 matched_titles=55 walked_title_rows=0 walked_block_rows=388 consumed_bytes=6858600 first_p50_us=3643 first_p95_us=30837 first_max_us=52347 steady_p50_us=1336 steady_p95_us=4158 steady_max_us=8833
+2026-10-14T23:09:49.5225990Z gate fixture=10k query="zitida kestrel" scope=all limit=20 hits=3 matched_blocks=3 matched_pages=3 matched_titles=0 walked_title_rows=0 walked_block_rows=3 consumed_bytes=102000 first_p50_us=890 first_p95_us=2488 first_max_us=3338 steady_p50_us=339 steady_p95_us=1120 steady_max_us=4190
+2026-10-14T23:09:49.6252270Z gate fixture=10k query="zitida kestrel" scope=content-0 limit=20 hits=3 matched_blocks=3 matched_pages=3 matched_titles=0 walked_title_rows=0 walked_block_rows=3 consumed_bytes=102000 first_p50_us=816 first_p95_us=1841 first_max_us=3854 steady_p50_us=262 steady_p95_us=773 steady_max_us=1091
+2026-10-14T23:09:49.7779450Z gate fixture=10k query="zitida kestrel" scope=content-200 limit=20 hits=0 matched_blocks=3 matched_pages=3 matched_titles=0 walked_title_rows=0 walked_block_rows=3 consumed_bytes=0 first_p50_us=1325 first_p95_us=3606 first_max_us=4693 steady_p50_us=377 steady_p95_us=1051 steady_max_us=1312
+2026-10-14T23:09:49.8720180Z gate fixture=10k query="zitida kestrel" scope=all limit=200 hits=3 matched_blocks=3 matched_pages=3 matched_titles=0 walked_title_rows=0 walked_block_rows=3 consumed_bytes=102000 first_p50_us=560 first_p95_us=1031 first_max_us=1758 steady_p50_us=299 steady_p95_us=716 steady_max_us=2141
+2026-10-14T23:09:49.9647450Z gate fixture=10k query="zitida kestrel" scope=content-0 limit=200 hits=3 matched_blocks=3 matched_pages=3 matched_titles=0 walked_title_rows=0 walked_block_rows=3 consumed_bytes=102000 first_p50_us=502 first_p95_us=834 first_max_us=1312 steady_p50_us=259 steady_p95_us=751 steady_max_us=1242
+2026-10-14T23:09:50.0773570Z gate fixture=10k query="zitida kestrel" scope=content-200 limit=200 hits=0 matched_blocks=3 matched_pages=3 matched_titles=0 walked_title_rows=0 walked_block_rows=3 consumed_bytes=0 first_p50_us=677 first_p95_us=1889 first_max_us=3058 steady_p50_us=341 steady_p95_us=991 steady_max_us=1941
+2026-10-14T23:09:50.1281240Z gate fixture=10k query="Dapoku, GO!" scope=all limit=20 hits=20 matched_blocks=3509 matched_pages=3097 matched_titles=55 walked_title_rows=20 walked_block_rows=0 consumed_bytes=228600 first_p50_us=317 first_p95_us=1297 first_max_us=1448 steady_p50_us=104 steady_p95_us=357 steady_max_us=1982
+2026-10-14T23:09:50.2034360Z gate fixture=10k query="Dapoku, GO!" scope=content-0 limit=20 hits=20 matched_blocks=3509 matched_pages=3097 matched_titles=55 walked_title_rows=0 walked_block_rows=22 consumed_bytes=710800 first_p50_us=398 first_p95_us=1070 first_max_us=1322 steady_p50_us=183 steady_p95_us=600 steady_max_us=825
+2026-10-14T23:09:50.3428140Z gate fixture=10k query="Dapoku, GO!" scope=content-200 limit=20 hits=20 matched_blocks=3509 matched_pages=3097 matched_titles=55 walked_title_rows=0 walked_block_rows=183 consumed_bytes=694600 first_p50_us=1019 first_p95_us=3543 first_max_us=3661 steady_p50_us=376 steady_p95_us=857 steady_max_us=2869
+2026-10-14T23:09:50.6815350Z gate fixture=10k query="Dapoku, GO!" scope=all limit=200 hits=200 matched_blocks=3509 matched_pages=3097 matched_titles=55 walked_title_rows=55 walked_block_rows=160 consumed_bytes=5583400 first_p50_us=1811 first_p95_us=4322 first_max_us=4364 steady_p50_us=940 steady_p95_us=2611 steady_max_us=4777
+2026-10-14T23:09:51.0643510Z gate fixture=10k query="Dapoku, GO!" scope=content-0 limit=200 hits=200 matched_blocks=3509 matched_pages=3097 matched_titles=55 walked_title_rows=0 walked_block_rows=222 consumed_bytes=6844000 first_p50_us=1828 first_p95_us=4625 first_max_us=4656 steady_p50_us=918 steady_p95_us=2827 steady_max_us=29345
+2026-10-14T23:09:51.4637590Z gate fixture=10k query="Dapoku, GO!" scope=content-200 limit=200 hits=200 matched_blocks=3509 matched_pages=3097 matched_titles=55 walked_title_rows=0 walked_block_rows=388 consumed_bytes=6858600 first_p50_us=2156 first_p95_us=6541 first_max_us=21489 steady_p50_us=1140 steady_p95_us=2696 steady_max_us=4386
+2026-10-14T23:09:51.4925830Z gate fixture=10k query="je" scope=all limit=20 hits=20 matched_blocks=1471 matched_pages=1394 matched_titles=111 walked_title_rows=20 walked_block_rows=0 consumed_bytes=218000 first_p50_us=206 first_p95_us=380 first_max_us=778 steady_p50_us=38 steady_p95_us=191 steady_max_us=387
+2026-10-14T23:09:51.5418110Z gate fixture=10k query="je" scope=content-0 limit=20 hits=20 matched_blocks=1471 matched_pages=1394 matched_titles=111 walked_title_rows=0 walked_block_rows=22 consumed_bytes=679400 first_p50_us=301 first_p95_us=673 first_max_us=779 steady_p50_us=122 steady_p95_us=369 steady_max_us=759
+2026-10-14T23:09:51.6479650Z gate fixture=10k query="je" scope=content-200 limit=20 hits=20 matched_blocks=1471 matched_pages=1394 matched_titles=111 walked_title_rows=0 walked_block_rows=120 consumed_bytes=670200 first_p50_us=1168 first_p95_us=2891 first_max_us=3299 steady_p50_us=215 steady_p95_us=701 steady_max_us=999
+2026-10-14T23:09:51.7996320Z gate fixture=10k query="je" scope=all limit=200 hits=200 matched_blocks=1471 matched_pages=1394 matched_titles=111 walked_title_rows=111 walked_block_rows=100 consumed_bytes=4121400 first_p50_us=1082 first_p95_us=1856 first_max_us=2810 steady_p50_us=440 steady_p95_us=1013 steady_max_us=2069
+2026-10-14T23:09:52.0093250Z gate fixture=10k query="je" scope=content-0 limit=200 hits=200 matched_blocks=1471 matched_pages=1394 matched_titles=111 walked_title_rows=0 walked_block_rows=214 consumed_bytes=6615000 first_p50_us=1364 first_p95_us=2662 first_max_us=2910 steady_p50_us=667 steady_p95_us=1365 steady_max_us=2468
+2026-10-14T23:09:52.3177150Z gate fixture=10k query="je" scope=content-200 limit=200 hits=200 matched_blocks=1471 matched_pages=1394 matched_titles=111 walked_title_rows=0 walked_block_rows=308 consumed_bytes=6676600 first_p50_us=1786 first_p95_us=3402 first_max_us=5952 steady_p50_us=865 steady_p95_us=2522 steady_max_us=4364
+2026-10-14T23:09:52.3481530Z gate fixture=10k query="s" scope=all limit=20 hits=20 matched_blocks=12163 matched_pages=7571 matched_titles=1025 walked_title_rows=20 walked_block_rows=0 consumed_bytes=218400 first_p50_us=285 first_p95_us=741 first_max_us=859 steady_p50_us=44 steady_p95_us=153 steady_max_us=279
+2026-10-14T23:09:52.3976560Z gate fixture=10k query="s" scope=content-0 limit=20 hits=20 matched_blocks=12163 matched_pages=7571 matched_titles=1025 walked_title_rows=0 walked_block_rows=33 consumed_bytes=668800 first_p50_us=297 first_p95_us=657 first_max_us=1375 steady_p50_us=112 steady_p95_us=330 steady_max_us=2794
+2026-10-14T23:09:52.4786300Z gate fixture=10k query="s" scope=content-200 limit=20 hits=20 matched_blocks=12163 matched_pages=7571 matched_titles=1025 walked_title_rows=0 walked_block_rows=40 consumed_bytes=669200 first_p50_us=485 first_p95_us=1061 first_max_us=1195 steady_p50_us=191 steady_p95_us=843 steady_max_us=2445
+2026-10-14T23:09:52.5501400Z gate fixture=10k query="s" scope=all limit=200 hits=200 matched_blocks=12163 matched_pages=7571 matched_titles=1025 walked_title_rows=200 walked_block_rows=0 consumed_bytes=2084200 first_p50_us=424 first_p95_us=1529 first_max_us=1911 steady_p50_us=207 steady_p95_us=475 steady_max_us=1129
+2026-10-14T23:09:52.8648980Z gate fixture=10k query="s" scope=content-0 limit=200 hits=200 matched_blocks=12163 matched_pages=7571 matched_titles=1025 walked_title_rows=0 walked_block_rows=318 consumed_bytes=6490600 first_p50_us=1019 first_p95_us=3264 first_max_us=3298 steady_p50_us=874 steady_p95_us=2512 steady_max_us=22914
+2026-10-14T23:09:53.2306150Z gate fixture=10k query="s" scope=content-200 limit=200 hits=200 matched_blocks=12163 matched_pages=7571 matched_titles=1025 walked_title_rows=0 walked_block_rows=360 consumed_bytes=6485600 first_p50_us=1743 first_p95_us=11093 first_max_us=25914 steady_p50_us=819 steady_p95_us=2672 steady_max_us=7098
+2026-10-14T23:09:56.5280200Z aelomi storage: compacting big-page failed: the snapshot read back differs from the doc
+2026-10-14T23:10:00.9730570Z gate fixture=10k+5000 indexed_ms=7437 load=11.11 16.65 9.24
+2026-10-14T23:10:00.9921170Z gate fixture=10k+5000 query="zorvak" scope=all limit=20 hits=1 matched_blocks=1 matched_pages=1 matched_titles=0 walked_title_rows=0 walked_block_rows=1 consumed_bytes=33000 first_p50_us=235 first_p95_us=376 first_max_us=424 steady_p50_us=32 steady_p95_us=48 steady_max_us=139
+2026-10-14T23:10:01.0032270Z gate fixture=10k+5000 query="zorvak" scope=content-0 limit=20 hits=1 matched_blocks=1 matched_pages=1 matched_titles=0 walked_title_rows=0 walked_block_rows=1 consumed_bytes=33000 first_p50_us=191 first_p95_us=561 first_max_us=821 steady_p50_us=20 steady_p95_us=22 steady_max_us=58
+2026-10-14T23:10:01.0463740Z gate fixture=10k+5000 query="zorvak" scope=content-200 limit=20 hits=0 matched_blocks=1 matched_pages=1 matched_titles=0 walked_title_rows=0 walked_block_rows=1 consumed_bytes=0 first_p50_us=358 first_p95_us=1257 first_max_us=1293 steady_p50_us=106 steady_p95_us=312 steady_max_us=448
+2026-10-14T23:10:01.0666310Z gate fixture=10k+5000 query="zorvak" scope=all limit=200 hits=1 matched_blocks=1 matched_pages=1 matched_titles=0 walked_title_rows=0 walked_block_rows=1 consumed_bytes=33000 first_p50_us=288 first_p95_us=556 first_max_us=913 steady_p50_us=33 steady_p95_us=106 steady_max_us=258
+2026-10-14T23:10:01.0783790Z gate fixture=10k+5000 query="zorvak" scope=content-0 limit=200 hits=1 matched_blocks=1 matched_pages=1 matched_titles=0 walked_title_rows=0 walked_block_rows=1 consumed_bytes=33000 first_p50_us=186 first_p95_us=281 first_max_us=428 steady_p50_us=20 steady_p95_us=25 steady_max_us=114
+2026-10-14T23:10:01.1146570Z gate fixture=10k+5000 query="zorvak" scope=content-200 limit=200 hits=0 matched_blocks=1 matched_pages=1 matched_titles=0 walked_title_rows=0 walked_block_rows=1 consumed_bytes=0 first_p50_us=402 first_p95_us=780 first_max_us=876 steady_p50_us=102 steady_p95_us=135 steady_max_us=363
+2026-10-14T23:10:01.1450140Z gate fixture=10k+5000 query="quillmere" scope=all limit=20 hits=7 matched_blocks=7 matched_pages=7 matched_titles=0 walked_title_rows=0 walked_block_rows=7 consumed_bytes=213000 first_p50_us=268 first_p95_us=513 first_max_us=689 steady_p50_us=47 steady_p95_us=57 steady_max_us=95
+2026-10-14T23:10:01.1550740Z gate fixture=10k+5000 query="quillmere" scope=content-0 limit=20 hits=7 matched_blocks=7 matched_pages=7 matched_titles=0 walked_title_rows=0 walked_block_rows=7 consumed_bytes=213000 first_p50_us=226 first_p95_us=468 first_max_us=910 steady_p50_us=35 steady_p95_us=121 steady_max_us=352
+2026-10-14T23:10:01.1896780Z gate fixture=10k+5000 query="quillmere" scope=content-200 limit=20 hits=0 matched_blocks=7 matched_pages=7 matched_titles=0 walked_title_rows=0 walked_block_rows=7 consumed_bytes=0 first_p50_us=376 first_p95_us=697 first_max_us=784 steady_p50_us=110 steady_p95_us=139 steady_max_us=177
+2026-10-14T23:10:01.2113760Z gate fixture=10k+5000 query="quillmere" scope=all limit=200 hits=7 matched_blocks=7 matched_pages=7 matched_titles=0 walked_title_rows=0 walked_block_rows=7 consumed_bytes=213000 first_p50_us=273 first_p95_us=388 first_max_us=429 steady_p50_us=52 steady_p95_us=99 steady_max_us=175
+2026-10-14T23:10:01.2291260Z gate fixture=10k+5000 query="quillmere" scope=content-0 limit=200 hits=7 matched_blocks=7 matched_pages=7 matched_titles=0 walked_title_rows=0 walked_block_rows=7 consumed_bytes=213000 first_p50_us=242 first_p95_us=369 first_max_us=400 steady_p50_us=34 steady_p95_us=83 steady_max_us=255
+2026-10-14T23:10:01.2695130Z gate fixture=10k+5000 query="quillmere" scope=content-200 limit=200 hits=0 matched_blocks=7 matched_pages=7 matched_titles=0 walked_title_rows=0 walked_block_rows=7 consumed_bytes=0 first_p50_us=412 first_p95_us=695 first_max_us=949 steady_p50_us=103 steady_p95_us=289 steady_max_us=393
+2026-10-14T23:10:01.2904740Z gate fixture=10k+5000 query="kestrel" scope=all limit=20 hits=5 matched_blocks=4 matched_pages=4 matched_titles=1 walked_title_rows=1 walked_block_rows=4 consumed_bytes=138600 first_p50_us=253 first_p95_us=561 first_max_us=565 steady_p50_us=44 steady_p95_us=126 steady_max_us=235
+2026-10-14T23:10:01.3057720Z gate fixture=10k+5000 query="kestrel" scope=content-0 limit=20 hits=4 matched_blocks=4 matched_pages=4 matched_titles=1 walked_title_rows=0 walked_block_rows=4 consumed_bytes=133200 first_p50_us=216 first_p95_us=394 first_max_us=424 steady_p50_us=28 steady_p95_us=43 steady_max_us=213
+2026-10-14T23:10:01.3556990Z gate fixture=10k+5000 query="kestrel" scope=content-200 limit=20 hits=0 matched_blocks=4 matched_pages=4 matched_titles=1 walked_title_rows=0 walked_block_rows=4 consumed_bytes=0 first_p50_us=367 first_p95_us=770 first_max_us=794 steady_p50_us=103 steady_p95_us=318 steady_max_us=377
+2026-10-14T23:10:01.3761230Z gate fixture=10k+5000 query="kestrel" scope=all limit=200 hits=5 matched_blocks=4 matched_pages=4 matched_titles=1 walked_title_rows=1 walked_block_rows=4 consumed_bytes=138600 first_p50_us=258 first_p95_us=1149 first_max_us=1165 steady_p50_us=42 steady_p95_us=51 steady_max_us=251
+2026-10-14T23:10:01.3964690Z gate fixture=10k+5000 query="kestrel" scope=content-0 limit=200 hits=4 matched_blocks=4 matched_pages=4 matched_titles=1 walked_title_rows=0 walked_block_rows=4 consumed_bytes=133200 first_p50_us=193 first_p95_us=369 first_max_us=487 steady_p50_us=28 steady_p95_us=51 steady_max_us=242
+2026-10-14T23:10:01.4261530Z gate fixture=10k+5000 query="kestrel" scope=content-200 limit=200 hits=0 matched_blocks=4 matched_pages=4 matched_titles=1 walked_title_rows=0 walked_block_rows=4 consumed_bytes=0 first_p50_us=389 first_p95_us=1494 first_max_us=1626 steady_p50_us=99 steady_p95_us=117 steady_max_us=162
+2026-10-14T23:10:01.4462320Z gate fixture=10k+5000 query="nonesuchword" scope=all limit=20 hits=0 matched_blocks=0 matched_pages=0 matched_titles=0 walked_title_rows=0 walked_block_rows=0 consumed_bytes=0 first_p50_us=201 first_p95_us=243 first_max_us=345 steady_p50_us=31 steady_p95_us=37 steady_max_us=117
+2026-10-14T23:10:01.4566090Z gate fixture=10k+5000 query="nonesuchword" scope=content-0 limit=20 hits=0 matched_blocks=0 matched_pages=0 matched_titles=0 walked_title_rows=0 walked_block_rows=0 consumed_bytes=0 first_p50_us=160 first_p95_us=198 first_max_us=328 steady_p50_us=17 steady_p95_us=21 steady_max_us=125
+2026-10-14T23:10:01.4869880Z gate fixture=10k+5000 query="nonesuchword" scope=content-200 limit=20 hits=0 matched_blocks=0 matched_pages=0 matched_titles=0 walked_title_rows=0 walked_block_rows=0 consumed_bytes=0 first_p50_us=348 first_p95_us=647 first_max_us=1153 steady_p50_us=102 steady_p95_us=147 steady_max_us=251
+2026-10-14T23:10:01.5044380Z gate fixture=10k+5000 query="nonesuchword" scope=all limit=200 hits=0 matched_blocks=0 matched_pages=0 matched_titles=0 walked_title_rows=0 walked_block_rows=0 consumed_bytes=0 first_p50_us=224 first_p95_us=376 first_max_us=393 steady_p50_us=30 steady_p95_us=36 steady_max_us=119
+2026-10-14T23:10:01.5088410Z gate fixture=10k+5000 query="nonesuchword" scope=content-0 limit=200 hits=0 matched_blocks=0 matched_pages=0 matched_titles=0 walked_title_rows=0 walked_block_rows=0 consumed_bytes=0 first_p50_us=159 first_p95_us=221 first_max_us=311 steady_p50_us=16 steady_p95_us=17 steady_max_us=34
+2026-10-14T23:10:01.5473360Z gate fixture=10k+5000 query="nonesuchword" scope=content-200 limit=200 hits=0 matched_blocks=0 matched_pages=0 matched_titles=0 walked_title_rows=0 walked_block_rows=0 consumed_bytes=0 first_p50_us=406 first_p95_us=459 first_max_us=461 steady_p50_us=112 steady_p95_us=212 steady_max_us=314
+2026-10-14T23:10:01.6006220Z gate fixture=10k+5000 query="zitida" scope=all limit=20 hits=20 matched_blocks=21553 matched_pages=9412 matched_titles=2424 walked_title_rows=20 walked_block_rows=0 consumed_bytes=224400 first_p50_us=368 first_p95_us=556 first_max_us=749 steady_p50_us=155 steady_p95_us=232 steady_max_us=397
+2026-10-14T23:10:01.9024470Z gate fixture=10k+5000 query="zitida" scope=content-0 limit=20 hits=20 matched_blocks=21553 matched_pages=9412 matched_titles=2424 walked_title_rows=0 walked_block_rows=45 consumed_bytes=655600 first_p50_us=1513 first_p95_us=2229 first_max_us=2484 steady_p50_us=1140 steady_p95_us=1983 steady_max_us=2672
+2026-10-14T23:10:02.2366090Z gate fixture=10k+5000 query="zitida" scope=content-200 limit=20 hits=20 matched_blocks=21553 matched_pages=9412 matched_titles=2424 walked_title_rows=0 walked_block_rows=70 consumed_bytes=648600 first_p50_us=1848 first_p95_us=3239 first_max_us=3273 steady_p50_us=1239 steady_p95_us=1861 steady_max_us=4208
+2026-10-14T23:10:02.3214160Z gate fixture=10k+5000 query="zitida" scope=all limit=200 hits=200 matched_blocks=21553 matched_pages=9412 matched_titles=2424 walked_title_rows=200 walked_block_rows=0 consumed_bytes=2134400 first_p50_us=481 first_p95_us=532 first_max_us=701 steady_p50_us=300 steady_p95_us=419 steady_max_us=850
+2026-10-14T23:10:02.8516390Z gate fixture=10k+5000 query="zitida" scope=content-0 limit=200 hits=200 matched_blocks=21553 matched_pages=9412 matched_titles=2424 walked_title_rows=0 walked_block_rows=457 consumed_bytes=6604200 first_p50_us=2064 first_p95_us=2532 first_max_us=2913 steady_p50_us=1883 steady_p95_us=4215 steady_max_us=9691
+2026-10-14T23:10:03.3715240Z gate fixture=10k+5000 query="zitida" scope=content-200 limit=200 hits=200 matched_blocks=21553 matched_pages=9412 matched_titles=2424 walked_title_rows=0 walked_block_rows=633 consumed_bytes=6519600 first_p50_us=2567 first_p95_us=3462 first_max_us=3709 steady_p50_us=1952 steady_p95_us=3117 steady_max_us=6389
+2026-10-14T23:10:03.4003570Z gate fixture=10k+5000 query="rehada" scope=all limit=20 hits=20 matched_blocks=14295 matched_pages=8185 matched_titles=1259 walked_title_rows=20 walked_block_rows=0 consumed_bytes=205000 first_p50_us=234 first_p95_us=351 first_max_us=365 steady_p50_us=80 steady_p95_us=103 steady_max_us=118
+2026-10-14T23:10:03.5981430Z gate fixture=10k+5000 query="rehada" scope=content-0 limit=20 hits=20 matched_blocks=14295 matched_pages=8185 matched_titles=1259 walked_title_rows=0 walked_block_rows=33 consumed_bytes=647800 first_p50_us=911 first_p95_us=1026 first_max_us=1073 steady_p50_us=832 steady_p95_us=986 steady_max_us=1115
+2026-10-14T23:10:03.8516920Z gate fixture=10k+5000 query="rehada" scope=content-200 limit=20 hits=20 matched_blocks=14295 matched_pages=8185 matched_titles=1259 walked_title_rows=0 walked_block_rows=34 consumed_bytes=645000 first_p50_us=1186 first_p95_us=1450 first_max_us=1466 steady_p50_us=898 steady_p95_us=1267 steady_max_us=12683
+2026-10-14T23:10:03.9258090Z gate fixture=10k+5000 query="rehada" scope=all limit=200 hits=200 matched_blocks=14295 matched_pages=8185 matched_titles=1259 walked_title_rows=200 walked_block_rows=0 consumed_bytes=2152600 first_p50_us=458 first_p95_us=1576 first_max_us=1672 steady_p50_us=250 steady_p95_us=298 steady_max_us=452
+2026-10-14T23:10:04.2964460Z gate fixture=10k+5000 query="rehada" scope=content-0 limit=200 hits=200 matched_blocks=14295 matched_pages=8185 matched_titles=1259 walked_title_rows=0 walked_block_rows=351 consumed_bytes=6587400 first_p50_us=1650 first_p95_us=1917 first_max_us=2012 steady_p50_us=1374 steady_p95_us=2011 steady_max_us=19598
+2026-10-14T23:10:04.6746920Z gate fixture=10k+5000 query="rehada" scope=content-200 limit=200 hits=200 matched_blocks=14295 matched_pages=8185 matched_titles=1259 walked_title_rows=0 walked_block_rows=383 consumed_bytes=6627400 first_p50_us=1960 first_p95_us=2833 first_max_us=3137 steady_p50_us=1507 steady_p95_us=1740 steady_max_us=2185
+2026-10-14T23:10:04.7050880Z gate fixture=10k+5000 query="z" scope=all limit=20 hits=20 matched_blocks=27474 matched_pages=9661 matched_titles=3615 walked_title_rows=20 walked_block_rows=0 consumed_bytes=221200 first_p50_us=200 first_p95_us=508 first_max_us=641 steady_p50_us=49 steady_p95_us=58 steady_max_us=76
+2026-10-14T23:10:04.8873380Z gate fixture=10k+5000 query="z" scope=content-0 limit=20 hits=20 matched_blocks=27474 matched_pages=9661 matched_titles=3615 walked_title_rows=0 walked_block_rows=1761 consumed_bytes=647000 first_p50_us=938 first_p95_us=1187 first_max_us=1618 steady_p50_us=616 steady_p95_us=1331 steady_max_us=13338
+2026-10-14T23:10:05.1011690Z gate fixture=10k+5000 query="z" scope=content-200 limit=20 hits=20 matched_blocks=27474 matched_pages=9661 matched_titles=3615 walked_title_rows=0 walked_block_rows=1821 consumed_bytes=674800 first_p50_us=1465 first_p95_us=2433 first_max_us=2863 steady_p50_us=753 steady_p95_us=994 steady_max_us=3717
+2026-10-14T23:10:05.1589470Z gate fixture=10k+5000 query="z" scope=all limit=200 hits=200 matched_blocks=27474 matched_pages=9661 matched_titles=3615 walked_title_rows=200 walked_block_rows=0 consumed_bytes=2118000 first_p50_us=368 first_p95_us=687 first_max_us=768 steady_p50_us=204 steady_p95_us=227 steady_max_us=275
+2026-10-14T23:10:05.4826750Z gate fixture=10k+5000 query="z" scope=content-0 limit=200 hits=200 matched_blocks=27474 matched_pages=9661 matched_titles=3615 walked_title_rows=0 walked_block_rows=2251 consumed_bytes=6557200 first_p50_us=1852 first_p95_us=2354 first_max_us=2413 steady_p50_us=1242 steady_p95_us=1505 steady_max_us=1810
+2026-10-14T23:10:05.8765240Z gate fixture=10k+5000 query="z" scope=content-200 limit=200 hits=200 matched_blocks=27474 matched_pages=9661 matched_titles=3615 walked_title_rows=0 walked_block_rows=2582 consumed_bytes=6419400 first_p50_us=2454 first_p95_us=5934 first_max_us=6017 steady_p50_us=1477 steady_p95_us=1694 steady_max_us=3181
+2026-10-14T23:10:05.8982930Z gate fixture=10k+5000 query="zi" scope=all limit=20 hits=20 matched_blocks=23578 matched_pages=9564 matched_titles=2867 walked_title_rows=20 walked_block_rows=0 consumed_bytes=224400 first_p50_us=183 first_p95_us=226 first_max_us=328 steady_p50_us=52 steady_p95_us=57 steady_max_us=75
+2026-10-14T23:10:05.9476880Z gate fixture=10k+5000 query="zi" scope=content-0 limit=20 hits=20 matched_blocks=23578 matched_pages=9564 matched_titles=2867 walked_title_rows=0 walked_block_rows=235 consumed_bytes=635800 first_p50_us=402 first_p95_us=585 first_max_us=791 steady_p50_us=162 steady_p95_us=242 steady_max_us=501
+2026-10-14T23:10:06.0327050Z gate fixture=10k+5000 query="zi" scope=content-200 limit=20 hits=20 matched_blocks=23578 matched_pages=9564 matched_titles=2867 walked_title_rows=0 walked_block_rows=264 consumed_bytes=642000 first_p50_us=712 first_p95_us=1516 first_max_us=2606 steady_p50_us=261 steady_p95_us=354 steady_max_us=899
+2026-10-14T23:10:06.1041530Z gate fixture=10k+5000 query="zi" scope=all limit=200 hits=200 matched_blocks=23578 matched_pages=9564 matched_titles=2867 walked_title_rows=200 walked_block_rows=0 consumed_bytes=2120200 first_p50_us=416 first_p95_us=578 first_max_us=584 steady_p50_us=213 steady_p95_us=551 steady_max_us=628
+2026-10-14T23:10:06.3045980Z gate fixture=10k+5000 query="zi" scope=content-0 limit=200 hits=200 matched_blocks=23578 matched_pages=9564 matched_titles=2867 walked_title_rows=0 walked_block_rows=675 consumed_bytes=6571200 first_p50_us=1252 first_p95_us=1386 first_max_us=1526 steady_p50_us=772 steady_p95_us=873 steady_max_us=1110
+2026-10-14T23:10:06.5569030Z gate fixture=10k+5000 query="zi" scope=content-200 limit=200 hits=200 matched_blocks=23578 matched_pages=9564 matched_titles=2867 walked_title_rows=0 walked_block_rows=884 consumed_bytes=6491400 first_p50_us=1346 first_p95_us=1749 first_max_us=1979 steady_p50_us=974 steady_p95_us=1174 steady_max_us=1901
+2026-10-14T23:10:06.5782410Z gate fixture=10k+5000 query="zit" scope=all limit=20 hits=20 matched_blocks=21574 matched_pages=9413 matched_titles=2425 walked_title_rows=20 walked_block_rows=0 consumed_bytes=224400 first_p50_us=206 first_p95_us=327 first_max_us=357 steady_p50_us=47 steady_p95_us=58 steady_max_us=102
+2026-10-14T23:10:06.6115070Z gate fixture=10k+5000 query="zit" scope=content-0 limit=20 hits=20 matched_blocks=21574 matched_pages=9413 matched_titles=2425 walked_title_rows=0 walked_block_rows=57 consumed_bytes=650800 first_p50_us=288 first_p95_us=385 first_max_us=418 steady_p50_us=110 steady_p95_us=128 steady_max_us=177
+2026-10-14T23:10:06.6769020Z gate fixture=10k+5000 query="zit" scope=content-200 limit=20 hits=20 matched_blocks=21574 matched_pages=9413 matched_titles=2425 walked_title_rows=0 walked_block_rows=82 consumed_bytes=648000 first_p50_us=470 first_p95_us=603 first_max_us=794 steady_p50_us=220 steady_p95_us=355 steady_max_us=787
+2026-10-14T23:10:06.7471680Z gate fixture=10k+5000 query="zit" scope=all limit=200 hits=200 matched_blocks=21574 matched_pages=9413 matched_titles=2425 walked_title_rows=200 walked_block_rows=0 consumed_bytes=2134400 first_p50_us=551 first_p95_us=1067 first_max_us=1351 steady_p50_us=220 steady_p95_us=304 steady_max_us=627
+2026-10-14T23:10:06.9437580Z gate fixture=10k+5000 query="zit" scope=content-0 limit=200 hits=200 matched_blocks=21574 matched_pages=9413 matched_titles=2425 walked_title_rows=0 walked_block_rows=470 consumed_bytes=6611400 first_p50_us=1047 first_p95_us=1466 first_max_us=1554 steady_p50_us=740 steady_p95_us=916 steady_max_us=2813
+2026-10-14T23:10:07.1859100Z gate fixture=10k+5000 query="zit" scope=content-200 limit=200 hits=200 matched_blocks=21574 matched_pages=9413 matched_titles=2425 walked_title_rows=0 walked_block_rows=647 consumed_bytes=6522400 first_p50_us=1233 first_p95_us=1536 first_max_us=1537 steady_p50_us=905 steady_p95_us=1088 steady_max_us=2675
+2026-10-14T23:10:07.2297670Z gate fixture=10k+5000 query="ziti" scope=all limit=20 hits=20 matched_blocks=21553 matched_pages=9412 matched_titles=2424 walked_title_rows=20 walked_block_rows=0 consumed_bytes=224400 first_p50_us=298 first_p95_us=413 first_max_us=423 steady_p50_us=143 steady_p95_us=150 steady_max_us=161
+2026-10-14T23:10:07.5107750Z gate fixture=10k+5000 query="ziti" scope=content-0 limit=20 hits=20 matched_blocks=21553 matched_pages=9412 matched_titles=2424 walked_title_rows=0 walked_block_rows=45 consumed_bytes=655600 first_p50_us=1357 first_p95_us=1578 first_max_us=1641 steady_p50_us=1151 steady_p95_us=1397 steady_max_us=2616
+2026-10-14T23:10:07.8311020Z gate fixture=10k+5000 query="ziti" scope=content-200 limit=20 hits=20 matched_blocks=21553 matched_pages=9412 matched_titles=2424 walked_title_rows=0 walked_block_rows=70 consumed_bytes=648600 first_p50_us=1595 first_p95_us=1925 first_max_us=1959 steady_p50_us=1256 steady_p95_us=1635 steady_max_us=4306
+2026-10-14T23:10:07.9133000Z gate fixture=10k+5000 query="ziti" scope=all limit=200 hits=200 matched_blocks=21553 matched_pages=9412 matched_titles=2424 walked_title_rows=200 walked_block_rows=0 consumed_bytes=2134400 first_p50_us=476 first_p95_us=747 first_max_us=1220 steady_p50_us=302 steady_p95_us=386 steady_max_us=519
+2026-10-14T23:10:08.3867310Z gate fixture=10k+5000 query="ziti" scope=content-0 limit=200 hits=200 matched_blocks=21553 matched_pages=9412 matched_titles=2424 walked_title_rows=0 walked_block_rows=457 consumed_bytes=6604200 first_p50_us=2170 first_p95_us=5024 first_max_us=6926 steady_p50_us=1767 steady_p95_us=2877 steady_max_us=4498
+2026-10-14T23:10:08.9483520Z gate fixture=10k+5000 query="ziti" scope=content-200 limit=200 hits=200 matched_blocks=21553 matched_pages=9412 matched_titles=2424 walked_title_rows=0 walked_block_rows=633 consumed_bytes=6519600 first_p50_us=2964 first_p95_us=4391 first_max_us=5294 steady_p50_us=1907 steady_p95_us=4444 steady_max_us=6611
+2026-10-14T23:10:08.9918450Z gate fixture=10k+5000 query="zitid" scope=all limit=20 hits=20 matched_blocks=21553 matched_pages=9412 matched_titles=2424 walked_title_rows=20 walked_block_rows=0 consumed_bytes=224400 first_p50_us=280 first_p95_us=454 first_max_us=463 steady_p50_us=134 steady_p95_us=153 steady_max_us=451
+2026-10-14T23:10:09.2859710Z gate fixture=10k+5000 query="zitid" scope=content-0 limit=20 hits=20 matched_blocks=21553 matched_pages=9412 matched_titles=2424 walked_title_rows=0 walked_block_rows=45 consumed_bytes=655600 first_p50_us=1455 first_p95_us=2508 first_max_us=2967 steady_p50_us=1139 steady_p95_us=1503 steady_max_us=2734
+2026-10-14T23:10:09.6220280Z gate fixture=10k+5000 query="zitid" scope=content-200 limit=20 hits=20 matched_blocks=21553 matched_pages=9412 matched_titles=2424 walked_title_rows=0 walked_block_rows=70 consumed_bytes=648600 first_p50_us=1624 first_p95_us=2140 first_max_us=2237 steady_p50_us=1284 steady_p95_us=2395 steady_max_us=3886
+2026-10-14T23:10:09.7328370Z gate fixture=10k+5000 query="zitid" scope=all limit=200 hits=200 matched_blocks=21553 matched_pages=9412 matched_titles=2424 walked_title_rows=200 walked_block_rows=0 consumed_bytes=2134400 first_p50_us=501 first_p95_us=796 first_max_us=814 steady_p50_us=306 steady_p95_us=915 steady_max_us=7130
+2026-10-14T23:10:10.2149800Z gate fixture=10k+5000 query="zitid" scope=content-0 limit=200 hits=200 matched_blocks=21553 matched_pages=9412 matched_titles=2424 walked_title_rows=0 walked_block_rows=457 consumed_bytes=6604200 first_p50_us=2195 first_p95_us=3107 first_max_us=3147 steady_p50_us=1796 steady_p95_us=3286 steady_max_us=4531
+2026-10-14T23:10:10.7257440Z gate fixture=10k+5000 query="zitid" scope=content-200 limit=200 hits=200 matched_blocks=21553 matched_pages=9412 matched_titles=2424 walked_title_rows=0 walked_block_rows=633 consumed_bytes=6519600 first_p50_us=2355 first_p95_us=2786 first_max_us=2824 steady_p50_us=1957 steady_p95_us=3389 steady_max_us=5270
+2026-10-14T23:10:10.7647890Z gate fixture=10k+5000 query="dapoku go" scope=all limit=20 hits=20 matched_blocks=3509 matched_pages=3097 matched_titles=55 walked_title_rows=20 walked_block_rows=0 consumed_bytes=228600 first_p50_us=280 first_p95_us=400 first_max_us=425 steady_p50_us=106 steady_p95_us=119 steady_max_us=899
+2026-10-14T23:10:10.8051680Z gate fixture=10k+5000 query="dapoku go" scope=content-0 limit=20 hits=20 matched_blocks=3509 matched_pages=3097 matched_titles=55 walked_title_rows=0 walked_block_rows=22 consumed_bytes=710800 first_p50_us=325 first_p95_us=510 first_max_us=546 steady_p50_us=127 steady_p95_us=162 steady_max_us=294
+2026-10-14T23:10:10.8918530Z gate fixture=10k+5000 query="dapoku go" scope=content-200 limit=20 hits=20 matched_blocks=3509 matched_pages=3097 matched_titles=55 walked_title_rows=0 walked_block_rows=183 consumed_bytes=694600 first_p50_us=711 first_p95_us=792 first_max_us=988 steady_p50_us=305 steady_p95_us=450 steady_max_us=844
+2026-10-14T23:10:11.1517050Z gate fixture=10k+5000 query="dapoku go" scope=all limit=200 hits=200 matched_blocks=3509 matched_pages=3097 matched_titles=55 walked_title_rows=55 walked_block_rows=160 consumed_bytes=5583400 first_p50_us=1536 first_p95_us=1886 first_max_us=3486 steady_p50_us=857 steady_p95_us=1949 steady_max_us=5031
+2026-10-14T23:10:11.3633520Z gate fixture=10k+5000 query="dapoku go" scope=content-0 limit=200 hits=200 matched_blocks=3509 matched_pages=3097 matched_titles=55 walked_title_rows=0 walked_block_rows=222 consumed_bytes=6844000 first_p50_us=1179 first_p95_us=1477 first_max_us=1548 steady_p50_us=772 steady_p95_us=1147 steady_max_us=2389
+2026-10-14T23:10:11.6524950Z gate fixture=10k+5000 query="dapoku go" scope=content-200 limit=200 hits=200 matched_blocks=3509 matched_pages=3097 matched_titles=55 walked_title_rows=0 walked_block_rows=388 consumed_bytes=6858600 first_p50_us=1647 first_p95_us=2117 first_max_us=3345 steady_p50_us=1030 steady_p95_us=1427 steady_max_us=2282
+2026-10-14T23:10:11.7029360Z gate fixture=10k+5000 query="zitida kestrel" scope=all limit=20 hits=3 matched_blocks=3 matched_pages=3 matched_titles=0 walked_title_rows=0 walked_block_rows=3 consumed_bytes=102000 first_p50_us=396 first_p95_us=707 first_max_us=1290 steady_p50_us=168 steady_p95_us=216 steady_max_us=380
+2026-10-14T23:10:11.7359670Z gate fixture=10k+5000 query="zitida kestrel" scope=content-0 limit=20 hits=3 matched_blocks=3 matched_pages=3 matched_titles=0 walked_title_rows=0 walked_block_rows=3 consumed_bytes=102000 first_p50_us=326 first_p95_us=410 first_max_us=511 steady_p50_us=126 steady_p95_us=140 steady_max_us=169
+2026-10-14T23:10:11.7941980Z gate fixture=10k+5000 query="zitida kestrel" scope=content-200 limit=20 hits=0 matched_blocks=3 matched_pages=3 matched_titles=0 walked_title_rows=0 walked_block_rows=3 consumed_bytes=0 first_p50_us=456 first_p95_us=619 first_max_us=626 steady_p50_us=211 steady_p95_us=231 steady_max_us=254
+2026-10-14T23:10:11.8446950Z gate fixture=10k+5000 query="zitida kestrel" scope=all limit=200 hits=3 matched_blocks=3 matched_pages=3 matched_titles=0 walked_title_rows=0 walked_block_rows=3 consumed_bytes=102000 first_p50_us=389 first_p95_us=453 first_max_us=542 steady_p50_us=172 steady_p95_us=253 steady_max_us=551
+2026-10-14T23:10:11.8950220Z gate fixture=10k+5000 query="zitida kestrel" scope=content-0 limit=200 hits=3 matched_blocks=3 matched_pages=3 matched_titles=0 walked_title_rows=0 walked_block_rows=3 consumed_bytes=102000 first_p50_us=333 first_p95_us=442 first_max_us=482 steady_p50_us=135 steady_p95_us=364 steady_max_us=422
+2026-10-14T23:10:11.9522690Z gate fixture=10k+5000 query="zitida kestrel" scope=content-200 limit=200 hits=0 matched_blocks=3 matched_pages=3 matched_titles=0 walked_title_rows=0 walked_block_rows=3 consumed_bytes=0 first_p50_us=506 first_p95_us=782 first_max_us=892 steady_p50_us=211 steady_p95_us=234 steady_max_us=349
+2026-10-14T23:10:11.9856880Z gate fixture=10k+5000 query="Dapoku, GO!" scope=all limit=20 hits=20 matched_blocks=3509 matched_pages=3097 matched_titles=55 walked_title_rows=20 walked_block_rows=0 consumed_bytes=228600 first_p50_us=271 first_p95_us=369 first_max_us=420 steady_p50_us=100 steady_p95_us=111 steady_max_us=139
+2026-10-14T23:10:12.0249360Z gate fixture=10k+5000 query="Dapoku, GO!" scope=content-0 limit=20 hits=20 matched_blocks=3509 matched_pages=3097 matched_titles=55 walked_title_rows=0 walked_block_rows=22 consumed_bytes=710800 first_p50_us=338 first_p95_us=544 first_max_us=747 steady_p50_us=129 steady_p95_us=148 steady_max_us=221
+2026-10-14T23:10:12.1235370Z gate fixture=10k+5000 query="Dapoku, GO!" scope=content-200 limit=20 hits=20 matched_blocks=3509 matched_pages=3097 matched_titles=55 walked_title_rows=0 walked_block_rows=183 consumed_bytes=694600 first_p50_us=691 first_p95_us=851 first_max_us=1020 steady_p50_us=346 steady_p95_us=490 steady_max_us=1069
+2026-10-14T23:10:12.3382300Z gate fixture=10k+5000 query="Dapoku, GO!" scope=all limit=200 hits=200 matched_blocks=3509 matched_pages=3097 matched_titles=55 walked_title_rows=55 walked_block_rows=160 consumed_bytes=5583400 first_p50_us=1159 first_p95_us=1613 first_max_us=2044 steady_p50_us=779 steady_p95_us=968 steady_max_us=1902
+2026-10-14T23:10:12.5225670Z gate fixture=10k+5000 query="Dapoku, GO!" scope=content-0 limit=200 hits=200 matched_blocks=3509 matched_pages=3097 matched_titles=55 walked_title_rows=0 walked_block_rows=222 consumed_bytes=6844000 first_p50_us=1153 first_p95_us=1439 first_max_us=1484 steady_p50_us=732 steady_p95_us=840 steady_max_us=928
+2026-10-14T23:10:12.7970910Z gate fixture=10k+5000 query="Dapoku, GO!" scope=content-200 limit=200 hits=200 matched_blocks=3509 matched_pages=3097 matched_titles=55 walked_title_rows=0 walked_block_rows=388 consumed_bytes=6858600 first_p50_us=1735 first_p95_us=2002 first_max_us=2383 steady_p50_us=1020 steady_p95_us=1282 steady_max_us=2157
+2026-10-14T23:10:12.8146750Z gate fixture=10k+5000 query="je" scope=all limit=20 hits=20 matched_blocks=4901 matched_pages=1395 matched_titles=111 walked_title_rows=20 walked_block_rows=0 consumed_bytes=218000 first_p50_us=196 first_p95_us=315 first_max_us=372 steady_p50_us=32 steady_p95_us=40 steady_max_us=88
+2026-10-14T23:10:13.0651490Z gate fixture=10k+5000 query="je" scope=content-0 limit=20 hits=20 matched_blocks=4901 matched_pages=1395 matched_titles=111 walked_title_rows=0 walked_block_rows=3451 consumed_bytes=676000 first_p50_us=1385 first_p95_us=1714 first_max_us=2161 steady_p50_us=993 steady_p95_us=1133 steady_max_us=3079
+2026-10-14T23:10:13.3511520Z gate fixture=10k+5000 query="je" scope=content-200 limit=20 hits=20 matched_blocks=4901 matched_pages=1395 matched_titles=111 walked_title_rows=0 walked_block_rows=3549 consumed_bytes=664200 first_p50_us=1687 first_p95_us=1909 first_max_us=2070 steady_p50_us=1140 steady_p95_us=1279 steady_max_us=1436
+2026-10-14T23:10:13.7276350Z gate fixture=10k+5000 query="je" scope=all limit=200 hits=200 matched_blocks=4901 matched_pages=1395 matched_titles=111 walked_title_rows=111 walked_block_rows=3529 consumed_bytes=4108400 first_p50_us=1887 first_p95_us=2338 first_max_us=2515 steady_p50_us=1513 steady_p95_us=1702 steady_max_us=4208
+2026-10-14T23:10:14.1793670Z gate fixture=10k+5000 query="je" scope=content-0 limit=200 hits=200 matched_blocks=4901 matched_pages=1395 matched_titles=111 walked_title_rows=0 walked_block_rows=3643 consumed_bytes=6597800 first_p50_us=2654 first_p95_us=3444 first_max_us=4169 steady_p50_us=1777 steady_p95_us=1914 steady_max_us=2296
+2026-10-14T23:10:14.7886260Z gate fixture=10k+5000 query="je" scope=content-200 limit=200 hits=200 matched_blocks=4901 matched_pages=1395 matched_titles=111 walked_title_rows=0 walked_block_rows=3737 consumed_bytes=6677800 first_p50_us=2959 first_p95_us=3198 first_max_us=3254 steady_p50_us=2554 steady_p95_us=2885 steady_max_us=3323
+2026-10-14T23:10:14.8095910Z gate fixture=10k+5000 query="s" scope=all limit=20 hits=20 matched_blocks=13690 matched_pages=7572 matched_titles=1025 walked_title_rows=20 walked_block_rows=0 consumed_bytes=218400 first_p50_us=211 first_p95_us=321 first_max_us=511 steady_p50_us=47 steady_p95_us=57 steady_max_us=237
+2026-10-14T23:10:14.9563790Z gate fixture=10k+5000 query="s" scope=content-0 limit=20 hits=20 matched_blocks=13690 matched_pages=7572 matched_titles=1025 walked_title_rows=0 walked_block_rows=1557 consumed_bytes=655600 first_p50_us=955 first_p95_us=1115 first_max_us=1140 steady_p50_us=563 steady_p95_us=640 steady_max_us=914
+2026-10-14T23:10:15.1343920Z gate fixture=10k+5000 query="s" scope=content-200 limit=20 hits=20 matched_blocks=13690 matched_pages=7572 matched_titles=1025 walked_title_rows=0 walked_block_rows=1566 consumed_bytes=660800 first_p50_us=1132 first_p95_us=1311 first_max_us=1416 steady_p50_us=701 steady_p95_us=761 steady_max_us=913
+2026-10-14T23:10:15.1970920Z gate fixture=10k+5000 query="s" scope=all limit=200 hits=200 matched_blocks=13690 matched_pages=7572 matched_titles=1025 walked_title_rows=200 walked_block_rows=0 consumed_bytes=2084200 first_p50_us=433 first_p95_us=557 first_max_us=640 steady_p50_us=212 steady_p95_us=303 steady_max_us=692
+2026-10-14T23:10:15.5031410Z gate fixture=10k+5000 query="s" scope=content-0 limit=200 hits=200 matched_blocks=13690 matched_pages=7572 matched_titles=1025 walked_title_rows=0 walked_block_rows=1844 consumed_bytes=6477200 first_p50_us=1650 first_p95_us=1759 first_max_us=1918 steady_p50_us=1223 steady_p95_us=1311 steady_max_us=2316
+2026-10-14T23:10:15.8652820Z gate fixture=10k+5000 query="s" scope=content-200 limit=200 hits=200 matched_blocks=13690 matched_pages=7572 matched_titles=1025 walked_title_rows=0 walked_block_rows=1886 consumed_bytes=6476000 first_p50_us=2103 first_p95_us=2308 first_max_us=2412 steady_p50_us=1367 steady_p95_us=2028 steady_max_us=3146
+2026-10-14T23:10:15.9439610Z gate end profile=release buckets=192 worst_p95_us=30837 worst=10k "dapoku go" content-200 limit=200 first load=10.07 16.14 9.18
+2026-10-14T23:10:15.9440640Z
+2026-10-14T23:10:15.9441620Z thread 'index::tests::search_gate::search_answers_within_5_ms_p95_through_the_public_workspace' (112361) panicked at crates/core/src/index/tests/search_gate.rs:216:5:
+2026-10-14T23:10:15.9442280Z CMD-5 budget 5ms p95: [
+2026-10-14T23:10:15.9442740Z     "10k \"zitida\" content-0 limit=20 first p95 6.799958ms",
+2026-10-14T23:10:15.9443300Z     "10k \"zitida\" content-200 limit=20 first p95 5.40725ms",
+2026-10-14T23:10:15.9443790Z     "10k \"zi\" content-200 limit=20 first p95 6.033042ms",
+2026-10-14T23:10:15.9444290Z     "10k \"zit\" content-200 limit=200 first p95 18.987333ms",
+2026-10-14T23:10:15.9444790Z     "10k \"ziti\" content-0 limit=20 first p95 5.282958ms",
+2026-10-14T23:10:15.9445200Z     "10k \"ziti\" content-200 limit=20 first p95 5.736542ms",
+2026-10-14T23:10:15.9445660Z     "10k \"ziti\" content-200 limit=200 first p95 5.490125ms",
+2026-10-14T23:10:15.9446130Z     "10k \"zitid\" content-0 limit=20 first p95 5.087291ms",
+2026-10-14T23:10:15.9446530Z     "10k \"zitid\" content-0 limit=200 first p95 12.838583ms",
+2026-10-14T23:10:15.9446980Z     "10k \"zitid\" content-0 limit=200 steady p95 8.41825ms",
+2026-10-14T23:10:15.9447450Z     "10k \"zitid\" content-200 limit=200 first p95 14.685209ms",
+2026-10-14T23:10:15.9447870Z     "10k \"dapoku go\" all limit=200 first p95 21.785208ms",
+2026-10-14T23:10:15.9448290Z     "10k \"dapoku go\" all limit=200 steady p95 5.103708ms",
+2026-10-14T23:10:15.9448750Z     "10k \"dapoku go\" content-0 limit=200 first p95 7.896542ms",
+2026-10-14T23:10:15.9449150Z     "10k \"dapoku go\" content-200 limit=200 first p95 30.837625ms",
+2026-10-14T23:10:15.9449960Z     "10k \"Dapoku, GO!\" content-200 limit=200 first p95 6.541083ms",
+2026-10-14T23:10:15.9450430Z     "10k \"s\" content-200 limit=200 first p95 11.093542ms",
+2026-10-14T23:10:15.9450850Z     "10k+5000 \"z\" content-200 limit=200 first p95 5.934541ms",
+2026-10-14T23:10:15.9451350Z     "10k+5000 \"ziti\" content-0 limit=200 first p95 5.024ms",
+2026-10-14T23:10:15.9451770Z ]
+2026-10-14T23:10:15.9452200Z note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+2026-10-14T23:10:15.9452940Z test index::tests::search_gate::search_answers_within_5_ms_p95_through_the_public_workspace ... FAILED
+2026-10-14T23:10:15.9453350Z
+2026-10-14T23:10:15.9453470Z failures:
+2026-10-14T23:10:15.9453600Z
+2026-10-14T23:10:15.9453720Z failures:
+2026-10-14T23:10:15.9454140Z     index::tests::search_gate::search_answers_within_5_ms_p95_through_the_public_workspace
+2026-10-14T23:10:15.9454500Z
+2026-10-14T23:10:15.9454930Z test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 301 filtered out; finished in 47.17s
+2026-10-14T23:10:15.9455230Z
+2026-10-14T23:10:15.9495710Z         FAIL [  47.195s] (1/1) aelomi-core index::tests::search_gate::search_answers_within_5_ms_p95_through_the_public_workspace
+2026-10-14T23:10:15.9496260Z   Cancelling due to test failure
+2026-10-14T23:10:15.9498150Z ────────────
+2026-10-14T23:10:15.9498480Z      Summary [  47.196s] 1 test run: 0 passed, 1 failed, 301 skipped
+2026-10-14T23:10:15.9499100Z         FAIL [  47.195s] (1/1) aelomi-core index::tests::search_gate::search_answers_within_5_ms_p95_through_the_public_workspace
+2026-10-14T23:10:15.9531680Z error: test run failed
+2026-10-14T23:10:15.9717950Z ##[error]Process completed with exit code 100.
+2026-10-14T23:10:15.9848620Z Post job cleanup.
+2026-10-14T23:10:16.2893290Z [command]/opt/homebrew/bin/git version
+2026-10-14T23:10:16.3084630Z git version 2.55.0
+2026-10-14T23:10:16.3102320Z Copying '/Users/runner/.gitconfig' to '/Users/runner/work/_temp/c9e02a68-bbe9-4040-9f20-dc65992c2269/.gitconfig'
+2026-10-14T23:10:16.3109940Z Temporarily overriding HOME='/Users/runner/work/_temp/c9e02a68-bbe9-4040-9f20-dc65992c2269' before making global git config changes
+2026-10-14T23:10:16.3111200Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-14T23:10:16.3113730Z [command]/opt/homebrew/bin/git config --global --add safe.directory /Users/runner/work/aelomi/aelomi
+2026-10-14T23:10:16.3221300Z Removing SSH command configuration
+2026-10-14T23:10:16.3226740Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-14T23:10:16.3292100Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-14T23:10:16.4330470Z Removing HTTP extra header
+2026-10-14T23:10:16.4334570Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-14T23:10:16.4393540Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-14T23:10:16.5054760Z Removing includeIf entries pointing to credentials config files
+2026-10-14T23:10:16.5058390Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-14T23:10:16.5107630Z includeif.gitdir:/Users/runner/work/aelomi/aelomi/.git.path
+2026-10-14T23:10:16.5108140Z includeif.gitdir:/Users/runner/work/aelomi/aelomi/.git/worktrees/*.path
+2026-10-14T23:10:16.5108580Z includeif.gitdir:/github/workspace/.git.path
+2026-10-14T23:10:16.5108980Z includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-10-14T23:10:16.5112900Z [command]/opt/homebrew/bin/git config --local --get-all includeif.gitdir:/Users/runner/work/aelomi/aelomi/.git.path
+2026-10-14T23:10:16.5161520Z /Users/runner/work/_temp/git-credentials-7404665a-ae67-4044-a895-c407a1797761.config
+2026-10-14T23:10:16.5176490Z [command]/opt/homebrew/bin/git config --local --unset includeif.gitdir:/Users/runner/work/aelomi/aelomi/.git.path \/Users\/runner\/work\/_temp\/git\-credentials\-7404665a\-ae67\-4044\-a895\-c407a1797761\.config
+2026-10-14T23:10:16.5276580Z [command]/opt/homebrew/bin/git config --local --get-all includeif.gitdir:/Users/runner/work/aelomi/aelomi/.git/worktrees/*.path
+2026-10-14T23:10:16.5336490Z /Users/runner/work/_temp/git-credentials-7404665a-ae67-4044-a895-c407a1797761.config
+2026-10-14T23:10:16.5345340Z [command]/opt/homebrew/bin/git config --local --unset includeif.gitdir:/Users/runner/work/aelomi/aelomi/.git/worktrees/*.path \/Users\/runner\/work\/_temp\/git\-credentials\-7404665a\-ae67\-4044\-a895\-c407a1797761\.config
+2026-10-14T23:10:16.5413830Z [command]/opt/homebrew/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git.path
+2026-10-14T23:10:16.5472250Z /github/runner_temp/git-credentials-7404665a-ae67-4044-a895-c407a1797761.config
+2026-10-14T23:10:16.5478490Z [command]/opt/homebrew/bin/git config --local --unset includeif.gitdir:/github/workspace/.git.path \/github\/runner_temp\/git\-credentials\-7404665a\-ae67\-4044\-a895\-c407a1797761\.config
+2026-10-14T23:10:16.5560350Z [command]/opt/homebrew/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-10-14T23:10:16.5630410Z /github/runner_temp/git-credentials-7404665a-ae67-4044-a895-c407a1797761.config
+2026-10-14T23:10:16.5637370Z [command]/opt/homebrew/bin/git config --local --unset includeif.gitdir:/github/workspace/.git/worktrees/*.path \/github\/runner_temp\/git\-credentials\-7404665a\-ae67\-4044\-a895\-c407a1797761\.config
+2026-10-14T23:10:16.5729290Z [command]/opt/homebrew/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-14T23:10:16.6639860Z Removing credentials config '/Users/runner/work/_temp/git-credentials-7404665a-ae67-4044-a895-c407a1797761.config'
+2026-10-14T23:10:16.6785530Z Cleaning up orphan processes

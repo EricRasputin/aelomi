@@ -27,8 +27,8 @@
       "why": "The product goal remains 16 ms from the key event to the first frame showing the typed character. The maintainer allowed a small timing miss on 2026-10-15. This 19 ms ceiling accepts the measured immediate-source editor. Five alternating untraced rounds on the 5,000-block page read 18 ms and the quiet full-suite run read 19 ms. Every run kept 405 samples with exact character guards. Source updates stay inside the input event. The miss of 2 to 3 ms is explicit. These runs do not pass the original 16 ms goal. pnpm perf:keystroke enforces this ceiling on Apple Silicon."
     },
     "hostedAppOwnedP95Ms": {
-      "value": 19,
-      "why": "The same 19 ms ceiling implements the small timing tolerance the maintainer allowed. The immediate-source editor measured 17 to 18 ms app-owned on the local M1. This is a tolerance, not a hosted-runner calibration or multiplier. Hosted timing remains unmeasured until CI. The clock adds key-to-input work and rendering work from the rAF timestamp to the following MessageChannel task. It excludes initial layout before that timestamp, scheduler and IPC delay, frame wait, and presentation. The full key-to-paint interval is still reported. UI model processing stays inside input."
+      "value": 45,
+      "why": "Provisional hosted macos-15 calibration from the unchanged 0ad6f34 head: the real 5,000-block editor measured 33 ms pooled app-owned p95 across three fresh loads, whose p95 values were 31, 30 and 41 ms. This ceiling rounds the worst measured load up by 4 ms. The second hosted attempt failed its 5-second fixture setup before collecting this surface, so it supplies no second typing series. Both jobs were noisy on three-core hosts. Full logs and limits are in docs/evidence/data-5-ci-calibration-0ad6f34. The local ceiling stays 19 ms and the product goal stays 16 ms. The clock adds key-to-input work and rendering work from the rAF timestamp to the following MessageChannel task. It excludes initial layout before that timestamp, scheduler and IPC delay, frame wait, and presentation. Source delivery stays inside input. Issue #72 tracks broader hosted calibration and complete presentation timing."
     },
     "pageLoads": {
       "value": 3,
@@ -53,8 +53,8 @@
       "why": "SPEC section 5: a query keystroke to the first frame showing current results over the 10,000-page mock fixture, one frame at 60 Hz."
     },
     "hostedAppOwnedP95Ms": {
-      "value": 16,
-      "why": "The hosted palette gate counts the same app-owned interval as the calibrated keystroke recorder. It retains the one-frame 16 ms threshold and reports full frame wait separately."
+      "value": 40,
+      "why": "Provisional hosted macos-15 calibration from two unchanged-head 0ad6f34 jobs: the 10,000-page palette measured 29 and 36 ms p95 over 55 query keys per job. This ceiling rounds the worse measured p95 up by 4 ms. Both jobs were noisy on three-core hosts. Full logs and limits are in docs/evidence/data-5-ci-calibration-0ad6f34. The local one-frame goal stays 16 ms. Issue #72 tracks broader hosted calibration and the recorder's presentation limits."
     }
   },
   "scroll": {
@@ -73,8 +73,8 @@
       "why": "SPEC section 5: the complete Rust content query must stay below 5 ms p95 on the 10,000-page fixture. The release gate includes broad prefixes, common words, winner highlights, cold readers, both result limits and the additional 5,000-block page."
     },
     "hostedP95Ms": {
-      "value": 5,
-      "why": "Initially the same 5 ms budget as the product gate. Any future hosted-runner calibration must cite measured hosted runs; no multiplier or unmeasured allowance is used."
+      "value": 35,
+      "why": "Provisional hosted macos-15 calibration from two unchanged-head 0ad6f34 release jobs. Each ran all 192 complete-query cases with 30 fresh-reader and 200 steady queries per case. Their worst fresh-reader p95 values were 27.137709 and 30.837625 ms; their worst steady p95 values were 5.006167 and 8.418250 ms. This ceiling rounds the worse measured fresh-reader p95 up to the next 5 ms. Three-core host load ranged from 10.07 to 31.03. Full logs and limits are in docs/evidence/data-5-ci-calibration-0ad6f34. The local product query gate remains 5 ms and all result-consumption and correctness assertions remain required. Issue #72 tracks broader hosted calibration."
     },
     "firstSamples": {
       "value": 30,

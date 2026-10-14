@@ -111,9 +111,16 @@ for (const { name: surface, testId, gated } of surfaces) {
     const loads: { p95: number; kept: Split[] }[] = [];
     const cadences: number[] = [];
     for (let load = 1; load <= budgets.pageLoads.value; load++) {
+      const setupStart = Date.now();
       await page.goto(`/perf/keystroke/${surface}`);
       const surfaceEl = page.getByTestId(testId);
-      await expect(surfaceEl).toBeVisible();
+      await expect(surfaceEl).toBeVisible({ timeout: 60_000 });
+      await expect(surfaceEl).toHaveAttribute("contenteditable", "true", {
+        timeout: 60_000,
+      });
+      console.log(
+        `${surface}: load ${load} editable after ${Date.now() - setupStart} ms`,
+      );
       const before = await surfaceEl.evaluate((el) => {
         el.focus();
         const texts = el.querySelectorAll(".bn-inline-content");

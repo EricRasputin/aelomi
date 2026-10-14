@@ -1,0 +1,512 @@
+keystroke	Set up job	2026-10-14T22:52:43.9928190Z Current runner version: '2.337.0'
+keystroke	Set up job	2026-10-14T22:52:43.9948470Z ##[group]Runner Image Provisioner
+keystroke	Set up job	2026-10-14T22:52:43.9949280Z Hosted Compute Agent
+keystroke	Set up job	2026-10-14T22:52:43.9949840Z Version: 20260828.587
+keystroke	Set up job	2026-10-14T22:52:43.9950470Z Commit: abac92662cab4cc7352de4f9f9d2e2419aad9c29
+keystroke	Set up job	2026-10-14T22:52:43.9951030Z Build Date: 2026-08-28T16:44:25Z
+keystroke	Set up job	2026-10-14T22:52:43.9951500Z Worker ID: {1fc1d9c1-7e1d-4c10-9b8d-d9c5655bb310}
+keystroke	Set up job	2026-10-14T22:52:43.9951980Z Azure Region: westus
+keystroke	Set up job	2026-10-14T22:52:43.9952350Z ##[endgroup]
+keystroke	Set up job	2026-10-14T22:52:43.9953430Z ##[group]Operating System
+keystroke	Set up job	2026-10-14T22:52:43.9953890Z macOS
+keystroke	Set up job	2026-10-14T22:52:43.9954290Z 15.7.9
+keystroke	Set up job	2026-10-14T22:52:43.9954630Z 24G830
+keystroke	Set up job	2026-10-14T22:52:43.9955340Z ##[endgroup]
+keystroke	Set up job	2026-10-14T22:52:43.9955810Z ##[group]Runner Image
+keystroke	Set up job	2026-10-14T22:52:43.9956250Z Image: macos-15-arm64
+keystroke	Set up job	2026-10-14T22:52:43.9956720Z Version: 20260907.0337.1
+keystroke	Set up job	2026-10-14T22:52:43.9957540Z Included Software: https://github.com/actions/runner-images/blob/macos-15-arm64/20260907.0337/images/macos/macos-15-arm64-Readme.md
+keystroke	Set up job	2026-10-14T22:52:43.9958710Z Image Release: https://github.com/actions/runner-images/releases/tag/macos-15-arm64%2F20260907.0337
+keystroke	Set up job	2026-10-14T22:52:43.9959410Z ##[endgroup]
+keystroke	Set up job	2026-10-14T22:52:43.9960190Z ##[group]GITHUB_TOKEN Permissions
+keystroke	Set up job	2026-10-14T22:52:43.9961690Z Contents: read
+keystroke	Set up job	2026-10-14T22:52:43.9962170Z Metadata: read
+keystroke	Set up job	2026-10-14T22:52:43.9962690Z ##[endgroup]
+keystroke	Set up job	2026-10-14T22:52:43.9964260Z Secret source: Actions
+keystroke	Set up job	2026-10-14T22:52:43.9964930Z Cache mode: write
+keystroke	Set up job	2026-10-14T22:52:43.9965540Z Prepare workflow directory
+keystroke	Set up job	2026-10-14T22:52:44.0304740Z Prepare all required actions
+keystroke	Set up job	2026-10-14T22:52:44.0348770Z Getting action download info
+keystroke	Set up job	2026-10-14T22:52:44.4320710Z Download action repository 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1' (SHA:3d3c42e5aac5ba805825da76410c181273ba90b1)
+keystroke	Set up job	2026-10-14T22:52:44.6644460Z Download action repository 'actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1' (SHA:949feb2413d6458794dcd2491c4babbbce0c15c1)
+keystroke	Set up job	2026-10-14T22:52:45.1540060Z Download action repository 'pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413' (SHA:ea17c68df8912ef543352723c149a84f56e3d413)
+keystroke	Set up job	2026-10-14T22:52:45.5325060Z Download action repository 'actions/cache@caa296126883cff596d87d8935842f9db880ef25' (SHA:caa296126883cff596d87d8935842f9db880ef25)
+keystroke	Set up job	2026-10-14T22:52:45.6174670Z Download action repository 'actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9' (SHA:cf430e030ddbb5b0abf93d22962f4752f3646cd9)
+keystroke	Set up job	2026-10-14T22:52:46.1640620Z Complete job name: keystroke
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.2233920Z ##[group]Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.2235190Z with:
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.2235870Z   repository: aelomi/aelomi
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.2242660Z   token: ***
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.2243230Z   ssh-strict: true
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.2243830Z   ssh-user: git
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.2244430Z   persist-credentials: true
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.2245090Z   clean: true
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.2245880Z   sparse-checkout-cone-mode: true
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.2246620Z   fetch-depth: 1
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.2247320Z   fetch-tags: false
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.2247920Z   show-progress: true
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.2248640Z   lfs: false
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.2249310Z   submodules: false
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.2250000Z   set-safe-directory: true
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.2250710Z   allow-unsafe-pr-checkout: false
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.2251590Z env:
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.2252270Z   E2E_TELEMETRY_DISABLED: 1
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.2253000Z   DO_NOT_TRACK: 1
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.2253680Z ##[endgroup]
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.5219980Z Syncing repository: aelomi/aelomi
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.5222050Z ##[group]Getting Git version info
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.5222950Z Working directory is '/Users/runner/work/aelomi/aelomi'
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.5224230Z [command]/opt/homebrew/bin/git version
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.5780610Z git version 2.55.0
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.5797560Z ##[endgroup]
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.5805370Z Copying '/Users/runner/.gitconfig' to '/Users/runner/work/_temp/d9c51bd1-ec40-4aeb-aa62-787ab675d32c/.gitconfig'
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.5808450Z Temporarily overriding HOME='/Users/runner/work/_temp/d9c51bd1-ec40-4aeb-aa62-787ab675d32c' before making global git config changes
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.5811690Z Adding repository directory to the temporary git global config as a safe directory
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.5815390Z [command]/opt/homebrew/bin/git config --global --add safe.directory /Users/runner/work/aelomi/aelomi
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.5919700Z Deleting the contents of '/Users/runner/work/aelomi/aelomi'
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.5922220Z ##[group]Determining repository object format
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.5923890Z ##[endgroup]
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.5924910Z ##[group]Initializing the repository
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.5926890Z [command]/opt/homebrew/bin/git init /Users/runner/work/aelomi/aelomi
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.6142060Z hint: Using 'master' as the name for the initial branch. This default branch name
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.6143670Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.6144910Z hint: to use in all of your new repositories, which will suppress this warning,
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.6146810Z hint: call:
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.6147470Z hint:
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.6148190Z hint: 	git config --global init.defaultBranch <name>
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.6149020Z hint:
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.6149860Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.6151160Z hint: 'development'. The just-created branch can be renamed via this command:
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.6152120Z hint:
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.6153200Z hint: 	git branch -m <name>
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.6154080Z hint:
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.6155040Z hint: Disable this message with "git config set advice.defaultBranchName false"
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.6156340Z Initialized empty Git repository in /Users/runner/work/aelomi/aelomi/.git/
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.6158730Z [command]/opt/homebrew/bin/git remote add origin https://github.com/aelomi/aelomi
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.6222440Z ##[endgroup]
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.6223690Z ##[group]Disabling automatic garbage collection
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.6224740Z [command]/opt/homebrew/bin/git config --local gc.auto 0
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.6285410Z ##[endgroup]
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.6286490Z ##[group]Setting up auth
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.6287300Z Removing SSH command configuration
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.6289590Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp core\.sshCommand
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.6348890Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.7245570Z Removing HTTP extra header
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.7251330Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.7336770Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.8067450Z Removing includeIf entries pointing to credentials config files
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.8072530Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.8124460Z [command]/opt/homebrew/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.8791340Z [command]/opt/homebrew/bin/git config --file /Users/runner/work/_temp/git-credentials-9439efa3-a371-42f3-9a71-e2f1e1f9ca94.config http.https://github.com/.extraheader AUTHORIZATION: basic ***
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.8846630Z [command]/opt/homebrew/bin/git config --local includeIf.gitdir:/Users/runner/work/aelomi/aelomi/.git.path /Users/runner/work/_temp/git-credentials-9439efa3-a371-42f3-9a71-e2f1e1f9ca94.config
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.8897220Z [command]/opt/homebrew/bin/git config --local includeIf.gitdir:/Users/runner/work/aelomi/aelomi/.git/worktrees/*.path /Users/runner/work/_temp/git-credentials-9439efa3-a371-42f3-9a71-e2f1e1f9ca94.config
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.8953890Z [command]/opt/homebrew/bin/git config --local includeIf.gitdir:/github/workspace/.git.path /github/runner_temp/git-credentials-9439efa3-a371-42f3-9a71-e2f1e1f9ca94.config
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.9011440Z [command]/opt/homebrew/bin/git config --local includeIf.gitdir:/github/workspace/.git/worktrees/*.path /github/runner_temp/git-credentials-9439efa3-a371-42f3-9a71-e2f1e1f9ca94.config
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.9065260Z ##[endgroup]
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.9066380Z ##[group]Fetching the repository
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:46.9069940Z [command]/opt/homebrew/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +64be23dac9baaf6f3d9e84fab7b02c03db6b664e:refs/remotes/pull/68/merge
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:47.9609620Z From https://github.com/aelomi/aelomi
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:47.9610990Z  * [new ref]         64be23dac9baaf6f3d9e84fab7b02c03db6b664e -> pull/68/merge
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:47.9613570Z ##[endgroup]
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:47.9614810Z ##[group]Determining the checkout info
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:47.9615900Z ##[endgroup]
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:47.9619790Z [command]/opt/homebrew/bin/git sparse-checkout disable
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:47.9730500Z [command]/opt/homebrew/bin/git config --local --unset-all extensions.worktreeConfig
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:47.9811780Z ##[group]Checking out the ref
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:47.9815340Z [command]/opt/homebrew/bin/git checkout --progress --force refs/remotes/pull/68/merge
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:48.1490440Z HEAD is now at 64be23d Merge 0ad6f34dd1b931715e4a086bf3b43e2cde85e582 into 0c5bb572adc87c5f551b59692f842b9b2c5ace3e
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:48.1526890Z ##[endgroup]
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:48.1639480Z [command]/opt/homebrew/bin/git log -1 --format=%H
+keystroke	Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T22:52:48.1720920Z 64be23dac9baaf6f3d9e84fab7b02c03db6b664e
+keystroke	Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1	2026-10-14T22:52:48.1983400Z ##[group]Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+keystroke	Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1	2026-10-14T22:52:48.1983890Z with:
+keystroke	Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1	2026-10-14T22:52:48.1984080Z   node-version-file: .node-version
+keystroke	Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1	2026-10-14T22:52:48.1984330Z   check-latest: false
+keystroke	Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1	2026-10-14T22:52:48.1986720Z   token: ***
+keystroke	Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1	2026-10-14T22:52:48.1986910Z   package-manager-cache: true
+keystroke	Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1	2026-10-14T22:52:48.1987220Z env:
+keystroke	Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1	2026-10-14T22:52:48.1987390Z   E2E_TELEMETRY_DISABLED: 1
+keystroke	Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1	2026-10-14T22:52:48.1987630Z   DO_NOT_TRACK: 1
+keystroke	Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1	2026-10-14T22:52:48.1987800Z ##[endgroup]
+keystroke	Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1	2026-10-14T22:52:48.3507640Z Node version file is not TOML file
+keystroke	Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1	2026-10-14T22:52:48.3510050Z Resolved .node-version as 24
+keystroke	Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1	2026-10-14T22:52:48.3546140Z Found in cache @ /Users/runner/hostedtoolcache/node/24.20.0/arm64
+keystroke	Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1	2026-10-14T22:52:48.5471340Z ##[group]Environment details
+keystroke	Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1	2026-10-14T22:52:49.0353230Z node: v24.20.0
+keystroke	Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1	2026-10-14T22:52:49.0354750Z npm: 11.19.0
+keystroke	Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1	2026-10-14T22:52:49.0355810Z yarn: 1.22.22
+keystroke	Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1	2026-10-14T22:52:49.0356840Z ##[endgroup]
+keystroke	Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413	2026-10-14T22:52:49.0519410Z ##[group]Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413
+keystroke	Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413	2026-10-14T22:52:49.0520720Z with:
+keystroke	Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413	2026-10-14T22:52:49.0521420Z   cache: true
+keystroke	Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413	2026-10-14T22:52:49.0522480Z   dest: ~/setup-pnpm
+keystroke	Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413	2026-10-14T22:52:49.0523240Z   run_install: null
+keystroke	Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413	2026-10-14T22:52:49.0523610Z   cache_dependency_path: pnpm-lock.yaml
+keystroke	Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413	2026-10-14T22:52:49.0523880Z   package_json_file: package.json
+keystroke	Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413	2026-10-14T22:52:49.0524090Z   standalone: false
+keystroke	Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413	2026-10-14T22:52:49.0524310Z env:
+keystroke	Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413	2026-10-14T22:52:49.0524480Z   E2E_TELEMETRY_DISABLED: 1
+keystroke	Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413	2026-10-14T22:52:49.0524710Z   DO_NOT_TRACK: 1
+keystroke	Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413	2026-10-14T22:52:49.0524940Z ##[endgroup]
+keystroke	Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413	2026-10-14T22:52:49.2447310Z ##[group]Running self-installer...
+keystroke	Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413	2026-10-14T22:52:50.8797940Z
+keystroke	Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413	2026-10-14T22:52:50.8803910Z added 2 packages, and audited 3 packages in 2s
+keystroke	Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413	2026-10-14T22:52:50.8813170Z
+keystroke	Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413	2026-10-14T22:52:50.8814210Z found 0 vulnerabilities
+keystroke	Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413	2026-10-14T22:52:51.0057360Z Checking for updates...
+keystroke	Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413	2026-10-14T22:52:51.2249700Z Switching pnpm from v12.3.4 to v12.11.2...
+keystroke	Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413	2026-10-14T22:52:52.2391500Z .../global/v11/ab5-18de87370917a278-0    | Progress: resolved 1, reused 0, downloaded 0, added 0
+keystroke	Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413	2026-10-14T22:52:52.2887930Z Downloading @pnpm/exe.darwin-arm64@12.11.2: 0.00 B/20.85 MB
+keystroke	Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413	2026-10-14T22:52:52.6105090Z Packages are cloned from the content-addressable store to the virtual store.
+keystroke	Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413	2026-10-14T22:52:52.6108100Z   Content-addressable store is at: /Users/runner/setup-pnpm/node_modules/.bin/store/v11
+keystroke	Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413	2026-10-14T22:52:52.6442000Z   Virtual store is at:             node_modules/.bin/global/v11/ab5-18de87370917a278-0/node_modules/.pnpm
+keystroke	Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413	2026-10-14T22:52:52.6723370Z .../global/v11/ab5-18de87370917a278-0    | Progress: resolved 2, reused 0, downloaded 2, added 2, done
+keystroke	Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413	2026-10-14T22:52:52.7448370Z Successfully updated pnpm to v12.11.2
+keystroke	Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413	2026-10-14T22:52:52.7494080Z ##[endgroup]
+keystroke	Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413	2026-10-14T22:52:52.7504760Z Installation Completed!
+keystroke	Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413	2026-10-14T22:52:52.7530940Z ##[group]Restoring cache...
+keystroke	Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413	2026-10-14T22:52:52.7532210Z [command]/Users/runner/setup-pnpm/node_modules/.bin/bin/pnpm store path --silent
+keystroke	Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413	2026-10-14T22:52:52.7879880Z /Users/runner/setup-pnpm/node_modules/.bin/store/v11
+keystroke	Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413	2026-10-14T22:52:53.0746120Z Cache hit for restore-key: pnpm-cache-macOS-arm64-8855c761c466acbaeba8d51e4b44b9b9dd0f21f885a6774643627e4ca0904607
+keystroke	Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413	2026-10-14T22:52:54.3533960Z Received 0 of 185624630 (0.0%), 0.0 MBs/sec
+keystroke	Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413	2026-10-14T22:52:55.3593550Z Received 71303168 of 185624630 (38.4%), 33.9 MBs/sec
+keystroke	Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413	2026-10-14T22:52:56.3615640Z Received 130023424 of 185624630 (70.0%), 41.2 MBs/sec
+keystroke	Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413	2026-10-14T22:52:57.3620180Z Received 164653110 of 185624630 (88.7%), 39.1 MBs/sec
+keystroke	Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413	2026-10-14T22:52:58.3684480Z Received 181430326 of 185624630 (97.7%), 34.5 MBs/sec
+keystroke	Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413	2026-10-14T22:52:59.2703770Z Received 185624630 of 185624630 (100.0%), 29.9 MBs/sec
+keystroke	Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413	2026-10-14T22:52:59.2711620Z Cache Size: ~177 MB (185624630 B)
+keystroke	Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413	2026-10-14T22:52:59.2893380Z [command]/opt/homebrew/bin/gtar -xf /Users/runner/work/_temp/56c1cfab-78b2-4895-b2a2-62071d222c5f/cache.tzst -P -C /Users/runner/work/aelomi/aelomi --delay-directory-restore --use-compress-program unzstd
+keystroke	Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413	2026-10-14T22:53:05.8539430Z Cache restored successfully
+keystroke	Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413	2026-10-14T22:53:05.9821970Z Cache restored from key: pnpm-cache-macOS-arm64-8855c761c466acbaeba8d51e4b44b9b9dd0f21f885a6774643627e4ca0904607
+keystroke	Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413	2026-10-14T22:53:05.9887440Z ##[endgroup]
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:06.0735470Z ##[group]Run pnpm install --frozen-lockfile
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:06.0736400Z pnpm install --frozen-lockfile
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:06.0880040Z shell: /bin/bash -e {0}
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:06.0880450Z env:
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:06.0880790Z   E2E_TELEMETRY_DISABLED: 1
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:06.0881180Z   DO_NOT_TRACK: 1
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:06.0881500Z   PNPM_HOME: /Users/runner/setup-pnpm/node_modules/.bin
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:06.0881980Z ##[endgroup]
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:06.5822460Z ? Verifying lockfile against supply-chain policies (288 entries)...
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:07.1183560Z Packages are cloned from the content-addressable store to the virtual store.
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:07.1184560Z   Content-addressable store is at: /Users/runner/setup-pnpm/node_modules/.bin/store/v11
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:07.1185380Z   Virtual store is at:             node_modules/.pnpm
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:07.4430760Z Downloading @emoji-mart/data@1.2.1: 0.00 B/5.38 MB
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:08.4752290Z Downloading @emoji-mart/data@1.2.1: 2.11 MB/5.38 MB
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:09.2578700Z ✓ Lockfile passes supply-chain policies (288 entries in 2.7s)
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:09.2586920Z Lockfile is up to date, resolution step is skipped
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:10.2583810Z Progress: resolved 171, reused 124, downloaded 47, added 167
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:10.3783290Z Packages: +171
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:10.3787530Z ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:10.4373680Z Progress: resolved 171, reused 124, downloaded 47, added 171, done
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:10.5638420Z Agent skills awaiting approval: e2e.
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:10.5639170Z Run "pnpm approve" to review them.
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:10.5670180Z
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:10.5671280Z dependencies:
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:10.5672020Z + @base-ui/react 1.9.0
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:10.5673370Z + @blocknote/core 0.55.0
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:10.5674250Z + @tanstack/react-router 1.170.41
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:10.5674650Z + @tanstack/react-virtual 3.14.13
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:10.5675030Z + @tauri-apps/api 2.12.2
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:10.5675370Z + react 19.3.0
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:10.5685400Z + react-dom 19.3.0
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:10.5686280Z + y-prosemirror 1.3.7
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:10.5687420Z + yjs 13.6.33
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:10.5687810Z + zustand 5.0.15
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:10.5688030Z
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:10.5688190Z devDependencies:
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:10.5688450Z + @biomejs/biome 2.5.15
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:10.5688790Z + @e2e-dev/web 0.14.0
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:10.5689150Z + @playwright/test 1.63.0
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:10.5689430Z + @tailwindcss/vite 4.3.3
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:10.5689760Z + @tauri-apps/cli 2.12.1
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:10.5690070Z + @types/node 26.6.5
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:10.5690340Z + @types/react 19.3.0
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:10.5690980Z + @types/react-dom 19.3.0
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:10.5691360Z + @vitejs/plugin-react 6.1.2
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:10.5691610Z + e2e 0.19.0
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:10.5691890Z + happy-dom 20.14.6
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:10.5692400Z + prosemirror-model 1.25.12
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:10.5692680Z + prosemirror-state 1.4.4
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:10.5693000Z + prosemirror-view 1.42.6
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:10.5693360Z + tailwindcss 4.3.3
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:10.5693600Z + typescript 7.0.2
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:10.5693880Z + vite 8.3.4
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:10.5694110Z + vitest 5.0.3
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:10.5694330Z
+keystroke	Run pnpm install --frozen-lockfile	2026-10-14T22:53:10.5726480Z Done in 4.2s using pnpm v12.11.2
+keystroke	Read Playwright version	2026-10-14T22:53:10.6056970Z ##[group]Run node -e 'console.log("version=" + require("@playwright/test/package.json").version)' >> "$GITHUB_OUTPUT"
+keystroke	Read Playwright version	2026-10-14T22:53:10.6057940Z node -e 'console.log("version=" + require("@playwright/test/package.json").version)' >> "$GITHUB_OUTPUT"
+keystroke	Read Playwright version	2026-10-14T22:53:10.6159980Z shell: /bin/bash -e {0}
+keystroke	Read Playwright version	2026-10-14T22:53:10.6160280Z env:
+keystroke	Read Playwright version	2026-10-14T22:53:10.6160580Z   E2E_TELEMETRY_DISABLED: 1
+keystroke	Read Playwright version	2026-10-14T22:53:10.6160900Z   DO_NOT_TRACK: 1
+keystroke	Read Playwright version	2026-10-14T22:53:10.6161180Z   PNPM_HOME: /Users/runner/setup-pnpm/node_modules/.bin
+keystroke	Read Playwright version	2026-10-14T22:53:10.6161620Z ##[endgroup]
+keystroke	Run actions/cache@caa296126883cff596d87d8935842f9db880ef25	2026-10-14T22:53:11.0175200Z ##[group]Run actions/cache@caa296126883cff596d87d8935842f9db880ef25
+keystroke	Run actions/cache@caa296126883cff596d87d8935842f9db880ef25	2026-10-14T22:53:11.0175720Z with:
+keystroke	Run actions/cache@caa296126883cff596d87d8935842f9db880ef25	2026-10-14T22:53:11.0176010Z   path: ~/Library/Caches/ms-playwright
+keystroke	Run actions/cache@caa296126883cff596d87d8935842f9db880ef25	2026-10-14T22:53:11.0176350Z   key: webkit-macOS-ARM64-1.63.0
+keystroke	Run actions/cache@caa296126883cff596d87d8935842f9db880ef25	2026-10-14T22:53:11.0176730Z   enableCrossOsArchive: false
+keystroke	Run actions/cache@caa296126883cff596d87d8935842f9db880ef25	2026-10-14T22:53:11.0177060Z   fail-on-cache-miss: false
+keystroke	Run actions/cache@caa296126883cff596d87d8935842f9db880ef25	2026-10-14T22:53:11.0177520Z   lookup-only: false
+keystroke	Run actions/cache@caa296126883cff596d87d8935842f9db880ef25	2026-10-14T22:53:11.0177760Z   save-always: false
+keystroke	Run actions/cache@caa296126883cff596d87d8935842f9db880ef25	2026-10-14T22:53:11.0177920Z env:
+keystroke	Run actions/cache@caa296126883cff596d87d8935842f9db880ef25	2026-10-14T22:53:11.0178060Z   E2E_TELEMETRY_DISABLED: 1
+keystroke	Run actions/cache@caa296126883cff596d87d8935842f9db880ef25	2026-10-14T22:53:11.0178450Z   DO_NOT_TRACK: 1
+keystroke	Run actions/cache@caa296126883cff596d87d8935842f9db880ef25	2026-10-14T22:53:11.0178820Z   PNPM_HOME: /Users/runner/setup-pnpm/node_modules/.bin
+keystroke	Run actions/cache@caa296126883cff596d87d8935842f9db880ef25	2026-10-14T22:53:11.0179170Z ##[endgroup]
+keystroke	Run actions/cache@caa296126883cff596d87d8935842f9db880ef25	2026-10-14T22:53:11.6167800Z Cache hit for: webkit-macOS-ARM64-1.63.0
+keystroke	Run actions/cache@caa296126883cff596d87d8935842f9db880ef25	2026-10-14T22:53:12.9359770Z Received 0 of 70005400 (0.0%), 0.0 MBs/sec
+keystroke	Run actions/cache@caa296126883cff596d87d8935842f9db880ef25	2026-10-14T22:53:13.9407930Z Received 65811096 of 70005400 (94.0%), 31.3 MBs/sec
+keystroke	Run actions/cache@caa296126883cff596d87d8935842f9db880ef25	2026-10-14T22:53:14.0065740Z Received 70005400 of 70005400 (100.0%), 32.2 MBs/sec
+keystroke	Run actions/cache@caa296126883cff596d87d8935842f9db880ef25	2026-10-14T22:53:14.0074400Z Cache Size: ~67 MB (70005400 B)
+keystroke	Run actions/cache@caa296126883cff596d87d8935842f9db880ef25	2026-10-14T22:53:14.0136580Z [command]/opt/homebrew/bin/gtar -xf /Users/runner/work/_temp/6e479f77-fe30-4cec-9cf8-f59bf67ca5e4/cache.tzst -P -C /Users/runner/work/aelomi/aelomi --delay-directory-restore --use-compress-program unzstd
+keystroke	Run actions/cache@caa296126883cff596d87d8935842f9db880ef25	2026-10-14T22:53:16.1601000Z Cache restored successfully
+keystroke	Run actions/cache@caa296126883cff596d87d8935842f9db880ef25	2026-10-14T22:53:16.2028510Z Cache restored from key: webkit-macOS-ARM64-1.63.0
+keystroke	Run pnpm exec playwright install webkit	2026-10-14T22:53:16.2226400Z ##[group]Run pnpm exec playwright install webkit
+keystroke	Run pnpm exec playwright install webkit	2026-10-14T22:53:16.2227690Z pnpm exec playwright install webkit
+keystroke	Run pnpm exec playwright install webkit	2026-10-14T22:53:16.2328420Z shell: /bin/bash -e {0}
+keystroke	Run pnpm exec playwright install webkit	2026-10-14T22:53:16.2329650Z env:
+keystroke	Run pnpm exec playwright install webkit	2026-10-14T22:53:16.2330550Z   E2E_TELEMETRY_DISABLED: 1
+keystroke	Run pnpm exec playwright install webkit	2026-10-14T22:53:16.2332010Z   DO_NOT_TRACK: 1
+keystroke	Run pnpm exec playwright install webkit	2026-10-14T22:53:16.2333060Z   PNPM_HOME: /Users/runner/setup-pnpm/node_modules/.bin
+keystroke	Run pnpm exec playwright install webkit	2026-10-14T22:53:16.2333530Z ##[endgroup]
+keystroke	Run pnpm build:mock	2026-10-14T22:53:16.9263840Z ##[group]Run pnpm build:mock
+keystroke	Run pnpm build:mock	2026-10-14T22:53:16.9264230Z pnpm build:mock
+keystroke	Run pnpm build:mock	2026-10-14T22:53:16.9369980Z shell: /bin/bash -e {0}
+keystroke	Run pnpm build:mock	2026-10-14T22:53:16.9370360Z env:
+keystroke	Run pnpm build:mock	2026-10-14T22:53:16.9370670Z   E2E_TELEMETRY_DISABLED: 1
+keystroke	Run pnpm build:mock	2026-10-14T22:53:16.9371810Z   DO_NOT_TRACK: 1
+keystroke	Run pnpm build:mock	2026-10-14T22:53:16.9372270Z   PNPM_HOME: /Users/runner/setup-pnpm/node_modules/.bin
+keystroke	Run pnpm build:mock	2026-10-14T22:53:16.9372730Z ##[endgroup]
+keystroke	Run pnpm build:mock	2026-10-14T22:53:17.0172130Z $ pnpm typecheck && vite build --mode mock
+keystroke	Run pnpm build:mock	2026-10-14T22:53:17.0534420Z $ tsc --noEmit
+keystroke	Run pnpm build:mock	2026-10-14T22:53:21.4434100Z vite v8.3.4 building client environment for mock...
+keystroke	Run pnpm build:mock	2026-10-14T22:53:21.4526280Z transforming...
+keystroke	Run pnpm build:mock	2026-10-14T22:53:22.1007950Z ✓ 454 modules transformed.
+keystroke	Run pnpm build:mock	2026-10-14T22:53:22.2328370Z rendering chunks...
+keystroke	Run pnpm build:mock	2026-10-14T22:53:22.3684210Z computing gzip size...
+keystroke	Run pnpm build:mock	2026-10-14T22:53:22.4599390Z dist-mock/index.html                                  0.55 kB │ gzip:     0.31 kB
+keystroke	Run pnpm build:mock	2026-10-14T22:53:22.4601490Z dist-mock/assets/index-B2PJBpNO.css                  22.80 kB │ gzip:     5.52 kB
+keystroke	Run pnpm build:mock	2026-10-14T22:53:22.4604350Z dist-mock/assets/page-view-BF9mJHer.css              26.95 kB │ gzip:     5.07 kB
+keystroke	Run pnpm build:mock	2026-10-14T22:53:22.4606290Z dist-mock/assets/keystroke-empty-BH4yKb0X.js          0.17 kB │ gzip:     0.16 kB
+keystroke	Run pnpm build:mock	2026-10-14T22:53:22.4608670Z dist-mock/assets/page-route-yiGOH1rI.js               0.28 kB │ gzip:     0.22 kB
+keystroke	Run pnpm build:mock	2026-10-14T22:53:22.4610510Z dist-mock/assets/keystroke-surface-A4Zx_cvT.js        0.35 kB │ gzip:     0.27 kB
+keystroke	Run pnpm build:mock	2026-10-14T22:53:22.4612340Z dist-mock/assets/keystroke-page-5000-CM_zrVR8.js      0.86 kB │ gzip:     0.47 kB
+keystroke	Run pnpm build:mock	2026-10-14T22:53:22.4614230Z dist-mock/assets/keystroke-editor-CuiBV_NO.js         0.92 kB │ gzip:     0.56 kB
+keystroke	Run pnpm build:mock	2026-10-14T22:53:22.4616200Z dist-mock/assets/jsx-runtime-BkSabwWG.js              0.96 kB │ gzip:     0.55 kB
+keystroke	Run pnpm build:mock	2026-10-14T22:53:22.4618160Z dist-mock/assets/cold-start-BvhcKXB0.js             128.33 kB │ gzip:    40.76 kB
+keystroke	Run pnpm build:mock	2026-10-14T22:53:22.4619990Z dist-mock/assets/index-DdoZHUfB.js                  430.96 kB │ gzip:   139.88 kB
+keystroke	Run pnpm build:mock	2026-10-14T22:53:22.4621720Z dist-mock/assets/page-view-BrKXfzmq.js              615.15 kB │ gzip:   188.07 kB
+keystroke	Run pnpm build:mock	2026-10-14T22:53:22.4623540Z dist-mock/assets/page-5000-blocks-UEKZVv3Z.js     1,444.79 kB │ gzip:   279.72 kB
+keystroke	Run pnpm build:mock	2026-10-14T22:53:22.4625370Z dist-mock/assets/search-10k-pages-D2IDY6gi.js     3,665.44 kB │ gzip: 1,388.78 kB
+keystroke	Run pnpm build:mock	2026-10-14T22:53:22.4626200Z
+keystroke	Run pnpm build:mock	2026-10-14T22:53:22.4644730Z [plugin builtin:vite-reporter]
+keystroke	Run pnpm build:mock	2026-10-14T22:53:22.4645460Z (!) Some chunks are larger than 500 kB after minification. Consider:
+keystroke	Run pnpm build:mock	2026-10-14T22:53:22.4646050Z - Using dynamic import() to code-split the application
+keystroke	Run pnpm build:mock	2026-10-14T22:53:22.4647590Z - Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+keystroke	Run pnpm build:mock	2026-10-14T22:53:22.4648610Z - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+keystroke	Run pnpm build:mock	2026-10-14T22:53:22.4698950Z ✓ built in 1.03s
+keystroke	Wait for a quiet machine	2026-10-14T22:53:22.5390430Z ##[group]Run start=$(date +%s)
+keystroke	Wait for a quiet machine	2026-10-14T22:53:22.5391910Z start=$(date +%s)
+keystroke	Wait for a quiet machine	2026-10-14T22:53:22.5392670Z while :; do
+keystroke	Wait for a quiet machine	2026-10-14T22:53:22.5393400Z   load1=$(sysctl -n vm.loadavg | awk '{print $2}')
+keystroke	Wait for a quiet machine	2026-10-14T22:53:22.5394390Z   elapsed=$(( $(date +%s) - start ))
+keystroke	Wait for a quiet machine	2026-10-14T22:53:22.5395370Z   echo "t+${elapsed}s load1 ${load1}"
+keystroke	Wait for a quiet machine	2026-10-14T22:53:22.5396370Z   if awk "BEGIN{exit !($load1 < 2.5)}"; then break; fi
+keystroke	Wait for a quiet machine	2026-10-14T22:53:22.5397680Z   if [ "$elapsed" -ge 120 ]; then echo "load stayed above 2.5 for 120 s; measuring anyway"; break; fi
+keystroke	Wait for a quiet machine	2026-10-14T22:53:22.5398890Z   sleep 10
+keystroke	Wait for a quiet machine	2026-10-14T22:53:22.5399590Z done
+keystroke	Wait for a quiet machine	2026-10-14T22:53:22.5493450Z shell: /bin/bash -e {0}
+keystroke	Wait for a quiet machine	2026-10-14T22:53:22.5493760Z env:
+keystroke	Wait for a quiet machine	2026-10-14T22:53:22.5494050Z   E2E_TELEMETRY_DISABLED: 1
+keystroke	Wait for a quiet machine	2026-10-14T22:53:22.5494360Z   DO_NOT_TRACK: 1
+keystroke	Wait for a quiet machine	2026-10-14T22:53:22.5494650Z   PNPM_HOME: /Users/runner/setup-pnpm/node_modules/.bin
+keystroke	Wait for a quiet machine	2026-10-14T22:53:22.5495130Z ##[endgroup]
+keystroke	Wait for a quiet machine	2026-10-14T22:53:22.6461760Z t+0s load1 13.75
+keystroke	Wait for a quiet machine	2026-10-14T22:53:32.6800440Z t+10s load1 12.02
+keystroke	Wait for a quiet machine	2026-10-14T22:53:42.7357440Z t+20s load1 12.56
+keystroke	Wait for a quiet machine	2026-10-14T22:53:52.8342330Z t+30s load1 12.04
+keystroke	Wait for a quiet machine	2026-10-14T22:54:02.8600200Z t+40s load1 10.64
+keystroke	Wait for a quiet machine	2026-10-14T22:54:12.8810900Z t+50s load1 10.41
+keystroke	Wait for a quiet machine	2026-10-14T22:54:22.9301020Z t+60s load1 10.80
+keystroke	Wait for a quiet machine	2026-10-14T22:54:32.9510440Z t+70s load1 10.25
+keystroke	Wait for a quiet machine	2026-10-14T22:54:42.9812710Z t+80s load1 8.76
+keystroke	Wait for a quiet machine	2026-10-14T22:54:53.0649580Z t+91s load1 11.07
+keystroke	Wait for a quiet machine	2026-10-14T22:55:03.1365770Z t+101s load1 12.60
+keystroke	Wait for a quiet machine	2026-10-14T22:55:13.1880570Z t+111s load1 13.02
+keystroke	Wait for a quiet machine	2026-10-14T22:55:23.2823210Z t+121s load1 13.25
+keystroke	Wait for a quiet machine	2026-10-14T22:55:23.2926420Z load stayed above 2.5 for 120 s; measuring anyway
+keystroke	Run pnpm perf:keystroke	2026-10-14T22:55:23.3032650Z ##[group]Run pnpm perf:keystroke
+keystroke	Run pnpm perf:keystroke	2026-10-14T22:55:23.3033220Z pnpm perf:keystroke
+keystroke	Run pnpm perf:keystroke	2026-10-14T22:55:23.3091200Z shell: /bin/bash -e {0}
+keystroke	Run pnpm perf:keystroke	2026-10-14T22:55:23.3091590Z env:
+keystroke	Run pnpm perf:keystroke	2026-10-14T22:55:23.3091940Z   E2E_TELEMETRY_DISABLED: 1
+keystroke	Run pnpm perf:keystroke	2026-10-14T22:55:23.3092170Z   DO_NOT_TRACK: 1
+keystroke	Run pnpm perf:keystroke	2026-10-14T22:55:23.3092530Z   PNPM_HOME: /Users/runner/setup-pnpm/node_modules/.bin
+keystroke	Run pnpm perf:keystroke	2026-10-14T22:55:23.3092910Z   AELOMI_PERF_CI: 1
+keystroke	Run pnpm perf:keystroke	2026-10-14T22:55:23.3093160Z ##[endgroup]
+keystroke	Run pnpm perf:keystroke	2026-10-14T22:55:23.4167980Z $ playwright test --project perf --workers 1
+keystroke	Run pnpm perf:keystroke	2026-10-14T22:55:24.7752340Z [WebServer] $ vite preview --mode mock --host 127.0.0.1 --port 4173 --strictPort
+keystroke	Run pnpm perf:keystroke	2026-10-14T22:55:25.7673160Z
+keystroke	Run pnpm perf:keystroke	2026-10-14T22:55:25.7683490Z Running 6 tests using 1 worker
+keystroke	Run pnpm perf:keystroke	2026-10-14T22:55:25.7696160Z
+keystroke	Run pnpm perf:keystroke	2026-10-14T22:55:29.6374460Z editor-empty: NOISY: load 12.43 on 3 cores
+keystroke	Run pnpm perf:keystroke	2026-10-14T22:56:55.6034210Z editor-empty: full key-to-paint p95 20 ms > 19 ms FAIL (local budget, information) | NOISY: load 12.43 on 3 cores
+keystroke	Run pnpm perf:keystroke	2026-10-14T22:56:55.6036400Z   app-owned p95 6 ms <= 19 ms PASS (hosted budget, gate)
+keystroke	Run pnpm perf:keystroke	2026-10-14T22:56:55.6038170Z   tick wait p50 8 ms p95 16 ms, key-to-input p50 2 ms p95 4 ms, render p50 1 ms p95 2 ms, frame start to the recorder's rAF p50 0 ms p95 0 ms
+keystroke	Run pnpm perf:keystroke	2026-10-14T22:56:55.6039170Z   full key-to-paint p50 11 ms, range 3.0 to 24.0 ms, per-load appOwned p95 7, 5, 5, double rAF p95 35 ms
+keystroke	Run pnpm perf:keystroke	2026-10-14T22:56:55.6040000Z   split check: max |app-owned + tick wait - full| 0.000 ms over 405 samples from 3 loads
+keystroke	Run pnpm perf:keystroke	2026-10-14T22:56:55.6040910Z   idle rAF cadence per load 17.0, 17.0, 17.0 ms, load average 13.21 20.03 14.24
+keystroke	Run pnpm perf:keystroke	2026-10-14T22:56:55.6041810Z   editor-empty: NOISY: load 13.21 on 3 cores
+keystroke	Run pnpm perf:keystroke	2026-10-14T22:56:55.6493550Z   ✓  1 [perf] › tests/playwright/perf/keystroke.spec.ts:105:3 › EDIT-14 keystroke-to-paint on the editor-empty surface (1.5m)
+keystroke	Run pnpm perf:keystroke	2026-10-14T22:56:56.1057610Z editor-page-5000-blocks: NOISY: load 13.21 on 3 cores
+keystroke	Run pnpm perf:keystroke	2026-10-14T22:58:31.7026850Z editor-page-5000-blocks: full key-to-paint p95 36 ms > 19 ms FAIL (local budget, information) | NOISY: load 13.21 on 3 cores
+keystroke	Run pnpm perf:keystroke	2026-10-14T22:58:31.7028840Z   app-owned p95 33 ms > 19 ms FAIL (hosted budget, gate)
+keystroke	Run pnpm perf:keystroke	2026-10-14T22:58:31.7029890Z   tick wait p50 3 ms p95 9 ms, key-to-input p50 12 ms p95 24 ms, render p50 4 ms p95 12 ms, frame start to the recorder's rAF p50 0 ms p95 0 ms
+keystroke	Run pnpm perf:keystroke	2026-10-14T22:58:31.7031020Z   full key-to-paint p50 21 ms, range 12.0 to 72.0 ms, per-load appOwned p95 31, 30, 41, double rAF p95 40 ms
+keystroke	Run pnpm perf:keystroke	2026-10-14T22:58:31.7031770Z   split check: max |app-owned + tick wait - full| 0.000 ms over 405 samples from 3 loads
+keystroke	Run pnpm perf:keystroke	2026-10-14T22:58:31.7032580Z   idle rAF cadence per load 17.0, 17.0, 17.0 ms, load average 14.27 18.17 14.13
+keystroke	Run pnpm perf:keystroke	2026-10-14T22:58:31.7033360Z   editor-page-5000-blocks: NOISY: load 14.27 on 3 cores
+keystroke	Run pnpm perf:keystroke	2026-10-14T22:58:32.7911470Z   ✘  2 [perf] › tests/playwright/perf/keystroke.spec.ts:105:3 › EDIT-14 keystroke-to-paint on the editor-page-5000-blocks surface (1.6m)
+keystroke	Run pnpm perf:keystroke	2026-10-14T22:58:34.2870360Z empty: NOISY: load 14.27 on 3 cores
+keystroke	Run pnpm perf:keystroke	2026-10-14T22:59:59.3045040Z empty: full key-to-paint p95 19 ms <= 19 ms PASS (local budget, information) | NOISY: load 14.27 on 3 cores
+keystroke	Run pnpm perf:keystroke	2026-10-14T22:59:59.3050240Z   app-owned p95 4 ms <= 19 ms PASS (hosted budget, information)
+keystroke	Run pnpm perf:keystroke	2026-10-14T22:59:59.3146960Z   tick wait p50 8 ms p95 17 ms, key-to-input p50 1 ms p95 2 ms, render p50 1 ms p95 2 ms, frame start to the recorder's rAF p50 0 ms p95 0 ms
+keystroke	Run pnpm perf:keystroke	2026-10-14T22:59:59.3149070Z   full key-to-paint p50 11 ms, range 2.0 to 26.0 ms, per-load appOwned p95 5, 4, 4, double rAF p95 34 ms
+keystroke	Run pnpm perf:keystroke	2026-10-14T22:59:59.3150330Z   split check: max |app-owned + tick wait - full| 0.000 ms over 405 samples from 3 loads
+keystroke	Run pnpm perf:keystroke	2026-10-14T22:59:59.3174520Z   idle rAF cadence per load 17.0, 17.0, 17.0 ms, load average 14.36 17.47 14.26
+keystroke	Run pnpm perf:keystroke	2026-10-14T22:59:59.3175330Z   empty: NOISY: load 14.36 on 3 cores
+keystroke	Run pnpm perf:keystroke	2026-10-14T22:59:59.3820220Z   ✓  3 [perf] › tests/playwright/perf/keystroke.spec.ts:105:3 › EDIT-14 keystroke-to-paint on the empty surface (1.4m)
+keystroke	Run pnpm perf:keystroke	2026-10-14T22:59:59.9122340Z page-5000-blocks: NOISY: load 14.36 on 3 cores
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:27.8289860Z page-5000-blocks: full key-to-paint p95 24 ms > 19 ms FAIL (local budget, information) | NOISY: load 14.36 on 3 cores
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:27.8305560Z   app-owned p95 18 ms <= 19 ms PASS (hosted budget, information)
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:27.8307710Z   tick wait p50 7 ms p95 14 ms, key-to-input p50 5 ms p95 11 ms, render p50 5 ms p95 10 ms, frame start to the recorder's rAF p50 0 ms p95 0 ms
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:27.8309850Z   full key-to-paint p50 19 ms, range 8.0 to 37.0 ms, per-load appOwned p95 17, 20, 17, double rAF p95 35 ms
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:27.8311670Z   split check: max |app-owned + tick wait - full| 0.000 ms over 405 samples from 3 loads
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:27.8313350Z   idle rAF cadence per load 17.0, 17.0, 17.0 ms, load average 9.33 15.35 13.79
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:27.8314650Z   page-5000-blocks: NOISY: load 9.33 on 3 cores
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:27.8750240Z   ✓  4 [perf] › tests/playwright/perf/keystroke.spec.ts:105:3 › EDIT-14 keystroke-to-paint on the page-5000-blocks surface (1.5m)
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:39.9458900Z palette results p50 17 ms p95 29 ms (ci budget 16 ms) over 55 keys, slowest "zi" 44 ms, "z" 35 ms, "d" 29 ms, "q" 27 ms, "zitid" 25 ms, load average 8.52 14.97 13.67 | NOISY: load 9.33 on 3 cores
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:40.0315420Z   ✘  5 [perf] › tests/playwright/perf/palette.spec.ts:65:1 › CMD-4 and CMD-5 the palette shows results within one frame of each keystroke on the 10,000-page fixture (12.1s)
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.5597750Z scroll frames 300, rendering work p50 2 ms p95 13 ms (budget < 16.7) max 37 ms, longest interval 24 ms (budget 50)
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.5600530Z   raw intervals p50 17 ms p95 18 ms and idle cadence 17 ms (information)
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.5603190Z   load average 7.97 14.64 13.57 | NOISY: load 8.52 on 3 cores
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.6295350Z   ✓  6 [perf] › tests/playwright/perf/scroll.spec.ts:33:1 › EDIT-14 the 5,000-block editor page scrolls smoothly for 5 seconds (10.6s)
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.6596580Z
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.6697240Z
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.6738130Z   1) [perf] › tests/playwright/perf/keystroke.spec.ts:105:3 › EDIT-14 keystroke-to-paint on the editor-page-5000-blocks surface
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.6750350Z
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.6767820Z     Error: EDIT-14 editor-page-5000-blocks appOwned p95 (ci mode) | NOISY: load 13.21 on 3 cores
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.6768450Z
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.6768760Z     expect(received).toBeLessThanOrEqual(expected)
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.6769170Z
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.6769390Z     Expected: <= 19
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.6769820Z     Received:    33
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.6770120Z
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.6770340Z       235 |           noise,
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.6770840Z       236 |         ),
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.6771350Z     > 237 |       ).toBeLessThanOrEqual(gate.budget);
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.6771900Z           |         ^
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.6782250Z       238 |   });
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.6782720Z       239 | }
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.6785270Z       240 |
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.6786160Z         at /Users/runner/work/aelomi/aelomi/tests/playwright/perf/keystroke.spec.ts:237:9
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.6786740Z
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.6825560Z     Error Context: test-results/perf-keystroke-EDIT-14-key-eef20-or-page-5000-blocks-surface-perf/error-context.md
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.6831150Z
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.6832380Z   2) [perf] › tests/playwright/perf/palette.spec.ts:65:1 › CMD-4 and CMD-5 the palette shows results within one frame of each keystroke on the 10,000-page fixture
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.6833410Z
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.6833790Z     Error: CMD palette results p95 (ci mode) | NOISY: load 9.33 on 3 cores
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.6834170Z
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.6835130Z     expect(received).toBeLessThanOrEqual(expected)
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.6844330Z
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.6844590Z     Expected: <= 16
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.6845040Z     Received:    29
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.6845340Z
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.6845590Z       123 |     p95,
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.6846110Z       124 |     withNoise(`CMD palette results p95 (${mode} mode)`, noise),
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.6850740Z     > 125 |   ).toBeLessThanOrEqual(budget);
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.6851180Z           |     ^
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.6863850Z       126 | });
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.6864070Z       127 |
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.6864590Z         at /Users/runner/work/aelomi/aelomi/tests/playwright/perf/palette.spec.ts:125:5
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.6865010Z
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.6865460Z     Error Context: test-results/perf-palette-CMD-4-and-CMD-d58b8--on-the-10-000-page-fixture-perf/error-context.md
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.6865910Z
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.6866030Z   2 failed
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.6866770Z     [perf] › tests/playwright/perf/keystroke.spec.ts:105:3 › EDIT-14 keystroke-to-paint on the editor-page-5000-blocks surface
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.6867850Z     [perf] › tests/playwright/perf/palette.spec.ts:65:1 › CMD-4 and CMD-5 the palette shows results within one frame of each keystroke on the 10,000-page fixture
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.6868510Z   4 passed (6.5m)
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.8034570Z [ELIFECYCLE] Command failed with exit code 1.
+keystroke	Run pnpm perf:keystroke	2026-10-14T23:01:51.8092490Z ##[error]Process completed with exit code 1.
+keystroke	Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9	2026-10-14T23:01:51.8267540Z ##[group]Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+keystroke	Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9	2026-10-14T23:01:51.8268070Z with:
+keystroke	Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9	2026-10-14T23:01:51.8268360Z   name: keystroke-report
+keystroke	Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9	2026-10-14T23:01:51.8268660Z   path: playwright-report/
+keystroke	Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9	test-results/
+keystroke	Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+keystroke	Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9	2026-10-14T23:01:51.8268950Z   include-hidden-files: true
+keystroke	Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9	2026-10-14T23:01:51.8269280Z   retention-days: 7
+keystroke	Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9	2026-10-14T23:01:51.8269530Z   overwrite: true
+keystroke	Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9	2026-10-14T23:01:51.8269750Z   if-no-files-found: warn
+keystroke	Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9	2026-10-14T23:01:51.8270060Z   compression-level: 6
+keystroke	Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9	2026-10-14T23:01:51.8270340Z   archive: true
+keystroke	Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9	2026-10-14T23:01:51.8270540Z env:
+keystroke	Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9	2026-10-14T23:01:51.8270880Z   E2E_TELEMETRY_DISABLED: 1
+keystroke	Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9	2026-10-14T23:01:51.8271240Z   DO_NOT_TRACK: 1
+keystroke	Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9	2026-10-14T23:01:51.8271490Z   PNPM_HOME: /Users/runner/setup-pnpm/node_modules/.bin
+keystroke	Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9	2026-10-14T23:01:51.8271860Z ##[endgroup]
+keystroke	Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9	2026-10-14T23:01:52.2758690Z Multiple search paths detected. Calculating the least common ancestor of all paths
+keystroke	Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9	2026-10-14T23:01:52.2761930Z The least common ancestor is /Users/runner/work/aelomi/aelomi. This will be the root directory of the artifact
+keystroke	Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9	2026-10-14T23:01:52.2763060Z With the provided path, there will be 6 files uploaded
+keystroke	Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9	2026-10-14T23:01:52.5406580Z Artifact name is valid!
+keystroke	Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9	2026-10-14T23:01:52.5407880Z Root directory input is valid!
+keystroke	Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9	2026-10-14T23:01:52.9366140Z Uploading artifact: keystroke-report.zip
+keystroke	Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9	2026-10-14T23:01:52.9410270Z Beginning upload of artifact content to blob storage
+keystroke	Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9	2026-10-14T23:01:53.9017960Z Uploaded bytes 675239
+keystroke	Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9	2026-10-14T23:01:53.9782510Z Finished uploading artifact content to blob storage!
+keystroke	Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9	2026-10-14T23:01:53.9785030Z SHA256 digest of uploaded artifact is 92e8ce9537c140b450bc67e68b0318eb72d532ffc1ea99022ab1076559e1a5a4
+keystroke	Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9	2026-10-14T23:01:53.9786900Z Finalizing artifact upload
+keystroke	Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9	2026-10-14T23:01:54.3954640Z Artifact keystroke-report successfully finalized. Artifact ID 11934956201
+keystroke	Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9	2026-10-14T23:01:54.3956930Z Artifact keystroke-report has been successfully uploaded! Final size is 675239 bytes. Artifact ID is 11934956201
+keystroke	Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9	2026-10-14T23:01:54.3961260Z Artifact download URL: https://github.com/aelomi/aelomi/actions/runs/38650502888/artifacts/11934956201
+keystroke	Post Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413	2026-10-14T23:01:54.4288110Z Post job cleanup.
+keystroke	Post Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413	2026-10-14T23:01:54.6619500Z Pruning is unnecessary.
+keystroke	Post Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413	2026-10-14T23:01:54.6993210Z [command]/opt/homebrew/bin/gtar --posix -cf cache.tzst --exclude cache.tzst -P -C /Users/runner/work/aelomi/aelomi --files-from manifest.txt --delay-directory-restore --use-compress-program zstdmt
+keystroke	Post Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413	2026-10-14T23:02:04.4389860Z ##[warning]Failed to save: Unable to reserve cache with key pnpm-cache-macOS-arm64-3bb176a720971a6ec5b2ea79dc0080247970779862e65f722d5ab7a295247736, another job may be creating this cache.
+keystroke	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T23:02:04.4753890Z Post job cleanup.
+keystroke	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T23:02:04.6436850Z [command]/opt/homebrew/bin/git version
+keystroke	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T23:02:04.6782900Z git version 2.55.0
+keystroke	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T23:02:04.6808460Z Copying '/Users/runner/.gitconfig' to '/Users/runner/work/_temp/b425bbd0-1b0b-4bae-8fa7-e8b36492a162/.gitconfig'
+keystroke	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T23:02:04.6830510Z Temporarily overriding HOME='/Users/runner/work/_temp/b425bbd0-1b0b-4bae-8fa7-e8b36492a162' before making global git config changes
+keystroke	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T23:02:04.6837010Z Adding repository directory to the temporary git global config as a safe directory
+keystroke	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T23:02:04.6846230Z [command]/opt/homebrew/bin/git config --global --add safe.directory /Users/runner/work/aelomi/aelomi
+keystroke	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T23:02:04.6986880Z Removing SSH command configuration
+keystroke	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T23:02:04.6991380Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp core\.sshCommand
+keystroke	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T23:02:04.7083800Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+keystroke	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T23:02:04.8319120Z Removing HTTP extra header
+keystroke	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T23:02:04.8324320Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+keystroke	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T23:02:04.8395230Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+keystroke	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T23:02:04.9644860Z Removing includeIf entries pointing to credentials config files
+keystroke	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T23:02:04.9670840Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+keystroke	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T23:02:04.9772220Z includeif.gitdir:/Users/runner/work/aelomi/aelomi/.git.path
+keystroke	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T23:02:04.9793990Z includeif.gitdir:/Users/runner/work/aelomi/aelomi/.git/worktrees/*.path
+keystroke	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T23:02:04.9845890Z includeif.gitdir:/github/workspace/.git.path
+keystroke	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T23:02:04.9859120Z includeif.gitdir:/github/workspace/.git/worktrees/*.path
+keystroke	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T23:02:04.9861260Z [command]/opt/homebrew/bin/git config --local --get-all includeif.gitdir:/Users/runner/work/aelomi/aelomi/.git.path
+keystroke	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T23:02:04.9862670Z /Users/runner/work/_temp/git-credentials-9439efa3-a371-42f3-9a71-e2f1e1f9ca94.config
+keystroke	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T23:02:04.9864590Z [command]/opt/homebrew/bin/git config --local --unset includeif.gitdir:/Users/runner/work/aelomi/aelomi/.git.path \/Users\/runner\/work\/_temp\/git\-credentials\-9439efa3\-a371\-42f3\-9a71\-e2f1e1f9ca94\.config
+keystroke	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T23:02:04.9888760Z [command]/opt/homebrew/bin/git config --local --get-all includeif.gitdir:/Users/runner/work/aelomi/aelomi/.git/worktrees/*.path
+keystroke	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T23:02:04.9889760Z /Users/runner/work/_temp/git-credentials-9439efa3-a371-42f3-9a71-e2f1e1f9ca94.config
+keystroke	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T23:02:04.9891400Z [command]/opt/homebrew/bin/git config --local --unset includeif.gitdir:/Users/runner/work/aelomi/aelomi/.git/worktrees/*.path \/Users\/runner\/work\/_temp\/git\-credentials\-9439efa3\-a371\-42f3\-9a71\-e2f1e1f9ca94\.config
+keystroke	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T23:02:04.9983300Z [command]/opt/homebrew/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git.path
+keystroke	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T23:02:05.0052030Z /github/runner_temp/git-credentials-9439efa3-a371-42f3-9a71-e2f1e1f9ca94.config
+keystroke	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T23:02:05.0063270Z [command]/opt/homebrew/bin/git config --local --unset includeif.gitdir:/github/workspace/.git.path \/github\/runner_temp\/git\-credentials\-9439efa3\-a371\-42f3\-9a71\-e2f1e1f9ca94\.config
+keystroke	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T23:02:05.0172920Z [command]/opt/homebrew/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git/worktrees/*.path
+keystroke	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T23:02:05.0237120Z /github/runner_temp/git-credentials-9439efa3-a371-42f3-9a71-e2f1e1f9ca94.config
+keystroke	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T23:02:05.0250590Z [command]/opt/homebrew/bin/git config --local --unset includeif.gitdir:/github/workspace/.git/worktrees/*.path \/github\/runner_temp\/git\-credentials\-9439efa3\-a371\-42f3\-9a71\-e2f1e1f9ca94\.config
+keystroke	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T23:02:05.0386320Z [command]/opt/homebrew/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+keystroke	Post Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1	2026-10-14T23:02:05.1554150Z Removing credentials config '/Users/runner/work/_temp/git-credentials-9439efa3-a371-42f3-9a71-e2f1e1f9ca94.config'
+keystroke	Complete job	2026-10-14T23:02:05.1699710Z Cleaning up orphan processes

@@ -1,0 +1,152 @@
+
+ RUN  v5.0.3 <worktree>
+
+stderr | src/editor/y-binding-oracle.test.ts > every edit kind with undo and redo matches upstream on a rich body
+TextSelection endpoint not pointing into a node with inline content (blockContainer)
+
+ ✓ src/editor/y-binding-oracle.test.ts > the rebuilt upstream source is the pinned tarball's file 3ms
+ ✓ src/editor/y-binding-oracle.test.ts > audit repro: type over a cross-block range, undo, redo, type keeps upstream's caret 36ms
+ ✓ src/editor/y-binding-oracle.test.ts > audit repro: undoing a deleted image selects the image again, not the divider 15ms
+ ✓ src/editor/y-binding-oracle.test.ts > every edit kind with undo and redo matches upstream on a rich body 2667ms
+ ✓ src/editor/y-binding-oracle.test.ts > every edit kind with undo and redo matches upstream on the real BlockNote body 2080ms
+ ✓ src/editor/y-binding-oracle.test.ts > seeded random sessions match upstream step by step 225ms
+
+<--- Last few GCs --->
+
+[83198:0x764940c000]     9398 ms: Scavenge (interleaved) 2038.9 (2049.7) -> 2038.7 (2054.7) MB, pooled: 0 MB, 3.12 / 0.00 ms  (average mu = 0.426, current mu = 0.275) allocation failure;
+[83198:0x764940c000]     9713 ms: Mark-Compact 2042.0 (2054.7) -> 2040.4 (2058.2) MB, pooled: 0 MB, 313.25 / 0.00 ms  (average mu = 0.249, current mu = 0.047) allocation failure; scavenge might not succeed
+
+FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory
+----- Native stack trace -----
+
+ 1: 0x100867714 node::OOMErrorHandler(char const*, v8::OOMDetails const&) [/usr/local/bin/node]
+ 2: 0x100a667e8 v8::internal::V8::FatalProcessOutOfMemory(v8::internal::Isolate*, char const*, v8::OOMDetails const&) [/usr/local/bin/node]
+ 3: 0x100cc641c v8::internal::Heap::stack() [/usr/local/bin/node]
+ 4: 0x100cc4304 v8::internal::Heap::CollectGarbage(v8::internal::AllocationSpace, v8::internal::GarbageCollectionReason, v8::GCCallbackFlags) [/usr/local/bin/node]
+ 5: 0x100cb8e2c v8::internal::HeapAllocator::AllocateRawWithRetryOrFailSlowPath(int, v8::internal::AllocationType, v8::internal::AllocationOrigin, v8::internal::AllocationAlignment) [/usr/local/bin/node]
+ 6: 0x100c9a538 v8::internal::Factory::NewFillerObject(int, v8::internal::AllocationAlignment, v8::internal::AllocationType, v8::internal::AllocationOrigin) [/usr/local/bin/node]
+ 7: 0x1011296a0 v8::internal::Runtime_AllocateInYoungGeneration(int, unsigned long*, v8::internal::Isolate*) [/usr/local/bin/node]
+ 8: 0x10177df74 Builtins_CEntry_Return1_ArgvOnStack_NoBuiltinExit [/usr/local/bin/node]
+ 9: 0x1016ddf4c Builtins_FastNewObject [/usr/local/bin/node]
+10: 0x1016dd834 Builtins_JSConstructStubGeneric [/usr/local/bin/node]
+11: 0x124c1e11c
+12: 0x1016dd978 Builtins_JSConstructStubGeneric [/usr/local/bin/node]
+13: 0x124c270d0
+14: 0x124bd13e8
+15: 0x124ba05a8
+16: 0x124bf2c14
+17: 0x124690d60
+18: 0x124bd67a4
+19: 0x1247e6604
+20: 0x124b8693c
+21: 0x124b4831c
+22: 0x124690c80
+23: 0x124bd6554
+24: 0x1247e6604
+25: 0x124b46c04
+26: 0x12479d420
+27: 0x1248e270c
+28: 0x124c0b1dc
+29: 0x124bbb508
+30: 0x124c0b4d0
+31: 0x124c0b74c
+32: 0x124b89648
+33: 0x1248eeafc
+34: 0x1016dd978 Builtins_JSConstructStubGeneric [/usr/local/bin/node]
+35: 0x1247ccf28
+36: 0x124b7a7f0
+37: 0x1016e0bec Builtins_InterpreterEntryTrampoline [/usr/local/bin/node]
+38: 0x1016e0bec Builtins_InterpreterEntryTrampoline [/usr/local/bin/node]
+39: 0x1016e0bec Builtins_InterpreterEntryTrampoline [/usr/local/bin/node]
+40: 0x1016e0bec Builtins_InterpreterEntryTrampoline [/usr/local/bin/node]
+41: 0x1017f2b7c Builtins_PromiseConstructor [/usr/local/bin/node]
+42: 0x1016e1550 Builtins_InterpreterPushArgsThenFastConstructFunction [/usr/local/bin/node]
+43: 0x101870d28 Builtins_ConstructHandler [/usr/local/bin/node]
+44: 0x1016e0bec Builtins_InterpreterEntryTrampoline [/usr/local/bin/node]
+45: 0x1016e0bec Builtins_InterpreterEntryTrampoline [/usr/local/bin/node]
+46: 0x1017f2b7c Builtins_PromiseConstructor [/usr/local/bin/node]
+47: 0x1016e1550 Builtins_InterpreterPushArgsThenFastConstructFunction [/usr/local/bin/node]
+48: 0x101870d28 Builtins_ConstructHandler [/usr/local/bin/node]
+49: 0x1016e0bec Builtins_InterpreterEntryTrampoline [/usr/local/bin/node]
+50: 0x1016e0bec Builtins_InterpreterEntryTrampoline [/usr/local/bin/node]
+51: 0x1016e0bec Builtins_InterpreterEntryTrampoline [/usr/local/bin/node]
+52: 0x124b7f658
+53: 0x1016e0bec Builtins_InterpreterEntryTrampoline [/usr/local/bin/node]
+54: 0x12468ce4c
+55: 0x12472e298
+56: 0x1016e0bec Builtins_InterpreterEntryTrampoline [/usr/local/bin/node]
+57: 0x10171f648 Builtins_AsyncFunctionAwaitResolveClosure [/usr/local/bin/node]
+58: 0x1017f45f8 Builtins_PromiseFulfillReactionJob [/usr/local/bin/node]
+59: 0x10170ea50 Builtins_RunMicrotasks [/usr/local/bin/node]
+60: 0x1016de7b0 Builtins_JSRunMicrotasksEntry [/usr/local/bin/node]
+61: 0x100c0a61c v8::internal::(anonymous namespace)::Invoke(v8::internal::Isolate*, v8::internal::(anonymous namespace)::InvokeParams const&) [/usr/local/bin/node]
+62: 0x100c0ae90 v8::internal::(anonymous namespace)::InvokeWithTryCatch(v8::internal::Isolate*, v8::internal::(anonymous namespace)::InvokeParams const&) [/usr/local/bin/node]
+63: 0x100c0afcc v8::internal::Execution::TryRunMicrotasks(v8::internal::Isolate*, v8::internal::MicrotaskQueue*) [/usr/local/bin/node]
+64: 0x100c39e7c v8::internal::MicrotaskQueue::RunMicrotasks(v8::internal::Isolate*) [/usr/local/bin/node]
+65: 0x100c3a7dc v8::internal::MicrotaskQueue::PerformCheckpoint(v8::Isolate*) [/usr/local/bin/node]
+66: 0x1016e2818 Builtins_CallApiCallbackGeneric [/usr/local/bin/node]
+67: 0x12467f934
+68: 0x1016de8cc Builtins_JSEntryTrampoline [/usr/local/bin/node]
+69: 0x1016de570 Builtins_JSEntry [/usr/local/bin/node]
+70: 0x100c0a664 v8::internal::(anonymous namespace)::Invoke(v8::internal::Isolate*, v8::internal::(anonymous namespace)::InvokeParams const&) [/usr/local/bin/node]
+71: 0x100c09fc8 v8::internal::Execution::Call(v8::internal::Isolate*, v8::internal::DirectHandle<v8::internal::Object>, v8::internal::DirectHandle<v8::internal::Object>, v8::base::Vector<v8::internal::DirectHandle<v8::internal::Object> const>) [/usr/local/bin/node]
+72: 0x100a7e760 v8::Function::Call(v8::Isolate*, v8::Local<v8::Context>, v8::Local<v8::Value>, int, v8::Local<v8::Value>*) [/usr/local/bin/node]
+73: 0x1007690f0 node::InternalCallbackScope::Close() [/usr/local/bin/node]
+74: 0x100769320 node::InternalMakeCallback(node::Environment*, v8::Local<v8::Object>, v8::Local<v8::Object>, v8::Local<v8::Function>, int, v8::Local<v8::Value>*, node::async_context, v8::Local<v8::Value>) [/usr/local/bin/node]
+75: 0x10077c660 node::AsyncWrap::MakeCallback(v8::Local<v8::Function>, int, v8::Local<v8::Value>*) [/usr/local/bin/node]
+76: 0x1009987e4 node::StreamBase::CallJSOnreadMethod(long, v8::Local<v8::ArrayBuffer>, unsigned long, node::StreamBase::StreamBaseJSChecks) [/usr/local/bin/node]
+77: 0x100999f78 node::EmitToJSStreamListener::OnStreamRead(long, uv_buf_t const&) [/usr/local/bin/node]
+78: 0x10099e2a0 node::LibuvStreamWrap::OnUvRead(long, uv_buf_t const*) [/usr/local/bin/node]
+79: 0x10099e9d0 node::LibuvStreamWrap::ReadStart()::$_1::__invoke(uv_stream_s*, long, uv_buf_t const*) [/usr/local/bin/node]
+80: 0x1016cacbc uv__stream_io [/usr/local/bin/node]
+81: 0x1016d32e4 uv__io_poll [/usr/local/bin/node]
+82: 0x1016bf694 uv_run [/usr/local/bin/node]
+83: 0x100769b44 node::SpinEventLoopInternal(node::Environment*) [/usr/local/bin/node]
+84: 0x1008bb234 node::NodeMainInstance::Run() [/usr/local/bin/node]
+85: 0x1008216ac node::Start(int, char**) [/usr/local/bin/node]
+86: 0x18f8ebe80 start [/usr/lib/dyld]
+⎯⎯⎯⎯⎯⎯ Unhandled Errors ⎯⎯⎯⎯⎯⎯
+
+Vitest caught 1 unhandled error during the test run.
+This might cause false positive tests. Resolve unhandled errors to make sure your tests are not affected.
+
+⎯⎯⎯⎯⎯⎯ Unhandled Error ⎯⎯⎯⎯⎯⎯⎯
+Error: [vitest-pool]: Worker forks emitted error.
+ ❯ EventEmitter.onTaskError node_modules/.pnpm/vitest@5.0.3_@types+node@26.6.5_happy-dom@20.14.6_vite@8.3.4_@types+node@26.6.5_jiti@2.7.0_/node_modules/vitest/dist/chunks/index.DpLw24bj.js:11532:21
+ ❯ EventEmitter.emit node:events:508:28
+ ❯ ChildProcess.emitUnexpectedExit node_modules/.pnpm/vitest@5.0.3_@types+node@26.6.5_happy-dom@20.14.6_vite@8.3.4_@types+node@26.6.5_jiti@2.7.0_/node_modules/vitest/dist/chunks/index.DpLw24bj.js:11007:22
+ ❯ ChildProcess.emit node:events:508:28
+ ❯ ChildProcess._handle.onexit node:internal/child_process:294:12
+
+Caused by: Error: Worker exited unexpectedly with signal SIGABRT during started state while running test file <worktree>/src/editor/y-binding-oracle.test.ts
+ ❯ ChildProcess.emitUnexpectedExit node_modules/.pnpm/vitest@5.0.3_@types+node@26.6.5_happy-dom@20.14.6_vite@8.3.4_@types+node@26.6.5_jiti@2.7.0_/node_modules/vitest/dist/chunks/index.DpLw24bj.js:11005:33
+ ❯ ChildProcess.emit node:events:508:28
+ ❯ ChildProcess._handle.onexit node:internal/child_process:294:12
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+
+
+ Test Files   (1)
+      Tests  6 passed (8)
+     Errors  1 error
+   Start at  04:37:06
+   Duration  9.78s (environment 53%, import 29%, transform 18%, worker 1%)
+
+       10.23 real        24.15 user         1.67 sys
+          2304081920  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+              293846  page reclaims
+                2247  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                 196  messages sent
+                 160  messages received
+                   0  signals received
+                1246  voluntary context switches
+               48714  involuntary context switches
+           492449995  instructions retired
+           179636173  cycles elapsed
+            23841384  peak memory footprint

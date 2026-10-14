@@ -11,7 +11,11 @@ export const STAGES: readonly {
 }[] = [
   { job: "biome", commands: [["pnpm", "lint"]] },
   { job: "tsc", commands: [["pnpm", "typecheck"]] },
-  { job: "vitest", commands: [["pnpm", "test"]] },
+  {
+    job: "vitest",
+    commands: [["pnpm", "test"]],
+    env: { NODE_OPTIONS: "--max-old-space-size=2048" },
+  },
   {
     job: "pnpm-audit",
     commands: [

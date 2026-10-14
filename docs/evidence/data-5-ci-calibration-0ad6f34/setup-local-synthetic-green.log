@@ -1,0 +1,16 @@
+[WebServer] $ vite preview --mode mock --host 127.0.0.1 --port 4173 --strictPort
+
+Running 1 test using 1 worker
+
+empty: load 1 editable after 214 ms
+empty: load 2 editable after 82 ms
+empty: load 3 editable after 61 ms
+empty: full key-to-paint p95 5 ms <= 19 ms PASS (local budget, information)
+  app-owned p95 4 ms <= 45 ms PASS (hosted budget, information)
+  tick wait p50 1 ms p95 1 ms, key-to-input p50 1 ms p95 3 ms, render p50 1 ms p95 2 ms, frame start to the recorder's rAF p50 0 ms p95 0 ms
+  full key-to-paint p50 2 ms, range 1.0 to 9.0 ms, per-load full p95 5, 5, 5, double rAF p95 20 ms
+  split check: max |app-owned + tick wait - full| 0.000 ms over 405 samples from 3 loads
+  idle rAF cadence per load 17.0, 17.0, 16.0 ms, load average 3.37 3.24 3.17
+  ✓  1 [perf] › tests/playwright/perf/keystroke.spec.ts:105:3 › EDIT-14 keystroke-to-paint on the empty surface (1.4m)
+
+  1 passed (1.4m)
