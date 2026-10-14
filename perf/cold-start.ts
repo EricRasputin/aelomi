@@ -19,20 +19,30 @@ const BUDGET_MISS = 1;
 const TIMEOUT_MS = 10_000;
 const GAP_MS = 500;
 const SLOW_SPAWN_MS = 25;
-const VARIANT = "index";
 
 const { values: args } = parseArgs({
   options: {
     ci: { type: "boolean", default: false },
     app: { type: "string", default: "target/release/bundle/macos/Aelomi.app" },
     out: { type: "string", default: "perf-results/cold-start" },
+    "data-dir": { type: "string" },
+    "expected-variant": { type: "string" },
   },
 });
 const binary = resolve(args.app, "Contents/MacOS/aelomi");
-const sharedDataDir = mkdtempSync(join(tmpdir(), "aelomi-cold-start-"));
-process.on("exit", () =>
-  rmSync(sharedDataDir, { recursive: true, force: true }),
-);
+const expectedVariant =
+  args["expected-variant"] ?? (args["data-dir"] ? "page" : "index");
+if (expectedVariant !== "index" && expectedVariant !== "page") {
+  throw new Error("--expected-variant must be index or page");
+}
+const sharedDataDir = args["data-dir"]
+  ? resolve(args["data-dir"])
+  : mkdtempSync(join(tmpdir(), "aelomi-cold-start-"));
+if (!args["data-dir"]) {
+  process.on("exit", () =>
+    rmSync(sharedDataDir, { recursive: true, force: true }),
+  );
+}
 const outDir = resolve(args.out);
 mkdirSync(outDir, { recursive: true });
 const logPath = join(outDir, "harness.log");
@@ -68,6 +78,7 @@ type RustStamps = {
 type Report = { js: JsMarks; rust: RustStamps };
 type Run = {
   tag: string;
+  variant: string;
   t0: number;
   exit: string;
   ms: Record<string, number>;
@@ -139,8 +150,8 @@ async function launch(tag: string): Promise<Run> {
     return fail(HARNESS_FAILURE, `${tag}: FAIL report is not {js, rust}`);
   const { js, rust } = raw;
   const problems: string[] = [];
-  if (js.variant !== VARIANT)
-    problems.push(`variant ${js.variant} is not ${VARIANT}`);
+  if (js.variant !== expectedVariant)
+    problems.push(`variant ${js.variant} is not ${expectedVariant}`);
   if (exit !== "exit 0") problems.push(`exit was ${exit}`);
   const ms: Record<string, number> = {
     processStart: rust.process_start_us / 1000 - t0,
@@ -170,6 +181,7 @@ async function launch(tag: string): Promise<Run> {
   const firstContentFrame = Math.min(ms.rafMc ?? 0, ms.raf2 ?? 0);
   const run: Run = {
     tag,
+    variant: js.variant,
     t0,
     exit,
     ms,
@@ -202,6 +214,9 @@ log(
 );
 log(`app ${binary}`);
 log(`data folder ${sharedDataDir}`);
+log(
+  `expected first content variant ${expectedVariant}; supplied data folder is never removed`,
+);
 log(
   `plan: ${warmupRuns} discarded warm-up, then ${timedRuns} timed runs. T0 is the wall clock (Date.now, 1 ms resolution) read just before spawn, the same clock as the kernel's process start stamp. Marks are ms after T0. First content frame = min(rAF+MessageChannel, double rAF). ${TIMEOUT_MS / 1000} s timeout per run.`,
 );
@@ -252,6 +267,7 @@ writeFileSync(
       node: process.version,
       cpus: cpus().length,
       budgets,
+      expectedVariant,
       runs,
       endToEndMedian,
       navToPaintMedian,

@@ -38,6 +38,7 @@ export const STAGES: readonly {
         "1",
         "index::tests::latency",
       ],
+      ["node", "scripts/check-search.ts", "--ci"],
     ],
   },
   { job: "cargo-deny", commands: [["cargo", "deny", "--locked", "check"]] },

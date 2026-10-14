@@ -1,7 +1,6 @@
 import { readFileSync } from "node:fs";
 
 export type Budget<T = number> = { value: T; why: string };
-export type KeystrokeSurface = "empty" | "page-5000-blocks";
 export type Budgets = {
   coldStart: {
     specMs: Budget;
@@ -13,7 +12,6 @@ export type Budgets = {
   keystroke: {
     p95Ms: Budget;
     hostedAppOwnedP95Ms: Budget;
-    gate: Budget<KeystrokeSurface>;
     pageLoads: Budget;
     samplesPerLoad: Budget;
     discardedPerLoad: Budget;
@@ -22,12 +20,12 @@ export type Budgets = {
   noise: {
     maxLoadPerCore: Budget;
   };
+  search: {
+    p95Ms: Budget;
+    hostedP95Ms: Budget;
+    firstSamples: Budget;
+  };
 };
-
-export const keystrokeSurfaces: readonly KeystrokeSurface[] = [
-  "empty",
-  "page-5000-blocks",
-];
 
 function section(raw: unknown, name: string): Record<string, unknown> {
   if (typeof raw !== "object" || raw === null)
@@ -48,8 +46,6 @@ function budget<T>(
 
 const isNumber = (value: unknown): value is number =>
   typeof value === "number" && Number.isFinite(value);
-const isSurface = (value: unknown): value is KeystrokeSurface =>
-  keystrokeSurfaces.some((surface) => surface === value);
 
 export function readBudgets(): Budgets {
   const raw = section(
@@ -61,6 +57,7 @@ export function readBudgets(): Budgets {
   const coldStart = section(raw.coldStart, "coldStart");
   const keystroke = section(raw.keystroke, "keystroke");
   const noise = section(raw.noise, "noise");
+  const search = section(raw.search, "search");
   return {
     coldStart: {
       specMs: budget(coldStart, "coldStart.specMs", isNumber),
@@ -80,7 +77,6 @@ export function readBudgets(): Budgets {
         "keystroke.hostedAppOwnedP95Ms",
         isNumber,
       ),
-      gate: budget(keystroke, "keystroke.gate", isSurface),
       pageLoads: budget(keystroke, "keystroke.pageLoads", isNumber),
       samplesPerLoad: budget(keystroke, "keystroke.samplesPerLoad", isNumber),
       discardedPerLoad: budget(
@@ -92,6 +88,11 @@ export function readBudgets(): Budgets {
     },
     noise: {
       maxLoadPerCore: budget(noise, "noise.maxLoadPerCore", isNumber),
+    },
+    search: {
+      p95Ms: budget(search, "search.p95Ms", isNumber),
+      hostedP95Ms: budget(search, "search.hostedP95Ms", isNumber),
+      firstSamples: budget(search, "search.firstSamples", isNumber),
     },
   };
 }
