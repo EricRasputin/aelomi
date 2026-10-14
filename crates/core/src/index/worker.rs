@@ -7,8 +7,8 @@ use std::time::{Duration, Instant};
 use yrs::updates::decoder::Decode;
 use yrs::{Doc, Transact, Update};
 
-use super::db::{self, Db, Fatal, PageRow};
-use super::{IndexChange, IndexEvent, IndexStatus, Point, Shared, Source};
+use super::db::{self, PageRow, RunError, Writer};
+use super::{HoldPoint, IndexChange, IndexEvent, IndexStatus, Shared, Source};
 use crate::storage::DocId;
 use crate::workspace::body::{Block, read_body};
 use crate::workspace::records::{PageId, RecordError, read_pages};
@@ -16,7 +16,7 @@ use crate::workspace::tree::forest;
 
 const RETRY_FIRST: Duration = Duration::from_millis(100);
 const RETRY_MAX: Duration = Duration::from_secs(30);
-const CHUNK: usize = 128;
+const PAGES_PER_TRANSACTION: usize = 128;
 
 pub(super) fn run(shared: &Shared, source: &dyn Source, path: &Path) {
     shared.emit(&IndexEvent::Status(IndexStatus::Rebuilding));
@@ -26,7 +26,7 @@ pub(super) fn run(shared: &Shared, source: &dyn Source, path: &Path) {
             shared,
             source,
             path,
-            rows: BTreeMap::new(),
+            committed_rows: BTreeMap::new(),
             reconciled: false,
             failed: BTreeMap::new(),
             retry: &mut retry,
@@ -50,7 +50,7 @@ struct Worker<'a> {
     shared: &'a Shared,
     source: &'a dyn Source,
     path: &'a Path,
-    rows: BTreeMap<PageId, PageRow>,
+    committed_rows: BTreeMap<PageId, PageRow>,
     reconciled: bool,
     failed: BTreeMap<DocId, String>,
     retry: &'a mut Duration,
@@ -62,13 +62,13 @@ enum Bodies {
 }
 
 impl Worker<'_> {
-    fn run(&mut self) -> Result<(), Fatal> {
-        let (mut db, cache) = Db::open(self.path)?;
+    fn run(&mut self) -> Result<(), RunError> {
+        let (mut db, cache) = Writer::open(self.path)?;
         self.shared.emit(&IndexEvent::Cache(cache));
-        self.workspace(&mut db, true)?;
-        self.bodies(&mut db, Bodies::All)?;
-        self.workspace(&mut db, false)?;
-        self.bodies(&mut db, Bodies::All)?;
+        self.sync_workspace(&mut db, true)?;
+        self.sync_bodies(&mut db, Bodies::All)?;
+        self.sync_workspace(&mut db, false)?;
+        self.sync_bodies(&mut db, Bodies::All)?;
         if self.shared.stopping() {
             return Ok(());
         }
@@ -76,8 +76,8 @@ impl Worker<'_> {
         self.publish();
         *self.retry = RETRY_FIRST;
         while self.shared.wait_for_work() {
-            let workspace = self.workspace(&mut db, false)?;
-            let pages = self.bodies(&mut db, Bodies::Due)?;
+            let workspace = self.sync_workspace(&mut db, false)?;
+            let pages = self.sync_bodies(&mut db, Bodies::Due)?;
             self.publish();
             if workspace || !pages.is_empty() {
                 self.shared
@@ -96,7 +96,7 @@ impl Worker<'_> {
         });
     }
 
-    fn workspace(&mut self, db: &mut Db, force: bool) -> Result<bool, Fatal> {
+    fn sync_workspace(&mut self, db: &mut Writer, force: bool) -> Result<bool, RunError> {
         if !self.shared.take_workspace(force) {
             return Ok(false);
         }
@@ -105,12 +105,12 @@ impl Worker<'_> {
         result.map(|()| true)
     }
 
-    fn apply_workspace(&mut self, db: &mut Db) -> Result<(), Fatal> {
+    fn apply_workspace(&mut self, db: &mut Writer) -> Result<(), RunError> {
         let workspace = DocId::workspace();
         let bytes = self
             .source
             .load(&workspace)
-            .map_err(|e| Fatal::Source(workspace.clone(), e))?;
+            .map_err(|e| RunError::Source(workspace.clone(), e))?;
         let records = match decode(&bytes)
             .map_err(|e| e.to_string())
             .and_then(|doc| read_pages(&doc.transact()).map_err(|e: RecordError| e.to_string()))
@@ -128,7 +128,7 @@ impl Worker<'_> {
         let old = if reconcile {
             BTreeMap::new()
         } else {
-            std::mem::take(&mut self.rows)
+            std::mem::take(&mut self.committed_rows)
         };
         let tx = db.transaction()?;
         if reconcile {
@@ -151,7 +151,7 @@ impl Worker<'_> {
         if !reconcile {
             db::rerender_links_to(&tx, &relabel, &rows)?;
         }
-        self.pass(Point::Commit);
+        self.pass(HoldPoint::BeforeCommit);
         tx.commit()?;
         for id in old.keys().filter(|id| !rows.contains_key(*id)) {
             self.failed.remove(id.doc_id());
@@ -161,16 +161,16 @@ impl Worker<'_> {
             .filter(|id| reconcile || !old.contains_key(*id))
             .map(|id| id.doc_id().clone())
             .collect();
-        self.rows = rows;
+        self.committed_rows = rows;
         self.reconciled = true;
-        self.shared.mark_pages(&added);
+        self.shared.mark_due_now(&added);
         Ok(())
     }
 
-    fn bodies(&mut self, db: &mut Db, which: Bodies) -> Result<Vec<PageId>, Fatal> {
+    fn sync_bodies(&mut self, db: &mut Writer, which: Bodies) -> Result<Vec<PageId>, RunError> {
         let marked = self.shared.take_pages(matches!(which, Bodies::All));
         let mut replaced = Vec::new();
-        for chunk in marked.chunks(CHUNK) {
+        for chunk in marked.chunks(PAGES_PER_TRANSACTION) {
             let mut projected: Vec<(PageId, Option<Vec<Block>>)> = Vec::new();
             for doc in chunk {
                 if self.shared.stopping() {
@@ -179,15 +179,15 @@ impl Worker<'_> {
                 let Ok(page) = PageId::new(doc.as_str()) else {
                     continue;
                 };
-                if !self.rows.contains_key(&page) {
+                if !self.committed_rows.contains_key(&page) {
                     projected.push((page, None));
                     continue;
                 }
-                self.pass(Point::Load(doc.clone()));
+                self.pass(HoldPoint::BeforeLoad(doc.clone()));
                 let bytes = self
                     .source
                     .load(doc)
-                    .map_err(|e| Fatal::Source(doc.clone(), e))?;
+                    .map_err(|e| RunError::Source(doc.clone(), e))?;
                 match decode(&bytes)
                     .map_err(|e| e.to_string())
                     .and_then(|ydoc| read_body(&ydoc.transact()).map_err(|e| e.to_string()))
@@ -205,14 +205,14 @@ impl Worker<'_> {
             let tx = db.transaction()?;
             for (page, blocks) in &projected {
                 match blocks {
-                    Some(blocks) => db::replace_body(&tx, page, blocks, &self.rows)?,
-                    None if self.rows.contains_key(page) => {
-                        db::replace_body(&tx, page, &[], &self.rows)?
+                    Some(blocks) => db::sync_body(&tx, page, blocks, &self.committed_rows)?,
+                    None if self.committed_rows.contains_key(page) => {
+                        db::sync_body(&tx, page, &[], &self.committed_rows)?
                     }
                     None => db::delete_page(&tx, page.as_str())?,
                 }
             }
-            self.pass(Point::Commit);
+            self.pass(HoldPoint::BeforeCommit);
             tx.commit()?;
             replaced.extend(projected.into_iter().map(|(page, _)| page));
         }
@@ -221,7 +221,7 @@ impl Worker<'_> {
         Ok(replaced)
     }
 
-    fn pass(&self, point: Point) {
+    fn pass(&self, point: HoldPoint) {
         self.shared.gate.pass(point);
     }
 }
@@ -252,27 +252,27 @@ impl Shared {
         self.changed.notify_all();
     }
 
-    fn mark_pages(&self, docs: &[DocId]) {
+    fn mark_due_now(&self, docs: &[DocId]) {
         let now = Instant::now();
-        let due = now.checked_sub(self.config.coalesce).unwrap_or(now);
+        let due = now.checked_sub(self.config.first_edit_delay).unwrap_or(now);
         let mut state = self.lock();
         for doc in docs {
-            state.pages.insert(doc.clone(), due);
+            state.pending_bodies.insert(doc.clone(), due);
         }
     }
 
     fn take_pages(&self, all: bool) -> Vec<DocId> {
         let now = Instant::now();
-        let coalesce = self.config.coalesce;
+        let first_edit_delay = self.config.first_edit_delay;
         let mut state = self.lock();
         let due: Vec<DocId> = state
-            .pages
+            .pending_bodies
             .iter()
-            .filter(|(_, first)| all || now >= **first + coalesce)
+            .filter(|(_, first)| all || now >= **first + first_edit_delay)
             .map(|(doc, _)| doc.clone())
             .collect();
         for doc in &due {
-            state.pages.remove(doc);
+            state.pending_bodies.remove(doc);
         }
         due
     }
@@ -287,10 +287,10 @@ impl Shared {
             }
             let now = Instant::now();
             let next = state
-                .pages
+                .pending_bodies
                 .values()
                 .min()
-                .map(|first| *first + self.config.coalesce);
+                .map(|first| *first + self.config.first_edit_delay);
             if state.workspace_dirty || next.is_some_and(|due| now >= due) {
                 state.busy = true;
                 return true;

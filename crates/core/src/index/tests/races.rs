@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 
 use super::{Opened, eventually, hit_ids, index_path, open, open_with, page, ready, snapshot};
 use crate::index::gate::Gate;
-use crate::index::{Config, IndexStatus, Point, Reply};
+use crate::index::{Config, HoldPoint, IndexStatus, Reply};
 use crate::storage::{AppendError, DocId, Store};
 use crate::workspace::fixture::{
     BrokenIndex, Inline, break_index, index_fixture, insert_block, link, paragraph, text,
@@ -34,7 +34,7 @@ fn seeded(dir: &Path) -> Opened {
 fn an_append_while_the_worker_holds_a_taken_mark_is_indexed() {
     let dir = tempfile::tempdir().unwrap();
     let opened = seeded(dir.path());
-    let daily = Point::Load(DocId::new("daily").unwrap());
+    let daily = HoldPoint::BeforeLoad(DocId::new("daily").unwrap());
     opened.gate.arm(daily.clone());
     add_block(&opened, "daily", "x1", "firstword");
     opened.gate.wait_held(&daily);
@@ -49,9 +49,9 @@ fn an_append_while_the_worker_holds_a_taken_mark_is_indexed() {
 fn an_append_while_the_worker_holds_its_commit_is_indexed() {
     let dir = tempfile::tempdir().unwrap();
     let opened = seeded(dir.path());
-    opened.gate.arm(Point::Commit);
+    opened.gate.arm(HoldPoint::BeforeCommit);
     add_block(&opened, "daily", "x1", "firstword");
-    opened.gate.wait_held(&Point::Commit);
+    opened.gate.wait_held(&HoldPoint::BeforeCommit);
     add_block(&opened, "daily", "x2", "secondword");
     assert_eq!(
         words(&opened, "firstword"),
@@ -69,7 +69,7 @@ fn a_query_while_a_trash_is_unapplied_answers_indexing_never_the_trashed_page() 
     let dir = tempfile::tempdir().unwrap();
     let opened = seeded(dir.path());
     assert_eq!(words(&opened, "cafe"), ["reading"]);
-    opened.gate.arm(Point::Commit);
+    opened.gate.arm(HoldPoint::BeforeCommit);
     opened.edit_records(|records| {
         let reading = records.get_mut(&page("reading")).unwrap();
         reading.trash = Some(crate::workspace::records::Trash {
@@ -79,7 +79,7 @@ fn a_query_while_a_trash_is_unapplied_answers_indexing_never_the_trashed_page() 
             trashed_at: 5,
         });
     });
-    opened.gate.wait_held(&Point::Commit);
+    opened.gate.wait_held(&HoldPoint::BeforeCommit);
     assert_eq!(opened.workspace.search("cafe", 10), Ok(Reply::Indexing));
     assert_eq!(
         opened.workspace.backlinks(&page("reading")),
@@ -99,13 +99,16 @@ fn a_workspace_mark_during_a_query_turns_its_answer_into_indexing() {
     let dir = tempfile::tempdir().unwrap();
     let opened = seeded(dir.path());
     let index = opened.workspace.index();
-    let answer = index.shared().read(|_| {
+    let answer = index.shared().read_if_current(|_| {
         index.mark(&DocId::workspace());
         Ok(())
     });
     assert_eq!(answer, Ok(Reply::Indexing));
     opened.settle();
-    assert_eq!(index.shared().read(|_| Ok(())), Ok(Reply::Ready(())));
+    assert_eq!(
+        index.shared().read_if_current(|_| Ok(())),
+        Ok(Reply::Ready(()))
+    );
 }
 
 #[test]
@@ -121,7 +124,7 @@ fn edits_during_the_startup_reconcile_converge_to_a_fresh_rebuild() {
         );
     }
     let gate = Arc::new(Gate::default());
-    let daily = Point::Load(DocId::new("daily").unwrap());
+    let daily = HoldPoint::BeforeLoad(DocId::new("daily").unwrap());
     gate.arm(daily.clone());
     let opened = open_with(
         Store::open(dir.path()).unwrap(),
@@ -209,9 +212,9 @@ fn edits_during_the_startup_reconcile_converge_to_a_fresh_rebuild() {
 fn continuous_edits_never_starve_the_coalesced_update() {
     let dir = tempfile::tempdir().unwrap();
     let opened = Arc::new(seeded(dir.path()));
-    opened.gate.arm(Point::Commit);
+    opened.gate.arm(HoldPoint::BeforeCommit);
     add_block(&opened, "daily", "held", "heldword");
-    opened.gate.wait_held(&Point::Commit);
+    opened.gate.wait_held(&HoldPoint::BeforeCommit);
     let (stop, stopping) = mpsc::channel::<()>();
     let (edits_accepted, started) = mpsc::channel();
     let typing = {
@@ -272,9 +275,9 @@ fn a_refused_append_marks_nothing() {
 fn the_index_never_delays_an_acknowledgement() {
     let dir = tempfile::tempdir().unwrap();
     let opened = seeded(dir.path());
-    opened.gate.arm(Point::Commit);
+    opened.gate.arm(HoldPoint::BeforeCommit);
     add_block(&opened, "daily", "x1", "heldword");
-    opened.gate.wait_held(&Point::Commit);
+    opened.gate.wait_held(&HoldPoint::BeforeCommit);
     let started = Instant::now();
     add_block(&opened, "roadmap", "x2", "flushedword");
     assert_eq!(

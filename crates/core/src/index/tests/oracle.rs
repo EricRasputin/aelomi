@@ -142,7 +142,7 @@ struct Model {
 impl Model {
     fn new(dir: &std::path::Path) -> Self {
         let config = Config {
-            coalesce: Duration::ZERO,
+            first_edit_delay: Duration::ZERO,
         };
         let opened = open_with(
             Store::open(dir).unwrap(),

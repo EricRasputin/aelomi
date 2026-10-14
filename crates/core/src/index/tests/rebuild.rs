@@ -306,7 +306,7 @@ fn reopen_and_compare(dir: &Path, expected: &super::Snapshot) -> (CacheState, Ve
     (cache_state(&opened.events()), opened.statuses())
 }
 
-fn corrupt_an_index_page(path: &Path) {
+fn corrupt_a_btree_page(path: &Path) {
     let (root, page_size): (i64, i64) = {
         let conn = rusqlite::Connection::open(path).unwrap();
         let root = conn
@@ -394,7 +394,7 @@ fn every_broken_index_rebuilds_to_the_same_results_and_source_files_never_change
         CacheState::Replaced(CacheProblem::SchemaMismatch)
     );
 
-    corrupt_an_index_page(&path);
+    corrupt_a_btree_page(&path);
     let cache = reopen_and_compare(dir.path(), &expected).0;
     assert!(
         matches!(cache, CacheState::Replaced(CacheProblem::IntegrityCheck(_))),

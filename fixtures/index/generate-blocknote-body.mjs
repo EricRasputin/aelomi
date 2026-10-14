@@ -20,7 +20,7 @@ function packageJson(name) {
   );
 }
 
-async function load(name, subpath = ".") {
+async function importFromDeps(name, subpath = ".") {
   const pkg = packageJson(name);
   let entry = pkg.exports?.[subpath] ?? pkg.exports;
   while (entry && typeof entry === "object") {
@@ -38,9 +38,9 @@ for (const [name, version] of Object.entries(versions)) {
   }
 }
 
-const core = await load("@blocknote/core");
-const { blocksToYXmlFragment } = await load("@blocknote/core", "./yjs");
-const Y = await load("yjs");
+const core = await importFromDeps("@blocknote/core");
+const { blocksToYXmlFragment } = await importFromDeps("@blocknote/core", "./yjs");
+const Y = await importFromDeps("yjs");
 
 const pageLink = core.createInlineContentSpec(
   {

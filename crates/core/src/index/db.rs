@@ -127,14 +127,14 @@ impl fmt::Display for CacheProblem {
 }
 
 #[derive(Debug)]
-pub(crate) enum Fatal {
+pub(crate) enum RunError {
     Sql(rusqlite::Error),
     Io(io::Error),
     Source(crate::storage::DocId, io::Error),
     Folder(String),
 }
 
-impl fmt::Display for Fatal {
+impl fmt::Display for RunError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Sql(e) => write!(f, "index database error: {e}"),
@@ -145,22 +145,22 @@ impl fmt::Display for Fatal {
     }
 }
 
-impl From<rusqlite::Error> for Fatal {
+impl From<rusqlite::Error> for RunError {
     fn from(e: rusqlite::Error) -> Self {
         Self::Sql(e)
     }
 }
 
-impl From<io::Error> for Fatal {
+impl From<io::Error> for RunError {
     fn from(e: io::Error) -> Self {
         Self::Io(e)
     }
 }
 
-pub(crate) struct Db(Connection);
+pub(crate) struct Writer(Connection);
 
-impl Db {
-    pub fn open(path: &Path) -> Result<(Self, CacheState), Fatal> {
+impl Writer {
+    pub fn open(path: &Path) -> Result<(Self, CacheState), RunError> {
         let state = match entries(path)? {
             Entries::Missing => {
                 remove(path)?;
@@ -228,13 +228,13 @@ fn names(path: &Path) -> impl Iterator<Item = PathBuf> + '_ {
     }))
 }
 
-fn entries(path: &Path) -> Result<Entries, Fatal> {
+fn entries(path: &Path) -> Result<Entries, RunError> {
     let mut main = false;
     for (i, name) in names(path).enumerate() {
         match std::fs::symlink_metadata(&name) {
             Err(e) if e.kind() == io::ErrorKind::NotFound => {}
             Err(e) => return Err(e.into()),
-            Ok(meta) if meta.is_dir() => return Err(Fatal::Folder(file_name(&name))),
+            Ok(meta) if meta.is_dir() => return Err(RunError::Folder(file_name(&name))),
             Ok(meta) if meta.is_file() => main |= i == 0,
             Ok(_) => return Ok(Entries::NotFiles),
         }
@@ -251,12 +251,12 @@ fn file_name(path: &Path) -> String {
         .map_or_else(String::new, |n| n.to_string_lossy().into_owned())
 }
 
-fn remove(path: &Path) -> Result<(), Fatal> {
+fn remove(path: &Path) -> Result<(), RunError> {
     for name in names(path) {
         match std::fs::symlink_metadata(&name) {
             Err(e) if e.kind() == io::ErrorKind::NotFound => {}
             Err(e) => return Err(e.into()),
-            Ok(meta) if meta.is_dir() => return Err(Fatal::Folder(file_name(&name))),
+            Ok(meta) if meta.is_dir() => return Err(RunError::Folder(file_name(&name))),
             Ok(_) => std::fs::remove_file(&name)?,
         }
     }
@@ -395,7 +395,7 @@ pub(crate) fn retain_pages(tx: &Transaction, keep: &BTreeSet<PageId>) -> rusqlit
     Ok(())
 }
 
-pub(crate) fn replace_body(
+pub(crate) fn sync_body(
     tx: &Transaction,
     page: &PageId,
     blocks: &[Block],

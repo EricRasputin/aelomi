@@ -1,7 +1,7 @@
 use std::sync::{Condvar, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant};
 
-use super::Point;
+use super::HoldPoint;
 
 #[derive(Default)]
 pub(crate) struct Gate {
@@ -11,17 +11,17 @@ pub(crate) struct Gate {
 
 #[derive(Default)]
 struct GateState {
-    armed: Vec<Point>,
-    held: Option<Point>,
+    armed: Vec<HoldPoint>,
+    held: Option<HoldPoint>,
     open: bool,
 }
 
 impl Gate {
-    pub fn arm(&self, point: Point) {
+    pub fn arm(&self, point: HoldPoint) {
         self.lock().armed.push(point);
     }
 
-    pub fn wait_held(&self, point: &Point) {
+    pub fn wait_held(&self, point: &HoldPoint) {
         let deadline = Instant::now() + Duration::from_secs(10);
         let mut state = self.lock();
         while state.held.as_ref() != Some(point) {
@@ -49,7 +49,7 @@ impl Gate {
         self.changed.notify_all();
     }
 
-    pub(super) fn pass(&self, point: Point) {
+    pub(super) fn pass(&self, point: HoldPoint) {
         let mut state = self.lock();
         let Some(at) = state.armed.iter().position(|p| *p == point) else {
             return;

@@ -13,7 +13,7 @@ pub(crate) mod gate {
     pub(crate) struct Gate;
 
     impl Gate {
-        pub(super) fn pass(&self, _point: super::Point) {}
+        pub(super) fn pass(&self, _point: super::HoldPoint) {}
         pub(super) fn open_all(&self) {}
     }
 }
@@ -129,9 +129,9 @@ pub struct BacklinkBlock {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum Point {
-    Load(DocId),
-    Commit,
+pub(crate) enum HoldPoint {
+    BeforeLoad(DocId),
+    BeforeCommit,
 }
 
 pub(crate) trait Source: Send + Sync + 'static {
@@ -142,12 +142,12 @@ type Listener = Arc<dyn Fn(&IndexEvent) + Send + Sync>;
 
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Config {
-    pub coalesce: Duration,
+    pub first_edit_delay: Duration,
 }
 
 impl Config {
     pub const DEFAULT: Self = Self {
-        coalesce: Duration::from_millis(25),
+        first_edit_delay: Duration::from_millis(25),
     };
 }
 
@@ -165,7 +165,7 @@ struct State {
     workspace_dirty: bool,
     workspace_in_flight: bool,
     workspace_generation: u64,
-    pages: BTreeMap<DocId, Instant>,
+    pending_bodies: BTreeMap<DocId, Instant>,
     busy: bool,
     shutdown: bool,
 }
@@ -189,7 +189,7 @@ impl Index {
                 workspace_dirty: false,
                 workspace_in_flight: false,
                 workspace_generation: 0,
-                pages: BTreeMap::new(),
+                pending_bodies: BTreeMap::new(),
                 busy: true,
                 shutdown: false,
             }),
@@ -217,7 +217,10 @@ impl Index {
             state.workspace_dirty = true;
             state.workspace_generation += 1;
         } else {
-            state.pages.entry(doc.clone()).or_insert_with(Instant::now);
+            state
+                .pending_bodies
+                .entry(doc.clone())
+                .or_insert_with(Instant::now);
         }
         drop(state);
         self.shared.changed.notify_all();
@@ -229,14 +232,15 @@ impl Index {
 
     pub fn search(&self, query: &str, limit: usize) -> Result<Reply<Vec<SearchHit>>, QueryError> {
         let expression = query::match_expression(query);
-        self.shared.read(|conn| match &expression {
+        self.shared.read_if_current(|conn| match &expression {
             Some(expression) => query::search(conn, expression, limit.clamp(1, 200)),
             None => Ok(Vec::new()),
         })
     }
 
     pub fn backlinks(&self, target: &PageId) -> Result<Reply<Vec<Backlink>>, QueryError> {
-        self.shared.read(|conn| query::backlinks(conn, target))
+        self.shared
+            .read_if_current(|conn| query::backlinks(conn, target))
     }
 
     #[cfg(test)]
@@ -265,7 +269,7 @@ impl Shared {
         self.reader.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
-    fn read<T>(
+    fn read_if_current<T>(
         &self,
         f: impl FnOnce(&mut Connection) -> rusqlite::Result<T>,
     ) -> Result<Reply<T>, QueryError> {
@@ -314,7 +318,7 @@ impl Shared {
     #[cfg(test)]
     pub fn is_clean(&self) -> bool {
         let state = self.lock();
-        !state.workspace_dirty && state.pages.is_empty()
+        !state.workspace_dirty && state.pending_bodies.is_empty()
     }
 
     #[cfg(test)]
@@ -325,7 +329,7 @@ impl Shared {
             let idle = !state.busy
                 && !state.workspace_dirty
                 && !state.workspace_in_flight
-                && state.pages.is_empty();
+                && state.pending_bodies.is_empty();
             if idle {
                 return true;
             }
