@@ -13,13 +13,17 @@ mod tests;
 use std::fmt;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Instant;
 
 use yrs::updates::decoder::Decode;
 use yrs::{Doc, Transact, Update};
 
-use crate::index::{self, Backlink, Index, IndexEvent, IndexStatus, QueryError, Reply, SearchHit};
+use crate::index::{
+    self, Backlink, HoldPoint, Index, IndexEvent, IndexStatus, QueryError, Reply, SearchHit,
+    SearchQuery,
+};
 use crate::storage::{AppendError, DocId, Health, OpenError, Seq, Store};
 use records::{PageId, RecordError, read_pages};
 use tree::Tree;
@@ -28,6 +32,9 @@ use tree::Tree;
 pub struct Workspace {
     index: Index,
     store: Arc<Store>,
+    /// Counts accepted workspace doc appends, so a tree is reused only while it is current.
+    revision: AtomicU64,
+    tree: Mutex<Option<(u64, Arc<Tree>)>>,
 }
 
 #[derive(Debug)]
@@ -58,7 +65,8 @@ impl index::Source for StoreSource {
 impl Workspace {
     /// Opens the store at `root`, the resolved data folder, and starts the index in
     /// `root`/`index.sqlite`. Returns before the index does any work. `on_index` hears every
-    /// index event on the index's thread; a panic in it is caught.
+    /// index event on the index's thread, except a worker-spawn failure on this thread. A
+    /// panic in the callback is caught.
     pub fn open(
         root: impl AsRef<Path>,
         on_index: impl Fn(&IndexEvent) + Send + Sync + 'static,
@@ -106,7 +114,12 @@ impl Workspace {
             on_index,
             gate,
         );
-        Self { index, store }
+        Self {
+            index,
+            store,
+            revision: AtomicU64::new(0),
+            tree: Mutex::new(None),
+        }
     }
 
     /// See [`Store::load`].
@@ -117,6 +130,9 @@ impl Workspace {
     /// See [`Store::append`]. Once the store accepts the update, marks the doc for the index.
     pub fn append(&self, doc: &DocId, update: &[u8]) -> Result<Seq, AppendError> {
         let seq = self.store.append(doc, update)?;
+        if *doc == DocId::workspace() {
+            self.revision.fetch_add(1, Ordering::SeqCst);
+        }
         self.index.mark(doc);
         Ok(seq)
     }
@@ -134,8 +150,35 @@ impl Workspace {
         self.store.subscribe_health(f);
     }
 
-    /// The page tree, read from the workspace doc, whatever the index status.
-    pub fn tree(&self) -> Result<Tree, TreeError> {
+    /// The page tree, read from the workspace doc, whatever the index status. Reused until the
+    /// next accepted workspace append.
+    pub fn tree(&self) -> Result<Arc<Tree>, TreeError> {
+        let revision = self.revision.load(Ordering::SeqCst);
+        if let Some(tree) = self.memo(revision)
+            && self.revision.load(Ordering::SeqCst) == revision
+        {
+            return Ok(tree);
+        }
+        self.index.hold(HoldPoint::TreeBeforeLoad);
+        let tree = Arc::new(self.project_tree()?);
+        self.index.hold(HoldPoint::TreeBeforeInstall);
+        if self.revision.load(Ordering::SeqCst) == revision {
+            let mut memo = self.tree.lock().unwrap_or_else(PoisonError::into_inner);
+            if memo.as_ref().is_none_or(|(known, _)| *known < revision) {
+                *memo = Some((revision, tree.clone()));
+            }
+        }
+        Ok(tree)
+    }
+
+    fn memo(&self, revision: u64) -> Option<Arc<Tree>> {
+        match &*self.tree.lock().unwrap_or_else(PoisonError::into_inner) {
+            Some((known, tree)) if *known == revision => Some(tree.clone()),
+            _ => None,
+        }
+    }
+
+    fn project_tree(&self) -> Result<Tree, TreeError> {
         let bytes = self
             .store
             .load(&DocId::workspace())
@@ -154,9 +197,10 @@ impl Workspace {
         self.index.status()
     }
 
-    /// Active pages whose title or a block matches `query`, best first, at most `limit`.
-    pub fn search(&self, query: &str, limit: usize) -> Result<Reply<Vec<SearchHit>>, QueryError> {
-        self.index.search(query, limit)
+    /// Active pages that match `query`: matching titles first, then matching bodies, each newest
+    /// created first. See [`SearchQuery`].
+    pub fn search(&self, query: &SearchQuery) -> Result<Reply<Vec<SearchHit>>, QueryError> {
+        self.index.search(query)
     }
 
     /// Active pages that link to `target`, most recently updated first. Empty if the target

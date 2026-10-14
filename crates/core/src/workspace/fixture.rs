@@ -498,3 +498,129 @@ pub fn index_fixture() -> Vec<(DocId, Vec<u8>)> {
     ));
     updates
 }
+
+/// When the first page of the search fixture was created. Page `n`, its line in the file, was
+/// created `n` seconds later, so the content order is the reverse of the file order.
+pub const SEARCH_CREATED_AT: u64 = 1_700_000_000_000;
+
+/// The checked-in `search-10k-pages.jsonl` as Yjs updates: one for the workspace doc, then one
+/// per page body, each block a paragraph `<page ID>-<line in the body>`. `copies` adds that many
+/// renamed copies of every page, `<ID>-c<k>`, created after the originals.
+pub fn search_fixture(jsonl: &str, copies: usize) -> Vec<(DocId, Vec<u8>)> {
+    use super::records::{Placement, Trash};
+    let lines: Vec<serde_json::Value> = jsonl
+        .lines()
+        .map(|line| serde_json::from_str(line).expect("a fixture line is JSON"))
+        .collect();
+    let mut editor = Editor::new(11);
+    let mut records = Vec::new();
+    let mut bodies = Vec::new();
+    for copy in 0..=copies {
+        let rename = |id: &str| match copy {
+            0 => PageId::new(id).expect("a valid page ID"),
+            k => PageId::new(format!("{id}-c{k}")).expect("a valid page ID"),
+        };
+        let mut siblings: HashMap<Option<PageId>, u64> = HashMap::new();
+        for (line, page) in lines.iter().enumerate() {
+            let id = rename(page["id"].as_str().expect("an ID"));
+            let parent = page["parentId"].as_str().map(rename);
+            let order = siblings.entry(parent.clone()).or_default();
+            let created_at = SEARCH_CREATED_AT + ((copy * lines.len() + line) as u64) * 1000;
+            let trash = page["trash"].as_object().map(|trash| Trash {
+                original_parent: parent.clone(),
+                original_order: *order,
+                batch_id: trash["batchId"].as_str().expect("a batch").to_owned(),
+                trashed_at: trash["at"].as_u64().expect("a time"),
+            });
+            records.push((
+                id.clone(),
+                PageRecord {
+                    title: page["title"].as_str().expect("a title").to_owned(),
+                    placement: Placement {
+                        parent,
+                        order: *order,
+                    },
+                    favorite: None,
+                    trash,
+                    created_at,
+                    updated_at: created_at,
+                },
+            ));
+            *order += 1;
+            let blocks: Vec<BlockSpec> = page["body"]
+                .as_str()
+                .expect("a body")
+                .split('\n')
+                .enumerate()
+                .map(|(i, text)| paragraph(&format!("{id}-{i}"), vec![Inline::Text(text.into())]))
+                .collect();
+            let doc = id.doc_id().clone();
+            bodies.push((
+                doc.clone(),
+                editor.edit(&doc, |txn| write_body(txn, &blocks)),
+            ));
+        }
+    }
+    let workspace = DocId::workspace();
+    let update = editor.edit(&workspace, |txn| {
+        for (id, record) in &records {
+            put_page(txn, id, record);
+        }
+    });
+    let mut updates = vec![(workspace, update)];
+    updates.extend(bodies);
+    updates
+}
+
+/// A page body in BlockNote's JSON block format, such as `page-5000-blocks.json`, as block
+/// specs. Props become attributes; styles and URL links become marks.
+pub fn blocknote_blocks(blocks: &serde_json::Value) -> Vec<BlockSpec> {
+    let Some(blocks) = blocks.as_array() else {
+        return Vec::new();
+    };
+    blocks
+        .iter()
+        .map(|block| {
+            let mut spec = BlockSpec {
+                id: block["id"].as_str().unwrap_or_default().to_owned(),
+                kind: block["type"].as_str().unwrap_or("paragraph").to_owned(),
+                attrs: Vec::new(),
+                content: Vec::new(),
+                children: blocknote_blocks(&block["children"]),
+            };
+            if let Some(props) = block["props"].as_object() {
+                for (name, value) in props {
+                    let value = match value {
+                        serde_json::Value::String(s) => Any::from(s.as_str()),
+                        serde_json::Value::Bool(b) => Any::from(*b),
+                        serde_json::Value::Number(n) => Any::from(n.as_f64().unwrap_or(0.0)),
+                        _ => continue,
+                    };
+                    spec.attrs.push((name.clone(), value));
+                }
+            }
+            for inline in block["content"].as_array().into_iter().flatten() {
+                let runs = match inline["type"].as_str() {
+                    Some("link") => inline["content"]
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .map(|run| (run, Some("link")))
+                        .collect(),
+                    _ => vec![(inline, None)],
+                };
+                for (run, mark) in runs {
+                    let text = run["text"].as_str().unwrap_or_default().to_owned();
+                    let style = run["styles"]
+                        .as_object()
+                        .and_then(|styles| styles.keys().next().cloned());
+                    spec.content.push(match mark.map(str::to_owned).or(style) {
+                        Some(mark) => Inline::Marked(text, mark),
+                        None => Inline::Text(text),
+                    });
+                }
+            }
+            spec
+        })
+        .collect()
+}

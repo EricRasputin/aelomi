@@ -60,7 +60,10 @@ fn linking_latencies(blocks: usize, edits: usize) -> Vec<Duration> {
             let started = Instant::now();
             ws.append(&source, &update).unwrap();
             eventually(Duration::from_secs(10), || {
-                let Ok(Reply::Ready(backlinks)) = ws.backlinks(&page("target")) else {
+                let Ok(Reply::Ready {
+                    value: backlinks, ..
+                }) = ws.backlinks(&page("target"))
+                else {
                     return None;
                 };
                 backlinks

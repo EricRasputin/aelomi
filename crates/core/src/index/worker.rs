@@ -1,44 +1,67 @@
+use std::cmp::Reverse;
 use std::collections::{BTreeMap, BTreeSet};
 use std::panic::{self, AssertUnwindSafe};
 use std::path::Path;
-use std::sync::PoisonError;
+use std::sync::{Arc, PoisonError};
 use std::time::{Duration, Instant};
 
 use yrs::updates::decoder::Decode;
 use yrs::{Doc, Transact, Update};
 
-use super::db::{self, PageRow, RunError, Writer};
-use super::{HoldPoint, IndexChange, IndexEvent, IndexStatus, Shared, Source};
+use super::db::{self, CacheProblem, CachedPage, OrderKey, PageKey, RunError, Writer};
+use super::{
+    HoldPoint, IndexChange, IndexEvent, IndexStatus, PageIssue, PageProblem, Shared, Source,
+    StartupReport,
+};
 use crate::storage::DocId;
-use crate::workspace::body::{Block, read_body};
+use crate::workspace::body::{Body, BodyProblem, read_body};
 use crate::workspace::records::{PageId, RecordError, read_pages};
 use crate::workspace::tree::forest;
 
 const RETRY_FIRST: Duration = Duration::from_millis(100);
 const RETRY_MAX: Duration = Duration::from_secs(30);
 const PAGES_PER_TRANSACTION: usize = 128;
+/// Replacing the cache again before it ever became Ready means replacing does not help, so the
+/// worker backs off as for any failure.
+const REPLACES_WITHOUT_READY: u32 = 2;
 
 pub(super) fn run(shared: &Shared, source: &dyn Source, path: &Path) {
     shared.emit(&IndexEvent::Status(IndexStatus::Rebuilding));
     let mut retry = RETRY_FIRST;
+    let mut replace: Option<CacheProblem> = None;
+    let mut replaces = 0;
     loop {
         let mut worker = Worker {
             shared,
             source,
             path,
             committed_rows: BTreeMap::new(),
+            order: BTreeMap::new(),
             reconciled: false,
-            failed: BTreeMap::new(),
+            workspace_failure: None,
+            page_issues: BTreeMap::new(),
             retry: &mut retry,
+            ready: false,
+            report: StartupReport::default(),
         };
-        let reason = match panic::catch_unwind(AssertUnwindSafe(|| worker.run())) {
+        let outcome = panic::catch_unwind(AssertUnwindSafe(|| worker.run(replace.take())));
+        let ready = worker.ready;
+        let reason = match outcome {
             Ok(Ok(())) => return,
-            Ok(Err(fatal)) => fatal.to_string(),
+            Ok(Err(RunError::Replace(problem))) => {
+                shared.stop_serving(IndexStatus::Rebuilding);
+                replaces = if ready { 1 } else { replaces + 1 };
+                let reason = format!("the index was replaced repeatedly: {problem}");
+                replace = Some(problem);
+                if replaces <= REPLACES_WITHOUT_READY {
+                    continue;
+                }
+                reason
+            }
+            Ok(Err(e)) => e.to_string(),
             Err(_) => "the index worker panicked".to_owned(),
         };
-        shared.lock_reader().take();
-        shared.lock().workspace_in_flight = false;
-        shared.publish(IndexStatus::Failed { reason });
+        shared.stop_serving(IndexStatus::Failed { reason });
         if !shared.sleep(retry) {
             return;
         }
@@ -50,10 +73,17 @@ struct Worker<'a> {
     shared: &'a Shared,
     source: &'a dyn Source,
     path: &'a Path,
-    committed_rows: BTreeMap<PageId, PageRow>,
+    /// The pages the cache holds, as last committed.
+    committed_rows: BTreeMap<PageId, CachedPage>,
+    order: BTreeMap<OrderKey, PageKey>,
     reconciled: bool,
-    failed: BTreeMap<DocId, String>,
+    /// Why the workspace doc could not be read. Membership is unknown, so the index is Failed.
+    workspace_failure: Option<String>,
+    /// Pages whose current body the index holds only in part.
+    page_issues: BTreeMap<PageId, PageIssue>,
     retry: &'a mut Duration,
+    ready: bool,
+    report: StartupReport,
 }
 
 enum Bodies {
@@ -62,9 +92,20 @@ enum Bodies {
 }
 
 impl Worker<'_> {
-    fn run(&mut self) -> Result<(), RunError> {
-        let (mut db, cache) = Writer::open(self.path)?;
-        self.shared.emit(&IndexEvent::Cache(cache));
+    fn run(&mut self, replace: Option<CacheProblem>) -> Result<(), RunError> {
+        let started = Instant::now();
+        let gate = self.shared.gate.clone();
+        let hold = move |point| gate.pass(point);
+        let opened = Writer::open(self.path, replace, &hold)?;
+        let mut db = opened.writer;
+        self.report.check = opened.timings;
+        self.shared.emit(&IndexEvent::Cache(opened.state));
+        self.committed_rows = opened.pages;
+        self.order = self
+            .committed_rows
+            .iter()
+            .map(|(id, page)| (page.order(id), page.key))
+            .collect();
         self.sync_workspace(&mut db, true)?;
         self.sync_bodies(&mut db, Bodies::All)?;
         self.sync_workspace(&mut db, false)?;
@@ -72,10 +113,20 @@ impl Worker<'_> {
         if self.shared.stopping() {
             return Ok(());
         }
-        *self.shared.lock_reader() = Some(db::open_reader(self.path)?);
+        let publishing = Instant::now();
         self.publish();
+        self.ready = true;
+        self.report.publish = publishing.elapsed();
+        self.report.total = started.elapsed();
+        self.shared
+            .emit(&IndexEvent::Startup(Box::new(std::mem::take(
+                &mut self.report,
+            ))));
         *self.retry = RETRY_FIRST;
         while self.shared.wait_for_work() {
+            if let Some(problem) = self.shared.replace_requested() {
+                return Err(RunError::Replace(problem));
+            }
             let workspace = self.sync_workspace(&mut db, false)?;
             let pages = self.sync_bodies(&mut db, Bodies::Due)?;
             self.publish();
@@ -88,137 +139,225 @@ impl Worker<'_> {
     }
 
     fn publish(&self) {
-        self.shared.publish(match self.failed.iter().next() {
+        let issues: Arc<[PageIssue]> = self
+            .page_issues
+            .values()
+            .filter(|issue| {
+                self.committed_rows
+                    .get(&issue.page_id)
+                    .is_some_and(|page| page.columns.active)
+            })
+            .cloned()
+            .collect();
+        let status = match &self.workspace_failure {
             None => IndexStatus::Ready,
-            Some((doc, reason)) => IndexStatus::Failed {
-                reason: format!("{doc}: {reason}"),
+            Some(reason) => IndexStatus::Failed {
+                reason: format!("{}: {reason}", DocId::workspace()),
             },
-        });
+        };
+        self.shared.lock().issues = issues;
+        self.shared.publish(status);
     }
 
     fn sync_workspace(&mut self, db: &mut Writer, force: bool) -> Result<bool, RunError> {
         if !self.shared.take_workspace(force) {
             return Ok(false);
         }
-        let result = self.apply_workspace(db);
+        self.apply_workspace(db)?;
         self.shared.finish_workspace();
-        result.map(|()| true)
+        Ok(true)
     }
 
     fn apply_workspace(&mut self, db: &mut Writer) -> Result<(), RunError> {
         let workspace = DocId::workspace();
+        let started = Instant::now();
         let bytes = self
             .source
             .load(&workspace)
             .map_err(|e| RunError::Source(workspace.clone(), e))?;
+        let loaded = Instant::now();
         let records = match decode(&bytes)
             .map_err(|e| e.to_string())
             .and_then(|doc| read_pages(&doc.transact()).map_err(|e: RecordError| e.to_string()))
         {
             Ok(records) => records,
             Err(reason) => {
-                self.failed.insert(workspace, reason);
+                self.workspace_failure = Some(reason);
                 return Ok(());
             }
         };
-        self.failed.remove(&workspace);
+        self.workspace_failure = None;
+        let decoded = Instant::now();
         let forest = forest(&records);
-        let rows = db::page_rows(records, &forest);
-        let reconcile = !self.reconciled;
-        let old = if reconcile {
-            BTreeMap::new()
-        } else {
-            std::mem::take(&mut self.committed_rows)
-        };
+        let columns = db::page_columns(records, &forest);
+        let erased = self
+            .committed_rows
+            .keys()
+            .filter(|id| !columns.contains_key(*id))
+            .count();
+        if erased > 0 {
+            return Err(RunError::Replace(CacheProblem::ErasedPages {
+                count: erased,
+            }));
+        }
+        let mut added: Vec<(OrderKey, PageId)> = Vec::new();
+        for (id, page) in &columns {
+            match self.committed_rows.get(id) {
+                Some(cached) if cached.columns.created_at != page.created_at => {
+                    return Err(RunError::Replace(CacheProblem::OrderChanged));
+                }
+                Some(_) => {}
+                None => added.push(((page.created_at, Reverse(id.clone())), id.clone())),
+            }
+        }
+        added.sort();
+        let order_keys: Vec<OrderKey> = added.iter().map(|(order, _)| order.clone()).collect();
+        let keys = db::allocate(&self.order, &order_keys)
+            .ok_or(RunError::Replace(CacheProblem::KeySpace))?;
+        let new_keys: BTreeMap<PageId, PageKey> =
+            added.into_iter().map(|(_, id)| id).zip(keys).collect();
+        let next: BTreeMap<PageId, CachedPage> = columns
+            .into_iter()
+            .map(|(id, columns)| {
+                let key = match self.committed_rows.get(&id) {
+                    Some(cached) => cached.key,
+                    None => new_keys[&id],
+                };
+                (id, CachedPage { key, columns })
+            })
+            .collect();
+        let forested = Instant::now();
         let tx = db.transaction()?;
-        if reconcile {
-            db::retain_pages(&tx, &rows.keys().cloned().collect())?;
-        }
         let mut relabel = BTreeSet::new();
-        for (id, row) in &rows {
-            let previous = old.get(id);
-            if previous != Some(row) {
-                db::upsert_page(&tx, id, row)?;
+        for (id, page) in &next {
+            match self.committed_rows.get(id) {
+                None => {
+                    db::write_page(&tx, id, page, true)?;
+                    db::write_title(&tx, page)?;
+                    relabel.insert(id.clone());
+                }
+                Some(old) if old.columns != page.columns => {
+                    db::write_page(&tx, id, page, false)?;
+                    if old.columns.active != page.columns.active {
+                        db::write_title(&tx, page)?;
+                        db::write_block_texts(&tx, page, &next)?;
+                    } else if old.columns.title != page.columns.title {
+                        db::write_title(&tx, page)?;
+                    }
+                    if old.columns.title != page.columns.title {
+                        relabel.insert(id.clone());
+                    }
+                }
+                Some(_) => {}
             }
-            if previous.map(|p| &p.record.title) != Some(&row.record.title) {
-                relabel.insert(id.clone());
-            }
         }
-        for id in old.keys().filter(|id| !rows.contains_key(*id)) {
-            db::delete_page(&tx, id.as_str())?;
-            relabel.insert(id.clone());
-        }
-        if !reconcile {
-            db::rerender_links_to(&tx, &relabel, &rows)?;
-        }
+        db::rerender_links_to(&tx, &relabel, &next)?;
         self.pass(HoldPoint::BeforeCommit);
         tx.commit()?;
-        for id in old.keys().filter(|id| !rows.contains_key(*id)) {
-            self.failed.remove(id.doc_id());
-        }
-        let added: Vec<DocId> = rows
+        let marked: Vec<DocId> = next
             .keys()
-            .filter(|id| reconcile || !old.contains_key(*id))
+            .filter(|id| !self.reconciled || new_keys.contains_key(*id))
             .map(|id| id.doc_id().clone())
             .collect();
-        self.committed_rows = rows;
+        for (id, key) in new_keys {
+            let created_at = next[&id].columns.created_at;
+            self.order.insert((created_at, Reverse(id)), key);
+        }
+        self.committed_rows = next;
         self.reconciled = true;
-        self.shared.mark_due_now(&added);
+        self.shared.mark_due_now(&marked);
+        if !self.ready {
+            self.report.workspace_load += loaded - started;
+            self.report.workspace_decode += decoded - loaded;
+            self.report.workspace_forest += forested - decoded;
+            self.report.workspace_sql += forested.elapsed();
+        }
         Ok(())
     }
 
     fn sync_bodies(&mut self, db: &mut Writer, which: Bodies) -> Result<Vec<PageId>, RunError> {
         let marked = self.shared.take_pages(matches!(which, Bodies::All));
-        let mut replaced = Vec::new();
+        let mut synced = Vec::new();
         for chunk in marked.chunks(PAGES_PER_TRANSACTION) {
-            let mut projected: Vec<(PageId, Option<Vec<Block>>)> = Vec::new();
+            let mut projected: Vec<(PageId, Body, Option<PageProblem>)> = Vec::new();
             for doc in chunk {
                 if self.shared.stopping() {
-                    return Ok(replaced);
+                    return Ok(synced);
                 }
                 let Ok(page) = PageId::new(doc.as_str()) else {
                     continue;
                 };
                 if !self.committed_rows.contains_key(&page) {
-                    projected.push((page, None));
                     continue;
                 }
                 self.pass(HoldPoint::BeforeLoad(doc.clone()));
+                let started = Instant::now();
                 let bytes = self
                     .source
                     .load(doc)
                     .map_err(|e| RunError::Source(doc.clone(), e))?;
-                match decode(&bytes)
-                    .map_err(|e| e.to_string())
-                    .and_then(|ydoc| read_body(&ydoc.transact()).map_err(|e| e.to_string()))
-                {
-                    Ok(blocks) => {
-                        self.failed.remove(doc);
-                        projected.push((page, Some(blocks)));
+                let loaded = Instant::now();
+                let (body, problem) = match decode(&bytes) {
+                    Ok(ydoc) => {
+                        let decoded = Instant::now();
+                        let body = read_body(&ydoc.transact());
+                        if !self.ready {
+                            self.report.page_decode += decoded - loaded;
+                            self.report.page_project += decoded.elapsed();
+                        }
+                        let problem = body.problem.clone().map(|problem| match problem {
+                            BodyProblem::UnrecognizedRoot(root) => {
+                                PageProblem::UnrecognizedRoot(root)
+                            }
+                            BodyProblem::MissingBlockId => PageProblem::MissingBlockId,
+                            BodyProblem::InvalidPageLink => PageProblem::InvalidPageLink,
+                        });
+                        (body, problem)
                     }
-                    Err(reason) => {
-                        self.failed.insert(doc.clone(), reason);
-                        projected.push((page, None));
-                    }
+                    Err(_) => (Body::default(), Some(PageProblem::Undecodable)),
+                };
+                if !self.ready {
+                    self.report.pages += 1;
+                    self.report.loaded_bytes += bytes.len();
+                    self.report.page_load += loaded - started;
                 }
+                projected.push((page, body, problem));
             }
+            let started = Instant::now();
             let tx = db.transaction()?;
-            for (page, blocks) in &projected {
-                match blocks {
-                    Some(blocks) => db::sync_body(&tx, page, blocks, &self.committed_rows)?,
-                    None if self.committed_rows.contains_key(page) => {
-                        db::sync_body(&tx, page, &[], &self.committed_rows)?
-                    }
-                    None => db::delete_page(&tx, page.as_str())?,
-                }
+            for (page, body, _) in &projected {
+                db::sync_body(
+                    &tx,
+                    &self.committed_rows[page],
+                    &body.blocks,
+                    &self.committed_rows,
+                )?;
             }
             self.pass(HoldPoint::BeforeCommit);
             tx.commit()?;
-            replaced.extend(projected.into_iter().map(|(page, _)| page));
+            if !self.ready {
+                self.report.page_sql += started.elapsed();
+            }
+            for (page, body, problem) in projected {
+                match problem {
+                    Some(problem) => {
+                        let issue = PageIssue {
+                            page_id: page.clone(),
+                            problem,
+                            indexed_blocks: u32::try_from(body.blocks.len()).unwrap_or(u32::MAX),
+                        };
+                        self.page_issues.insert(page.clone(), issue);
+                    }
+                    None => {
+                        self.page_issues.remove(&page);
+                    }
+                }
+                synced.push(page);
+            }
         }
-        replaced.sort();
-        replaced.dedup();
-        Ok(replaced)
+        synced.sort();
+        synced.dedup();
+        Ok(synced)
     }
 
     fn pass(&self, point: HoldPoint) {
@@ -238,6 +377,21 @@ fn decode(bytes: &[u8]) -> Result<Doc, yrs::encoding::read::Error> {
 impl Shared {
     fn stopping(&self) -> bool {
         self.lock().shutdown
+    }
+
+    /// Stops answering from the cache before the worker closes or deletes it: sets `status`,
+    /// clears the workspace pass and any replace request, then closes the reader.
+    fn stop_serving(&self, status: IndexStatus) {
+        let mut state = self.lock();
+        state.workspace_in_flight = false;
+        state.replace = None;
+        drop(state);
+        self.publish(status);
+        self.lock_reader().take();
+    }
+
+    fn replace_requested(&self) -> Option<CacheProblem> {
+        self.lock().replace.clone()
     }
 
     fn take_workspace(&self, force: bool) -> bool {
@@ -263,12 +417,12 @@ impl Shared {
 
     fn take_pages(&self, all: bool) -> Vec<DocId> {
         let now = Instant::now();
-        let first_edit_delay = self.config.first_edit_delay;
+        let delay = self.config.first_edit_delay;
         let mut state = self.lock();
         let due: Vec<DocId> = state
             .pending_bodies
             .iter()
-            .filter(|(_, first)| all || now >= **first + first_edit_delay)
+            .filter(|(_, first)| all || now >= **first + delay)
             .map(|(doc, _)| doc.clone())
             .collect();
         for doc in &due {
@@ -291,7 +445,10 @@ impl Shared {
                 .values()
                 .min()
                 .map(|first| *first + self.config.first_edit_delay);
-            if state.workspace_dirty || next.is_some_and(|due| now >= due) {
+            if state.workspace_dirty
+                || state.replace.is_some()
+                || next.is_some_and(|due| now >= due)
+            {
                 state.busy = true;
                 return true;
             }

@@ -2,12 +2,14 @@ use aelomi_core::index::{self as core, Reply};
 use aelomi_core::workspace::records::PageId;
 use aelomi_core::workspace::tree::Tree;
 use aelomi_core::workspace::{TreeError, Workspace};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::sync::Arc;
+use std::time::Instant;
 use tauri::State;
 
 use crate::storage::Storage;
+use crate::trace;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Type)]
 pub enum IndexStatus {
@@ -33,12 +35,20 @@ pub struct IndexChanged {
 pub enum QueryError {
     /// The store is not open. `storage_status` says why.
     Unavailable,
+    /// A page ID argument, or one in `exclude`, is not a valid page ID.
     InvalidPageId,
+    InvalidQuery(InvalidQuery),
     /// The index failed, or the workspace doc has a malformed record.
     Failed {
         reason: String,
     },
     Io(String),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Type)]
+pub enum InvalidQuery {
+    /// `exclude` names more distinct pages than `max`.
+    TooManyExcluded { max: u32 },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Type)]
@@ -70,11 +80,25 @@ pub struct TrashedPage {
     pub trashed_at: f64,
 }
 
+/// Which pages a search returns. Both order pages newest created first.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Type)]
+pub enum SearchScope {
+    /// Pages whose title matches, then pages whose body matches.
+    All,
+    /// Pages whose body matches, except `exclude`, the palette's title group: at most 200
+    /// distinct page IDs.
+    Content { exclude: Vec<String> },
+}
+
 /// `Indexing` until the index can answer from current data.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Type)]
 pub enum SearchReply {
     Indexing,
-    Ready(Vec<SearchHit>),
+    /// `issues` lists every active page the index holds only in part, sorted by page ID.
+    Ready {
+        hits: Vec<SearchHit>,
+        issues: Vec<PageIssue>,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Type)]
@@ -82,8 +106,31 @@ pub struct SearchHit {
     pub page_id: String,
     /// The raw title, highlighted where it matched.
     pub title: Vec<TextPart>,
-    /// The best matching block, or null when only the title matched.
+    /// The page's first matching block. Always set in a `Content` search; null for a page that
+    /// matched by title.
     pub block: Option<BlockHit>,
+}
+
+/// An active page whose body the index could read only in part. Its doc is unchanged.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Type)]
+pub struct PageIssue {
+    pub page_id: String,
+    pub problem: PageProblem,
+    /// The blocks the index could read.
+    pub indexed_blocks: u32,
+}
+
+/// The most serious problem in the page body.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Type)]
+pub enum PageProblem {
+    /// The doc is not a valid Yjs update.
+    Undecodable,
+    /// The body is under `root`, not `prosemirror`.
+    UnrecognizedRoot { root: String },
+    /// A block has no ID. Its children were read.
+    MissingBlockId,
+    /// A page link has no valid target. It reads as a space.
+    InvalidPageLink,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Type)]
@@ -101,7 +148,11 @@ pub struct TextPart {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Type)]
 pub enum BacklinksReply {
     Indexing,
-    Ready(Vec<Backlink>),
+    /// `issues` as in `SearchReply`.
+    Ready {
+        backlinks: Vec<Backlink>,
+        issues: Vec<PageIssue>,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Type)]
@@ -129,22 +180,67 @@ pub fn index_status(storage: State<'_, Storage>) -> IndexStatus {
 #[tauri::command]
 #[specta::specta]
 pub async fn page_tree(storage: State<'_, Storage>) -> Result<PageTree, QueryError> {
-    off_main(storage.workspace()?, |w| Ok(w.tree()?.into())).await
+    off_main(storage.workspace()?, |w| {
+        let started = Instant::now();
+        let tree: PageTree = w.tree()?.into();
+        trace::ipc("page_tree", started, || {
+            format!("pages={} bytes={}", tree.pages.len(), json_len(&tree))
+        });
+        Ok(tree)
+    })
+    .await
 }
 
-/// Active pages whose title or a block matches `query`; the last word matches as a prefix.
+/// Active pages matching `query`, whose last word matches as a prefix. `limit` is clamped to 1
+/// through 200.
 #[tauri::command]
 #[specta::specta]
 pub async fn search(
     storage: State<'_, Storage>,
     query: String,
     limit: u32,
+    scope: SearchScope,
 ) -> Result<SearchReply, QueryError> {
+    let exclude = match &scope {
+        SearchScope::All => Vec::new(),
+        SearchScope::Content { exclude } => exclude
+            .iter()
+            .map(|id| PageId::new(id.as_str()).map_err(|_| QueryError::InvalidPageId))
+            .collect::<Result<Vec<_>, _>>()?,
+    };
     off_main(storage.workspace()?, move |w| {
-        Ok(match w.search(&query, limit as usize)? {
+        let scope = match scope {
+            SearchScope::All => core::SearchScope::All,
+            SearchScope::Content { .. } => core::SearchScope::Content { exclude: &exclude },
+        };
+        let started = Instant::now();
+        let found = w.search(&core::SearchQuery {
+            text: &query,
+            limit: limit as usize,
+            scope,
+        })?;
+        let core_time = started.elapsed();
+        let reply = match found {
             Reply::Indexing => SearchReply::Indexing,
-            Reply::Ready(hits) => SearchReply::Ready(hits.into_iter().map(Into::into).collect()),
-        })
+            Reply::Ready { value, issues } => SearchReply::Ready {
+                hits: value.into_iter().map(Into::into).collect(),
+                issues: issues.iter().map(Into::into).collect(),
+            },
+        };
+        let dto_time = started.elapsed() - core_time;
+        trace::ipc("search", started, || {
+            let hits = match &reply {
+                SearchReply::Indexing => "indexing".to_owned(),
+                SearchReply::Ready { hits, .. } => hits.len().to_string(),
+            };
+            format!(
+                "core_ms={} dto_ms={} hits={hits} bytes={}",
+                trace::ms(core_time),
+                trace::ms(dto_time),
+                json_len(&reply)
+            )
+        });
+        Ok(reply)
     })
     .await
 }
@@ -158,14 +254,24 @@ pub async fn backlinks(
 ) -> Result<BacklinksReply, QueryError> {
     let target = PageId::new(page_id).map_err(|_| QueryError::InvalidPageId)?;
     off_main(storage.workspace()?, move |w| {
-        Ok(match w.backlinks(&target)? {
+        let started = Instant::now();
+        let reply = match w.backlinks(&target)? {
             Reply::Indexing => BacklinksReply::Indexing,
-            Reply::Ready(links) => {
-                BacklinksReply::Ready(links.into_iter().map(Into::into).collect())
-            }
-        })
+            Reply::Ready { value, issues } => BacklinksReply::Ready {
+                backlinks: value.into_iter().map(Into::into).collect(),
+                issues: issues.iter().map(Into::into).collect(),
+            },
+        };
+        trace::ipc("backlinks", started, || {
+            format!("bytes={}", json_len(&reply))
+        });
+        Ok(reply)
     })
     .await
+}
+
+fn json_len(value: &impl Serialize) -> usize {
+    serde_json::to_vec(value).map_or(0, |bytes| bytes.len())
 }
 
 async fn off_main<T: Send + 'static>(
@@ -200,6 +306,9 @@ impl From<core::QueryError> for QueryError {
     fn from(error: core::QueryError) -> Self {
         match error {
             core::QueryError::Failed(reason) => Self::Failed { reason },
+            core::QueryError::InvalidQuery(core::InvalidQuery::TooManyExcluded { max }) => {
+                Self::InvalidQuery(InvalidQuery::TooManyExcluded { max: max as u32 })
+            }
             core::QueryError::Sql(e) => Self::Io(e),
         }
     }
@@ -216,16 +325,16 @@ impl From<TreeError> for QueryError {
     }
 }
 
-impl From<Tree> for PageTree {
-    fn from(tree: Tree) -> Self {
+impl From<Arc<Tree>> for PageTree {
+    fn from(tree: Arc<Tree>) -> Self {
         Self {
             pages: tree
                 .pages
-                .into_iter()
+                .iter()
                 .map(|p| TreePage {
                     id: p.id.to_string(),
-                    title: p.title,
-                    parent_id: p.parent.map(|p| p.to_string()),
+                    title: p.title.clone(),
+                    parent_id: p.parent.as_ref().map(|p| p.to_string()),
                     created_at: p.created_at as f64,
                     updated_at: p.updated_at as f64,
                 })
@@ -233,14 +342,31 @@ impl From<Tree> for PageTree {
             favorites: tree.favorites.iter().map(|p| p.to_string()).collect(),
             trash: tree
                 .trash
-                .into_iter()
+                .iter()
                 .map(|t| TrashedPage {
                     id: t.id.to_string(),
-                    title: t.title,
-                    batch_id: t.batch_id,
+                    title: t.title.clone(),
+                    batch_id: t.batch_id.clone(),
                     trashed_at: t.trashed_at as f64,
                 })
                 .collect(),
+        }
+    }
+}
+
+impl From<&core::PageIssue> for PageIssue {
+    fn from(issue: &core::PageIssue) -> Self {
+        Self {
+            page_id: issue.page_id.to_string(),
+            problem: match &issue.problem {
+                core::PageProblem::Undecodable => PageProblem::Undecodable,
+                core::PageProblem::UnrecognizedRoot(root) => {
+                    PageProblem::UnrecognizedRoot { root: root.clone() }
+                }
+                core::PageProblem::MissingBlockId => PageProblem::MissingBlockId,
+                core::PageProblem::InvalidPageLink => PageProblem::InvalidPageLink,
+            },
+            indexed_blocks: issue.indexed_blocks,
         }
     }
 }
@@ -381,20 +507,25 @@ mod tests {
     #[test]
     fn index_commands_and_events_round_trip_over_ipc() {
         let dir = tempfile::tempdir().unwrap();
+        let store = aelomi_core::storage::Store::open(dir.path()).unwrap();
+        for (doc, update) in aelomi_core::workspace::fixture::index_fixture() {
+            store.append(&doc, &update).unwrap();
+        }
+        assert!(store.flush(Instant::now() + Duration::from_secs(2)).is_empty());
+        assert!(store.close(Instant::now() + Duration::from_secs(2)).is_ok());
         let shell = shell(Some(dir.path()));
         let workspace = shell.app.state::<Storage>().workspace().unwrap();
-        for (doc, update) in aelomi_core::workspace::fixture::index_fixture() {
-            workspace.append(&doc, &update).unwrap();
-        }
+        let cafe =
+            json!({ "query": "cafe", "limit": 5, "scope": { "Content": { "exclude": [] } } });
         wait_for(&shell, |s| {
             invoke(s, "index_status", json!({})) == Ok(json!("Ready"))
-                && invoke(s, "search", json!({ "query": "cafe", "limit": 5 }))
-                    != Ok(json!({ "Ready": [] }))
+                && invoke(s, "search", cafe.clone())
+                    != Ok(json!({ "Ready": { "hits": [], "issues": [] } }))
         });
 
         assert_eq!(
-            invoke(&shell, "search", json!({ "query": "cafe", "limit": 5 })),
-            Ok(json!({ "Ready": [{
+            invoke(&shell, "search", cafe),
+            Ok(json!({ "Ready": { "hits": [{
                 "page_id": "reading",
                 "title": [{ "text": "Reading list", "highlighted": false }],
                 "block": {
@@ -405,15 +536,65 @@ mod tests {
                         { "text": " culture", "highlighted": false },
                     ],
                 },
-            }] }))
+            }], "issues": [] } }))
+        );
+        assert_eq!(
+            invoke(
+                &shell,
+                "search",
+                json!({ "query": "roadm", "limit": 5, "scope": "All" })
+            )
+            .unwrap()["Ready"]["hits"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|hit| (hit["page_id"].clone(), hit["block"].is_null()))
+                .collect::<Vec<_>>(),
+            [
+                (json!("roadmap"), true),
+                (json!("aelomi"), false),
+                (json!("daily"), false)
+            ],
+            "titles first, then bodies, each newest first then by ID"
+        );
+        assert_eq!(
+            invoke(
+                &shell,
+                "search",
+                json!({ "query": "roadm", "limit": 5, "scope": { "Content": { "exclude": ["aelomi", "aelomi"] } } })
+            )
+            .unwrap()["Ready"]["hits"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|hit| hit["page_id"].clone())
+                .collect::<Vec<_>>(),
+            [json!("daily")]
+        );
+        assert_eq!(
+            invoke(
+                &shell,
+                "search",
+                json!({ "query": "x", "limit": 5, "scope": { "Content": { "exclude": ["Not An ID"] } } })
+            ),
+            Err(json!("InvalidPageId"))
+        );
+        let too_many: Vec<String> = (0..201).map(|n| format!("p{n}")).collect();
+        assert_eq!(
+            invoke(
+                &shell,
+                "search",
+                json!({ "query": "x", "limit": 5, "scope": { "Content": { "exclude": too_many } } })
+            ),
+            Err(json!({ "InvalidQuery": { "TooManyExcluded": { "max": 200 } } }))
         );
         assert_eq!(
             invoke(&shell, "backlinks", json!({ "pageId": "reading" })),
-            Ok(json!({ "Ready": [{
+            Ok(json!({ "Ready": { "backlinks": [{
                 "page_id": "daily",
                 "title": "Daily",
                 "blocks": [{ "block_id": "d4", "text": "call Reading list" }],
-            }] }))
+            }], "issues": [] } }))
         );
         assert_eq!(
             invoke(&shell, "backlinks", json!({ "pageId": "workspace" })),
@@ -459,8 +640,12 @@ mod tests {
             ]
         );
         assert_eq!(
-            invoke(&shell, "search", json!({ "query": "ipcword", "limit": 5 })).unwrap()["Ready"]
-                [0]["page_id"],
+            invoke(
+                &shell,
+                "search",
+                json!({ "query": "ipcword", "limit": 5, "scope": "All" })
+            )
+            .unwrap()["Ready"]["hits"][0]["page_id"],
             json!("daily")
         );
     }
@@ -473,7 +658,10 @@ mod tests {
             Ok(json!({ "Failed": { "reason": "the data folder is not open" } }))
         );
         for (cmd, args) in [
-            ("search", json!({ "query": "x", "limit": 5 })),
+            (
+                "search",
+                json!({ "query": "x", "limit": 5, "scope": "All" }),
+            ),
             ("backlinks", json!({ "pageId": "x" })),
             ("page_tree", json!({})),
         ] {
@@ -510,5 +698,115 @@ mod tests {
             serde_json::to_value(QueryError::Failed { reason: "r".into() }).unwrap(),
             json!({ "Failed": { "reason": "r" } })
         );
+        assert_eq!(
+            serde_json::to_value(PageIssue::from(&core::PageIssue {
+                page_id: PageId::new("daily").unwrap(),
+                problem: core::PageProblem::UnrecognizedRoot("content".into()),
+                indexed_blocks: 0,
+            }))
+            .unwrap(),
+            json!({
+                "page_id": "daily",
+                "problem": { "UnrecognizedRoot": { "root": "content" } },
+                "indexed_blocks": 0,
+            })
+        );
+        assert_eq!(
+            serde_json::from_value::<SearchScope>(json!({ "Content": { "exclude": ["a"] } }))
+                .unwrap(),
+            SearchScope::Content {
+                exclude: vec!["a".into()]
+            }
+        );
+    }
+}
+
+#[cfg(test)]
+mod measure {
+    use std::time::{Duration, Instant};
+
+    use aelomi_core::index::{self as core, Reply, SearchScope};
+    use aelomi_core::storage::test_support::SimDisk;
+    use aelomi_core::workspace::Workspace;
+    use aelomi_core::workspace::fixture::search_fixture;
+
+    use super::{SearchHit, SearchReply};
+
+    fn p(samples: &mut [Duration], percent: usize) -> Duration {
+        samples.sort();
+        samples[(samples.len() * percent).div_ceil(100).max(1) - 1]
+    }
+
+    /// How much of a search reply's cost is the shell's: converting core hits to IPC types and
+    /// serializing them, apart from the core query. Prints, never fails.
+    #[test]
+    #[ignore = "a release-build measurement: cargo nextest run -p aelomi --cargo-profile release --run-ignored only --no-capture measure_search_reply"]
+    fn measure_search_reply_conversion_and_serialization() {
+        let jsonl = std::fs::read_to_string(
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("../fixtures/generated/search-10k-pages.jsonl"),
+        )
+        .unwrap();
+        let disk = SimDisk::default();
+        let dir = tempfile::tempdir().unwrap();
+        let index = std::fs::canonicalize(dir.path())
+            .unwrap()
+            .join(aelomi_core::index::FILE);
+        let workspace = Workspace::with_store(
+            disk.open(std::path::Path::new("/data")).unwrap(),
+            index,
+            |_| {},
+        );
+        for (doc, update) in search_fixture(&jsonl, 0) {
+            workspace.append(&doc, &update).unwrap();
+        }
+        let deadline = Instant::now() + Duration::from_secs(120);
+        while !matches!(
+            workspace.search(&core::SearchQuery {
+                text: "zorvak",
+                limit: 1,
+                scope: SearchScope::All
+            }),
+            Ok(Reply::Ready { ref value, .. }) if !value.is_empty()
+        ) {
+            assert!(Instant::now() < deadline, "the index never became ready");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        for (text, limit) in [("zitida", 200), ("zitida", 20), ("kestrel", 20)] {
+            let (mut query, mut convert, mut serialize, mut bytes) =
+                (Vec::new(), Vec::new(), Vec::new(), 0);
+            for _ in 0..200 {
+                let started = Instant::now();
+                let Reply::Ready { value, issues } = workspace
+                    .search(&core::SearchQuery {
+                        text,
+                        limit,
+                        scope: SearchScope::Content { exclude: &[] },
+                    })
+                    .unwrap()
+                else {
+                    panic!("indexing")
+                };
+                query.push(started.elapsed());
+                let started = Instant::now();
+                let reply = SearchReply::Ready {
+                    hits: value.into_iter().map(SearchHit::from).collect(),
+                    issues: issues.iter().map(Into::into).collect(),
+                };
+                convert.push(started.elapsed());
+                let started = Instant::now();
+                bytes = serde_json::to_vec(&reply).unwrap().len();
+                serialize.push(started.elapsed());
+            }
+            eprintln!(
+                "search reply query={text:?} limit={limit} bytes={bytes} core_p50_us={} core_p95_us={} convert_p50_us={} convert_p95_us={} serialize_p50_us={} serialize_p95_us={}",
+                p(&mut query, 50).as_micros(),
+                p(&mut query, 95).as_micros(),
+                p(&mut convert, 50).as_micros(),
+                p(&mut convert, 95).as_micros(),
+                p(&mut serialize, 50).as_micros(),
+                p(&mut serialize, 95).as_micros(),
+            );
+        }
     }
 }

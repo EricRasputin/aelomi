@@ -17,7 +17,24 @@ export const commands = {
 	 */
 	keepOpen: (revision: number) => __TAURI_INVOKE<QuitStatus>("keep_open", { revision }),
 	quitAnyway: () => __TAURI_INVOKE<void>("quit_anyway"),
-	/**  Returns the doc's full state as base64. */
+	/**
+	 *  The webview listens for quit status and holds the editor. Call it after the quit listener
+	 *  is registered and the quit status read, before editing is enabled. From then on every quit
+	 *  first waits for the webview to deliver its edits (`Draining`).
+	 */
+	frontendReady: () => __TAURI_INVOKE<void>("frontend_ready"),
+	/**
+	 *  The webview delivered every edit of the drain at `revision`. Flushes the store: with
+	 *  nothing pending the quit is confirmed and the app exits, else the user is asked. A stale
+	 *  `revision` changes nothing. Returns the decision after the call.
+	 */
+	completeQuit: (revision: number) => __TAURI_INVOKE<QuitStatus>("complete_quit", { revision }),
+	/**
+	 *  The webview could not deliver its edits to `doc_ids` during the drain at `revision`, so the
+	 *  user is asked. A stale `revision` changes nothing. Returns the decision after the call.
+	 */
+	quitDrainFailed: (revision: number, docIds: string[]) => typedError<QuitStatus, StorageError>(__TAURI_INVOKE("quit_drain_failed", { revision, docIds })),
+	/**  Returns the doc's full state as base64. Loads off the main thread. */
 	docLoad: (docId: string) => typedError<string, StorageError>(__TAURI_INVOKE("doc_load", { docId })),
 	/**
 	 *  Takes the update as base64. Returns its sequence number once it is queued, before it is
@@ -29,8 +46,11 @@ export const commands = {
 	indexStatus: () => __TAURI_INVOKE<IndexStatus>("index_status"),
 	/**  Reads the workspace doc, not the index, so it works while the index rebuilds. */
 	pageTree: () => typedError<PageTree, QueryError>(__TAURI_INVOKE("page_tree")),
-	/**  Active pages whose title or a block matches `query`; the last word matches as a prefix. */
-	search: (query: string, limit: number) => typedError<SearchReply, QueryError>(__TAURI_INVOKE("search", { query, limit })),
+	/**
+	 *  Active pages matching `query`, whose last word matches as a prefix. `limit` is clamped to 1
+	 *  through 200.
+	 */
+	search: (query: string, limit: number, scope: SearchScope) => typedError<SearchReply, QueryError>(__TAURI_INVOKE("search", { query, limit, scope })),
 	/**  Active pages linking to `page_id`, most recently updated first. */
 	backlinks: (pageId: string) => typedError<BacklinksReply, QueryError>(__TAURI_INVOKE("backlinks", { pageId })),
 	devProbeLog: (line: string) => __TAURI_INVOKE<void>("dev_probe_log", { line }),
@@ -57,7 +77,12 @@ export type BacklinkBlock = {
 	text: string,
 };
 
-export type BacklinksReply = "Indexing" | { Ready: Backlink[] };
+export type BacklinksReply = "Indexing" | 
+/**  `issues` as in `SearchReply`. */
+{ Ready: {
+	backlinks: Backlink[],
+	issues: PageIssue[],
+} };
 
 export type BlockHit = {
 	block_id: string,
@@ -98,6 +123,33 @@ export type IndexStatus = "Ready" | "Rebuilding" | { Failed: {
 /**  The initial index status and every later status change. */
 export type IndexStatusChanged = IndexStatus;
 
+export type InvalidQuery = 
+/**  `exclude` names more distinct pages than `max`. */
+{ TooManyExcluded: {
+	max: number,
+} };
+
+/**  An active page whose body the index could read only in part. Its doc is unchanged. */
+export type PageIssue = {
+	page_id: string,
+	problem: PageProblem,
+	/**  The blocks the index could read. */
+	indexed_blocks: number,
+};
+
+/**  The most serious problem in the page body. */
+export type PageProblem = 
+/**  The doc is not a valid Yjs update. */
+"Undecodable" | 
+/**  The body is under `root`, not `prosemirror`. */
+{ UnrecognizedRoot: {
+	root: string,
+} } | 
+/**  A block has no ID. Its children were read. */
+"MissingBlockId" | 
+/**  A page link has no valid target. It reads as a space. */
+"InvalidPageLink";
+
 export type PageTree = {
 	/**  Every active page, depth-first, parents before children. */
 	pages: TreePage[],
@@ -118,35 +170,74 @@ export type PingRequest = {
 
 export type QueryError = 
 /**  The store is not open. `storage_status` says why. */
-"Unavailable" | "InvalidPageId" | 
+"Unavailable" | 
+/**  A page ID argument, or one in `exclude`, is not a valid page ID. */
+"InvalidPageId" | ({ InvalidQuery: InvalidQuery }) & { Failed?: never; Io?: never } | 
 /**  The index failed, or the workspace doc has a malformed record. */
 ({ Failed: {
 	reason: string,
-} }) & { Io?: never } | ({ Io: string }) & { Failed?: never };
+} }) & { InvalidQuery?: never; Io?: never } | ({ Io: string }) & { Failed?: never; InvalidQuery?: never };
+
+export type QuitPhase = 
+/**  No quit is in progress. */
+"Open" | 
+/**
+ *  A quit waits for the webview to deliver its edits and call `complete_quit` with this
+ *  revision.
+ */
+"Draining" | 
+/**  A quit was refused with these docs not yet saved, and waits for the user's answer. */
+{ Asking: {
+	pending_docs: string[],
+} } | 
+/**  The app is quitting. */
+"Confirmed";
 
 /**
- *  The quit decision the shell holds. `pending_docs` is set while a refused quit waits for the
- *  user's answer. `revision` grows with every change, so the webview can order events, snapshots,
- *  and replies.
+ *  The quit decision the shell holds. `revision` grows with every change, so the webview can
+ *  order events, snapshots, and replies.
  */
 export type QuitStatus = {
 	revision: number,
-	pending_docs: string[] | null,
+	phase: QuitPhase,
 };
 
-/**  Every change of the quit decision: a refused quit, Keep app open, or Quit anyway. */
+/**
+ *  Every change of the quit decision: a quit request, a drain result, Keep app open, or Quit
+ *  anyway.
+ */
 export type QuitStatusChanged = QuitStatus;
 
 export type SearchHit = {
 	page_id: string,
 	/**  The raw title, highlighted where it matched. */
 	title: TextPart[],
-	/**  The best matching block, or null when only the title matched. */
+	/**
+	 *  The page's first matching block. Always set in a `Content` search; null for a page that
+	 *  matched by title.
+	 */
 	block: BlockHit | null,
 };
 
 /**  `Indexing` until the index can answer from current data. */
-export type SearchReply = "Indexing" | { Ready: SearchHit[] };
+export type SearchReply = "Indexing" | 
+/**  `issues` lists every active page the index holds only in part, sorted by page ID. */
+{ Ready: {
+	hits: SearchHit[],
+	issues: PageIssue[],
+} };
+
+/**  Which pages a search returns. Both order pages newest created first. */
+export type SearchScope = 
+/**  Pages whose title matches, then pages whose body matches. */
+"All" | 
+/**
+ *  Pages whose body matches, except `exclude`, the palette's title group: at most 200
+ *  distinct page IDs.
+ */
+{ Content: {
+	exclude: string[],
+} };
 
 export type StorageError = 
 /**  The store is not open. `storage_status` says why. */

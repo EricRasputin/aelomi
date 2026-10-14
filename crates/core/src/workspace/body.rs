@@ -52,15 +52,26 @@ pub enum Segment {
     Link(PageId),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum BodyError {
-    /// The doc has content under another root and none under `prosemirror`.
+/// The blocks a body reader could read, and the most serious problem it met, if any.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Body {
+    pub blocks: Vec<Block>,
+    pub problem: Option<BodyProblem>,
+}
+
+/// A part of the body the reader skipped. Ordered most serious first.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum BodyProblem {
+    /// The doc has content under this other root and none under `prosemirror`, so it has no
+    /// blocks.
     UnrecognizedRoot(String),
+    /// A blockContainer has no string `id`. Its own content is skipped and its children read.
     MissingBlockId,
+    /// A `pageLink` has no valid `targetPageId`. It reads as a space.
     InvalidPageLink,
 }
 
-impl fmt::Display for BodyError {
+impl fmt::Display for BodyProblem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::UnrecognizedRoot(root) => {
@@ -72,20 +83,28 @@ impl fmt::Display for BodyError {
     }
 }
 
-impl std::error::Error for BodyError {}
-
-/// Every block in document order, parents before their children. A doc with no content
-/// has no blocks.
-pub fn read_body<T: ReadTxn>(txn: &T) -> Result<Vec<Block>, BodyError> {
-    let root = txn.get_xml_fragment(BODY_ROOT);
-    if root.as_ref().is_none_or(|root| root.len(txn) == 0) {
-        if let Some(name) = populated_root(txn) {
-            return Err(BodyError::UnrecognizedRoot(name));
+impl Body {
+    fn note(&mut self, problem: BodyProblem) {
+        if self.problem.as_ref().is_none_or(|known| problem < *known) {
+            self.problem = Some(problem);
         }
-        return Ok(Vec::new());
     }
-    let mut blocks = Vec::new();
-    let mut stack: Vec<XmlOut> = children(txn, &root.expect("checked above"));
+}
+
+/// Every readable block in document order, parents before their children. A doc with no
+/// content has no blocks. A malformed part is skipped and named, never fails the whole body.
+pub fn read_body<T: ReadTxn>(txn: &T) -> Body {
+    let mut body = Body::default();
+    let root = match txn.get_xml_fragment(BODY_ROOT) {
+        Some(root) if root.len(txn) > 0 => root,
+        _ => {
+            if let Some(name) = populated_root(txn) {
+                body.note(BodyProblem::UnrecognizedRoot(name));
+            }
+            return body;
+        }
+    };
+    let mut stack: Vec<XmlOut> = children(txn, &root);
     stack.reverse();
     while let Some(node) = stack.pop() {
         let XmlOut::Element(element) = node else {
@@ -100,8 +119,7 @@ pub fn read_body<T: ReadTxn>(txn: &T) -> Result<Vec<Block>, BodyError> {
         let id = match element.get_attribute(txn, node::ID) {
             Some(Out::Any(Any::String(id))) => BlockId::new(id.to_string()),
             _ => None,
-        }
-        .ok_or(BodyError::MissingBlockId)?;
+        };
         let mut segments = Segments::default();
         let mut nested = Vec::new();
         for child in children(txn, &element) {
@@ -109,17 +127,21 @@ pub fn read_body<T: ReadTxn>(txn: &T) -> Result<Vec<Block>, BodyError> {
                 XmlOut::Element(group) if group.tag().as_ref() == node::BLOCK_GROUP => {
                     nested.extend(children(txn, &group))
                 }
-                content => segments.content(txn, content)?,
+                content if id.is_some() => segments.content(txn, content, &mut body),
+                _ => {}
             }
         }
-        blocks.push(Block {
-            id,
-            segments: segments.0,
-        });
+        match id {
+            Some(id) => body.blocks.push(Block {
+                id,
+                segments: segments.0,
+            }),
+            None => body.note(BodyProblem::MissingBlockId),
+        }
         nested.reverse();
         stack.extend(nested);
     }
-    Ok(blocks)
+    body
 }
 
 /// The rendered text of `segments`: each link becomes `label(target)`.
@@ -170,7 +192,7 @@ impl Segments {
         }
     }
 
-    fn content<T: ReadTxn>(&mut self, txn: &T, content: XmlOut) -> Result<(), BodyError> {
+    fn content<T: ReadTxn>(&mut self, txn: &T, content: XmlOut, body: &mut Body) {
         let mut stack = vec![content];
         while let Some(node) = stack.pop() {
             match node {
@@ -183,14 +205,13 @@ impl Segments {
                 }
                 XmlOut::Element(element) => match element.tag().as_ref() {
                     node::HARD_BREAK => self.push_text("\n"),
-                    node::PAGE_LINK => {
-                        let target = match element.get_attribute(txn, node::TARGET_PAGE_ID) {
-                            Some(Out::Any(Any::String(id))) => PageId::new(id.to_string()).ok(),
-                            _ => None,
-                        };
-                        self.0
-                            .push(Segment::Link(target.ok_or(BodyError::InvalidPageLink)?));
-                    }
+                    node::PAGE_LINK => match element.get_attribute(txn, node::TARGET_PAGE_ID) {
+                        Some(Out::Any(Any::String(id))) => match PageId::new(id.to_string()) {
+                            Ok(target) => self.0.push(Segment::Link(target)),
+                            Err(_) => self.invalid_link(body),
+                        },
+                        _ => self.invalid_link(body),
+                    },
                     tag => {
                         if tag == node::IMAGE
                             && let Some(Out::Any(Any::String(caption))) =
@@ -206,6 +227,10 @@ impl Segments {
                 XmlOut::Fragment(_) => {}
             }
         }
-        Ok(())
+    }
+
+    fn invalid_link(&mut self, body: &mut Body) {
+        self.push_text(" ");
+        body.note(BodyProblem::InvalidPageLink);
     }
 }

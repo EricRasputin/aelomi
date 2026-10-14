@@ -3,7 +3,7 @@ use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use super::{hit_ids, index_path, open, page, ready, snapshot};
+use super::{all, hit_ids, index_path, open, page, ready, snapshot, source_files};
 use crate::index::{
     Backlink, BacklinkBlock, CacheProblem, CacheState, Config, Index, IndexEvent, IndexStatus,
     SearchHit, TextPart,
@@ -26,31 +26,6 @@ fn backlink(source: &str, title: &str, blocks: &[(&str, &str)]) -> Backlink {
             })
             .collect(),
     }
-}
-
-fn source_files(dir: &Path) -> BTreeMap<String, Vec<u8>> {
-    let mut files = BTreeMap::new();
-    let mut stack = vec![dir.to_path_buf()];
-    while let Some(path) = stack.pop() {
-        for entry in std::fs::read_dir(&path).unwrap() {
-            let entry = entry.unwrap();
-            let name = entry.path();
-            let relative = name
-                .strip_prefix(dir)
-                .unwrap()
-                .to_string_lossy()
-                .into_owned();
-            if relative.starts_with("index.sqlite") || relative == ".lock" {
-                continue;
-            }
-            if entry.file_type().unwrap().is_dir() {
-                stack.push(name);
-            } else {
-                files.insert(relative, std::fs::read(&name).unwrap());
-            }
-        }
-    }
-    files
 }
 
 fn cache_state(events: &[IndexEvent]) -> CacheState {
@@ -84,8 +59,10 @@ fn startup_reports_rebuilding_on_the_worker_before_opening_sqlite() {
         Arc::default(),
     );
     assert!(index.shared().settle(Duration::from_secs(10)));
+    let mut events = events.lock().unwrap().clone();
+    let startup = events.split_off(3);
     assert_eq!(
-        *events.lock().unwrap(),
+        events,
         [
             (
                 IndexEvent::Status(IndexStatus::Rebuilding),
@@ -104,6 +81,12 @@ fn startup_reports_rebuilding_on_the_worker_before_opening_sqlite() {
             ),
         ]
     );
+    let report = match &startup.as_slice() {
+        [(IndexEvent::Startup(report), Some(thread), true)] if thread == "aelomi-index" => report,
+        other => panic!("expected one startup report from the worker, got {other:?}"),
+    };
+    assert_eq!((report.pages, report.loaded_bytes), (0, 0));
+    assert!(report.total >= report.check.open, "{report:?}");
 }
 
 #[test]
@@ -202,7 +185,7 @@ fn the_fixture_indexes_to_its_exact_tree_backlinks_and_searches() {
     assert_eq!(
         searches,
         [
-            ("roadm", vec!["daily", "roadmap", "aelomi"]),
+            ("roadm", vec!["roadmap", "aelomi", "daily"]),
             ("quillmere", vec![]),
             ("orphanword", vec![]),
             ("cafe", vec!["reading"]),
@@ -212,7 +195,7 @@ fn the_fixture_indexes_to_its_exact_tree_backlinks_and_searches() {
             ("diagram", vec!["projects"]),
             ("archived", vec!["daily"]),
             ("aelomi app", vec!["aelomi"]),
-            ("untitled", vec!["untitled", "aelomi"]),
+            ("untitled", vec!["aelomi", "untitled"]),
             ("", vec![]),
             ("\"", vec![]),
             ("Mileston*", vec!["roadmap"]),
@@ -238,17 +221,6 @@ fn the_fixture_indexes_to_its_exact_tree_backlinks_and_searches() {
     assert_eq!(
         roadm,
         [
-            (
-                vec![s("Daily", false)],
-                Some((
-                    "d2".into(),
-                    vec![
-                        s("quarterly ", false),
-                        s("roadmap", true),
-                        s(" review", false)
-                    ]
-                )),
-            ),
             (vec![s("Roadmap", true)], None),
             (
                 vec![s("Aelomi", false)],
@@ -258,6 +230,17 @@ fn the_fixture_indexes_to_its_exact_tree_backlinks_and_searches() {
                         s("links to ", false),
                         s("Roadmap", true),
                         s(" and Untitled", false)
+                    ]
+                )),
+            ),
+            (
+                vec![s("Daily", false)],
+                Some((
+                    "d2".into(),
+                    vec![
+                        s("quarterly ", false),
+                        s("roadmap", true),
+                        s(" review", false)
                     ]
                 )),
             ),
@@ -278,10 +261,10 @@ fn the_fixture_indexes_to_its_exact_tree_backlinks_and_searches() {
             )),
         )]
     );
-    let untitled = &snap.searches[10].1[0];
+    let untitled = &snap.searches[10].1[1];
     assert_eq!(untitled.title, []);
     assert_eq!(
-        snap.searches[10].1[1]
+        snap.searches[10].1[0]
             .block
             .as_ref()
             .unwrap()
@@ -296,8 +279,8 @@ fn reopen_and_compare(dir: &Path, expected: &super::Snapshot) -> (CacheState, Ve
     assert_eq!(opened.workspace.index_status(), IndexStatus::Rebuilding);
     assert!(
         matches!(
-            opened.workspace.search("roadm", 10),
-            Ok(crate::index::Reply::Indexing) | Ok(crate::index::Reply::Ready(_))
+            opened.workspace.search(&all("roadm", 10)),
+            Ok(crate::index::Reply::Indexing) | Ok(crate::index::Reply::Ready { .. })
         ),
         "a query never waits for the rebuild"
     );
@@ -311,7 +294,7 @@ fn corrupt_a_btree_page(path: &Path) {
         let conn = rusqlite::Connection::open(path).unwrap();
         let root = conn
             .query_row(
-                "SELECT rootpage FROM sqlite_schema WHERE name = 'blocks_by_page'",
+                "SELECT rootpage FROM sqlite_schema WHERE name = 'links_by_block'",
                 [],
                 |row| row.get(0),
             )
@@ -381,7 +364,10 @@ fn every_broken_index_rebuilds_to_the_same_results_and_source_files_never_change
     break_index(&path, BrokenIndex::OldSchema).unwrap();
     assert_eq!(
         reopen_and_compare(dir.path(), &expected).0,
-        CacheState::Replaced(CacheProblem::OldSchema { version: 0 })
+        CacheState::Replaced(CacheProblem::SchemaVersion {
+            found: 0,
+            expected: 2
+        })
     );
 
     {
@@ -438,7 +424,7 @@ fn trashed_and_erased_pages_never_appear_as_source_or_target() {
     opened.append(&index_fixture());
     opened.settle();
     let search = |q: &str| {
-        let hits = ready(ws.search(q, 50).unwrap());
+        let hits = ready(ws.search(&all(q, 50)).unwrap());
         let mut ids = hit_ids(&hits);
         ids.sort();
         ids.join(",")
@@ -543,7 +529,7 @@ fn a_symlink_at_an_index_name_is_removed_and_its_target_never_touched() {
         CacheState::Replaced(CacheProblem::NotAFile)
     );
     assert_eq!(
-        hit_ids(&ready(opened.workspace.search("cafe", 5).unwrap())),
+        hit_ids(&ready(opened.workspace.search(&all("cafe", 5)).unwrap())),
         ["reading"]
     );
     assert!(std::fs::symlink_metadata(&path).unwrap().is_file());
@@ -565,7 +551,74 @@ fn sidecars_left_without_an_index_are_deleted_before_it_is_created() {
     assert_eq!(cache_state(&opened.events()), CacheState::Created);
     assert_eq!(opened.workspace.index_status(), IndexStatus::Ready);
     assert_eq!(
-        hit_ids(&ready(opened.workspace.search("cafe", 5).unwrap())),
+        hit_ids(&ready(opened.workspace.search(&all("cafe", 5)).unwrap())),
         ["reading"]
+    );
+}
+
+#[test]
+fn reconciling_an_unchanged_cache_writes_no_row() {
+    let dir = tempfile::tempdir().unwrap();
+    {
+        let opened = open(dir.path());
+        opened.append(&index_fixture());
+        opened.settle();
+        assert_eq!(
+            opened
+                .workspace
+                .flush(Instant::now() + Duration::from_secs(10)),
+            []
+        );
+    }
+    let watcher = rusqlite::Connection::open(index_path(dir.path())).unwrap();
+    let version = || -> i64 {
+        watcher
+            .query_row("PRAGMA data_version", [], |row| row.get(0))
+            .unwrap()
+    };
+    let before = version();
+    let opened = open(dir.path());
+    opened.settle();
+    assert_eq!(cache_state(&opened.events()), CacheState::Reused);
+    assert_eq!(version(), before, "the reconcile committed no change");
+
+    opened.edit_records(|records| {
+        records.get_mut(&page("daily")).unwrap().title = "Journal".into();
+    });
+    opened.settle();
+    assert_ne!(version(), before, "a real change does commit");
+}
+
+#[test]
+fn a_cache_from_a_newer_build_is_replaced_and_says_so() {
+    let dir = tempfile::tempdir().unwrap();
+    let expected = {
+        let opened = open(dir.path());
+        opened.append(&index_fixture());
+        opened.settle();
+        assert_eq!(
+            opened
+                .workspace
+                .flush(Instant::now() + Duration::from_secs(10)),
+            []
+        );
+        snapshot(&opened.workspace)
+    };
+    {
+        let conn = rusqlite::Connection::open(index_path(dir.path())).unwrap();
+        conn.execute_batch("PRAGMA user_version = 3; PRAGMA journal_mode = DELETE;")
+            .unwrap();
+    }
+    let (cache, _) = reopen_and_compare(dir.path(), &expected);
+    assert_eq!(
+        cache,
+        CacheState::Replaced(CacheProblem::SchemaVersion {
+            found: 3,
+            expected: 2
+        })
+    );
+    assert_eq!(
+        cache.to_string(),
+        "replaced reason=schema-version (found 3, expected 2)"
     );
 }

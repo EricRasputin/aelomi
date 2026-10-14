@@ -7,7 +7,7 @@ use yrs::{
 
 use super::{doc_of, page};
 use crate::storage::DocId;
-use crate::workspace::body::{Block, BlockId, BodyError, Segment, read_body};
+use crate::workspace::body::{Block, BlockId, Body, BodyProblem, Segment, read_body};
 use crate::workspace::fixture::{
     BlockSpec, Editor, Inline, block, link, paragraph, text, write_body,
 };
@@ -69,7 +69,7 @@ fn the_real_blocknote_fixture_reads_as_its_blocks() {
     let update = std::fs::read(path).unwrap();
     let doc = doc_of(&update);
 
-    assert_eq!(read_body(&doc.transact()), Ok(expected_fixture_blocks()));
+    assert_eq!(read_body(&doc.transact()), whole(expected_fixture_blocks()));
     assert_eq!(
         doc_of(&update)
             .transact()
@@ -155,68 +155,153 @@ fn the_rust_builder_writes_the_layout_the_real_binding_writes() {
 
     assert_eq!(
         read_body(&doc_of(&update).transact()),
-        Ok(expected_fixture_blocks())
+        whole(expected_fixture_blocks())
     );
 }
 
-fn body_of(f: impl FnOnce(&mut yrs::TransactionMut)) -> Result<Vec<Block>, BodyError> {
+fn whole(blocks: Vec<Block>) -> Body {
+    Body {
+        blocks,
+        problem: None,
+    }
+}
+
+fn body_of(f: impl FnOnce(&mut yrs::TransactionMut)) -> Body {
     let mut editor = Editor::new(1);
     let update = editor.edit(&DocId::new("p").unwrap(), f);
     read_body(&doc_of(&update).transact())
 }
 
-#[test]
-fn an_empty_doc_has_no_blocks() {
-    assert_eq!(body_of(|_| {}), Ok(vec![]));
-    assert_eq!(body_of(|txn| write_body(txn, &[])), Ok(vec![]));
+fn first_content(txn: &mut yrs::TransactionMut) -> yrs::XmlElementRef {
+    let fragment = txn.get_or_insert_xml_fragment("prosemirror");
+    let Some(yrs::XmlOut::Element(group)) = fragment.get(txn, 0) else {
+        unreachable!()
+    };
+    let Some(yrs::XmlOut::Element(container)) = group.get(txn, 0) else {
+        unreachable!()
+    };
+    let Some(yrs::XmlOut::Element(content)) = container.get(txn, 0) else {
+        unreachable!()
+    };
+    content
 }
 
 #[test]
-fn content_under_another_root_is_refused_not_read_as_empty() {
+fn an_empty_doc_has_no_blocks() {
+    assert_eq!(body_of(|_| {}), whole(vec![]));
+    assert_eq!(body_of(|txn| write_body(txn, &[])), whole(vec![]));
+}
+
+#[test]
+fn content_under_another_root_is_named_not_read_as_empty() {
     let refused = body_of(|txn| {
         let content = txn.get_or_insert_text("content");
         content.insert(txn, 0, "a paragraph the reader does not know");
     });
-    assert_eq!(refused, Err(BodyError::UnrecognizedRoot("content".into())));
+    assert_eq!(
+        refused,
+        Body {
+            blocks: vec![],
+            problem: Some(BodyProblem::UnrecognizedRoot("content".into())),
+        }
+    );
 
     let read = body_of(|txn| {
         write_body(txn, &[paragraph("a", vec![text("known")])]);
         let extra = txn.get_or_insert_text("comments");
         extra.insert(txn, 0, "an added root");
     });
-    assert_eq!(read, Ok(vec![b("a", vec![t("known")])]));
+    assert_eq!(read, whole(vec![b("a", vec![t("known")])]));
 }
 
 #[test]
-fn a_block_without_an_id_or_a_link_without_a_target_is_refused() {
-    let no_id = body_of(|txn| {
-        write_body(txn, &[paragraph("a", vec![text("x")])]);
+fn a_block_without_an_id_is_skipped_and_its_children_are_read() {
+    let read = body_of(|txn| {
+        write_body(
+            txn,
+            &[
+                paragraph("a", vec![text("first")]),
+                paragraph("parent", vec![text("lost words")])
+                    .with_children(vec![paragraph("child", vec![text("kept child")])]),
+                paragraph("c", vec![text("last")]),
+            ],
+        );
         let fragment = txn.get_or_insert_xml_fragment("prosemirror");
         let Some(yrs::XmlOut::Element(group)) = fragment.get(txn, 0) else {
             unreachable!()
         };
-        group.insert(txn, 1, XmlElementPrelim::empty("blockContainer"));
+        let Some(yrs::XmlOut::Element(parent)) = group.get(txn, 1) else {
+            unreachable!()
+        };
+        parent.remove_attribute(txn, &"id");
     });
-    assert_eq!(no_id, Err(BodyError::MissingBlockId));
+    assert_eq!(
+        read,
+        Body {
+            blocks: vec![
+                b("a", vec![t("first")]),
+                b("child", vec![t("kept child")]),
+                b("c", vec![t("last")]),
+            ],
+            problem: Some(BodyProblem::MissingBlockId),
+        }
+    );
+}
 
+#[test]
+fn a_link_without_a_valid_target_reads_as_a_space() {
     for target in ["", "workspace", "Not An ID"] {
-        let bad_link = body_of(|txn| {
-            write_body(txn, &[paragraph("a", vec![text("x")])]);
-            let fragment = txn.get_or_insert_xml_fragment("prosemirror");
-            let Some(yrs::XmlOut::Element(group)) = fragment.get(txn, 0) else {
+        let read = body_of(|txn| {
+            write_body(txn, &[paragraph("a", vec![text("left"), text("right")])]);
+            let content = first_content(txn);
+            let Some(yrs::XmlOut::Text(run)) = content.get(txn, 0) else {
                 unreachable!()
             };
-            let Some(yrs::XmlOut::Element(container)) = group.get(txn, 0) else {
-                unreachable!()
-            };
-            let Some(yrs::XmlOut::Element(content)) = container.get(txn, 0) else {
-                unreachable!()
-            };
+            run.remove_range(txn, 4, 5);
+            content.insert(txn, 1, XmlTextPrelim::new("right"));
             let link = content.insert(txn, 1, XmlElementPrelim::empty("pageLink"));
             link.insert_attribute(txn, "targetPageId", target);
         });
-        assert_eq!(bad_link, Err(BodyError::InvalidPageLink), "{target:?}");
+        assert_eq!(
+            read,
+            Body {
+                blocks: vec![b("a", vec![t("left right")])],
+                problem: Some(BodyProblem::InvalidPageLink),
+            },
+            "{target:?}"
+        );
     }
+}
+
+#[test]
+fn the_most_serious_problem_is_named() {
+    let read = body_of(|txn| {
+        write_body(
+            txn,
+            &[
+                paragraph("a", vec![text("x")]),
+                paragraph("b", vec![text("y")]),
+            ],
+        );
+        let content = first_content(txn);
+        let link = content.insert(txn, 1, XmlElementPrelim::empty("pageLink"));
+        link.insert_attribute(txn, "targetPageId", "Not An ID");
+        let fragment = txn.get_or_insert_xml_fragment("prosemirror");
+        let Some(yrs::XmlOut::Element(group)) = fragment.get(txn, 0) else {
+            unreachable!()
+        };
+        let Some(yrs::XmlOut::Element(second)) = group.get(txn, 1) else {
+            unreachable!()
+        };
+        second.remove_attribute(txn, &"id");
+    });
+    assert_eq!(
+        read,
+        Body {
+            blocks: vec![b("a", vec![t("x ")])],
+            problem: Some(BodyProblem::MissingBlockId),
+        }
+    );
 }
 
 #[test]
@@ -248,5 +333,5 @@ fn unknown_nodes_keep_their_text_and_attributes_are_not_text() {
         after.insert(txn, 0, " after");
         assert_eq!(after.get_string(txn), " after");
     });
-    assert_eq!(read, Ok(vec![b("a", vec![t("before @someone after")])]));
+    assert_eq!(read, whole(vec![b("a", vec![t("before @someone after")])]));
 }

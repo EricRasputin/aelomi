@@ -1,9 +1,16 @@
+mod cache;
 mod failures;
+mod highlight_parity;
+mod independent_oracle;
 mod latency;
-mod oracle;
 mod races;
 mod rebuild;
+mod scrub;
 mod search_fixture;
+mod search_gate;
+mod search_oracle;
+mod search_rules;
+mod tree_memo;
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -13,7 +20,10 @@ use std::time::{Duration, Instant};
 use yrs::Transact;
 
 use super::gate::Gate;
-use super::{Backlink, Config, IndexEvent, IndexStatus, Reply, SearchHit};
+use super::{
+    Backlink, Config, IndexEvent, IndexStatus, PageIssue, Reply, SearchHit, SearchQuery,
+    SearchScope,
+};
 use crate::storage::{DocId, Store};
 use crate::workspace::Workspace;
 use crate::workspace::fixture::{Editor, erase_page, put_page};
@@ -139,15 +149,37 @@ pub(crate) fn page(id: &str) -> PageId {
 }
 
 pub(crate) fn ready<T>(reply: Reply<T>) -> T {
+    ready_with_issues(reply).0
+}
+
+pub(crate) fn ready_with_issues<T>(reply: Reply<T>) -> (T, Vec<PageIssue>) {
     match reply {
-        Reply::Ready(value) => value,
+        Reply::Ready { value, issues } => (value, issues.to_vec()),
         Reply::Indexing => panic!("the index answered Indexing"),
+    }
+}
+
+/// A search of titles and bodies, as core callers other than the palette make.
+pub(crate) fn all(text: &str, limit: usize) -> SearchQuery<'_> {
+    SearchQuery {
+        text,
+        limit,
+        scope: SearchScope::All,
+    }
+}
+
+/// A search of bodies only, skipping `exclude`, as the palette makes.
+pub(crate) fn content<'a>(text: &'a str, limit: usize, exclude: &'a [PageId]) -> SearchQuery<'a> {
+    SearchQuery {
+        text,
+        limit,
+        scope: SearchScope::Content { exclude },
     }
 }
 
 #[derive(Debug, PartialEq)]
 pub(crate) struct Snapshot {
-    pub tree: Tree,
+    pub tree: Arc<Tree>,
     pub backlinks: BTreeMap<PageId, Vec<Backlink>>,
     pub searches: Vec<(&'static str, Vec<SearchHit>)>,
 }
@@ -190,7 +222,7 @@ pub(crate) fn snapshot(workspace: &Workspace) -> Snapshot {
             .collect(),
         searches: QUERIES
             .iter()
-            .map(|q| (*q, ready(workspace.search(q, 50).unwrap())))
+            .map(|q| (*q, ready(workspace.search(&all(q, 50)).unwrap())))
             .collect(),
     }
 }
@@ -208,4 +240,30 @@ pub(crate) fn eventually<T>(timeout: Duration, mut f: impl FnMut() -> Option<T>)
         assert!(Instant::now() < deadline, "timed out");
         std::thread::sleep(Duration::from_millis(1));
     }
+}
+
+/// Every file in the data folder except the index's and the store's lock, by relative path.
+pub(crate) fn source_files(dir: &Path) -> BTreeMap<String, Vec<u8>> {
+    let mut files = BTreeMap::new();
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(path) = stack.pop() {
+        for entry in std::fs::read_dir(&path).unwrap() {
+            let entry = entry.unwrap();
+            let name = entry.path();
+            let relative = name
+                .strip_prefix(dir)
+                .unwrap()
+                .to_string_lossy()
+                .into_owned();
+            if relative.starts_with("index.sqlite") || relative == ".lock" {
+                continue;
+            }
+            if entry.file_type().unwrap().is_dir() {
+                stack.push(name);
+            } else {
+                files.insert(relative, std::fs::read(&name).unwrap());
+            }
+        }
+    }
+    files
 }

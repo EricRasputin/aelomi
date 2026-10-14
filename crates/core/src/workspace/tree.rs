@@ -38,7 +38,17 @@ pub(crate) struct Forest {
 }
 
 pub(crate) fn forest(records: &BTreeMap<PageId, PageRecord>) -> Forest {
-    let mut parent: BTreeMap<PageId, Option<PageId>> = records
+    let mut parent = drop_missing_parents(records);
+    cut_cycles_at_min_id(records, &mut parent);
+    let active = mark_active(records, &parent);
+    Forest { parent, active }
+}
+
+/// A parent with no record makes its page top level.
+fn drop_missing_parents(
+    records: &BTreeMap<PageId, PageRecord>,
+) -> BTreeMap<PageId, Option<PageId>> {
+    records
         .iter()
         .map(|(id, record)| {
             let parent = record
@@ -48,7 +58,14 @@ pub(crate) fn forest(records: &BTreeMap<PageId, PageRecord>) -> Forest {
                 .filter(|p| records.contains_key(p));
             (id.clone(), parent)
         })
-        .collect();
+        .collect()
+}
+
+/// Each parent cycle loses the parent of its smallest page ID, so no page disappears.
+fn cut_cycles_at_min_id(
+    records: &BTreeMap<PageId, PageRecord>,
+    parent: &mut BTreeMap<PageId, Option<PageId>>,
+) {
     let mut done = BTreeSet::new();
     for start in records.keys() {
         let mut path: Vec<PageId> = Vec::new();
@@ -67,6 +84,13 @@ pub(crate) fn forest(records: &BTreeMap<PageId, PageRecord>) -> Forest {
         }
         done.extend(path);
     }
+}
+
+/// A page is active when neither it nor any ancestor is trashed.
+fn mark_active(
+    records: &BTreeMap<PageId, PageRecord>,
+    parent: &BTreeMap<PageId, Option<PageId>>,
+) -> BTreeSet<PageId> {
     let mut active = BTreeSet::new();
     let mut inactive = BTreeSet::new();
     for start in records.keys() {
@@ -89,7 +113,7 @@ pub(crate) fn forest(records: &BTreeMap<PageId, PageRecord>) -> Forest {
             inactive.extend(path);
         }
     }
-    Forest { parent, active }
+    active
 }
 
 pub fn tree(records: &BTreeMap<PageId, PageRecord>) -> Tree {

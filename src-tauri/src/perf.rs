@@ -45,7 +45,7 @@ pub fn report_path() -> Option<std::path::PathBuf> {
     std::env::var_os(REPORT_ENV).map(Into::into)
 }
 
-fn now_us() -> u64 {
+pub fn now_us() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_micros() as u64)
@@ -56,7 +56,7 @@ pub fn stamp(slot: &AtomicU64) {
     let _ = slot.compare_exchange(0, now_us(), Relaxed, Relaxed);
 }
 
-fn process_start_us() -> u64 {
+pub fn process_start_us() -> u64 {
     #[cfg(target_os = "macos")]
     {
         crate::macos::process_start_us()

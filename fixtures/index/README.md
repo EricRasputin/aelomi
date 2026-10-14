@@ -43,3 +43,23 @@ Generated on 2026-10-14 with Node 24.13.1 from these packages:
 
 `blocknote-body.yupdate` is 2,712 bytes with SHA-256
 `d35701bca23242b4d329c03a35bfb497cacd821a246eb77749cad9987497a891`.
+
+## search-10k-golden.json
+
+The expected search results for `fixtures/generated/search-10k-pages.jsonl` plus
+`page-5000-blocks.json` as the newest page, so the order and highlights the index
+returns are pinned to reviewed literals. Each line is one case: a query, a scope
+(`all` is titles then bodies, `content` is bodies only), and a limit. Limit 20
+cases hold every hit as `[page ID, title parts, [block ID, block parts] or null]`,
+with each part `[text, highlighted]`; limit 200 cases hold the ordered page and
+block IDs. Pages come newest created first; the fixture's page on line `n` was
+created `n` seconds after the first.
+
+The independent oracle in `crates/core/src/index/tests/search_oracle.rs` writes
+it, sharing no code with the index's query or highlighter, and
+`the_ordered_results_and_highlights_equal_the_reviewed_golden` checks both the
+oracle and the index against it. To regenerate after a deliberate rule change:
+
+```sh
+AELOMI_WRITE_SEARCH_GOLDEN=1 cargo nextest run -p aelomi-core the_ordered_results_and_highlights_equal_the_reviewed_golden
+```

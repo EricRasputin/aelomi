@@ -1,223 +1,254 @@
-use std::collections::BTreeMap;
+use std::collections::HashSet;
 
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{Connection, OptionalExtension, Transaction};
 
+use super::db::{Corrupt, PageKey, stored_block_id};
+use super::highlight::{Phrases, parts};
+use super::tokenizer::{Tokenizer, TokenizerError};
 use super::{Backlink, BacklinkBlock, BlockHit, SearchHit, TextPart};
-use crate::workspace::body::BlockId;
 use crate::workspace::records::PageId;
 
-pub(crate) fn match_expression(query: &str) -> Option<String> {
-    let words: Vec<&str> = query
-        .split_whitespace()
-        .filter(|word| word.chars().any(char::is_alphanumeric))
-        .collect();
-    let (last, rest) = words.split_last()?;
-    let quote = |word: &str| format!("\"{}\"", word.replace('"', "\"\""));
-    let mut expression: Vec<String> = rest.iter().map(|word| quote(word)).collect();
-    expression.push(format!("{}*", quote(last)));
-    Some(expression.join(" "))
+/// Why a query could not answer from the cache.
+#[derive(Debug)]
+pub(crate) enum QueryFault {
+    Sql(rusqlite::Error),
+    /// A stored value is invalid: the cache must be replaced.
+    Corrupt(Corrupt),
+    Tokenizer(TokenizerError),
 }
 
-struct Candidate {
-    rank: f64,
-    title_rowid: Option<i64>,
-    block: Option<(f64, i64, i64, String)>,
+impl From<rusqlite::Error> for QueryFault {
+    fn from(e: rusqlite::Error) -> Self {
+        Self::Sql(e)
+    }
 }
 
+impl From<Corrupt> for QueryFault {
+    fn from(what: Corrupt) -> Self {
+        Self::Corrupt(what)
+    }
+}
+
+impl From<TokenizerError> for QueryFault {
+    fn from(e: TokenizerError) -> Self {
+        Self::Tokenizer(e)
+    }
+}
+
+/// A validated search: the FTS5 expression, the words it came from, the clamped limit, and, for
+/// a content search, the pages to skip.
+pub(crate) struct Plan<'a> {
+    pub expression: &'a str,
+    pub words: &'a [&'a str],
+    pub limit: usize,
+    pub scope: Scope<'a>,
+}
+
+pub(crate) enum Scope<'a> {
+    All,
+    Content { exclude: &'a [&'a PageId] },
+}
+
+/// How much of the FTS indexes a search read.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct Walk {
+    pub title_rows: usize,
+    pub block_rows: usize,
+}
+
+struct Winner {
+    page: PageKey,
+    /// The page's first matching block in document order, for a body match.
+    block: Option<i64>,
+}
+
+/// Pages in the content order, newest created first: for `All`, title matches before body
+/// matches. Reads FTS rowids only, in descending order, and stops after the group that fills
+/// the limit, so it visits the matches of the pages it returns and skips, not all matches.
 pub(crate) fn search(
     conn: &mut Connection,
-    expression: &str,
-    limit: usize,
-) -> rusqlite::Result<Vec<SearchHit>> {
+    plan: &Plan,
+) -> Result<(Vec<SearchHit>, Walk), QueryFault> {
     let tx = conn.transaction()?;
-    let mut pages: BTreeMap<String, Candidate> = BTreeMap::new();
-    {
-        let mut titles = tx.prepare_cached(
-            "SELECT p.page_id, p.rowid, bm25(title_fts) FROM title_fts
-             JOIN pages p ON p.rowid = title_fts.rowid
-             WHERE title_fts MATCH ?1 AND p.active = 1",
-        )?;
-        let rows = titles.query_map([expression], |row| {
-            Ok((row.get::<_, String>(0)?, row.get(1)?, row.get(2)?))
-        })?;
-        for row in rows {
-            let (page, rowid, rank) = row?;
-            pages.insert(
-                page,
-                Candidate {
-                    rank,
-                    title_rowid: Some(rowid),
-                    block: None,
-                },
-            );
+    let mut walk = Walk::default();
+    let mut winners: Vec<Winner> = Vec::new();
+    let mut skip: HashSet<PageKey> = HashSet::new();
+    match plan.scope {
+        Scope::All => {
+            let mut titles = tx.prepare_cached(
+                "SELECT rowid FROM title_fts WHERE title_fts MATCH ?1 ORDER BY rowid DESC",
+            )?;
+            let mut rows = titles.query([plan.expression])?;
+            while winners.len() < plan.limit
+                && let Some(row) = rows.next()?
+            {
+                walk.title_rows += 1;
+                let page = PageKey::new(row.get(0)?).ok_or(Corrupt::Key)?;
+                winners.push(Winner { page, block: None });
+            }
+            if winners.len() == plan.limit {
+                drop(rows);
+                drop(titles);
+                return finish(tx, plan, winners, walk);
+            }
+            skip.extend(winners.iter().map(|w| w.page));
         }
-        let mut blocks = tx.prepare_cached(
-            "SELECT b.page_id, b.rowid, b.ordinal, b.block_id, bm25(block_fts) FROM block_fts
-             JOIN blocks b ON b.rowid = block_fts.rowid
-             JOIN pages p ON p.page_id = b.page_id
-             WHERE block_fts MATCH ?1 AND p.active = 1",
-        )?;
-        let rows = blocks.query_map([expression], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, i64>(1)?,
-                row.get::<_, i64>(2)?,
-                row.get::<_, String>(3)?,
-                row.get::<_, f64>(4)?,
-            ))
-        })?;
-        for row in rows {
-            let (page, rowid, ordinal, block_id, rank) = row?;
-            let candidate = pages.entry(page).or_insert(Candidate {
-                rank,
-                title_rowid: None,
-                block: None,
-            });
-            candidate.rank = candidate.rank.min(rank);
-            let better = candidate
-                .block
-                .as_ref()
-                .is_none_or(|(r, o, ..)| (rank, ordinal) < (*r, *o));
-            if better {
-                candidate.block = Some((rank, ordinal, rowid, block_id));
+        Scope::Content { exclude } => {
+            let mut find = tx.prepare_cached("SELECT rowid FROM pages WHERE page_id = ?1")?;
+            for id in exclude {
+                if let Some(key) = find
+                    .query_row([id.as_str()], |row| row.get::<_, i64>(0))
+                    .optional()?
+                {
+                    skip.insert(PageKey::new(key).ok_or(Corrupt::Key)?);
+                }
             }
         }
     }
-    let mut ranked: Vec<(String, Candidate)> = pages.into_iter().collect();
-    ranked.sort_by(|(a, x), (b, y)| x.rank.total_cmp(&y.rank).then_with(|| a.cmp(b)));
-    ranked.truncate(limit);
-    let mut hits = Vec::with_capacity(ranked.len());
-    for (page, candidate) in ranked {
-        let title = match candidate.title_rowid {
-            Some(rowid) => highlight(&tx, "title_fts", expression, rowid)?,
-            None => plain(
-                tx.prepare_cached("SELECT title FROM pages WHERE page_id = ?1")?
-                    .query_row([&page], |row| row.get(0))?,
-            ),
-        };
-        let block = match candidate.block {
-            Some((_, _, rowid, block_id)) => Some(BlockHit {
-                block_id: BlockId::new(block_id).expect("stored block IDs are not empty"),
-                text: highlight(&tx, "block_fts", expression, rowid)?,
-            }),
-            None => None,
-        };
-        hits.push(SearchHit {
-            page_id: PageId::new(page).expect("stored page IDs are valid"),
-            title,
-            block,
-        });
+    {
+        let mut blocks = tx.prepare_cached(
+            "SELECT f.rowid, b.ordinal FROM block_fts f LEFT JOIN blocks b ON b.rowid = f.rowid
+             WHERE block_fts MATCH ?1 ORDER BY f.rowid DESC",
+        )?;
+        let mut rows = blocks.query([plan.expression])?;
+        let mut group: Option<(PageKey, Option<(i64, i64)>)> = None;
+        loop {
+            let row = rows.next()?;
+            let next = match row {
+                Some(row) => {
+                    walk.block_rows += 1;
+                    let rowid: i64 = row.get(0)?;
+                    let ordinal = row.get::<_, Option<i64>>(1)?.ok_or(Corrupt::MissingRow)?;
+                    if ordinal < 0 {
+                        return Err(Corrupt::Ordinal.into());
+                    }
+                    Some((PageKey::of_block(rowid)?, rowid, ordinal))
+                }
+                None => None,
+            };
+            let closes = match (&group, &next) {
+                (Some((open, _)), Some((page, ..))) => open != page,
+                (Some(_), None) => true,
+                (None, _) => false,
+            };
+            if closes && let Some((page, Some((_, rowid)))) = group.take() {
+                winners.push(Winner {
+                    page,
+                    block: Some(rowid),
+                });
+                if winners.len() == plan.limit {
+                    break;
+                }
+            }
+            let Some((page, rowid, ordinal)) = next else {
+                break;
+            };
+            let (_, best) = group.get_or_insert((page, None));
+            if !skip.contains(&page) && best.is_none_or(|(o, _)| ordinal < o) {
+                *best = Some((ordinal, rowid));
+            }
+        }
+    }
+    finish(tx, plan, winners, walk)
+}
+
+/// Reads and highlights the winners' titles and blocks.
+fn finish(
+    tx: Transaction,
+    plan: &Plan,
+    winners: Vec<Winner>,
+    walk: Walk,
+) -> Result<(Vec<SearchHit>, Walk), QueryFault> {
+    let mut hits = Vec::with_capacity(winners.len());
+    {
+        let tokenizer = Tokenizer::new(&tx)?;
+        let phrases = Phrases::compile(&tokenizer, plan.words)?;
+        let mut page =
+            tx.prepare_cached("SELECT page_id, title, active FROM pages WHERE rowid = ?1")?;
+        let mut block = tx.prepare_cached(
+            "SELECT b.block_id, t.text FROM blocks b JOIN block_text t ON t.rowid = b.rowid
+             WHERE b.rowid = ?1",
+        )?;
+        for winner in winners {
+            let (id, title, active): (String, String, i64) = page
+                .query_row([winner.page.get()], |row| {
+                    Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+                })
+                .optional()?
+                .ok_or(Corrupt::MissingRow)?;
+            if active != 1 {
+                return Err(Corrupt::Field.into());
+            }
+            let page_id = PageId::new(id).map_err(|_| Corrupt::PageId)?;
+            let title = phrases
+                .highlight(&tokenizer, &title)?
+                .unwrap_or_else(|| parts(&title, []));
+            let block = match winner.block {
+                None => None,
+                Some(rowid) => {
+                    let (block_id, text): (String, String) = block
+                        .query_row([rowid], |row| Ok((row.get(0)?, row.get(1)?)))
+                        .optional()?
+                        .ok_or(Corrupt::MissingRow)?;
+                    let text: Vec<TextPart> = phrases
+                        .highlight(&tokenizer, &text)?
+                        .unwrap_or_else(|| parts(&text, []));
+                    Some(BlockHit {
+                        block_id: stored_block_id(block_id)?,
+                        text,
+                    })
+                }
+            };
+            hits.push(SearchHit {
+                page_id,
+                title,
+                block,
+            });
+        }
     }
     tx.finish()?;
-    Ok(hits)
+    Ok((hits, walk))
 }
 
-const MARKERS: [(char, char); 4] = [
-    ('\u{E000}', '\u{E001}'),
-    ('\u{E002}', '\u{E003}'),
-    ('\u{F8FE}', '\u{F8FF}'),
-    ('\u{10FFFD}', '\u{10FFFC}'),
-];
-
-fn highlight(
-    tx: &rusqlite::Transaction,
-    table: &str,
-    expression: &str,
-    rowid: i64,
-) -> rusqlite::Result<Vec<TextPart>> {
-    let column = if table == "title_fts" {
-        "title"
-    } else {
-        "text"
-    };
-    let mut read = tx.prepare_cached(&format!(
-        "SELECT {column}, highlight({table}, 0, ?3, ?4) FROM {table}
-         WHERE {table} MATCH ?1 AND rowid = ?2"
-    ))?;
-    let mut text: Option<String> = None;
-    for (open, close) in MARKERS {
-        let (plain, marked): (String, String) = read
-            .query_row(
-                params![expression, rowid, open.to_string(), close.to_string()],
-                |row| Ok((row.get(0)?, row.get(1)?)),
-            )
-            .optional()?
-            .unwrap_or_default();
-        if !plain.contains(open) && !plain.contains(close) {
-            return Ok(parts(&marked, open, close));
-        }
-        text = Some(plain);
-    }
-    Ok(self::plain(text.unwrap_or_default()))
-}
-
-fn parts(marked: &str, open: char, close: char) -> Vec<TextPart> {
-    let mut parts = Vec::new();
-    let mut highlighted = false;
-    let mut current = String::new();
-    for c in marked.chars() {
-        if c == open || c == close {
-            if !current.is_empty() {
-                parts.push(TextPart {
-                    text: std::mem::take(&mut current),
-                    highlighted,
-                });
-            }
-            highlighted = c == open;
-        } else {
-            current.push(c);
-        }
-    }
-    if !current.is_empty() {
-        parts.push(TextPart {
-            text: current,
-            highlighted,
-        });
-    }
-    parts
-}
-
-fn plain(text: String) -> Vec<TextPart> {
-    if text.is_empty() {
-        return Vec::new();
-    }
-    vec![TextPart {
-        text,
-        highlighted: false,
-    }]
-}
-
-pub(crate) fn backlinks(conn: &mut Connection, target: &PageId) -> rusqlite::Result<Vec<Backlink>> {
+pub(crate) fn backlinks(
+    conn: &mut Connection,
+    target: &PageId,
+) -> Result<Vec<Backlink>, QueryFault> {
     let tx = conn.transaction()?;
     let mut backlinks: Vec<Backlink> = Vec::new();
     {
         let mut rows = tx.prepare_cached(
-            "SELECT l.source_id, p.title, b.block_id, b.text FROM links l
-             JOIN blocks b ON b.rowid = l.block_rowid
-             JOIN pages p ON p.page_id = l.source_id AND p.active = 1
+            "SELECT p.page_id, p.title, p.active, b.block_id, t.text FROM links l
+             LEFT JOIN pages p ON p.rowid = (l.block_rowid >> 20)
+             LEFT JOIN blocks b ON b.rowid = l.block_rowid
+             LEFT JOIN block_text t ON t.rowid = l.block_rowid
              WHERE l.target_id = ?1
-               AND EXISTS (SELECT 1 FROM pages t WHERE t.page_id = ?1 AND t.active = 1)
-             ORDER BY p.updated_at DESC, l.source_id, b.ordinal, b.rowid",
+               AND EXISTS (SELECT 1 FROM pages target WHERE target.page_id = ?1 AND target.active = 1)
+             ORDER BY p.updated_at DESC, p.page_id, b.ordinal, b.rowid",
         )?;
-        let rows = rows.query_map([target.as_str()], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, String>(3)?,
-            ))
-        })?;
-        for row in rows {
-            let (source, title, block_id, text) = row?;
+        let mut rows = rows.query([target.as_str()])?;
+        while let Some(row) = rows.next()? {
+            let source: String = row
+                .get::<_, Option<String>>(0)?
+                .ok_or(Corrupt::MissingRow)?;
+            if row.get::<_, i64>(2)? != 1 {
+                continue;
+            }
+            let (Some(block_id), Some(text)) = (
+                row.get::<_, Option<String>>(3)?,
+                row.get::<_, Option<String>>(4)?,
+            ) else {
+                return Err(Corrupt::MissingRow.into());
+            };
             let block = BacklinkBlock {
-                block_id: BlockId::new(block_id).expect("stored block IDs are not empty"),
+                block_id: stored_block_id(block_id)?,
                 text,
             };
             match backlinks.last_mut() {
                 Some(last) if last.page_id.as_str() == source => last.blocks.push(block),
                 _ => backlinks.push(Backlink {
-                    page_id: PageId::new(source).expect("stored page IDs are valid"),
-                    title,
+                    page_id: PageId::new(source).map_err(|_| Corrupt::PageId)?,
+                    title: row.get(1)?,
                     blocks: vec![block],
                 }),
             }

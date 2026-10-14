@@ -162,6 +162,14 @@ impl Storage {
         )
     }
 
+    /// Docs whose updates the store has not yet written, without waiting.
+    pub fn pending_docs(&self) -> Vec<DocId> {
+        match self.workspace().map(|workspace| workspace.health()) {
+            Ok(core::Health::Failing { pending_docs, .. }) => pending_docs,
+            _ => Vec::new(),
+        }
+    }
+
     pub fn flush_before_quit(&self, timeout: Duration) -> Result<(), Vec<DocId>> {
         let Ok(workspace) = &self.opened else {
             return Ok(());
@@ -445,6 +453,10 @@ pub(crate) mod tests {
     }
 
     pub(crate) fn open_on(disk: &SimDisk) -> Storage {
+        open_on_with(disk, QuitGate::default())
+    }
+
+    pub(crate) fn open_on_with(disk: &SimDisk, quit: QuitGate) -> Storage {
         let index_dir = tempfile::tempdir().unwrap();
         let index = std::fs::canonicalize(index_dir.path())
             .unwrap()
@@ -453,7 +465,7 @@ pub(crate) mod tests {
         Storage {
             opened: Ok(Arc::new(Workspace::with_store(store, index, |_| {}))),
             path: "/data".into(),
-            quit: QuitGate::default(),
+            quit,
             _index_dir: Some(index_dir),
         }
     }

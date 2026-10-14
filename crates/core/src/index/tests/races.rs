@@ -2,7 +2,7 @@ use std::path::Path;
 use std::sync::{Arc, mpsc};
 use std::time::{Duration, Instant};
 
-use super::{Opened, eventually, hit_ids, index_path, open, open_with, page, ready, snapshot};
+use super::{Opened, all, eventually, hit_ids, index_path, open, open_with, page, ready, snapshot};
 use crate::index::gate::Gate;
 use crate::index::{Config, HoldPoint, IndexStatus, Reply};
 use crate::storage::{AppendError, DocId, Store};
@@ -12,7 +12,7 @@ use crate::workspace::fixture::{
 };
 
 fn words(opened: &Opened, query: &str) -> Vec<String> {
-    let hits = ready(opened.workspace.search(query, 50).unwrap());
+    let hits = ready(opened.workspace.search(&all(query, 50)).unwrap());
     let mut ids: Vec<String> = hit_ids(&hits).into_iter().map(str::to_owned).collect();
     ids.sort();
     ids
@@ -80,7 +80,10 @@ fn a_query_while_a_trash_is_unapplied_answers_indexing_never_the_trashed_page() 
         });
     });
     opened.gate.wait_held(&HoldPoint::BeforeCommit);
-    assert_eq!(opened.workspace.search("cafe", 10), Ok(Reply::Indexing));
+    assert_eq!(
+        opened.workspace.search(&all("cafe", 10)),
+        Ok(Reply::Indexing)
+    );
     assert_eq!(
         opened.workspace.backlinks(&page("reading")),
         Ok(Reply::Indexing)
@@ -107,7 +110,10 @@ fn a_workspace_mark_during_a_query_turns_its_answer_into_indexing() {
     opened.settle();
     assert_eq!(
         index.shared().read_if_current(|_| Ok(())),
-        Ok(Reply::Ready(()))
+        Ok(Reply::Ready {
+            value: (),
+            issues: std::sync::Arc::from([])
+        })
     );
 }
 
@@ -155,7 +161,10 @@ fn edits_during_the_startup_reconcile_converge_to_a_fresh_rebuild() {
     });
     add_block(&opened, "daily", "late", "lateword");
     assert_eq!(opened.workspace.index_status(), IndexStatus::Rebuilding);
-    assert_eq!(opened.workspace.search("lateword", 10), Ok(Reply::Indexing));
+    assert_eq!(
+        opened.workspace.search(&all("lateword", 10)),
+        Ok(Reply::Indexing)
+    );
     gate.release();
     opened.settle();
     assert_eq!(
@@ -208,6 +217,10 @@ fn edits_during_the_startup_reconcile_converge_to_a_fresh_rebuild() {
     assert_eq!(snapshot(&rebuilt.workspace), incremental);
 }
 
+/// Edits the producer must have accepted while the index is held before it is released, so the
+/// held update is proven to progress under continuous typing.
+const HELD_EDITS: usize = 2;
+
 #[test]
 fn continuous_edits_never_starve_the_coalesced_update() {
     let dir = tempfile::tempdir().unwrap();
@@ -224,7 +237,7 @@ fn continuous_edits_never_starve_the_coalesced_update() {
             while matches!(stopping.try_recv(), Err(mpsc::TryRecvError::Empty)) {
                 add_block(&opened, "daily", &format!("t{n}"), &format!("keystroke{n}"));
                 n += 1;
-                if n == 2 {
+                if n == HELD_EDITS {
                     edits_accepted.send(()).unwrap();
                 }
                 std::thread::sleep(Duration::from_millis(2));
@@ -244,8 +257,8 @@ fn continuous_edits_never_starve_the_coalesced_update() {
     }
     opened.gate.release();
     let hits = eventually(Duration::from_secs(5), || {
-        match opened.workspace.search("keystroke0", 5) {
-            Ok(Reply::Ready(hits)) if !hits.is_empty() => Some(hits),
+        match opened.workspace.search(&all("keystroke0", 5)) {
+            Ok(Reply::Ready { value: hits, .. }) if !hits.is_empty() => Some(hits),
             _ => None,
         }
     });
@@ -253,7 +266,10 @@ fn continuous_edits_never_starve_the_coalesced_update() {
     let accepted = typing
         .join()
         .unwrap_or_else(|panic| std::panic::resume_unwind(panic));
-    assert!(accepted > 1, "producer accepted {accepted} edits");
+    assert!(
+        accepted >= HELD_EDITS,
+        "producer accepted {accepted} edits while the index was held"
+    );
     assert_eq!(hit_ids(&hits), ["daily"]);
 }
 
