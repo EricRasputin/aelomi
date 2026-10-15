@@ -1,3 +1,4 @@
+import { storageRetry } from "../storage-retry";
 import {
   commandsAccepted,
   forgetRecordCommand,
@@ -57,7 +58,7 @@ export function withRecordCommands(transport: Transport): Commands {
   const queue: Job[] = [];
   let running = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  let backoff = 100;
+  let backoff = storageRetry.firstMs;
   const retry = () => {
     clearTimeout(timer);
     if (running) {
@@ -73,11 +74,11 @@ export function withRecordCommands(transport: Transport): Commands {
           if (!(await next.run())) {
             running = false;
             timer = setTimeout(retry, backoff);
-            backoff = Math.min(backoff * 2, 5000);
+            backoff = Math.min(backoff * 2, storageRetry.maxMs);
             return;
           }
           queue.shift();
-          backoff = 100;
+          backoff = storageRetry.firstMs;
           next = queue[0];
         }
         running = false;
