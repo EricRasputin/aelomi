@@ -54,7 +54,7 @@ for (const colorScheme of ["light", "dark"] as const) {
         })),
       ).toEqual({ overflow: false, clipped: [] });
       const chip = page.getByRole("textbox", {
-        name: "Choose Go > Go to Folder again and paste:",
+        name: "In Finder, choose File > New Finder Window (⌘N). Then choose Go > Go to Folder and paste:",
       });
       await chip.click();
       expect(

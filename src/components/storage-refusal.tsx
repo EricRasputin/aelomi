@@ -55,6 +55,7 @@ export function StorageRefusal({
                     label={storageCopy.cloudDataPath}
                   />
                 </div>
+                <p>{storageCopy.recoveryKeepOpen}</p>
                 <ol className="storage-refusal-recovery">
                   {startup.recovery.steps.map((step) => (
                     <li key={step.text}>

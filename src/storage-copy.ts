@@ -23,6 +23,7 @@ export const storageCopy = {
   cloudTitle: "Move your data folder out of cloud storage",
   cloudRisk: "Cloud sync corrupts the database.",
   cloudDataPath: "Where your data really is",
+  recoveryKeepOpen: "Keep this window open until the last step.",
   details: "Details",
   unchanged: "Nothing in this folder was changed.",
   restart: "Quit Aelomi and open it again.",
@@ -56,7 +57,6 @@ export type StorageStartup =
       message: string;
       detail: string | null;
       recovery: {
-        configured: string;
         resolved: string;
         steps: readonly RecoveryStep[];
       } | null;
@@ -65,7 +65,7 @@ export type StorageStartup =
 function cloudRecovery(
   cloud: Extract<StorageStatus, { CloudPath: object }>["CloudPath"],
 ) {
-  const { configured, resolved, recovery } = cloud;
+  const { resolved, recovery } = cloud;
   let steps: RecoveryStep[];
   if (recovery === "Override") {
     steps = [
@@ -106,14 +106,14 @@ function cloudRecovery(
       },
       {
         kind: "folder",
-        text: "Choose Go > Go to Folder again and paste:",
+        text: "In Finder, choose File > New Finder Window (⌘N). Then choose Go > Go to Folder and paste:",
         path: resolved_parent,
-        after: `Drag "${resolved_name}" into the first folder's window.${rename}`,
+        after: `Drag "${resolved_name}" into the window from step 1.${rename}`,
       },
       { kind: "text", text: storageCopy.restart },
     ];
   }
-  return { configured, resolved, steps };
+  return { resolved, steps };
 }
 
 export function storageStartup(status: StorageStatus): StorageStartup {

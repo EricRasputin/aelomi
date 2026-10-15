@@ -40,6 +40,11 @@ test("SHELL-11 acceptance 7: a cloud folder shows its resolved path and how to m
     "/Users/test/Library/Mobile Documents/com~apple~CloudDocs/Aelomi Notes",
   );
   await expect(
+    screen.getByText("Keep this window open until the last step.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(
     screen.getByText(
       'Find "Aelomi". It has a small arrow because it is a link. Drag it to the Trash. This removes only the link, not your pages.',
       { exact: true },
@@ -47,7 +52,7 @@ test("SHELL-11 acceptance 7: a cloud folder shows its resolved path and how to m
   ).toBeVisible();
   await expect(
     screen.getByText(
-      'Drag "Aelomi Notes" into the first folder\'s window. Then rename it "Aelomi".',
+      'Drag "Aelomi Notes" into the window from step 1. Then rename it "Aelomi".',
       { exact: true },
     ),
   ).toBeVisible();
@@ -86,7 +91,10 @@ test("SHELL-11 acceptance 7: a cloud folder shows its resolved path and how to m
     }),
   ).toBe("/Users/test/Library/Application Support");
   await screen
-    .getByRole("textbox", "Choose Go > Go to Folder again and paste:")
+    .getByRole(
+      "textbox",
+      "In Finder, choose File > New Finder Window (⌘N). Then choose Go > Go to Folder and paste:",
+    )
     .focus();
   expect(
     await browser.evaluate(() => {

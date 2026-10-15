@@ -209,6 +209,7 @@ body {
 
 .page-link,
 .page-body a[href] {
+  cursor: pointer;
   color: var(--link);
   text-decoration: underline;
   text-decoration-color: color-mix(in srgb, var(--link) 35%, transparent);
@@ -556,9 +557,4 @@ mark {
 
 .storage-refusal li + li {
   margin-top: 0.75rem;
-}
-
-.page-body a[href] {
-  cursor: pointer;
-  text-underline-offset: 3px;
 }

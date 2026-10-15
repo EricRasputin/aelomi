@@ -42,9 +42,9 @@ test.each([
       },
       {
         kind: "folder",
-        text: "Choose Go > Go to Folder again and paste:",
+        text: "In Finder, choose File > New Finder Window (⌘N). Then choose Go > Go to Folder and paste:",
         path: "/Users/test/Library/Mobile Documents",
-        after: 'Drag "Aelomi" into the first folder\'s window.',
+        after: 'Drag "Aelomi" into the window from step 1.',
       },
       { kind: "text", text: "Quit Aelomi and open it again." },
     ],
@@ -73,10 +73,10 @@ test.each([
       },
       {
         kind: "folder",
-        text: "Choose Go > Go to Folder again and paste:",
+        text: "In Finder, choose File > New Finder Window (⌘N). Then choose Go > Go to Folder and paste:",
         path: "/Users/test/Library/CloudStorage/Dropbox/Apps",
         after:
-          'Drag "Aelomi Notes" into the first folder\'s window. Then rename it "Aelomi".',
+          'Drag "Aelomi Notes" into the window from step 1. Then rename it "Aelomi".',
       },
       { kind: "text", text: "Quit Aelomi and open it again." },
     ],
@@ -143,9 +143,9 @@ test.each([
       },
       {
         kind: "folder",
-        text: "Choose Go > Go to Folder again and paste:",
+        text: "In Finder, choose File > New Finder Window (⌘N). Then choose Go > Go to Folder and paste:",
         path: "/Users/test/Library/Mobile Documents",
-        after: 'Drag "Aelomi Dev" into the first folder\'s window.',
+        after: 'Drag "Aelomi Dev" into the window from step 1.',
       },
       { kind: "text", text: "Quit Aelomi and open it again." },
     ],
@@ -156,7 +156,7 @@ test.each([
     title: "Move your data folder out of cloud storage",
     message: "Cloud sync corrupts the database.",
     detail: null,
-    recovery: { configured: cloud.configured, resolved: cloud.resolved, steps },
+    recovery: { resolved: cloud.resolved, steps },
   });
 });
 

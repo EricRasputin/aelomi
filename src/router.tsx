@@ -20,8 +20,8 @@ import { formatPingReply } from "./ipc/format-ping";
 import { markIndexCommit, resolveEntry } from "./perf/cold-start";
 import { usePageTreeStore } from "./stores/page-tree";
 import { usePingStore } from "./stores/ping";
-import { useShortcutCommands } from "./use-shortcut-commands";
 import { useStorageStartupStore } from "./stores/storage-startup";
+import { useShortcutCommands } from "./use-shortcut-commands";
 
 function pingText(status: ReturnType<typeof usePingStore.getState>["status"]) {
   return status.kind === "ready"
