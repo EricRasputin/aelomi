@@ -1,0 +1,42 @@
+#!/bin/zsh
+# #78 native proof on the release app built from c91c398: the same eight cache faults as the d37c4ec
+# record, each after Ready, with ⌘K open on "cafe". The app is activated by bundle ID so its window
+# is on screen. Repairs should follow the 100 ms doubling schedule, now with no clock polling.
+set -u
+cd <worktree>
+S=.claude/skills/verify-aelomi/scripts
+N=/tmp/aelomi-f70-78/native
+D=$N/d78b
+rm -rf $D $N/d78b-tamper.log
+cargo run -q -p aelomi-core --features test-support --release --locked --example seed_index -- $D valid 2>&1 | tail -3 > $N/d78b-seed.log
+(cd $D && find docs format.json -type f -exec shasum -a 256 {} + | sort -k2) > $N/d78b-source-before.sha256
+RUN=$(AELOMI_DATA_DIR=$D $S/app.sh launch app 2>$N/d78b-launch.err)
+echo $RUN > $N/d78b-run.txt
+osascript -e 'tell application id "com.aelomi.app" to activate'
+sleep 1
+$S/app.sh doctor "$RUN" | grep -v "^ok"
+ready() { grep -c "index status=Ready" "$RUN/shell.log"; }
+for t in $(seq 1 120); do [ "$(ready)" -gt 0 ] && break; sleep 0.25; done
+$S/app.sh keys "$RUN" k command
+$S/app.sh keys "$RUN" cafe
+sleep 1.5
+$S/app.sh screenshot "$RUN" d78b-before >/dev/null
+for k in 1 2 3 4 5 6 7 8; do
+  before=$(ready)
+  sqlite3 -cmd ".timeout 5000" $D/index.sqlite "UPDATE pages SET title = x'00' WHERE page_id = 'reading';"
+  echo "$(date +%T.%N | cut -c1-12) tamper $k" >> $N/d78b-tamper.log
+  $S/app.sh keys "$RUN" " " >/dev/null
+  if [ $k = 8 ]; then sleep 1; $S/app.sh screenshot "$RUN" d78b-failed-waiting >/dev/null; fi
+  for t in $(seq 1 240); do [ "$(ready)" -gt "$before" ] && break; sleep 0.25; done
+done
+sleep 2
+$S/app.sh keys "$RUN" " " >/dev/null
+sleep 1.5
+$S/app.sh screenshot "$RUN" d78b-recovered >/dev/null
+$S/app.sh keys "$RUN" q command
+for t in $(seq 1 40); do grep -q "quit flush via=Exit" "$RUN/shell.log" && break; sleep 0.25; done
+sleep 1
+(cd $D && find docs format.json -type f -exec shasum -a 256 {} + | sort -k2) > $N/d78b-source-after.sha256
+cmp -s $N/d78b-source-before.sha256 $N/d78b-source-after.sha256 && echo "source unchanged" || echo "SOURCE CHANGED"
+$S/app.sh cleanup "$RUN" >/dev/null 2>&1
+grep -E "index (status|cache)|quit flush" "$RUN/shell.log" | cut -c1-160

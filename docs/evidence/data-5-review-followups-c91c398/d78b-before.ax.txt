@@ -1,0 +1,9 @@
+id=33501 title="Aelomi" x=240 y=88 w=960 h=640
+AXWebArea "Aelomi"
+  AXGroup/AXApplicationDialog "Command palette"
+    AXComboBox "Search pages" = "cafe"
+      AXStaticText "cafe"
+    AXList "Results"
+      AXStaticText "Content"
+      AXStaticText
+    AXGroup/AXEmptyGroup "Search status"

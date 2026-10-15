@@ -1,0 +1,55 @@
+storage status=Ready path=/private/tmp/aelomi-f70-78/native/d78b
+storage open ms=0.655 t_ms=896.2
+index status=Rebuilding t_ms=896.5
+tree warm pages=6 ms=1.602 t_ms=898.1
+index cache=reused t_ms=905.5
+index status=Ready t_ms=909.2
+index startup total_ms=12.572 check_open_ms=8.825 schema_ms=2.987 integrity_ms=0.766 title_fts_ms=0.169 block_fts_ms=0.054 workspace_load_ms=0.113 workspace_decode_ms=0.067 workspace_forest_ms=0.159 workspace_sql_ms=0.470 pages=8 loaded_bytes=2246 page_load_ms=2.089 page_decode_ms=0.142 page_project_ms=0.208 page_sql_ms=0.231 publish_ms=0.096 t_ms=909.3
+index main_peak_rss_bytes=96616448 t_ms=909.3
+quit frontend ready
+ping seq=1
+index status=Rebuilding t_ms=15716.3
+index cache=replaced reason=corrupt (field) t_ms=15722.6
+index status=Ready t_ms=15725.7
+index startup total_ms=9.100 check_open_ms=5.952 schema_ms=- integrity_ms=- title_fts_ms=- block_fts_ms=- workspace_load_ms=0.143 workspace_decode_ms=0.134 workspace_forest_ms=0.027 workspace_sql_ms=0.675 pages=8 loaded_bytes=2246 page_load_ms=0.620 page_decode_ms=0.187 page_project_ms=0.062 page_sql_ms=1.178 publish_ms=0.042 t_ms=15725.7
+index main_peak_rss_bytes=124108800 t_ms=15725.8
+index status=Failed { reason: "the index was repaired repeatedly: corrupt (field)" } t_ms=16093.0
+index cache=replaced reason=corrupt (field) t_ms=16204.2
+index status=Ready t_ms=16207.9
+index startup total_ms=9.512 check_open_ms=5.765 schema_ms=- integrity_ms=- title_fts_ms=- block_fts_ms=- workspace_load_ms=0.174 workspace_decode_ms=0.140 workspace_forest_ms=0.031 workspace_sql_ms=0.782 pages=8 loaded_bytes=2246 page_load_ms=0.905 page_decode_ms=0.243 page_project_ms=0.079 page_sql_ms=1.238 publish_ms=0.047 t_ms=16207.9
+index main_peak_rss_bytes=124108800 t_ms=16207.9
+index status=Failed { reason: "the index was repaired repeatedly: corrupt (field)" } t_ms=16744.0
+index cache=replaced reason=corrupt (field) t_ms=16957.7
+index status=Ready t_ms=16961.0
+index startup total_ms=11.684 check_open_ms=8.280 schema_ms=- integrity_ms=- title_fts_ms=- block_fts_ms=- workspace_load_ms=0.211 workspace_decode_ms=0.182 workspace_forest_ms=0.034 workspace_sql_ms=0.721 pages=8 loaded_bytes=2246 page_load_ms=0.718 page_decode_ms=0.176 page_project_ms=0.061 page_sql_ms=1.161 publish_ms=0.047 t_ms=16961.1
+index main_peak_rss_bytes=124108800 t_ms=16961.1
+index status=Failed { reason: "the index was repaired repeatedly: corrupt (field)" } t_ms=17396.4
+index cache=replaced reason=corrupt (field) t_ms=17807.4
+index status=Ready t_ms=17811.0
+index startup total_ms=9.292 check_open_ms=5.591 schema_ms=- integrity_ms=- title_fts_ms=- block_fts_ms=- workspace_load_ms=0.207 workspace_decode_ms=0.168 workspace_forest_ms=0.033 workspace_sql_ms=0.967 pages=8 loaded_bytes=2246 page_load_ms=0.720 page_decode_ms=0.194 page_project_ms=0.070 page_sql_ms=1.169 publish_ms=0.043 t_ms=17811.1
+index main_peak_rss_bytes=124108800 t_ms=17811.1
+index status=Failed { reason: "the index was repaired repeatedly: corrupt (field)" } t_ms=18358.2
+index cache=replaced reason=corrupt (field) t_ms=19165.9
+index status=Ready t_ms=19167.1
+index startup total_ms=3.347 check_open_ms=2.110 schema_ms=- integrity_ms=- title_fts_ms=- block_fts_ms=- workspace_load_ms=0.092 workspace_decode_ms=0.059 workspace_forest_ms=0.013 workspace_sql_ms=0.264 pages=8 loaded_bytes=2246 page_load_ms=0.215 page_decode_ms=0.064 page_project_ms=0.024 page_sql_ms=0.452 publish_ms=0.018 t_ms=19167.1
+index main_peak_rss_bytes=124108800 t_ms=19167.1
+index status=Failed { reason: "the index was repaired repeatedly: corrupt (field)" } t_ms=19792.9
+index cache=replaced reason=corrupt (field) t_ms=21403.1
+index status=Ready t_ms=21407.1
+index startup total_ms=8.789 check_open_ms=4.800 schema_ms=- integrity_ms=- title_fts_ms=- block_fts_ms=- workspace_load_ms=0.158 workspace_decode_ms=0.179 workspace_forest_ms=0.036 workspace_sql_ms=0.861 pages=8 loaded_bytes=2246 page_load_ms=0.951 page_decode_ms=0.253 page_project_ms=0.080 page_sql_ms=1.297 publish_ms=0.058 t_ms=21407.1
+index main_peak_rss_bytes=124108800 t_ms=21407.2
+index status=Failed { reason: "the index was repaired repeatedly: corrupt (field)" } t_ms=22073.3
+index cache=replaced reason=corrupt (field) t_ms=25283.7
+index status=Ready t_ms=25286.3
+index startup total_ms=7.732 check_open_ms=5.131 schema_ms=- integrity_ms=- title_fts_ms=- block_fts_ms=- workspace_load_ms=0.164 workspace_decode_ms=0.144 workspace_forest_ms=0.029 workspace_sql_ms=0.610 pages=8 loaded_bytes=2246 page_load_ms=0.472 page_decode_ms=0.139 page_project_ms=0.055 page_sql_ms=0.881 publish_ms=0.032 t_ms=25286.3
+index main_peak_rss_bytes=124108800 t_ms=25286.4
+index status=Failed { reason: "the index was repaired repeatedly: corrupt (field)" } t_ms=25740.9
+index cache=replaced reason=corrupt (field) t_ms=32153.5
+index status=Ready t_ms=32157.3
+index startup total_ms=10.796 check_open_ms=7.036 schema_ms=- integrity_ms=- title_fts_ms=- block_fts_ms=- workspace_load_ms=0.171 workspace_decode_ms=0.144 workspace_forest_ms=0.029 workspace_sql_ms=0.755 pages=8 loaded_bytes=2246 page_load_ms=0.702 page_decode_ms=0.160 page_project_ms=0.058 page_sql_ms=1.597 publish_ms=0.050 t_ms=32157.3
+index main_peak_rss_bytes=124108800 t_ms=32157.3
+quit draining via=ExitRequested revision=1
+quit flush via=CompleteQuit pending=[]
+quit confirmed via=drain
+quit allowed via=ExitRequested confirmed=true
+quit flush via=Exit pending=[]

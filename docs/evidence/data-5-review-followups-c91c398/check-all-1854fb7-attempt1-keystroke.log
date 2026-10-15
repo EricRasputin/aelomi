@@ -1,0 +1,103 @@
+== keystroke
+load 3.70, waiting for under 4
+
+$ pnpm perf:keystroke
+$ playwright test --project perf --workers 1
+[WebServer] $ vite preview --mode mock --host 127.0.0.1 --port 4173 --strictPort
+
+Running 7 tests using 1 worker
+
+editor-empty: load 1 editable after 212 ms
+editor-empty: load 2 editable after 145 ms
+editor-empty: load 3 editable after 144 ms
+editor-empty: full key-to-paint p95 4 ms <= 19 ms PASS (local budget, information)
+  app-owned p95 4 ms <= 45 ms PASS (hosted budget, gate)
+  tick wait p50 0 ms p95 1 ms, key-to-input p50 2 ms p95 3 ms, render p50 1 ms p95 1 ms, frame start to the recorder's rAF p50 0 ms p95 0 ms
+  full key-to-paint p50 3 ms, range 2.0 to 5.0 ms, per-load appOwned p95 4, 4, 4, double rAF p95 19 ms
+  split check: max |app-owned + tick wait - full| 0.000 ms over 405 samples from 3 loads
+  engine Event Timing (key event to next paint, 8 ms rounding, reported at 16 ms or more): 21 of 405 keys reported, max 16 ms, median of reported 16 ms
+  idle rAF cadence per load 17.0, 17.0, 17.0 ms, load average 1.94 3.49 3.76
+  ✓  1 [perf] › tests/playwright/perf/keystroke.spec.ts:146:3 › EDIT-14 keystroke-to-paint on the editor-empty surface (1.4m)
+editor-page-5000-blocks: load 1 editable after 1723 ms
+editor-page-5000-blocks: load 2 editable after 1693 ms
+editor-page-5000-blocks: load 3 editable after 1801 ms
+editor-page-5000-blocks: full key-to-paint p95 14 ms <= 19 ms PASS (local budget, information)
+  app-owned p95 13 ms <= 45 ms PASS (hosted budget, gate)
+  tick wait p50 1 ms p95 2 ms, key-to-input p50 8 ms p95 9 ms, render p50 3 ms p95 4 ms, frame start to the recorder's rAF p50 0 ms p95 0 ms
+  full key-to-paint p50 12 ms, range 10.0 to 22.0 ms, per-load appOwned p95 13, 13, 13, double rAF p95 29 ms
+  split check: max |app-owned + tick wait - full| 0.000 ms over 405 samples from 3 loads
+  engine Event Timing (key event to next paint, 8 ms rounding, reported at 16 ms or more): 3 of 405 keys reported, max 16 ms, median of reported 16 ms
+  idle rAF cadence per load 17.0, 17.0, 17.0 ms, load average 1.97 3.13 3.59
+  ✓  2 [perf] › tests/playwright/perf/keystroke.spec.ts:146:3 › EDIT-14 keystroke-to-paint on the editor-page-5000-blocks surface (1.5m)
+empty: load 1 editable after 103 ms
+empty: load 2 editable after 56 ms
+empty: load 3 editable after 78 ms
+empty: full key-to-paint p95 3 ms <= 19 ms PASS (local budget, information)
+  app-owned p95 2 ms <= 45 ms PASS (hosted budget, information)
+  tick wait p50 0 ms p95 1 ms, key-to-input p50 1 ms p95 1 ms, render p50 1 ms p95 1 ms, frame start to the recorder's rAF p50 0 ms p95 0 ms
+  full key-to-paint p50 2 ms, range 1.0 to 3.0 ms, per-load appOwned p95 2, 2, 2, double rAF p95 19 ms
+  split check: max |app-owned + tick wait - full| 0.000 ms over 405 samples from 3 loads
+  engine Event Timing (key event to next paint, 8 ms rounding, reported at 16 ms or more): 19 of 405 keys reported, max 16 ms, median of reported 16 ms
+  idle rAF cadence per load 17.0, 17.0, 17.0 ms, load average 1.75 2.80 3.42
+  ✓  3 [perf] › tests/playwright/perf/keystroke.spec.ts:146:3 › EDIT-14 keystroke-to-paint on the empty surface (1.3m)
+page-5000-blocks: load 1 editable after 197 ms
+page-5000-blocks: load 2 editable after 124 ms
+page-5000-blocks: load 3 editable after 133 ms
+page-5000-blocks: full key-to-paint p95 12 ms <= 19 ms PASS (local budget, information)
+  app-owned p95 10 ms <= 45 ms PASS (hosted budget, information)
+  tick wait p50 1 ms p95 2 ms, key-to-input p50 5 ms p95 6 ms, render p50 4 ms p95 5 ms, frame start to the recorder's rAF p50 0 ms p95 0 ms
+  full key-to-paint p50 10 ms, range 7.0 to 29.0 ms, per-load appOwned p95 10, 11, 10, double rAF p95 41 ms
+  split check: max |app-owned + tick wait - full| 0.000 ms over 405 samples from 3 loads
+  engine Event Timing (key event to next paint, 8 ms rounding, reported at 16 ms or more): 1 of 405 keys reported, max 16 ms, median of reported 16 ms
+  idle rAF cadence per load 17.0, 17.0, 33.0 ms, load average 2.31 2.76 3.35
+  ✓  4 [perf] › tests/playwright/perf/keystroke.spec.ts:146:3 › EDIT-14 keystroke-to-paint on the page-5000-blocks surface (1.4m)
+layout-delay: load 1 editable after 196 ms
+layout-delay: load 2 editable after 300 ms
+layout-delay: load 3 editable after 298 ms
+layout-delay: full key-to-paint p95 53 ms > 19 ms FAIL (local budget, information)
+  app-owned p95 11 ms <= 45 ms PASS (hosted budget, information)
+  tick wait p50 37 ms p95 43 ms, key-to-input p50 1 ms p95 1 ms, render p50 9 ms p95 10 ms, frame start to the recorder's rAF p50 0 ms p95 0 ms
+  full key-to-paint p50 47 ms, range 24.0 to 54.0 ms, per-load appOwned p95 7, 11, 11, double rAF p95 81 ms
+  split check: max |app-owned + tick wait - full| 0.000 ms over 405 samples from 3 loads
+  engine Event Timing (key event to next paint, 8 ms rounding, reported at 16 ms or more): 405 of 405 keys reported, max 48 ms, median of reported 40 ms
+  idle rAF cadence per load 33.0, 33.0, 33.0 ms, load average 2.36 2.64 3.24
+  ✓  5 [perf] › tests/playwright/perf/keystroke.spec.ts:146:3 › EDIT-14 keystroke-to-paint on the layout-delay surface (1.7m)
+palette results p50 8 ms p95 15 ms (ci budget 40 ms) over 55 keys, slowest "z" 29 ms, "reh" 17 ms, "q" 15 ms, "d" 14 ms, "zi" 12 ms, load average 2.22 2.61 3.21
+  ✓  6 [perf] › tests/playwright/perf/palette.spec.ts:65:1 › CMD-4 and CMD-5 the palette shows results within one frame of each keystroke on the 10,000-page fixture (10.6s)
+scroll frames 150, rendering work p50 1 ms p95 13 ms (budget < 16.7) max 17 ms, longest interval 34 ms (budget 50)
+  raw intervals p50 33 ms p95 34 ms and idle cadence 33 ms (information)
+  longest interval at frame 1: previous frame's work 2 ms, then 32 ms to the next stamp; intervals over 33 ms 53 (information)
+  load average 2.33 2.61 3.20
+  ✘  7 [perf] › tests/playwright/perf/scroll.spec.ts:33:1 › EDIT-14 the 5,000-block editor page scrolls smoothly for 5 seconds (12.2s)
+
+
+  1) [perf] › tests/playwright/perf/scroll.spec.ts:33:1 › EDIT-14 the 5,000-block editor page scrolls smoothly for 5 seconds 
+
+    Error: did-it-happen guard: about 5 s of frames
+
+    expect(received).toBeGreaterThan(expected)
+
+    Expected: > 200
+    Received:   150
+
+      56 |     run.frames,
+      57 |     "did-it-happen guard: about 5 s of frames",
+    > 58 |   ).toBeGreaterThan(200);
+         |     ^
+      59 |   expect(
+      60 |     run.moved,
+      61 |     "did-it-happen guard: the scroller moved on every frame",
+        at <worktree>/tests/playwright/perf/scroll.spec.ts:58:5
+
+    Error Context: test-results/perf-scroll-EDIT-14-the-5--7ca12-olls-smoothly-for-5-seconds-perf/error-context.md
+
+  Slow test file: [perf] › tests/playwright/perf/keystroke.spec.ts (7.3m)
+  Consider running tests from slow files in parallel. See: https://playwright.dev/docs/test-parallel
+  1 failed
+    [perf] › tests/playwright/perf/scroll.spec.ts:33:1 › EDIT-14 the 5,000-block editor page scrolls smoothly for 5 seconds 
+  6 passed (7.7m)
+[ELIFECYCLE] Command failed with exit code 1.
+
+check:all failed: keystroke: pnpm perf:keystroke
+[ELIFECYCLE] Command failed with exit code 1.
+check:all exit 1
