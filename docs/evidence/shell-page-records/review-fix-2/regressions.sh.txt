@@ -1,0 +1,5 @@
+set -euo pipefail
+cargo nextest run -p aelomi-core -E 'test(workspace::tests::edits)'
+cargo nextest run -p aelomi -E 'test(quit) | test(page_commands)'
+pnpm exec vitest run src/ipc/record-commands.test.ts src/stores/page-tree.test.ts src/editor/quit-drain.test.ts perf/cold-start-budget.test.ts
+pnpm typecheck
