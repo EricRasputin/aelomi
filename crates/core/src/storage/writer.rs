@@ -43,24 +43,35 @@ pub(crate) fn run_once(shared: &Shared) -> Step {
                     Some(FailReason::Internal),
                 )
             });
-    let settings = super::settings::write_queued(shared, retry_failing);
-    if matches!(docs, Step::Wrote)
-        || matches!(settings, super::settings::Attempt::Finished(_))
-        || latest_failure.is_some()
-    {
-        let settings_failure = match &settings {
-            super::settings::Attempt::Finished(failure) => failure.clone(),
-            super::settings::Attempt::Idle(_) => None,
-        };
-        shared.refresh_health(settings_failure.or(latest_failure));
-    }
-    shared.batch_finished();
-    match (docs, settings) {
-        (Step::Idle { retry_at }, super::settings::Attempt::Idle(settings_retry)) => Step::Idle {
-            retry_at: retry_at.into_iter().chain(settings_retry).min(),
-        },
-        _ => Step::Wrote,
-    }
+    let mut attempted = None;
+    panic::catch_unwind(AssertUnwindSafe(|| {
+        let settings = super::settings::write_queued(shared, retry_failing, &mut attempted);
+        if matches!(docs, Step::Wrote)
+            || matches!(settings, super::settings::Attempt::Finished(_))
+            || latest_failure.is_some()
+        {
+            let settings_failure = match &settings {
+                super::settings::Attempt::Finished(failure) => failure.clone(),
+                super::settings::Attempt::Idle(_) => None,
+            };
+            shared.refresh_health(settings_failure.or(latest_failure));
+        }
+        shared.batch_finished();
+        match (docs, settings) {
+            (Step::Idle { retry_at }, super::settings::Attempt::Idle(settings_retry)) => {
+                Step::Idle {
+                    retry_at: retry_at.into_iter().chain(settings_retry).min(),
+                }
+            }
+            _ => Step::Wrote,
+        }
+    }))
+    .unwrap_or_else(|_| {
+        super::settings::fail_after_panic(shared, attempted);
+        shared.refresh_health(Some(FailReason::Internal));
+        shared.batch_finished();
+        Step::Wrote
+    })
 }
 
 /// The panic may have left any doc's write partway, so each retries in a new segment.

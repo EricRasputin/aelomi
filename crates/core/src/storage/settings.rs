@@ -1,5 +1,4 @@
 use std::io;
-use std::panic::{self, AssertUnwindSafe};
 use std::sync::{Condvar, Mutex};
 use std::time::Duration;
 
@@ -97,7 +96,11 @@ pub(crate) enum Attempt {
     Idle(Option<Duration>),
 }
 
-pub(crate) fn write_queued(shared: &Shared, retry_failing: bool) -> Attempt {
+pub(crate) fn write_queued(
+    shared: &Shared,
+    retry_failing: bool,
+    attempted: &mut Option<(Seq, Settings)>,
+) -> Attempt {
     let slot = &shared.settings;
     let (seq, settings) = {
         let state = lock_ignoring_poison(&slot.state);
@@ -110,12 +113,11 @@ pub(crate) fn write_queued(shared: &Shared, retry_failing: bool) -> Attempt {
         {
             return Attempt::Idle(Some(failure.retry_at));
         }
-        pending.clone()
+        attempted.insert(pending.clone())
     };
-    let result = panic::catch_unwind(AssertUnwindSafe(|| {
-        write(&*shared.fs, &shared.layout, &settings).map_err(|error| FailReason::from(&error))
-    }))
-    .unwrap_or(Err(FailReason::Internal));
+    let seq = *seq;
+    let result =
+        write(&*shared.fs, &shared.layout, settings).map_err(|error| FailReason::from(&error));
     match result {
         Ok(()) => {
             let mut state = lock_ignoring_poison(&slot.state);
@@ -137,6 +139,24 @@ pub(crate) fn write_queued(shared: &Shared, retry_failing: bool) -> Attempt {
         }
     }
     Attempt::Finished(None)
+}
+
+pub(crate) fn fail_after_panic(shared: &Shared, attempted: Option<(Seq, Settings)>) {
+    let slot = &shared.settings;
+    let seq = {
+        let mut state = lock_ignoring_poison(&slot.state);
+        let seq = attempted
+            .as_ref()
+            .or(state.pending.as_ref())
+            .map(|(seq, _)| *seq);
+        if state.pending.is_none() {
+            state.pending = attempted;
+        }
+        seq
+    };
+    if let Some(seq) = seq {
+        slot.failed(seq, FailReason::Internal, shared.clock.now());
+    }
 }
 
 pub(crate) fn load(fs: &dyn Fs, layout: &Layout) -> io::Result<Settings> {

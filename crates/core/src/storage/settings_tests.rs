@@ -368,6 +368,46 @@ fn shell_9_a_document_is_acknowledged_before_a_held_settings_write_in_the_same_p
 }
 
 #[test]
+fn shell_9_a_document_appended_during_settings_io_lands_next_pass_within_the_clock_budget() {
+    use crate::storage::tests::{Env, assert_doc, doc, typed};
+    let env = Env::manual();
+    let store = env.open();
+    env.fs
+        .set_latency(OpKind::FullSync, Duration::from_millis(6));
+    env.fs.set_latency(OpKind::Fsync, Duration::from_millis(1));
+    let hold = env.fs.hold_once(
+        OpKind::Append,
+        "settings.json.tmp",
+        Duration::from_millis(20),
+    );
+    let settings = store.queue_settings(session());
+    let page = doc("during-settings");
+    let update = typed(108, 4);
+    let (seq, before, held) = std::thread::scope(|scope| {
+        let writer = scope.spawn(|| store.run_writer_once());
+        hold.wait_until_reached();
+        let before = env.clock.now();
+        let seq = store.append(&page, &update).unwrap();
+        let held = !store.is_durable(&page, seq);
+        hold.release();
+        writer.join().unwrap();
+        (seq, before, held)
+    });
+    store.wait_settings(settings).unwrap();
+    assert!(held);
+    assert!(!store.is_durable(&page, seq));
+    assert_eq!(env.clock.now() - before, Duration::from_millis(34));
+    store.run_writer_once();
+    assert!(store.is_durable(&page, seq));
+    assert!(env.clock.now() - before <= Duration::from_millis(100));
+    drop(store);
+    env.fs.crash(Crash::DropUnsynced);
+    let reopened = env.open();
+    assert_doc(&reopened, &page, &[update]);
+    assert_eq!(reopened.load_settings().unwrap(), session());
+}
+
+#[test]
 fn shell_10_close_returns_the_store_while_settings_are_pending() {
     use crate::storage::tests::Env;
     let env = Env::manual();
@@ -444,4 +484,77 @@ fn shell_10_a_settings_panic_does_not_fail_documents_and_a_document_panic_does_n
         crate::storage::tests::assert_doc(&reopened, &page, &[typed(7, 3)]);
         assert_eq!(reopened.load_settings().unwrap(), session());
     }
+}
+
+#[test]
+fn shell_10_a_panic_in_settings_failure_bookkeeping_does_not_stop_the_writer() {
+    use crate::storage::state::Limits;
+    use crate::storage::store::{Driver, Store};
+    use crate::storage::tests::{Env, assert_doc, doc, typed};
+    use crate::storage::{Health, Pending};
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Mutex, mpsc};
+
+    #[derive(Default)]
+    struct TailClock {
+        clock: ManualClock,
+        panic_next: AtomicBool,
+    }
+    impl Clock for TailClock {
+        fn now(&self) -> Duration {
+            assert!(
+                !self.panic_next.swap(false, Ordering::SeqCst),
+                "panic in settings failure bookkeeping"
+            );
+            self.clock.now()
+        }
+        fn sleep(&self, duration: Duration) {
+            self.clock.sleep(duration);
+        }
+    }
+
+    let env = Env::manual();
+    let clock = Arc::new(TailClock::default());
+    let store = Store::open_with(
+        env.root(),
+        env.fs.clone(),
+        clock.clone(),
+        Driver::Threads,
+        Limits::DATA_6,
+    )
+    .unwrap();
+    let (send, health) = mpsc::channel();
+    let send = Mutex::new(send);
+    store.subscribe_health(move |value| drop(send.lock().unwrap().send(value.clone())));
+    let hold = env
+        .fs
+        .hold_once(OpKind::Append, "settings.json.tmp", Duration::ZERO);
+    env.fs.fail(OpKind::Fsync, "/data", libc::EACCES);
+    let settings = store.queue_settings(session());
+    hold.wait_until_reached();
+    clock.panic_next.store(true, Ordering::SeqCst);
+    hold.release();
+    assert_eq!(
+        health.recv_timeout(Duration::from_secs(1)),
+        Ok(Health::Failing {
+            reason: FailReason::Internal,
+            since: Duration::ZERO,
+            pending_docs: vec![],
+            pending_settings: true,
+        })
+    );
+    assert_eq!(store.wait_settings(settings), Err(FailReason::Internal));
+    env.fs.clear_faults();
+    let page = doc("after-tail-panic");
+    let update = typed(107, 4);
+    store.append(&page, &update).unwrap();
+    assert_eq!(
+        store.flush(Instant::now() + Duration::from_secs(1)),
+        Pending::default()
+    );
+    drop(store);
+    env.fs.crash(Crash::DropUnsynced);
+    let reopened = env.open();
+    assert_doc(&reopened, &page, &[update]);
+    assert_eq!(reopened.load_settings().unwrap(), session());
 }

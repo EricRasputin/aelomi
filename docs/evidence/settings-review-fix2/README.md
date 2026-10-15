@@ -26,8 +26,8 @@ One builder owned the shared APIs. Retry, writer, pending-state, and IPC edits w
 ## Act on findings and proving tests
 
 1. The failing attempt carries its captured sequence. A newer patch stays immediately eligible and never receives the older retry's error. `crates/core/src/storage/settings_tests.rs`, `shell_10_an_older_retry_cannot_fail_or_defer_a_newer_settings_patch`, failed on the previous implementation and passes with the fix.
-2. The frontend boundary tracks settings invocations through a generic promise tracker. Quit awaits all outstanding commands, including those added during a drain. `src/ipc/quit-invocations.test.ts`, `SHELL-9 the real settings command boundary drains invokes held before native admission`, failed because complete_quit ran before the held settings dispatch, then passed after the fix. This exercises the generated command and invoke boundary; the native disk path is proven separately below.
-3. The writer collects, syncs, and acknowledges documents before settings in the same pass. Each side has its own unwind boundary. `shell_9_a_document_is_acknowledged_before_a_held_settings_write_in_the_same_pass` failed before the fix. `shell_10_a_settings_panic_does_not_fail_documents_and_a_document_panic_does_not_fail_settings` checks both panic directions and exact reopened values. Both live in `crates/core/src/storage/settings_tests.rs`. Replacement consumes the token from create_durable and does not sync the source again.
+2. The frontend boundary tracks settings invocations through a generic promise tracker. Quit loops until deliveries and tracked commands are both empty in the same check, including settings calls started while document delivery drains. It closes admission before completion and returns typed Quitting for later writes until Keep app open. `src/ipc/quit-invocations.test.ts`, `SHELL-9 the real settings command boundary drains invokes held before native admission`, failed because complete_quit ran before the held settings dispatch, then passed after the fix. This exercises the generated command and invoke boundary; the native disk path is proven separately below.
+3. The writer collects, syncs, and acknowledges documents before settings in the same pass. The document step and the complete post-document tail have separate unwind boundaries. `shell_9_a_document_is_acknowledged_before_a_held_settings_write_in_the_same_pass` failed before the fix. `shell_10_a_settings_panic_does_not_fail_documents_and_a_document_panic_does_not_fail_settings` checks both panic directions and exact reopened values. Both live in `crates/core/src/storage/settings_tests.rs`. Replacement consumes the token from create_durable and does not sync the source again.
 4. Store flush and close return both pending kinds. Close returns the store while settings remain pending. `shell_10_close_returns_the_store_while_settings_are_pending` failed before the fix. IPC health and quit expose pending_settings, and QuitGate accepts DocId slices. `src-tauri/src/lib.rs` covers registered and unregistered quit, a mixed failed frontend drain, and full recovery. `src/stores/storage-events.test.ts` covers the typed frontend decisions.
 5. `crates/core/src/storage/fs.rs`, `data_4_os_publication_requires_source_sync_and_preserves_the_old_file_on_sync_failure`, observes the production creation and OsFs replacement path. A failed source sync leaves the old destination unchanged. A successful write orders source sync, publication, and directory sync. Temporarily removing the source full_sync made this test fail because publication incorrectly returned success. The sync was restored before the source commit.
 
@@ -45,6 +45,19 @@ One builder owned the shared APIs. Retry, writer, pending-state, and IPC edits w
 - SHELL-10 for settings edits. Retained settings retry, clear health, keep close from discarding the snapshot, and appear separately in quit confirmation. Mixed mock failures match the native aggregation.
 
 SHELL-3 restoration UI, SHELL-5 theme controls, TREE-6 tree UI, and CMD-2 recent-page UI remain in later PRs. This PR provides their persisted fields.
+
+## Round 3 follow-up
+
+These regressions failed before their fixes and pass afterward:
+
+- `src/ipc/quit-invocations.test.ts`, `SHELL-9 quit awaits a settings invoke started after the command drain while document delivery is held`. The settings transport stays held before native admission after the delivery is released. `complete_quit` waits for it.
+- The same file, `SHELL-9 settings writes are refused with Quitting once completion starts and resume after Keep open`. A refused write never reaches native dispatch, and a later write succeeds after Keep app open.
+- `crates/core/src/storage/tests/failures.rs`, `shell_10_a_writer_pass_publishes_only_its_latest_failure_reason`. A backed-off document cannot replace this pass's newer failure reason. There is one health event per active pass, settings failure takes precedence when it follows document failures, and an idle pass leaves the reason unchanged.
+- `crates/core/src/storage/settings_tests.rs`, `shell_10_a_panic_in_settings_failure_bookkeeping_does_not_stop_the_writer`. A panic after settings I/O reports Internal. A later document append becomes durable and survives crash and reopen with the exact settings snapshot.
+
+Both small Consider items were taken. Quit-tracked command names are declared in one list. Document priority is scoped to the same pass. `shell_9_a_document_appended_during_settings_io_lands_next_pass_within_the_clock_budget` holds settings I/O, queues a document, and proves that settings finishes before the document's next pass. The controllable-clock bound includes an injected 20 ms hold, 6 ms full syncs, and 1 ms fsyncs. It does not measure physical disk latency.
+
+The native runs below belong to round 2. Round 3 uses deterministic regressions and the committed-head local gate. It does not claim a new native run or an independent verifier verdict.
 
 ## Native procedure and observations
 
