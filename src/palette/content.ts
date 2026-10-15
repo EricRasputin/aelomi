@@ -1,14 +1,16 @@
-import type {
-  IndexStatus,
-  PageIssue,
-  QueryError,
-  SearchHit,
-  SearchReply,
-  SearchScope,
+import {
+  type IndexStatus,
+  MAX_EXCLUDED_PAGES,
+  type PageIssue,
+  type QueryError,
+  type SearchHit,
+  type SearchReply,
+  type SearchScope,
 } from "../ipc";
 import type { TitleMatch } from "./title-match";
 
-export const titleGroupMax = 200;
+/** Content search excludes the whole title group, so the core's exclusion limit caps it. */
+export const titleGroupMax = MAX_EXCLUDED_PAGES;
 export const contentLimit = 20;
 
 export type ContentResult =

@@ -18,7 +18,7 @@ use crate::storage::{Crash, DocId, Driver, Limits, OpKind, SimFs, Store, SystemC
 use crate::workspace::TreeError;
 use crate::workspace::fixture::{index_fixture, paragraph, text, write_body};
 
-fn failed(reason: &str) -> IndexStatus {
+pub(super) fn failed(reason: &str) -> IndexStatus {
     IndexStatus::Failed {
         reason: reason.into(),
     }
@@ -196,6 +196,84 @@ fn a_malformed_record_fails_the_index_and_the_tree_until_fixed() {
 }
 
 #[test]
+fn a_pages_root_holding_a_sequence_fails_without_erasing_the_cache() {
+    use yrs::{Array, Map, Out, ReadTxn, Transact};
+    let dir = tempfile::tempdir().unwrap();
+    let opened = open(dir.path());
+    // The fixture ends by erasing a page. Settling after each update indexes that page first,
+    // so setup replaces the cache, as a slow worker can; only what follows the sequence counts.
+    for update in index_fixture() {
+        opened.append(&[update]);
+        opened.settle();
+    }
+    let before = snapshot(&opened.workspace);
+    let workspace = DocId::workspace();
+    let mut foreign = crate::workspace::fixture::Editor::new(42);
+    foreign.apply(&workspace, &opened.workspace.load(&workspace).unwrap());
+    let sequence = foreign.edit(&workspace, |txn| {
+        txn.get_or_insert_array("pages").insert(txn, 0, "foreign");
+    });
+    let events = opened.events().len();
+    opened.workspace.append(&workspace, &sequence).unwrap();
+    assert_eq!(
+        opened
+            .workspace
+            .flush(Instant::now() + Duration::from_secs(5)),
+        []
+    );
+    let source = super::source_files(dir.path());
+    opened.settle();
+
+    let reason = "workspace: workspace doc: the pages root is not a Y.Map, found a sequence";
+    assert_eq!(opened.workspace.index_status(), failed(reason));
+    assert_eq!(
+        opened.workspace.search(&all("roadmap", 10)),
+        Err(QueryError::Failed(reason.into()))
+    );
+    assert!(matches!(
+        opened.workspace.tree(),
+        Err(TreeError::Malformed(_))
+    ));
+    assert_eq!(
+        opened.events()[events..],
+        [
+            IndexEvent::Status(failed(reason)),
+            IndexEvent::Changed(crate::index::IndexChange {
+                workspace: true,
+                pages: vec![],
+            }),
+        ],
+        "no cache replacement for erased pages"
+    );
+    let cached: i64 = rusqlite::Connection::open(index_path(dir.path()))
+        .unwrap()
+        .query_row("SELECT count(*) FROM pages", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(cached, 8, "every cached page row is kept");
+    assert_eq!(super::source_files(dir.path()), source);
+    let records = super::doc_of(&opened.workspace.load(&workspace).unwrap());
+    let Some(Out::UndefinedRef(root)) = records.transact().get("pages") else {
+        unreachable!()
+    };
+    assert_eq!(yrs::MapRef::from(root).len(&records.transact()), 8);
+
+    let undo = foreign.edit(&workspace, |txn| {
+        txn.get_or_insert_array("pages").remove(txn, 0);
+    });
+    opened.workspace.append(&workspace, &undo).unwrap();
+    opened.settle();
+    assert_eq!(opened.workspace.index_status(), IndexStatus::Ready);
+    assert_eq!(snapshot(&opened.workspace), before);
+    assert!(
+        !opened.events()[events..]
+            .iter()
+            .any(|event| matches!(event, IndexEvent::Cache(CacheState::Replaced(_)))),
+        "{:?}",
+        opened.events()
+    );
+}
+
+#[test]
 fn a_panicking_listener_stops_nothing() {
     let dir = tempfile::tempdir().unwrap();
     let calls = Arc::new(AtomicU32::new(0));
@@ -283,6 +361,22 @@ fn a_worker_panic_or_read_error_reports_failed_then_retries_to_ready() {
             ["reading"]
         );
     }
+}
+
+#[test]
+fn a_retry_wait_on_the_system_clock_sleeps_until_its_deadline() {
+    let dir = tempfile::tempdir().unwrap();
+    let (index, _) = flaky_index(dir.path(), vec!["error"]);
+    eventually(Duration::from_secs(10), || {
+        (index.status() == IndexStatus::Ready).then_some(())
+    });
+    let shared = index.shared();
+    assert_eq!(shared.waits(), [Duration::from_millis(100)]);
+    assert!(
+        shared.kept_waiting() <= 2,
+        "the 100 ms wait checked the clock {} times",
+        shared.kept_waiting()
+    );
 }
 
 #[test]
@@ -469,7 +563,7 @@ fn dropping_the_index_mid_reconcile_returns_between_pages() {
     );
 }
 
-fn tamper(dir: &Path, sql: &str) {
+pub(super) fn tamper(dir: &Path, sql: &str) {
     let conn = rusqlite::Connection::open(index_path(dir)).unwrap();
     conn.busy_timeout(Duration::from_secs(5)).unwrap();
     assert_eq!(conn.execute(sql, []).unwrap(), 1, "{sql}");
@@ -479,7 +573,7 @@ fn tamper(dir: &Path, sql: &str) {
     assert_eq!(integrity, "ok", "the tampering passes SQLite's own check");
 }
 
-fn after_settled(opened: &super::Opened) -> Vec<IndexEvent> {
+pub(super) fn after_settled(opened: &super::Opened) -> Vec<IndexEvent> {
     opened
         .events()
         .into_iter()
@@ -829,68 +923,4 @@ fn an_index_worker_that_cannot_start_fails_once_and_docs_stay_usable() {
         "no retry and no later event"
     );
     assert!(!index_path(dir.path()).exists());
-}
-
-#[test]
-fn a_body_under_another_root_or_not_a_yjs_update_is_named_with_no_blocks() {
-    let dir = tempfile::tempdir().unwrap();
-    let opened = open(dir.path());
-    opened.append(&index_fixture());
-    opened.settle();
-    opened.edit_body("projects", |txn| {
-        let body = txn.get_or_insert_xml_fragment("prosemirror");
-        let len = body.len(txn);
-        body.remove_range(txn, 0, len);
-        let elsewhere = txn.get_or_insert_text("content");
-        yrs::Text::insert(&elsewhere, txn, 0, "project index elsewhere");
-    });
-    opened.settle();
-    let (hits, issues) = ready_with_issues(
-        opened
-            .workspace
-            .search(&content("project", 10, &[]))
-            .unwrap(),
-    );
-    assert_eq!(hits, []);
-    assert_eq!(
-        issues,
-        [PageIssue {
-            page_id: page("projects"),
-            problem: PageProblem::UnrecognizedRoot("content".into()),
-            indexed_blocks: 0,
-        }]
-    );
-
-    let mut docs = std::collections::BTreeMap::new();
-    for (doc, update) in index_fixture() {
-        if doc == DocId::workspace() {
-            let merged = match docs.remove(&doc) {
-                None => update,
-                Some(old) => yrs::merge_updates_v1([old, update]).unwrap(),
-            };
-            docs.insert(doc, merged);
-        } else {
-            docs.insert(doc, update);
-        }
-    }
-    docs.insert(DocId::new("daily").unwrap(), b"not a yjs update".to_vec());
-    let other = tempfile::tempdir().unwrap();
-    let index = Index::start(
-        Arc::new(Docs(docs)),
-        index_path(other.path()),
-        Config::DEFAULT,
-        Arc::new(|_| {}),
-        Arc::default(),
-    );
-    assert!(index.shared().settle(Duration::from_secs(10)));
-    let (hits, issues) = ready_with_issues(index.search(&content("cafe", 10, &[])).unwrap());
-    assert_eq!(hit_ids(&hits), ["reading"]);
-    assert_eq!(
-        issues,
-        [PageIssue {
-            page_id: page("daily"),
-            problem: PageProblem::Undecodable,
-            indexed_blocks: 0,
-        }]
-    );
 }

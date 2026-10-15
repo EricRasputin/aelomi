@@ -5,9 +5,13 @@ import { useIndexStatusStore } from "./index-status";
 import { usePageTreeStore } from "./page-tree";
 import { connectPalette, usePaletteStore } from "./palette";
 
-vi.mock("../ipc", async () => {
+vi.mock("../ipc", async (importOriginal) => {
   const mock = await import("../ipc/mock");
-  return { commands: mock.commands, events: mock.events };
+  return {
+    ...(await importOriginal<typeof import("../ipc")>()),
+    commands: mock.commands,
+    events: mock.events,
+  };
 });
 
 type Reply = Awaited<ReturnType<typeof commands.search>>;

@@ -353,7 +353,8 @@ mark {
   overflow-wrap: anywhere;
 }
 
-.palette-alert {
+.palette-alert,
+.workspace-alert {
   margin: 8px;
   padding: 10px 12px;
   border: 1px solid var(--warning-border);
@@ -364,11 +365,17 @@ mark {
   line-height: 1.5;
 }
 
-.palette-alert p {
+.workspace-alert {
+  margin: 24px 0 0;
+}
+
+.palette-alert p,
+.workspace-alert p {
   margin: 0;
 }
 
-.palette-alert-reason {
+.palette-alert-reason,
+.workspace-alert-reason {
   overflow-wrap: anywhere;
   opacity: 0.85;
 }

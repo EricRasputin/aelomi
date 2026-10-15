@@ -127,6 +127,8 @@ pub enum PageProblem {
     Undecodable,
     /// The body is under `root`, not `prosemirror`.
     UnrecognizedRoot { root: String },
+    /// The `prosemirror` body holds content that is not XML. That content was skipped.
+    NotAFragment,
     /// A block has no ID. Its children were read.
     MissingBlockId,
     /// A page link has no valid target. It reads as a space.
@@ -361,6 +363,7 @@ impl From<&core::PageIssue> for PageIssue {
                 core::PageProblem::UnrecognizedRoot(root) => {
                     PageProblem::UnrecognizedRoot { root: root.clone() }
                 }
+                core::PageProblem::NotAFragment => PageProblem::NotAFragment,
                 core::PageProblem::MissingBlockId => PageProblem::MissingBlockId,
                 core::PageProblem::InvalidPageLink => PageProblem::InvalidPageLink,
             },
@@ -712,6 +715,15 @@ mod tests {
                 "problem": { "UnrecognizedRoot": { "root": "content" } },
                 "indexed_blocks": 0,
             })
+        );
+        assert_eq!(
+            serde_json::to_value(PageIssue::from(&core::PageIssue {
+                page_id: PageId::new("typed").unwrap(),
+                problem: core::PageProblem::NotAFragment,
+                indexed_blocks: 2,
+            }))
+            .unwrap(),
+            json!({ "page_id": "typed", "problem": "NotAFragment", "indexed_blocks": 2 })
         );
         assert_eq!(
             serde_json::from_value::<SearchScope>(json!({ "Content": { "exclude": ["a"] } }))

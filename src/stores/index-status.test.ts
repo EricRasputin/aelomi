@@ -3,9 +3,13 @@ import { commands, events, type IndexStatus } from "../ipc";
 import { installMock } from "../ipc/mock";
 import { connectIndexEvents, useIndexStatusStore } from "./index-status";
 
-vi.mock("../ipc", async () => {
+vi.mock("../ipc", async (importOriginal) => {
   const mock = await import("../ipc/mock");
-  return { commands: mock.commands, events: mock.events };
+  return {
+    ...(await importOriginal<typeof import("../ipc")>()),
+    commands: mock.commands,
+    events: mock.events,
+  };
 });
 
 function deferred<T>() {

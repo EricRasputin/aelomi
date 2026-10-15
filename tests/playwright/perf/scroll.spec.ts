@@ -43,6 +43,7 @@ test("EDIT-14 the 5,000-block editor page scrolls smoothly for 5 seconds", async
     [
       `scroll frames ${run.frames}, rendering work p50 ${run.workP50} ms p95 ${run.workP95} ms (budget < ${p95Budget}) max ${run.workMax} ms, longest interval ${run.rawMax} ms (budget ${maxBudget})`,
       `raw intervals p50 ${run.rawP50} ms p95 ${run.rawP95} ms and idle cadence ${run.idleCadence} ms (information)`,
+      `longest interval at frame ${run.longest?.at}: previous frame's work ${run.longest?.previousWork} ms, then ${run.longest?.betweenFrames} ms to the next stamp; intervals over 33 ms ${run.over33} (information)`,
       `load average ${loadavg()
         .map((x) => x.toFixed(2))
         .join(" ")}`,

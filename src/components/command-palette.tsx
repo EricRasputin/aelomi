@@ -67,22 +67,23 @@ export function CommandPalette() {
   const navigate = useNavigate();
   const input = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLDivElement>(null);
+  // The one owner of what opening and closing do to the page: the store only
+  // flips `open`, and every close commits synchronously, so focus is back
+  // where it was before the next key arrives.
   useLayoutEffect(() => {
     if (!open) return;
+    const { returnTo } = usePaletteStore.getState();
     const page = document.querySelector("main");
     if (page) page.inert = true;
     input.current?.focus();
     void usePageTreeStore.getState().refresh();
     return () => {
       if (page) page.inert = false;
+      restoreFocus(returnTo);
     };
   }, [open]);
 
-  const close = () => {
-    const { returnTo } = usePaletteStore.getState();
-    flushSync(() => usePaletteStore.getState().hide());
-    restoreFocus(returnTo);
-  };
+  const close = () => flushSync(() => usePaletteStore.getState().hide());
 
   const shown = shownContent(status, content);
   const rows = rowsOf(titles, shown);
@@ -101,7 +102,7 @@ export function CommandPalette() {
 
   const activate = (row: Row | undefined) => {
     if (!row || row.kind === "header") return;
-    usePaletteStore.getState().hide();
+    close();
     if (row.kind === "title")
       void navigate({
         to: "/page/$pageId",

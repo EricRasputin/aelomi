@@ -1,6 +1,7 @@
 mod body;
 mod records;
 mod tree;
+mod tree_reference;
 
 use yrs::updates::decoder::Decode;
 use yrs::{Doc, Transact, Update};

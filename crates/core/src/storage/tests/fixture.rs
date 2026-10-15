@@ -3,15 +3,18 @@ use std::path::{Path, PathBuf};
 
 use yrs::types::ToJson;
 use yrs::{
-    Any, Doc, GetString, Map, MapRef, Transact, XmlElementPrelim, XmlFragment, XmlFragmentRef,
-    XmlOut, XmlTextPrelim,
+    Any, Doc, GetString, Map, MapRef, ReadTxn, StateVector, Transact, XmlElementPrelim,
+    XmlFragment, XmlFragmentRef, XmlOut, XmlTextPrelim,
 };
 
-use super::{Env, doc, soon};
+use super::{
+    ATTRIBUTED_PAGE, Env, attributed_page, doc, log_name, render_body, soon, v1_snapshot_name,
+};
 use crate::storage::doc_id::DocId;
-use crate::storage::log::{self, LogEnd, LogFormat};
+use crate::storage::log::{self, LogEnd, LogFormat, encode_segment};
 use crate::storage::sim_fs::{Crash, OpKind};
-use crate::storage::snapshot::{self, Condition, SnapshotFormat};
+use crate::storage::snapshot::{self, Condition, SnapshotFormat, encode_snapshot};
+use crate::storage::state::Limits;
 use crate::storage::store::Store;
 use crate::storage::testkit::{apply, doc_from};
 
@@ -448,4 +451,54 @@ fn a_crash_anywhere_in_the_first_format_2_write_keeps_the_fixture_and_every_ackn
             );
         }
     }
+}
+
+#[test]
+fn an_attributed_page_in_a_format_1_folder_compacts_to_its_exact_content() {
+    let mut env = simulated_fixture();
+    env.limits = Limits {
+        records: 1,
+        ..Limits::DATA_6
+    };
+    let page = doc("page-2");
+    let sent = attributed_page();
+    let first = doc_from(sent[..2].iter().map(Vec::as_slice));
+    let state = first
+        .transact()
+        .encode_state_as_update_v1(&StateVector::default());
+    let dir = env.path("docs/page-2");
+    let format_1_log = dir.join("log-0000000001-0000000000.ylog");
+    env.fs
+        .put_durable(&dir.join(v1_snapshot_name(1)), &encode_snapshot(&state));
+    env.fs
+        .put_durable(&format_1_log, &encode_segment(&sent[2..]));
+    assert_eq!(
+        log_name(1, 0),
+        "log-0000000001-0000000000.ylog2",
+        "the writer's name differs"
+    );
+
+    let store = env.open();
+    let loaded = doc_from([store.load(&page).unwrap().as_slice()]);
+    assert_eq!(render_body(&loaded), ATTRIBUTED_PAGE);
+    assert_eq!(store.queued_compactions(), std::slice::from_ref(&page));
+    let (compacted, result) = store.run_compactor_once().unwrap();
+    assert_eq!(compacted, page);
+    result.unwrap();
+    assert_eq!(env.doc_files(&page), [v1_snapshot_name(2)]);
+    assert_eq!(env.quarantine(), [].into());
+    let durable = durable_tree(&env);
+    assert_eq!(
+        String::from_utf8_lossy(&durable["format.json"]),
+        "{\n  \"format\": 1\n}\n",
+        "compaction never changes format.json"
+    );
+    assert_format_1_files_unchanged(&durable, "after compaction");
+
+    drop(store);
+    let store = env.open();
+    let loaded = doc_from([store.load(&page).unwrap().as_slice()]);
+    assert_eq!(render_body(&loaded), ATTRIBUTED_PAGE);
+    assert_eq!(store.queued_compactions(), []);
+    assert_eq!(contents(&store), Contents::fixture());
 }

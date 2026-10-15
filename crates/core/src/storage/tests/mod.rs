@@ -4,6 +4,7 @@ mod crash;
 mod decode_guard;
 mod dirs;
 mod failures;
+mod fingerprint;
 mod fixture;
 mod measure;
 mod publication;
@@ -13,14 +14,18 @@ mod salvage;
 mod snapshot_copies;
 mod store;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::ops::Range;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use yrs::types::text::YChange;
 use yrs::updates::decoder::Decode;
-use yrs::{Text, Transact};
+use yrs::{
+    Any, Doc, Text, Transact, Transaction, TransactionMut, WriteTxn, Xml, XmlElementRef,
+    XmlFragment, XmlOut,
+};
 
 use super::clock::{Clock, ManualClock, SystemClock};
 use super::doc_id::DocId;
@@ -32,6 +37,10 @@ use super::snapshot::{self, Condition, SnapshotFormat};
 use super::state::Limits;
 use super::store::{Driver, OpenError, Store};
 use super::testkit::{SplitMix64, UpdateGen, doc_from, fingerprint};
+use crate::workspace::body::BODY_ROOT;
+use crate::workspace::fixture::{
+    Editor, Inline, block, insert_block, link, paragraph, text, write_body,
+};
 
 pub(crate) struct Env {
     pub fs: Arc<SimFs>,
@@ -292,4 +301,152 @@ pub(crate) fn ops_of_updates(updates: &[Vec<u8>]) -> Ops {
         ops.merge(Ops::of_update(&update));
     }
     ops
+}
+
+/// The body `attributed_page` leaves, rendered by `render_body`.
+pub(crate) const ATTRIBUTED_PAGE: &str = "<blockGroup>\
+<blockContainer id=\"b1\"><paragraph backgroundColor=\"yellow\" textAlignment=\"center\" textColor=\"green\">\
+Plain <mark bold={} italic={}>bold</mark> é then <pageLink targetPageId=\"page-2\"></pageLink> 🙂</paragraph></blockContainer>\
+<blockContainer id=\"b2\"><heading backgroundColor=\"default\" isToggleable=\"false\" level=\"3\" textAlignment=\"left\" textColor=\"red\">\
+<mark italic={}>Kestrel</mark></heading>\
+<blockGroup><blockContainer id=\"b3\"><paragraph backgroundColor=\"gray\" textAlignment=\"right\" textColor=\"default\">\
+Nested child<hardBreak></hardBreak>second line</paragraph></blockContainer></blockGroup></blockContainer>\
+<blockContainer id=\"b4\"><paragraph backgroundColor=\"blue\" textAlignment=\"justify\" textColor=\"purple\">\
+<mark underline={}>Last</mark></paragraph></blockContainer>\
+</blockGroup>";
+
+/// A page as `@blocknote/core/yjs` stores it, with several attributes on each block and marks
+/// on its text, written by two editors in four updates.
+pub(crate) fn attributed_page() -> Vec<Vec<u8>> {
+    let page = doc("page-1");
+    let mut first = Editor::new(7);
+    let blocks = [
+        paragraph(
+            "b1",
+            vec![
+                text("Plain "),
+                Inline::Marked("bold".into(), "bold".into()),
+                text(" é then "),
+                link("page-2"),
+                text(" 🙂"),
+            ],
+        )
+        .with_attr("textColor", "blue")
+        .with_attr("backgroundColor", "yellow")
+        .with_attr("textAlignment", "center"),
+        block(
+            "b2",
+            "heading",
+            vec![Inline::Marked("Kestrel".into(), "italic".into())],
+        )
+        .with_attr("level", 2)
+        .with_attr("isToggleable", false)
+        .with_attr("textColor", "red")
+        .with_attr("backgroundColor", "default")
+        .with_attr("textAlignment", "left")
+        .with_children(vec![
+            paragraph(
+                "b3",
+                vec![text("Nested child"), Inline::HardBreak, text("second line")],
+            )
+            .with_attr("textAlignment", "right")
+            .with_attr("backgroundColor", "gray")
+            .with_attr("textColor", "default"),
+        ]),
+    ];
+    let mut updates = vec![first.edit(&page, |txn| write_body(txn, &blocks))];
+    updates.push(first.edit(&page, |txn| {
+        let b1 = content_node(txn, 0);
+        b1.insert_attribute(txn, "textColor", "green");
+        let Some(XmlOut::Text(run)) = b1.get(txn, 0) else {
+            panic!("b1 starts with text")
+        };
+        let italic = HashMap::from([(
+            Arc::from("italic"),
+            Any::from(HashMap::<String, Any>::new()),
+        )]);
+        run.format(txn, "Plain ".len() as u32, "bold".len() as u32, italic);
+    }));
+    let mut second = Editor::new(8);
+    second.apply(&page, &updates[0]);
+    second.apply(&page, &updates[1]);
+    let b4 = paragraph(
+        "b4",
+        vec![Inline::Marked("Last".into(), "underline".into())],
+    )
+    .with_attr("textAlignment", "justify")
+    .with_attr("textColor", "purple")
+    .with_attr("backgroundColor", "blue");
+    updates.push(second.edit(&page, |txn| insert_block(txn, 2, &b4)));
+    updates.push(second.edit(&page, |txn| {
+        content_node(txn, 1).insert_attribute(txn, "level", 3);
+    }));
+    updates
+}
+
+/// The content node of the top-level block at `index`.
+fn content_node(txn: &mut TransactionMut, index: u32) -> XmlElementRef {
+    let body = txn.get_or_insert_xml_fragment(BODY_ROOT);
+    let Some(XmlOut::Element(group)) = body.get(txn, 0) else {
+        panic!("the body has a blockGroup")
+    };
+    let Some(XmlOut::Element(container)) = group.get(txn, index) else {
+        panic!("block {index} exists")
+    };
+    let Some(XmlOut::Element(content)) = container.get(txn, 0) else {
+        panic!("block {index} has content")
+    };
+    content
+}
+
+/// Renders a page body with attributes and marks sorted by name, so a test can compare it with
+/// a literal.
+pub(crate) fn render_body(doc: &Doc) -> String {
+    let body = doc.get_or_insert_xml_fragment(BODY_ROOT);
+    let txn = doc.transact();
+    let mut out = String::new();
+    for node in body.children(&txn) {
+        render_node(&txn, node, &mut out);
+    }
+    out
+}
+
+fn render_node(txn: &Transaction, node: XmlOut, out: &mut String) {
+    match node {
+        XmlOut::Element(element) => {
+            let attributes: BTreeMap<String, String> = element
+                .attributes(txn)
+                .map(|(name, value)| (name.to_owned(), value.to_string(txn)))
+                .collect();
+            out.push('<');
+            out.push_str(element.tag());
+            for (name, value) in attributes {
+                out.push_str(&format!(" {name}=\"{value}\""));
+            }
+            out.push('>');
+            for child in element.children(txn) {
+                render_node(txn, child, out);
+            }
+            out.push_str(&format!("</{}>", element.tag()));
+        }
+        XmlOut::Text(text) => {
+            for run in text.diff(txn, YChange::identity) {
+                let marks: BTreeMap<String, String> = run
+                    .attributes
+                    .into_iter()
+                    .flat_map(|marks| *marks)
+                    .map(|(name, value)| (name.to_string(), value.to_string()))
+                    .collect();
+                let insert = run.insert.to_string(txn);
+                if marks.is_empty() {
+                    out.push_str(&insert);
+                } else {
+                    let marks: Vec<String> =
+                        marks.iter().map(|(n, v)| format!("{n}={v}")).collect();
+                    out.push_str(&format!("<mark {}>{insert}</mark>", marks.join(" ")));
+                }
+            }
+        }
+        XmlOut::Fragment(_) => panic!("a fragment is only ever a root"),
+    }
 }

@@ -1,4 +1,4 @@
-import type { TextPart } from "./bindings";
+import { MAX_SEARCH_LIMIT, type TextPart } from "./bindings";
 
 type Token = { term: string; start: number; end: number };
 
@@ -192,7 +192,7 @@ export function searchPages(
 ): MockHit[] {
   const query = parseQuery(text);
   if (!query) return [];
-  const clamped = Math.min(Math.max(limit, 1), 200);
+  const clamped = Math.min(Math.max(limit, 1), MAX_SEARCH_LIMIT);
   const hits: MockHit[] = [];
   const titled = new Set<string>();
   if (scope.kind === "all") {

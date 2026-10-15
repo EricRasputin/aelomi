@@ -9,7 +9,6 @@ export type PreparedTitles = readonly {
   title: string;
   lower: string;
   wordStarts: readonly number[];
-  position: number;
 }[];
 
 export type TitleMatch = {
@@ -21,7 +20,7 @@ export type TitleMatch = {
 export function prepareTitles(
   candidates: readonly TitleCandidate[],
 ): PreparedTitles {
-  return candidates.map(({ id, title }, position) => {
+  return candidates.map(({ id, title }) => {
     const lower = title.toLowerCase();
     const wordStarts: number[] = [];
     for (let i = 0; i < lower.length; i++) {
@@ -30,7 +29,7 @@ export function prepareTitles(
       if (/[\p{L}\p{N}]/u.test(char) && !/[\p{L}\p{N}]/u.test(previous))
         wordStarts.push(i);
     }
-    return { id, title, lower, wordStarts, position };
+    return { id, title, lower, wordStarts };
   });
 }
 

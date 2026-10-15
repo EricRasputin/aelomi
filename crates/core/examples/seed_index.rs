@@ -10,7 +10,7 @@ use aelomi_core::workspace::fixture::{
 };
 use aelomi_core::workspace::records::{PageId, PageRecord, Placement};
 
-const USAGE: &str = "usage: seed_index <new folder> <missing|garbage|old-schema|valid>
+const USAGE: &str = "usage: seed_index <new folder> <missing|garbage|old-schema|valid|not-a-fragment|foreign-pages-root>
        seed_index <new folder> search-10k [--copies <n>] [--big-page]
 then launch the app with AELOMI_DATA_DIR=<folder>";
 
@@ -44,7 +44,7 @@ fn seed_fixture(folder: &Path, state: &str) {
         "missing" => Some(BrokenIndex::Missing),
         "garbage" => Some(BrokenIndex::Garbage),
         "old-schema" => Some(BrokenIndex::OldSchema),
-        "valid" => None,
+        "valid" | "not-a-fragment" | "foreign-pages-root" => None,
         other => fail(&format!("unknown state {other:?}")),
     };
     let workspace = Workspace::open(folder, |_| {}).unwrap_or_else(|e| fail(&e.to_string()));
@@ -59,6 +59,11 @@ fn seed_fixture(folder: &Path, state: &str) {
             fail(&format!("the index is {:?}", workspace.index_status()));
         }
         std::thread::sleep(Duration::from_millis(10));
+    }
+    match state {
+        "not-a-fragment" => append_plain_text_page(&workspace),
+        "foreign-pages-root" => append_foreign_pages_sequence(&workspace),
+        _ => {}
     }
     let pending = workspace.flush(Instant::now() + Duration::from_secs(10));
     if !pending.is_empty() {
@@ -75,6 +80,67 @@ fn seed_fixture(folder: &Path, state: &str) {
         "active pages: Projects > Aelomi > Roadmap, Projects > Reading list, Daily, (untitled)"
     );
     println!("trash: Archive (with Old notes); favorites: Reading list, Aelomi");
+    match state {
+        "not-a-fragment" => println!(
+            "plus Plain text body, whose prosemirror root is a Y.Text: search names it as only partly searchable"
+        ),
+        "foreign-pages-root" => println!(
+            "plus sequence content under the pages root: the workspace fails, no page opens, and the index cache is kept"
+        ),
+        _ => {}
+    }
+}
+
+/// A page whose `prosemirror` root another writer made a Y.Text, so the index reports it as
+/// only partly searchable (issue #74).
+fn append_plain_text_page(workspace: &Workspace) {
+    use yrs::{ReadTxn, Text, Transact};
+    let page = PageId::new("plain-text").unwrap_or_else(|e| fail(&e.to_string()));
+    let record = PageRecord {
+        title: "Plain text body".into(),
+        placement: Placement {
+            parent: None,
+            order: 50,
+        },
+        favorite: None,
+        trash: None,
+        created_at: 1_760_000_000_000,
+        updated_at: 1_760_000_000_000,
+    };
+    let mut editor = Editor::new(31);
+    let records = editor.edit(&DocId::workspace(), |txn| put_page(txn, &page, &record));
+    let body = yrs::Doc::with_client_id(32);
+    let text = body.get_or_insert_text("prosemirror");
+    text.insert(
+        &mut body.transact_mut(),
+        0,
+        "kestrel notes in a Y.Text, café 😀",
+    );
+    let body = body
+        .transact()
+        .encode_state_as_update_v1(&Default::default());
+    for (doc, update) in [(DocId::workspace(), records), (page.doc_id().clone(), body)] {
+        workspace
+            .append(&doc, &update)
+            .unwrap_or_else(|e| fail(&e.to_string()));
+    }
+}
+
+/// Sequence content under the reserved `pages` root, which this build cannot read, so the
+/// workspace fails instead of reading as empty (issue #77).
+fn append_foreign_pages_sequence(workspace: &Workspace) {
+    use yrs::{Array, WriteTxn};
+    let mut foreign = Editor::new(33);
+    let state = workspace
+        .load(&DocId::workspace())
+        .unwrap_or_else(|e| fail(&e.to_string()));
+    foreign.apply(&DocId::workspace(), &state);
+    let update = foreign.edit(&DocId::workspace(), |txn| {
+        txn.get_or_insert_array("pages").insert(txn, 0, "foreign");
+    });
+    workspace
+        .append(&DocId::workspace(), &update)
+        .unwrap_or_else(|e| fail(&e.to_string()));
 }
 
 fn seed_search(folder: &Path, options: &[String]) {

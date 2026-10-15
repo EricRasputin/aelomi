@@ -34,6 +34,7 @@ use std::time::{Duration, Instant};
 use rusqlite::{Connection, ErrorCode};
 
 use crate::storage::DocId;
+use crate::storage::clock::{Clock, SystemClock};
 use crate::workspace::body::BlockId;
 use crate::workspace::records::PageId;
 use query::QueryFault;
@@ -140,6 +141,8 @@ pub enum PageProblem {
     Undecodable,
     /// The body is under this root, not `prosemirror`.
     UnrecognizedRoot(String),
+    /// The `prosemirror` body holds content that is not XML. That content was skipped.
+    NotAFragment,
     /// A block has no string ID. Its children were read.
     MissingBlockId,
     /// A page link has no valid target. It reads as a space.
@@ -228,16 +231,19 @@ type Listener = Arc<dyn Fn(&IndexEvent) + Send + Sync>;
 pub(crate) type Spawn =
     fn(std::thread::Builder, Box<dyn FnOnce() + Send>) -> io::Result<JoinHandle<()>>;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone)]
 pub(crate) struct Config {
     pub first_edit_delay: Duration,
     pub spawn: Spawn,
+    /// Times retry waits and how long the index stayed Ready. `None` is the system clock.
+    pub clock: Option<Arc<dyn Clock>>,
 }
 
 impl Config {
     pub const DEFAULT: Self = Self {
         first_edit_delay: Duration::from_millis(25),
         spawn: |builder, f| builder.spawn(f),
+        clock: None,
     };
 }
 
@@ -248,6 +254,7 @@ pub(crate) struct Shared {
     path: PathBuf,
     listeners: Vec<Listener>,
     config: Config,
+    clock: Arc<dyn Clock>,
     pub gate: Arc<gate::Gate>,
 }
 
@@ -261,6 +268,12 @@ struct State {
     replace: Option<CacheProblem>,
     busy: bool,
     shutdown: bool,
+    #[cfg(test)]
+    waits: Vec<Duration>,
+    #[cfg(test)]
+    kept_waiting_at: Option<Duration>,
+    #[cfg(test)]
+    kept_waiting: u32,
 }
 
 struct Current {
@@ -292,16 +305,26 @@ impl Index {
                 replace: None,
                 busy: true,
                 shutdown: false,
+                #[cfg(test)]
+                waits: Vec::new(),
+                #[cfg(test)]
+                kept_waiting_at: None,
+                #[cfg(test)]
+                kept_waiting: 0,
             }),
             changed: Condvar::new(),
             reader: Mutex::new(None),
             path: path.clone(),
             listeners: vec![listener],
+            clock: config
+                .clock
+                .clone()
+                .unwrap_or_else(|| Arc::new(SystemClock::new())),
             config,
             gate,
         });
         let worker = shared.clone();
-        let spawned = (config.spawn)(
+        let spawned = (shared.config.spawn)(
             std::thread::Builder::new()
                 .name("aelomi-index".into())
                 .stack_size(8 * 1024 * 1024),
@@ -488,6 +511,24 @@ impl Shared {
     pub fn is_clean(&self) -> bool {
         let state = self.lock();
         !state.workspace_dirty && state.pending_bodies.is_empty()
+    }
+
+    /// Every retry wait the worker started, in order.
+    #[cfg(test)]
+    pub fn waits(&self) -> Vec<Duration> {
+        self.lock().waits.clone()
+    }
+
+    /// The latest index-clock time at which a retry wait checked and kept waiting.
+    #[cfg(test)]
+    pub fn kept_waiting_at(&self) -> Option<Duration> {
+        self.lock().kept_waiting_at
+    }
+
+    /// How many times retry waits checked the clock and kept waiting.
+    #[cfg(test)]
+    pub fn kept_waiting(&self) -> u32 {
+        self.lock().kept_waiting
     }
 
     #[cfg(test)]

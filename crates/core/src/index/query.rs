@@ -1,8 +1,9 @@
 use std::collections::HashSet;
+use std::sync::LazyLock;
 
 use rusqlite::{Connection, OptionalExtension, Transaction};
 
-use super::db::{Corrupt, PageKey, stored_block_id};
+use super::db::{Corrupt, PageKey, SLOT_BITS, stored_block_id};
 use super::highlight::{Phrases, parts};
 use super::tokenizer::{Tokenizer, TokenizerError};
 use super::{Backlink, BacklinkBlock, BlockHit, SearchHit, TextPart};
@@ -203,6 +204,18 @@ fn finish(
     Ok((hits, walk))
 }
 
+static BACKLINKS: LazyLock<String> = LazyLock::new(|| {
+    format!(
+        "SELECT p.page_id, p.title, p.active, b.block_id, t.text FROM links l
+         LEFT JOIN pages p ON p.rowid = (l.block_rowid >> {SLOT_BITS})
+         LEFT JOIN blocks b ON b.rowid = l.block_rowid
+         LEFT JOIN block_text t ON t.rowid = l.block_rowid
+         WHERE l.target_id = ?1
+           AND EXISTS (SELECT 1 FROM pages target WHERE target.page_id = ?1 AND target.active = 1)
+         ORDER BY p.updated_at DESC, p.page_id, b.ordinal, b.rowid"
+    )
+});
+
 pub(crate) fn backlinks(
     conn: &mut Connection,
     target: &PageId,
@@ -210,15 +223,7 @@ pub(crate) fn backlinks(
     let tx = conn.transaction()?;
     let mut backlinks: Vec<Backlink> = Vec::new();
     {
-        let mut rows = tx.prepare_cached(
-            "SELECT p.page_id, p.title, p.active, b.block_id, t.text FROM links l
-             LEFT JOIN pages p ON p.rowid = (l.block_rowid >> 20)
-             LEFT JOIN blocks b ON b.rowid = l.block_rowid
-             LEFT JOIN block_text t ON t.rowid = l.block_rowid
-             WHERE l.target_id = ?1
-               AND EXISTS (SELECT 1 FROM pages target WHERE target.page_id = ?1 AND target.active = 1)
-             ORDER BY p.updated_at DESC, p.page_id, b.ordinal, b.rowid",
-        )?;
+        let mut rows = tx.prepare_cached(&BACKLINKS)?;
         let mut rows = rows.query([target.as_str()])?;
         while let Some(row) = rows.next()? {
             let source: String = row

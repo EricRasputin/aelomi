@@ -1,0 +1,16 @@
+#!/bin/zsh
+# During check:all's cold-start stage, activate each harness-launched Aelomi by bundle ID. A
+# directly spawned app opens its window on the desktop Space; while a full-screen app holds the
+# current Space, that window stays hidden and WebKit never paints it.
+log=$1
+seen=""
+while true; do
+  grep -q "^check:all \(passed\|failed\)\|check:all exit" "$log" 2>/dev/null && exit 0
+  if grep -q "^== cold-start" "$log" 2>/dev/null; then
+    for pid in $(pgrep -f "fix-data5-review-followups-70-78/target/release/bundle/macos/Aelomi.app/Contents/MacOS/aelomi"); do
+      case " $seen " in *" $pid "*) continue;; esac
+      osascript -e 'tell application id "com.aelomi.app" to activate' >/dev/null 2>&1 && seen="$seen $pid"
+    done
+  fi
+  sleep 0.05
+done

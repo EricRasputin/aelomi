@@ -1,26 +1,48 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use super::decode;
 
 use yrs::branch::{Branch, BranchPtr};
-use yrs::types::ToJson;
+use yrs::types::TypeRef;
+use yrs::types::text::YChange;
 use yrs::{
-    Any, ArrayRef, Doc, IdSet, MapRef, Out, ReadTxn, Snapshot, StateVector, Transact, Update,
+    Any, Array, ArrayRef, BranchID, Doc, GetString, IdSet, Map, MapRef, OffsetKind, Out, ReadTxn,
+    Snapshot, StateVector, Text, TextRef, Transact, Update,
 };
 
 #[derive(Debug, PartialEq)]
 pub(crate) struct Fingerprint {
     snapshot: Snapshot,
-    roots: BTreeMap<String, Root>,
+    branches: BTreeMap<BranchID, Node>,
     pending: Option<PendingStructs>,
 }
 
-/// A root decoded from an update has no type until someone asks for one, so it is read both
-/// as a sequence and as a map.
+/// A root decoded from an update has no type until someone asks for one, so a root records
+/// none, and every branch is read as text runs, as a sequence, and as a map.
 #[derive(Debug, PartialEq)]
-struct Root {
-    sequence: Any,
-    entries: Any,
+struct Node {
+    kind: Option<TypeRef>,
+    content: Content,
+}
+
+#[derive(Debug, Default, PartialEq)]
+struct Content {
+    runs: Vec<Run>,
+    sequence: Vec<Value>,
+    entries: BTreeMap<String, Value>,
+}
+
+#[derive(Debug, PartialEq)]
+struct Run {
+    insert: Value,
+    marks: BTreeMap<String, Any>,
+}
+
+#[derive(Debug, PartialEq)]
+enum Value {
+    Any(Any),
+    Nested(BranchID),
+    Doc(String),
 }
 
 #[derive(Debug, PartialEq)]
@@ -32,28 +54,117 @@ struct PendingStructs {
 }
 
 impl Fingerprint {
-    /// `None` when yrs can't apply its own encoding of the doc's pending structs.
-    pub fn of(txn: &impl ReadTxn) -> Option<Self> {
+    /// `None` when yrs can't apply its own encoding of the doc's pending structs, or when a branch
+    /// holds text beside values its text runs leave out. `offsets` is the doc's offset kind.
+    pub fn of(txn: &impl ReadTxn, offsets: OffsetKind) -> Option<Self> {
         let pending = if txn.has_missing_updates() {
             Some(settled_pending(txn)?)
         } else {
             None
         };
-        let roots = txn
-            .root_refs()
-            .filter_map(|(name, root)| {
-                let branch = branch(&root)?;
-                let sequence = ArrayRef::from(branch).to_json(txn);
-                let entries = MapRef::from(branch).to_json(txn);
-                let empty = matches!((&sequence, &entries), (Any::Array(s), Any::Map(m)) if s.is_empty() && m.is_empty());
-                (!empty).then(|| (name.to_owned(), Root { sequence, entries }))
-            })
-            .collect();
+        let mut reader = Reader {
+            txn,
+            offsets,
+            found: Vec::new(),
+            seen: BTreeSet::new(),
+        };
+        let mut branches = BTreeMap::new();
+        for (_, root) in txn.root_refs() {
+            if let Ok(root) = shared(root) {
+                let content = reader.content(root)?;
+                if content != Content::default() {
+                    branches.insert(
+                        root.id(),
+                        Node {
+                            kind: None,
+                            content,
+                        },
+                    );
+                }
+            }
+        }
+        while let Some(branch) = reader.found.pop() {
+            let kind = Some(branch.type_ref().clone());
+            let content = reader.content(branch)?;
+            branches.insert(branch.id(), Node { kind, content });
+        }
         Some(Self {
             snapshot: txn.snapshot(),
-            roots,
+            branches,
             pending,
         })
+    }
+}
+
+/// Collects nested branches as it meets them, so a deep doc never deepens the stack.
+struct Reader<'a, T> {
+    txn: &'a T,
+    offsets: OffsetKind,
+    found: Vec<BranchPtr>,
+    seen: BTreeSet<BranchID>,
+}
+
+impl<T: ReadTxn> Reader<'_, T> {
+    fn content(&mut self, branch: BranchPtr) -> Option<Content> {
+        let txn = self.txn;
+        let text = TextRef::from(branch);
+        let runs = text.diff(txn, YChange::identity).into_iter();
+        let runs = runs.map(|run| Run {
+            insert: self.value(run.insert),
+            marks: run.attributes.map_or_else(BTreeMap::new, |marks| {
+                marks.into_iter().map(|(k, v)| (k.to_string(), v)).collect()
+            }),
+        });
+        let runs: Vec<Run> = runs.collect();
+        // yrs's sequence iterator never ends on a string with a multi-byte character.
+        let string = text.get_string(txn);
+        let sequence = if string.is_empty() {
+            let values = ArrayRef::from(branch).iter(txn);
+            values.map(|value| self.value(value)).collect()
+        } else if self.runs_cover(&runs, &string, branch.content_len()) {
+            Vec::new()
+        } else {
+            return None;
+        };
+        let map = MapRef::from(branch);
+        let entries = map.iter(txn);
+        let entries = entries.map(|(key, value)| (key.to_owned(), self.value(value)));
+        Some(Content {
+            runs,
+            sequence,
+            entries: entries.collect(),
+        })
+    }
+
+    /// Text runs leave out values, binaries and subdocs, and a string embed reads like text, so
+    /// the runs must spell the branch's string and count up to its length, each other run as 1.
+    fn runs_cover(&self, runs: &[Run], string: &str, content_len: u32) -> bool {
+        let mut spelled = String::new();
+        let mut others: u64 = 0;
+        for run in runs {
+            match &run.insert {
+                Value::Any(Any::String(s)) => spelled.push_str(s),
+                _ => others += 1,
+            }
+        }
+        let string_len = match self.offsets {
+            OffsetKind::Bytes => string.len(),
+            OffsetKind::Utf16 => string.encode_utf16().count(),
+        };
+        spelled == string && string_len as u64 + others == u64::from(content_len)
+    }
+
+    fn value(&mut self, out: Out) -> Value {
+        match shared(out) {
+            Ok(branch) => {
+                let id = branch.id();
+                if self.seen.insert(id.clone()) {
+                    self.found.push(branch);
+                }
+                Value::Nested(id)
+            }
+            Err(value) => value,
+        }
     }
 }
 
@@ -82,18 +193,19 @@ fn settled_pending(txn: &impl ReadTxn) -> Option<PendingStructs> {
     })
 }
 
-fn branch(root: &Out) -> Option<BranchPtr> {
-    let branch: &Branch = match root {
-        Out::UndefinedRef(b) => return Some(*b),
+fn shared(out: Out) -> Result<BranchPtr, Value> {
+    let branch: &Branch = match &out {
+        Out::UndefinedRef(b) => return Ok(*b),
         Out::YText(t) => t.as_ref(),
         Out::YArray(a) => a.as_ref(),
         Out::YMap(m) => m.as_ref(),
         Out::YXmlElement(e) => e.as_ref(),
         Out::YXmlFragment(f) => f.as_ref(),
         Out::YXmlText(t) => t.as_ref(),
-        Out::Any(_) | Out::YDoc(_) => return None,
+        Out::YDoc(doc) => return Err(Value::Doc(doc.guid().to_string())),
+        Out::Any(any) => return Err(Value::Any(any.clone())),
     };
-    Some(BranchPtr::from(branch))
+    Ok(BranchPtr::from(branch))
 }
 
 const INCLUDE_DELETED: bool = true;

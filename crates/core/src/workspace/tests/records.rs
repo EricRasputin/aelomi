@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, HashMap};
 
-use yrs::{Any, Map, MapPrelim, Out, ReadTxn, Transact, WriteTxn};
+use yrs::{Any, Array, Map, MapPrelim, Out, ReadTxn, Transact, WriteTxn};
 
 use super::{doc_of, page};
 use crate::storage::DocId;
@@ -75,6 +75,84 @@ fn a_doc_without_pages_has_no_records() {
     });
     assert_eq!(read_pages(&doc_of(&update).transact()), Ok(BTreeMap::new()));
     assert_eq!(read_pages(&yrs::Doc::new().transact()), Ok(BTreeMap::new()));
+}
+
+#[test]
+fn an_empty_pages_root_has_no_records() {
+    let mut editor = Editor::new(1);
+    let update = editor.edit(&ws(), |txn| {
+        put_page(txn, &page("a"), &record());
+        erase_page(txn, &page("a"));
+    });
+    let doc = doc_of(&update);
+    assert!(doc.transact().get("pages").is_some());
+    assert_eq!(read_pages(&doc.transact()), Ok(BTreeMap::new()));
+    let typed = yrs::Doc::new();
+    typed.get_or_insert_map("pages");
+    assert_eq!(read_pages(&typed.transact()), Ok(BTreeMap::new()));
+    let deleted_sequence = yrs::Doc::new();
+    let array = deleted_sequence.get_or_insert_array("pages");
+    array.insert(&mut deleted_sequence.transact_mut(), 0, 1);
+    array.remove(&mut deleted_sequence.transact_mut(), 0);
+    assert_eq!(
+        read_pages(&deleted_sequence.transact()),
+        Ok(BTreeMap::new())
+    );
+}
+
+fn not_a_map(found: &str) -> Result<BTreeMap<PageId, PageRecord>, RecordError> {
+    Err(RecordError {
+        page: None,
+        problem: format!("the pages root is not a Y.Map, found {found}"),
+    })
+}
+
+#[test]
+fn a_pages_root_with_sequence_content_is_a_typed_failure() {
+    let doc = yrs::Doc::new();
+    let array = doc.get_or_insert_array("pages");
+    array.insert(&mut doc.transact_mut(), 0, "a");
+    assert_eq!(read_pages(&doc.transact()), not_a_map("a sequence"));
+    let replayed = doc_of(
+        &doc.transact()
+            .encode_state_as_update_v1(&Default::default()),
+    );
+    assert_eq!(read_pages(&replayed.transact()), not_a_map("a sequence"));
+
+    let text = yrs::Doc::new();
+    let typed = text.get_or_insert_text("pages");
+    yrs::Text::push(&typed, &mut text.transact_mut(), "a");
+    assert_eq!(read_pages(&text.transact()), not_a_map("a sequence"));
+
+    let mut editor = Editor::new(1);
+    editor.edit(&ws(), |txn| put_page(txn, &page("a"), &record()));
+    let mut foreign = Editor::new(2);
+    foreign.apply(&ws(), &editor.state(&ws()));
+    let mixed = foreign.edit(&ws(), |txn| {
+        txn.get_or_insert_array("pages").insert(txn, 0, "b");
+    });
+    let mut both = Editor::new(3);
+    both.apply(&ws(), &editor.state(&ws()));
+    both.apply(&ws(), &mixed);
+    assert_eq!(
+        read_pages(&doc_of(&both.state(&ws())).transact()),
+        not_a_map("a sequence")
+    );
+}
+
+#[test]
+fn a_pages_root_of_another_shared_type_is_a_typed_failure() {
+    let doc = yrs::Doc::new();
+    let xml = doc.get_or_insert_xml_fragment("pages");
+    yrs::XmlFragment::push_back(
+        &xml,
+        &mut doc.transact_mut(),
+        yrs::XmlElementPrelim::empty("p"),
+    );
+    assert_eq!(read_pages(&doc.transact()), not_a_map("a sequence"));
+    let empty = yrs::Doc::new();
+    empty.get_or_insert_xml_fragment("pages");
+    assert_eq!(read_pages(&empty.transact()), Ok(BTreeMap::new()));
 }
 
 #[test]

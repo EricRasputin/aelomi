@@ -64,6 +64,11 @@ export const events = {
 	storageHealthChanged: makeEvent<StorageHealthChanged>("storage-health-changed"),
 };
 
+/* Constants */
+export const MAX_EXCLUDED_PAGES = 200 as const;
+
+export const MAX_SEARCH_LIMIT = 200 as const;
+
 /* Types */
 export type Backlink = {
 	page_id: string,
@@ -145,6 +150,8 @@ export type PageProblem =
 { UnrecognizedRoot: {
 	root: string,
 } } | 
+/**  The `prosemirror` body holds content that is not XML. That content was skipped. */
+"NotAFragment" | 
 /**  A block has no ID. Its children were read. */
 "MissingBlockId" | 
 /**  A page link has no valid target. It reads as a space. */

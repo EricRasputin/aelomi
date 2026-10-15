@@ -4,8 +4,9 @@ import * as Y from "yjs";
 import { commands, type StorageError } from "../ipc";
 import { fromBase64 } from "../ipc/base64";
 import { checkBody, type GuardProblem } from "./body-guard";
-import { type Body, readBody } from "./body-reader";
+import { type Body, readShownBody, type ShownBlock } from "./body-reader";
 import { trackLoad } from "./delivery";
+import { localImageUrl } from "./image-url";
 import { type PickerKey, pagePicker } from "./page-picker";
 import { loadOrigin, syncPage } from "./page-sync";
 import { onQuitDrain } from "./quit-drain";
@@ -23,8 +24,15 @@ export type ReadOnlyReason =
   | { kind: "tripwire" };
 
 export type PageSession =
-  | { kind: "editable"; editor: PageEditor; close: () => void }
-  | { kind: "readOnly"; reason: ReadOnlyReason; body: Body }
+  | {
+      kind: "editable";
+      editor: PageEditor;
+      /** Mounts the editor in `host`. The returned unmount may run any number of times. */
+      mount: (host: HTMLElement) => () => void;
+      /** The opener is done with the page. */
+      close: () => void;
+    }
+  | { kind: "readOnly"; reason: ReadOnlyReason; body: Body<ShownBlock> }
   | { kind: "error"; error: StorageError };
 
 const userInputEvents = [
@@ -36,11 +44,11 @@ const userInputEvents = [
   "pointerdown",
 ] as const;
 
-function readOnlyBody(raw: Uint8Array): Body {
+function readOnlyBody(raw: Uint8Array): Body<ShownBlock> {
   const doc = new Y.Doc();
   try {
     Y.applyUpdate(doc, raw, loadOrigin);
-    return readBody(doc, { keepUnidentified: true });
+    return readShownBody(doc);
   } catch {
     return { blocks: [], problem: { kind: "Undecodable" } };
   } finally {
@@ -96,7 +104,7 @@ export async function openPage({
     withCollaboration({
       schema: editorSchema,
       trailingBlock: false,
-      resolveFileUrl: async (url) => (/^(data|blob):/.test(url) ? url : ""),
+      resolveFileUrl: async (url) => localImageUrl(url),
       domAttributes: {
         editor: {
           role: "textbox",
@@ -114,7 +122,7 @@ export async function openPage({
   );
   const check = checkBody(ydoc, editor.pmSchema);
   if (check.kind === "readOnly") {
-    const body = readBody(ydoc, { keepUnidentified: true });
+    const body = readShownBody(ydoc);
     ydoc.destroy();
     return { kind: "readOnly", reason: check.problem, body };
   }
@@ -140,13 +148,34 @@ export async function openPage({
       editor.isEditable = false;
     },
   });
-  let closed = false;
-  const close = () => {
-    if (closed) return;
-    closed = true;
+  // The doc outlives the editor's view: whichever of close and unmount runs
+  // last ends sync and destroys the doc, so a mounted editor never writes to
+  // a destroyed doc, whatever order its owners release it in.
+  let opened = true;
+  let mounted = false;
+  let ended = false;
+  const end = () => {
+    if (ended || opened || mounted) return;
+    ended = true;
     stopDrain();
     stopSync();
     ydoc.destroy();
   };
-  return { kind: "editable", editor, close };
+  const mount = (host: HTMLElement) => {
+    editor.mount(host);
+    mounted = true;
+    let active = true;
+    return () => {
+      if (!active) return;
+      active = false;
+      editor.unmount();
+      mounted = false;
+      end();
+    };
+  };
+  const close = () => {
+    opened = false;
+    end();
+  };
+  return { kind: "editable", editor, mount, close };
 }

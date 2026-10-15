@@ -13,7 +13,7 @@ import {
   defaultInlineContentSpecs,
   defaultStyleSpecs,
 } from "@blocknote/core";
-import { linkLabel, usePageTreeStore } from "../stores/page-tree";
+import { paintLinkLabel, showLinkLabel } from "./link-labels";
 
 export const pageLinkSpec = createInlineContentSpec(
   {
@@ -22,21 +22,17 @@ export const pageLinkSpec = createInlineContentSpec(
     content: "none",
   },
   {
-    render: (inline) => {
+    render: (inline, _update, _editor, _node, getPos) => {
       const dom = document.createElement("span");
       dom.className = "page-link";
-      const targetPageId = inline.props.targetPageId;
-      const paint = () => {
-        const label = linkLabel(
-          usePageTreeStore.getState().source,
-          targetPageId,
-        );
-        dom.textContent = label.kind === "loading" ? "" : label.text;
-        dom.dataset.state = label.kind;
-      };
-      paint();
-      const unsubscribe = usePageTreeStore.subscribe(paint);
-      return { dom, destroy: unsubscribe };
+      const { targetPageId } = inline.props;
+      // BlockNote's getPos returns undefined when it serializes outside the
+      // editor for copy, drag or HTML export, which never calls destroy.
+      if (getPos() === undefined) {
+        paintLinkLabel(dom, targetPageId);
+        return { dom };
+      }
+      return { dom, destroy: showLinkLabel(dom, targetPageId) };
     },
   },
 );

@@ -12,7 +12,7 @@ import {
   TextSelection,
   type Transaction,
 } from "prosemirror-state";
-import { EditorView, type NodeView } from "prosemirror-view";
+import { EditorView } from "prosemirror-view";
 import { afterAll, beforeAll, expect, test } from "vitest";
 import * as Y from "yjs";
 import { editorSchema } from "./schema";
@@ -162,22 +162,6 @@ function blockIds(): Plugin {
   });
 }
 
-// ProseMirror's default schema rendering ignores the destroy that toDOM
-// returns to release the page tree store subscription, so it would retain
-// every closed view. The app renders page links through BlockNote's node
-// view, which calls it.
-function pageLinkView(node: PMNode): NodeView {
-  const rendered = nodeType("pageLink").spec.toDOM?.(node);
-  if (
-    typeof rendered !== "object" ||
-    !("dom" in rendered) ||
-    !("destroy" in rendered) ||
-    typeof rendered.destroy !== "function"
-  )
-    throw new Error("pageLink no longer renders a destroyable node view");
-  return rendered as NodeView;
-}
-
 function open(binding: BindingModule, bytes: Uint8Array): Session {
   const ydoc = new Y.Doc();
   Y.applyUpdate(ydoc, bytes);
@@ -192,7 +176,6 @@ function open(binding: BindingModule, bytes: Uint8Array): Session {
       schema,
       plugins: [sync, undoPlugin, blockIds()],
     }),
-    nodeViews: { pageLink: pageLinkView },
   });
   const updates: string[] = [];
   ydoc.on("update", (update: Uint8Array) => updates.push(hex(update)));

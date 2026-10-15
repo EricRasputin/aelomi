@@ -4,6 +4,7 @@ use super::{index_path, open, open_with, page};
 use crate::index::gate::Gate;
 use crate::index::{Config, HoldPoint};
 use crate::storage::{AppendError, DocId, Store};
+use crate::workspace::TreeError;
 use crate::workspace::fixture::index_fixture;
 
 fn title(opened: &super::Opened, id: &str) -> String {
@@ -128,4 +129,64 @@ fn concurrent_projections_and_appends_end_on_the_last_title() {
         }
     });
     assert_eq!(title(&opened, "daily"), "Daily 19");
+}
+
+#[test]
+fn a_caller_during_a_projection_waits_for_it_instead_of_projecting_again() {
+    let dir = tempfile::tempdir().unwrap();
+    let gate = Arc::new(Gate::default());
+    let opened = open_with(
+        Store::open(dir.path()).unwrap(),
+        index_path(dir.path()),
+        Config::DEFAULT,
+        gate.clone(),
+    );
+    opened.append(&index_fixture());
+    gate.arm(HoldPoint::TreeBeforeInstall);
+    let (first, second) = std::thread::scope(|scope| {
+        let first = scope.spawn(|| opened.workspace.tree().unwrap());
+        gate.wait_held(&HoldPoint::TreeBeforeInstall);
+        let second = scope.spawn(|| opened.workspace.tree().unwrap());
+        super::eventually(std::time::Duration::from_secs(10), || {
+            (opened.workspace.tree_projections() == (1, 1)).then_some(())
+        });
+        gate.release();
+        (first.join().unwrap(), second.join().unwrap())
+    });
+    assert!(Arc::ptr_eq(&first, &second));
+    assert_eq!(opened.workspace.tree_projections(), (1, 1));
+    assert_eq!(title(&opened, "daily"), "Daily");
+    assert_eq!(opened.workspace.tree_projections(), (1, 1));
+}
+
+#[test]
+fn a_failed_projection_releases_its_waiters_to_project_for_themselves() {
+    let dir = tempfile::tempdir().unwrap();
+    let gate = Arc::new(Gate::default());
+    let opened = open_with(
+        Store::open(dir.path()).unwrap(),
+        index_path(dir.path()),
+        Config::DEFAULT,
+        gate.clone(),
+    );
+    let workspace = crate::storage::DocId::workspace();
+    let mut editor = crate::workspace::fixture::Editor::new(5);
+    let malformed = editor.edit(&workspace, |txn| {
+        yrs::Array::insert(&yrs::WriteTxn::get_or_insert_array(txn, "pages"), txn, 0, 1);
+    });
+    opened.workspace.append(&workspace, &malformed).unwrap();
+    gate.arm(HoldPoint::TreeBeforeLoad);
+    let (first, second) = std::thread::scope(|scope| {
+        let first = scope.spawn(|| opened.workspace.tree().map(|_| ()));
+        gate.wait_held(&HoldPoint::TreeBeforeLoad);
+        let second = scope.spawn(|| opened.workspace.tree().map(|_| ()));
+        super::eventually(std::time::Duration::from_secs(10), || {
+            (opened.workspace.tree_projections() == (1, 1)).then_some(())
+        });
+        gate.release();
+        (first.join().unwrap(), second.join().unwrap())
+    });
+    assert!(matches!(first, Err(TreeError::Malformed(_))));
+    assert!(matches!(second, Err(TreeError::Malformed(_))));
+    assert_eq!(opened.workspace.tree_projections(), (2, 1));
 }

@@ -2,9 +2,11 @@
 
 use std::fmt;
 
+use yrs::branch::{Branch, BranchPtr};
 use yrs::types::text::YChange;
 use yrs::{
-    Any, Array, ArrayRef, GetString, Map, MapRef, Out, ReadTxn, Text, Xml, XmlFragment, XmlOut,
+    Any, Array, ArrayRef, GetString, Map, MapRef, Out, ReadTxn, Text, TextRef, Xml, XmlElementRef,
+    XmlFragment, XmlOut,
 };
 
 use super::records::PageId;
@@ -65,6 +67,9 @@ pub enum BodyProblem {
     /// The doc has content under this other root and none under `prosemirror`, so it has no
     /// blocks.
     UnrecognizedRoot(String),
+    /// The `prosemirror` root, or an element under it, holds content that is not XML, such as
+    /// text or values another writer stored there. That content is skipped.
+    NotAFragment,
     /// A blockContainer has no string `id`. Its own content is skipped and its children read.
     MissingBlockId,
     /// A `pageLink` has no valid `targetPageId`. It reads as a space.
@@ -77,6 +82,7 @@ impl fmt::Display for BodyProblem {
             Self::UnrecognizedRoot(root) => {
                 write!(f, "the body is under root {root:?}, not {BODY_ROOT:?}")
             }
+            Self::NotAFragment => write!(f, "the {BODY_ROOT:?} body holds content that is not XML"),
             Self::MissingBlockId => f.write_str("a blockContainer has no string id"),
             Self::InvalidPageLink => f.write_str("a pageLink has no valid targetPageId"),
         }
@@ -95,23 +101,20 @@ impl Body {
 /// content has no blocks. A malformed part is skipped and named, never fails the whole body.
 pub fn read_body<T: ReadTxn>(txn: &T) -> Body {
     let mut body = Body::default();
-    let root = match txn.get_xml_fragment(BODY_ROOT) {
-        Some(root) if root.len(txn) > 0 => root,
-        _ => {
-            if let Some(name) = populated_root(txn) {
-                body.note(BodyProblem::UnrecognizedRoot(name));
-            }
-            return body;
+    let Some(root) = body_root(txn, &mut body) else {
+        if let Some(name) = populated_root(txn) {
+            body.note(BodyProblem::UnrecognizedRoot(name));
         }
+        return body;
     };
-    let mut stack: Vec<XmlOut> = children(txn, &root);
+    let mut stack = nodes(txn, root, &mut body);
     stack.reverse();
     while let Some(node) = stack.pop() {
         let XmlOut::Element(element) = node else {
             continue;
         };
         if element.tag().as_ref() != node::BLOCK_CONTAINER {
-            let mut inner = children(txn, &element);
+            let mut inner = children(txn, &element, &mut body);
             inner.reverse();
             stack.extend(inner);
             continue;
@@ -122,10 +125,10 @@ pub fn read_body<T: ReadTxn>(txn: &T) -> Body {
         };
         let mut segments = Segments::default();
         let mut nested = Vec::new();
-        for child in children(txn, &element) {
+        for child in children(txn, &element, &mut body) {
             match child {
                 XmlOut::Element(group) if group.tag().as_ref() == node::BLOCK_GROUP => {
-                    nested.extend(children(txn, &group))
+                    nested.extend(children(txn, &group, &mut body))
                 }
                 content if id.is_some() => segments.content(txn, content, &mut body),
                 _ => {}
@@ -144,6 +147,62 @@ pub fn read_body<T: ReadTxn>(txn: &T) -> Body {
     body
 }
 
+/// The `prosemirror` root when it holds anything. A root that arrived in an update has no type
+/// until someone asks for one, so its content decides, whatever type this doc gave it.
+fn body_root<T: ReadTxn>(txn: &T, body: &mut Body) -> Option<BranchPtr> {
+    let root = txn.get(BODY_ROOT)?;
+    let branch: &Branch = match &root {
+        Out::UndefinedRef(branch) => branch,
+        Out::YXmlFragment(fragment) => fragment.as_ref(),
+        Out::YText(text) => text.as_ref(),
+        Out::YArray(array) => array.as_ref(),
+        Out::YMap(map) => map.as_ref(),
+        Out::YXmlElement(element) => element.as_ref(),
+        Out::YXmlText(text) => text.as_ref(),
+        Out::Any(_) | Out::YDoc(_) => return None,
+    };
+    let branch = BranchPtr::from(branch);
+    let sequence = ArrayRef::from(branch).len(txn) > 0;
+    let entries = MapRef::from(branch).len(txn) > 0;
+    if entries {
+        body.note(BodyProblem::NotAFragment);
+    }
+    (sequence || entries).then_some(branch)
+}
+
+/// Every XML node in `branch`'s sequence. yrs's own children iterator ends at the first value
+/// that is not XML, which would drop the nodes after it unnamed, and its sequence iterator never
+/// ends on a string with a multi-byte character, so a branch holding text is read as text runs.
+fn nodes<T: ReadTxn>(txn: &T, branch: BranchPtr, body: &mut Body) -> Vec<XmlOut> {
+    let text = TextRef::from(branch);
+    if !text.get_string(txn).is_empty() {
+        body.note(BodyProblem::NotAFragment);
+        return text
+            .diff(txn, YChange::identity)
+            .into_iter()
+            .filter_map(|run| xml(run.insert))
+            .collect();
+    }
+    ArrayRef::from(branch)
+        .iter(txn)
+        .filter_map(|value| {
+            let node = xml(value);
+            if node.is_none() {
+                body.note(BodyProblem::NotAFragment);
+            }
+            node
+        })
+        .collect()
+}
+
+fn xml(value: Out) -> Option<XmlOut> {
+    match value {
+        Out::YXmlElement(element) => Some(XmlOut::Element(element)),
+        Out::YXmlText(text) => Some(XmlOut::Text(text)),
+        _ => None,
+    }
+}
+
 /// The rendered text of `segments`: each link becomes `label(target)`.
 pub fn render(segments: &[Segment], mut label: impl FnMut(&PageId) -> String) -> String {
     let mut text = String::new();
@@ -156,8 +215,8 @@ pub fn render(segments: &[Segment], mut label: impl FnMut(&PageId) -> String) ->
     text
 }
 
-fn children<T: ReadTxn>(txn: &T, parent: &impl XmlFragment) -> Vec<XmlOut> {
-    parent.children(txn).collect()
+fn children<T: ReadTxn>(txn: &T, parent: &XmlElementRef, body: &mut Body) -> Vec<XmlOut> {
+    nodes(txn, BranchPtr::from(parent.as_ref() as &Branch), body)
 }
 
 fn populated_root<T: ReadTxn>(txn: &T) -> Option<String> {
@@ -219,7 +278,7 @@ impl Segments {
                         {
                             self.push_text(&caption);
                         }
-                        let mut inner = children(txn, &element);
+                        let mut inner = children(txn, &element, body);
                         inner.reverse();
                         stack.extend(inner);
                     }

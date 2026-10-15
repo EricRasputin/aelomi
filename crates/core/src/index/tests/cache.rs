@@ -8,7 +8,7 @@ use super::index_path;
 use crate::index::HoldPoint;
 use crate::index::db::{
     CacheOpen, CacheProblem, CacheState, Corrupt, KEY_SPACING, OrderKey, PAGE_KEYS, PageKey,
-    SCHEMA, SCHEMA_VERSION, SLOTS, StoredSegments, Writer, allocate,
+    ReplaceKind, SCHEMA, SCHEMA_VERSION, SLOTS, StoredSegments, Writer, allocate,
 };
 use crate::workspace::body::Segment;
 use crate::workspace::records::PageId;
@@ -120,6 +120,44 @@ fn block_rowids_pack_a_page_key_and_a_slot_into_a_positive_integer() {
 }
 
 #[test]
+fn a_backlink_from_a_page_s_last_block_slot_names_that_page() {
+    let mut conn = rusqlite::Connection::open_in_memory().unwrap();
+    conn.execute_batch(SCHEMA).unwrap();
+    let page = |key: i64, id: &str, title: &str| {
+        conn.execute(
+            "INSERT INTO pages (rowid, page_id, title, sibling_order, created_at, updated_at, active)
+             VALUES (?1, ?2, ?3, 0, ?1, ?1, 1)",
+            rusqlite::params![key, id, title],
+        )
+        .unwrap();
+    };
+    for (key, id) in [(1, "decoy-1"), (6, "decoy-6"), (7, "decoy-7")] {
+        page(key, id, "Decoy");
+    }
+    page(3, "source", "Source");
+    page(9, "target", "Target");
+    let rowid = PageKey::new(3).unwrap().block(SLOTS - 1);
+    conn.execute_batch(&format!(
+        "INSERT INTO blocks (rowid, block_id, ordinal, segments) VALUES ({rowid}, 'b-last', 0, '[]');
+         INSERT INTO block_text (rowid, text) VALUES ({rowid}, 'see Target');
+         INSERT INTO links (target_id, block_rowid) VALUES ('target', {rowid});"
+    ))
+    .unwrap();
+    let target = PageId::new("target").unwrap();
+    assert_eq!(
+        crate::index::query::backlinks(&mut conn, &target).unwrap(),
+        vec![crate::index::Backlink {
+            page_id: PageId::new("source").unwrap(),
+            title: "Source".into(),
+            blocks: vec![crate::index::BacklinkBlock {
+                block_id: crate::workspace::body::BlockId::new("b-last").unwrap(),
+                text: "see Target".into(),
+            }],
+        }]
+    );
+}
+
+#[test]
 fn stored_segments_round_trip_and_reject_anything_else() {
     let segments = vec![
         Segment::Text("see ".into()),
@@ -177,6 +215,47 @@ fn cache_problems_read_as_their_log_labels() {
             "corrupt (segments)",
             "key-space",
             "order-changed",
+        ]
+    );
+}
+
+#[test]
+fn damage_backs_off_and_an_outdated_cache_does_not() {
+    let kinds: Vec<(String, ReplaceKind)> = [
+        CacheProblem::NotAFile,
+        CacheProblem::NotADatabase("e".into()),
+        CacheProblem::SchemaMismatch,
+        CacheProblem::IntegrityCheck("e".into()),
+        CacheProblem::FtsIntegrityCheck("e".into()),
+        CacheProblem::Corrupt(Corrupt::Key),
+        CacheProblem::SchemaVersion {
+            found: 3,
+            expected: 2,
+        },
+        CacheProblem::ErasedPages { count: 1 },
+        CacheProblem::KeySpace,
+        CacheProblem::OrderChanged,
+    ]
+    .iter()
+    .map(|problem| (problem.to_string(), problem.kind()))
+    .collect();
+    let kind = |label: &str, kind| (label.to_owned(), kind);
+    assert_eq!(
+        kinds,
+        [
+            kind("not-a-file", ReplaceKind::Fault),
+            kind("not-a-database (e)", ReplaceKind::Fault),
+            kind("schema-mismatch", ReplaceKind::Fault),
+            kind("integrity-check (e)", ReplaceKind::Fault),
+            kind("fts-integrity-check (e)", ReplaceKind::Fault),
+            kind("corrupt (key)", ReplaceKind::Fault),
+            kind(
+                "schema-version (found 3, expected 2)",
+                ReplaceKind::Outdated
+            ),
+            kind("erased-pages (count 1)", ReplaceKind::Outdated),
+            kind("key-space", ReplaceKind::Outdated),
+            kind("order-changed", ReplaceKind::Outdated),
         ]
     );
 }

@@ -91,12 +91,37 @@ fn open_storage(app: &tauri::App) {
         trace::since_start_ms()
     );
     if let Ok(workspace) = storage.workspace() {
+        warm_tree(workspace.clone());
         let app = app.handle().clone();
         workspace.subscribe_health(move |health| {
             let _ = StorageHealthChanged(health.into()).emit(&app);
         });
     }
     app.manage(storage);
+}
+
+/// Projects the page tree while the webview starts, so the first `page_tree` call finds it in
+/// the workspace's memo. The memo is checked against the workspace revision, so an append
+/// before the call makes it project again.
+fn warm_tree(workspace: std::sync::Arc<aelomi_core::workspace::Workspace>) {
+    let spawned = std::thread::Builder::new()
+        .name("aelomi-tree-warm".into())
+        .stack_size(8 * 1024 * 1024)
+        .spawn(move || {
+            let started = std::time::Instant::now();
+            let outcome = match workspace.tree() {
+                Ok(tree) => format!("pages={}", tree.pages.len()),
+                Err(_) => "failed".to_owned(),
+            };
+            println!(
+                "tree warm {outcome} ms={} t_ms={:.1}",
+                trace::ms(started.elapsed()),
+                trace::since_start_ms()
+            );
+        });
+    if let Err(e) = spawned {
+        println!("tree warm skipped: {e}");
+    }
 }
 
 fn publish_index<R: Runtime>(app: &AppHandle<R>, event: &IndexEvent) {

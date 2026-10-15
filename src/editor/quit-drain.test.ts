@@ -8,9 +8,13 @@ import { drainDeliveries } from "./delivery";
 import { loadOrigin, syncPage } from "./page-sync";
 import { connectQuitDrain, onQuitDrain } from "./quit-drain";
 
-vi.mock("../ipc", async () => {
+vi.mock("../ipc", async (importOriginal) => {
   const mock = await import("../ipc/mock");
-  return { commands: mock.commands, events: mock.events };
+  return {
+    ...(await importOriginal<typeof import("../ipc")>()),
+    commands: mock.commands,
+    events: mock.events,
+  };
 });
 
 const stops: (() => void)[] = [];
@@ -71,7 +75,7 @@ test("a quit drains every edit still in flight before completing, then exits", a
   expect(commandsCalled()).toEqual(["docAppend", "completeQuit"]);
   expect(useQuitStore.getState().decision).toMatchObject({
     kind: "quitting",
-    asked: false,
+    origin: "drained",
   });
 });
 

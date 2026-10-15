@@ -1,6 +1,7 @@
 import type { BlockNoteEditor } from "@blocknote/core";
 import * as Y from "yjs";
-import { bodyRoot, isPageId, rootHasContent } from "./body-reader";
+import { bodyRoot, isPageId } from "./body-reader";
+import { rootContent, rootHasContent } from "./yjs-roots";
 
 type Schema = BlockNoteEditor["pmSchema"];
 type PMNode = ReturnType<Schema["text"]>;
@@ -76,6 +77,17 @@ export function checkBody(doc: Y.Doc, schema: Schema): BodyCheck {
   for (const [name, type] of doc.share) {
     if (name !== bodyRoot && rootHasContent(type))
       return { kind: "readOnly", problem: { kind: "foreignRoot", root: name } };
+  }
+  const root = doc.share.get(bodyRoot);
+  if (root) {
+    const { sequence, entries } = rootContent(root);
+    const xml = (value: unknown) =>
+      value instanceof Y.XmlElement || value instanceof Y.XmlText;
+    if (
+      entries.length > 0 ||
+      !sequence.every((item) => item.content.getContent().every(xml))
+    )
+      return { kind: "readOnly", problem: { kind: "notAFragment" } };
   }
   let fragment: Y.XmlFragment;
   try {

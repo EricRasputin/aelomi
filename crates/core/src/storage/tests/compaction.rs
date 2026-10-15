@@ -1,12 +1,13 @@
 use std::time::Duration;
 
 use yrs::updates::decoder::Decode;
-use yrs::{Doc, GetString, ReadTxn, StateVector, Text, Transact, Update};
+use yrs::{Array, Doc, GetString, ReadTxn, StateVector, Text, Transact, Update, WriteTxn};
 
 use super::{
-    Delivery, Env, applied, assert_doc, doc, frames, in_order, log_name, ops_of_updates,
-    out_of_order, read_log_file, snapshot_payload, soon, typed, v1_record_at, v1_snapshot_name,
-    v2_log, v2_snapshot_name, v2_snapshot_tmp_name, with_a_loner_sixth, without,
+    ATTRIBUTED_PAGE, Delivery, Env, applied, assert_doc, attributed_page, doc, frames, in_order,
+    log_name, ops_of_updates, out_of_order, read_log_file, render_body, snapshot_payload, soon,
+    typed, v1_record_at, v1_snapshot_name, v2_log, v2_snapshot_name, v2_snapshot_tmp_name,
+    with_a_loner_sixth, without,
 };
 use crate::storage::compact::CompactError;
 use crate::storage::doc_id::DocId;
@@ -18,19 +19,24 @@ use crate::storage::state::Limits;
 use crate::storage::store::Store;
 use crate::storage::testkit::{UpdateGen, apply, doc_from, fingerprint};
 
-fn two_generations(env: &Env) -> (Store, Vec<Vec<u8>>) {
-    two_generations_with_snapshot(env, false)
+fn two_generations_with_snapshot(env: &Env, reopen_first: bool) -> (Store, Vec<Vec<u8>>) {
+    two_generations_of(env, &Page::Generated.rounds(), reopen_first)
 }
 
-fn two_generations_with_snapshot(env: &Env, reopen_first: bool) -> (Store, Vec<Vec<u8>>) {
+/// Appends each round and compacts after the second, so the doc's first generation is a
+/// snapshot and a log.
+fn two_generations_of(
+    env: &Env,
+    rounds: &[Vec<Vec<u8>>],
+    reopen_first: bool,
+) -> (Store, Vec<Vec<u8>>) {
     let mut store = env.open();
     let a = doc("a");
-    let mut updates = UpdateGen::new(21, 3);
     let mut sent = Vec::new();
-    for round in 0..4 {
-        for update in updates.updates(10) {
-            store.append(&a, &update).unwrap();
-            sent.push(update);
+    for (round, updates) in rounds.iter().enumerate() {
+        for update in updates {
+            store.append(&a, update).unwrap();
+            sent.push(update.clone());
         }
         store.run_writer_once();
         if round == 1 {
@@ -63,66 +69,131 @@ fn typing(n: usize, chunk: usize) -> Vec<Vec<u8>> {
         .collect()
 }
 
+#[derive(Clone, Copy, Debug)]
+enum Page {
+    Generated,
+    Attributed,
+}
+
+impl Page {
+    fn rounds(self) -> Vec<Vec<Vec<u8>>> {
+        match self {
+            Self::Generated => {
+                let mut updates = UpdateGen::new(21, 3);
+                (0..4).map(|_| updates.updates(10)).collect()
+            }
+            Self::Attributed => attributed_page().into_iter().map(|u| vec![u]).collect(),
+        }
+    }
+
+    fn assert_loads(self, store: &Store, sent: &[Vec<u8>], case: &str) {
+        let a = doc("a");
+        assert_doc(store, &a, sent);
+        if let Self::Attributed = self {
+            let loaded = doc_from([store.load(&a).unwrap().as_slice()]);
+            assert_eq!(render_body(&loaded), ATTRIBUTED_PAGE, "{case}");
+        }
+    }
+}
+
 #[test]
 fn compaction_interrupted_at_every_step_loses_nothing() {
     let a = doc("a");
-    for (reopened, published) in [
-        (false, "snapshot-0000000002.ysnap2"),
-        (true, "snapshot-0000000002.ysnap"),
-    ] {
-        let ready = |env: &Env| {
-            let (store, sent) = two_generations(env);
-            if !reopened {
-                return (store, sent);
-            }
-            drop(store);
-            let store = env.open();
-            assert_doc(&store, &a, &sent);
-            (store, sent)
-        };
-        let steps = {
-            let env = Env::manual();
-            let (store, _) = ready(&env);
-            let before = env.fs.ops().len();
-            store.compact(&a).unwrap();
-            assert_eq!(env.doc_files(&a), [published]);
-            env.fs.ops().len() - before
-        };
-        assert_eq!(
-            steps, 15,
-            "create, write, fsync, full sync, read, rename, fsync, full sync, list, 2 reads, 2 removes, fsync, full sync"
-        );
-
-        for k in 0..=steps {
-            for crash in [Crash::DropUnsynced, Crash::KeepTornPrefix(k as u64)] {
-                let case = format!("{published}: crash after {k} ops ({crash:?})");
-                let env = Env::manual();
-                let (store, sent) = ready(&env);
-                env.fs.die_after(k);
-                let _ = store.compact(&a);
+    for page in [Page::Generated, Page::Attributed] {
+        for (reopened, published) in [
+            (false, "snapshot-0000000002.ysnap2"),
+            (true, "snapshot-0000000002.ysnap"),
+        ] {
+            let ready = |env: &Env| {
+                let (store, sent) = two_generations_of(env, &page.rounds(), false);
+                if !reopened {
+                    return (store, sent);
+                }
                 drop(store);
-                env.fs.crash(crash);
-
                 let store = env.open();
-                assert_doc(&store, &a, &sent);
-                let result = match store.run_compactor_once() {
-                    Some((_, result)) => result,
-                    None => store.compact(&a),
-                };
-                result.unwrap_or_else(|e| panic!("{case}: next compaction fails: {e}"));
-                let files = env.doc_files(&a);
-                assert_eq!(files.len(), 1, "{case}: {files:?}");
-                assert!(files[0].starts_with("snapshot-"), "{case}: {files:?}");
-                assert_eq!(
-                    env.quarantine(),
-                    [].into(),
-                    "{case}: the old generation is deleted"
-                );
-                drop(store);
-                assert_doc(&env.open(), &a, &sent);
+                page.assert_loads(&store, &sent, "reopened");
+                (store, sent)
+            };
+            let steps = {
+                let env = Env::manual();
+                let (store, _) = ready(&env);
+                let before = env.fs.ops().len();
+                store.compact(&a).unwrap();
+                assert_eq!(env.doc_files(&a), [published]);
+                env.fs.ops().len() - before
+            };
+            assert_eq!(
+                steps, 15,
+                "create, write, fsync, full sync, read, rename, fsync, full sync, list, 2 reads, 2 removes, fsync, full sync"
+            );
+
+            for k in 0..=steps {
+                for crash in [Crash::DropUnsynced, Crash::KeepTornPrefix(k as u64)] {
+                    let case = format!("{page:?} {published}: crash after {k} ops ({crash:?})");
+                    let env = Env::manual();
+                    let (store, sent) = ready(&env);
+                    env.fs.die_after(k);
+                    let _ = store.compact(&a);
+                    drop(store);
+                    env.fs.crash(crash);
+
+                    let store = env.open();
+                    page.assert_loads(&store, &sent, &case);
+                    let result = match store.run_compactor_once() {
+                        Some((_, result)) => result,
+                        None => store.compact(&a),
+                    };
+                    result.unwrap_or_else(|e| panic!("{case}: next compaction fails: {e}"));
+                    let files = env.doc_files(&a);
+                    assert_eq!(files.len(), 1, "{case}: {files:?}");
+                    assert!(files[0].starts_with("snapshot-"), "{case}: {files:?}");
+                    assert_eq!(
+                        env.quarantine(),
+                        [].into(),
+                        "{case}: the old generation is deleted"
+                    );
+                    drop(store);
+                    page.assert_loads(&env.open(), &sent, &case);
+                }
             }
         }
     }
+}
+
+#[test]
+fn an_attributed_page_over_the_limit_compacts_to_a_snapshot_of_its_exact_content() {
+    let mut env = Env::manual();
+    env.limits = Limits {
+        records: 3,
+        ..Limits::DATA_6
+    };
+    let store = env.open();
+    let a = doc("a");
+    let sent = attributed_page();
+    for update in &sent {
+        store.append(&a, update).unwrap();
+    }
+    store.run_writer_once();
+    assert_eq!(store.queued_compactions(), std::slice::from_ref(&a));
+    assert_eq!(env.doc_files(&a), [log_name(0, 0)]);
+
+    let (compacted, result) = store.run_compactor_once().unwrap();
+    assert_eq!(compacted, a);
+    result.unwrap();
+    assert_eq!(env.doc_files(&a), [v2_snapshot_name(1)]);
+    assert_eq!(env.quarantine(), [].into());
+    let path = env.path("docs/a").join(v2_snapshot_name(1));
+    let snapshot = doc_from([snapshot_payload(
+        &v2_snapshot_name(1),
+        &env.fs.files()[&path],
+    )]);
+    assert_eq!(render_body(&snapshot), ATTRIBUTED_PAGE);
+
+    drop(store);
+    let store = env.open();
+    let loaded = doc_from([store.load(&a).unwrap().as_slice()]);
+    assert_eq!(render_body(&loaded), ATTRIBUTED_PAGE);
+    assert_eq!(store.queued_compactions(), []);
 }
 
 fn two_generations_pending(env: &Env, sent: &[Vec<u8>]) -> Store {
@@ -545,6 +616,52 @@ fn a_doc_whose_snapshot_passes_the_payload_limit_skips_compaction_and_keeps_writ
     );
     drop(store);
     assert_doc(&env.open(), &a, &sent);
+}
+
+/// Text runs leave out values stored beside text in one branch, so compaction can't check a
+/// snapshot of this doc and must keep its log.
+#[test]
+fn a_doc_whose_snapshot_cannot_be_checked_skips_compaction_and_keeps_its_log() {
+    let mut env = Env::manual();
+    env.limits = Limits {
+        records: 3,
+        ..Limits::DATA_6
+    };
+    let source = Doc::with_client_id(1);
+    let sent: Vec<Vec<u8>> = (0..5)
+        .map(|edit| {
+            let before = source.transact().state_vector();
+            let mut txn = source.transact_mut();
+            if edit == 0 {
+                let values = txn.get_or_insert_array("mixed");
+                values.push_back(&mut txn, 1);
+            } else {
+                let text = txn.get_or_insert_text("mixed");
+                text.insert(&mut txn, 0, "é");
+            }
+            drop(txn);
+            source.transact().encode_state_as_update_v1(&before)
+        })
+        .collect();
+    let store = env.open();
+    let a = doc("a");
+    for update in &sent {
+        store.append(&a, update).unwrap();
+    }
+    store.run_writer_once();
+    assert_eq!(store.queued_compactions(), std::slice::from_ref(&a));
+
+    let (compacted, result) = store.run_compactor_once().unwrap();
+    assert_eq!(compacted, a);
+    result.expect("compaction skips the doc");
+    let log = log_name(0, 0);
+    assert_eq!(env.doc_files(&a), [log.as_str()]);
+    assert_eq!(env.quarantine(), [].into());
+    let path = env.path("docs/a").join(&log);
+    assert_eq!(
+        read_log_file(&path, &env.fs.durable_files()[&path]).records,
+        sent
+    );
 }
 
 #[test]

@@ -73,10 +73,32 @@ export function scrollFrames(editor: Element): Promise<ScrollRun> {
   });
 }
 
+/**
+ * Splits the longest interval at the previous frame's end: rendering work
+ * that frame did after its stamp, then time until the next stamp, which holds
+ * tasks between frames, layout before the stamp, and scheduling.
+ */
+export function longestInterval(frames: readonly ScrollFrame[]) {
+  let at = 1;
+  for (let i = 1; i < frames.length; i++)
+    if ((frames[i]?.interval ?? 0) > (frames[at]?.interval ?? 0)) at = i;
+  const previous = frames[at - 1];
+  const frame = frames[at];
+  if (!previous || !frame) return null;
+  return {
+    at,
+    interval: frame.interval,
+    previousWork: previous.end - previous.stamp,
+    betweenFrames: frame.stamp - previous.end,
+  };
+}
+
 export function scrollSummary({ idle, frames }: ScrollRun) {
   const work = frames.map((frame) => frame.end - frame.stamp);
   const intervals = frames.map((frame) => frame.interval);
   return {
+    longest: longestInterval(frames),
+    over33: intervals.filter((interval) => interval > 33).length,
     frames: frames.length,
     moved: frames.filter((frame) => frame.moved).length,
     landed: frames.filter((frame) => frame.end > 0).length,

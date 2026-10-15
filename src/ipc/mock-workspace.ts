@@ -1,4 +1,5 @@
 import * as Y from "yjs";
+import { rootContent } from "../editor/yjs-roots";
 import type { PageTree, TrashedPage, TreePage } from "./bindings";
 
 export type PageRecord = {
@@ -113,8 +114,26 @@ function readRecord(map: unknown): PageRecord | null {
   };
 }
 
+/**
+ * Mirrors `pages_root` in `crates/core/src/workspace/records.rs`: a pages
+ * root that holds sequence content, or a populated root of another shared
+ * type, has no records this build can read.
+ */
+export function pagesRootProblem(doc: Y.Doc): string | null {
+  const root = doc.share.get(pagesRoot);
+  if (!root) return null;
+  const { sequence, entries } = rootContent(root);
+  if (sequence.length > 0)
+    return "the pages root is not a Y.Map, found a sequence";
+  const mapLike = root instanceof Y.Map || root.constructor === Y.AbstractType;
+  if (!mapLike && entries.length > 0)
+    return "the pages root is not a Y.Map, found another shared type";
+  return null;
+}
+
 export function readRecords(doc: Y.Doc): Map<string, PageRecord> {
   const records = new Map<string, PageRecord>();
+  if (pagesRootProblem(doc) !== null) return records;
   for (const [id, map] of doc.getMap(pagesRoot)) {
     const record = readRecord(map);
     if (record) records.set(id, record);

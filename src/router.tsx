@@ -103,10 +103,16 @@ function useEntryPage() {
   }, [source, navigate]);
 }
 
+export const workspaceCopy = {
+  unreadable:
+    "Aelomi can't read this workspace's page list, so no page can open. Nothing on disk was changed.",
+};
+
 function IndexScreen() {
   const tooltipId = useId();
   const status = usePingStore((state) => state.status);
   const ping = usePingStore((state) => state.ping);
+  const source = usePageTreeStore((state) => state.source);
 
   useLayoutEffect(markIndexCommit, []);
   useEntryPage();
@@ -143,6 +149,12 @@ function IndexScreen() {
           </Tooltip.Positioner>
         </Tooltip.Portal>
       </Tooltip.Root>
+      {source.kind === "error" && (
+        <div role="alert" className="workspace-alert">
+          <p>{workspaceCopy.unreadable}</p>
+          <p className="workspace-alert-reason">{source.message}</p>
+        </div>
+      )}
       {import.meta.env.DEV && (
         <Link
           to="/dev/storage"
@@ -185,6 +197,13 @@ const mockRoutes =
           path: "/perf/keystroke/page-5000-blocks",
           component: lazyRouteComponent(
             () => import("./perf/keystroke-page-5000"),
+          ),
+        }),
+        createRoute({
+          getParentRoute: () => rootRoute,
+          path: "/perf/keystroke/layout-delay",
+          component: lazyRouteComponent(
+            () => import("./perf/keystroke-layout-delay"),
           ),
         }),
         createRoute({

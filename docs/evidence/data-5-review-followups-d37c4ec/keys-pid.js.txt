@@ -1,0 +1,27 @@
+// usage: osascript -l JavaScript keys-pid.js <pid> <step> [<step> ...]
+// step: "cmd:<char>", "text:<chars>", "code:<n>", "cmdcode:<n>", "wait:<ms>"
+function run(argv) {
+  const pid = Number(argv[0]);
+  if (!Number.isInteger(pid) || pid <= 0) throw new Error("Owned app PID required");
+  const se = Application("System Events");
+  const procs = se.processes.whose({ unixId: pid });
+  if (procs.length !== 1 || procs[0].windows.length < 1) throw new Error("Owned app window absent");
+  procs[0].frontmost = true;
+  delay(0.3);
+  const done = [];
+  for (const step of argv.slice(1)) {
+    const [kind, value] = [step.slice(0, step.indexOf(":")), step.slice(step.indexOf(":") + 1)];
+    if (!procs[0].frontmost()) throw new Error("Owned app lost the front before " + step);
+    if (kind === "cmd") se.keystroke(value, { using: ["command down"] });
+    else if (kind === "text") se.keystroke(value);
+    else if (kind === "code") se.keyCode(Number(value));
+    else if (kind === "cmdcode") se.keyCode(Number(value), { using: ["command down"] });
+    else if (kind === "shiftcode") se.keyCode(Number(value), { using: ["shift down"] });
+    else if (kind === "cmdshiftcode") se.keyCode(Number(value), { using: ["command down", "shift down"] });
+    else if (kind === "wait") delay(Number(value) / 1000);
+    else throw new Error("Unknown step " + step);
+    done.push(step);
+    delay(0.15);
+  }
+  return "PID " + pid + ": " + done.join(" ");
+}

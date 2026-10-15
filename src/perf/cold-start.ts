@@ -19,21 +19,29 @@ type Marks = {
   mcAfterRaf2: number;
 };
 
-let entry: Variant | null = null;
-let sent = false;
-const measured: Partial<Record<Variant, Marks>> = {};
+/**
+ * The report waits for both the entry route, which names the variant that
+ * counts, and that variant's complete marks. Marks of a variant that finishes
+ * first wait in `awaitingEntry`.
+ */
+type Report =
+  | { phase: "awaitingEntry"; measured: Map<Variant, Marks> }
+  | { phase: "awaitingMarks"; entry: Variant }
+  | { phase: "sent" };
 
-function afterTask(fn: () => void) {
-  const channel = new MessageChannel();
-  channel.port1.onmessage = () => fn();
-  channel.port2.postMessage(0);
+let report: Report = { phase: "awaitingEntry", measured: new Map() };
+const started = new Set<Variant>();
+
+function afterTask(): Promise<number> {
+  return new Promise((done) => {
+    const channel = new MessageChannel();
+    channel.port1.onmessage = () => done(epochMs());
+    channel.port2.postMessage(0);
+  });
 }
 
-function send() {
-  if (sent || entry === null) return;
-  const marks = measured[entry];
-  if (!marks || marks.mcAfterRaf1 === 0 || marks.mcAfterRaf2 === 0) return;
-  sent = true;
+function send(marks: Marks) {
+  report = { phase: "sent" };
   const fcp = performance.getEntriesByName("first-contentful-paint")[0];
   void commands.perfReport({
     variant: marks.variant,
@@ -48,29 +56,38 @@ function send() {
   });
 }
 
+function measured(marks: Marks) {
+  switch (report.phase) {
+    case "awaitingEntry":
+      report.measured.set(marks.variant, marks);
+      return;
+    case "awaitingMarks":
+      if (report.entry === marks.variant) send(marks);
+      return;
+    case "sent":
+      return;
+  }
+}
+
 function measure(variant: Variant) {
-  if (window.__AELOMI_PERF__ !== true || measured[variant]) return;
-  const marks: Marks = {
-    variant,
-    commit: epochMs(),
-    raf1: 0,
-    mcAfterRaf1: 0,
-    raf2: 0,
-    mcAfterRaf2: 0,
-  };
-  measured[variant] = marks;
+  if (window.__AELOMI_PERF__ !== true || started.has(variant)) return;
+  started.add(variant);
+  const commit = epochMs();
   requestAnimationFrame(() => {
-    marks.raf1 = epochMs();
-    afterTask(() => {
-      marks.mcAfterRaf1 = epochMs();
-      send();
-    });
+    const raf1 = epochMs();
+    const mcAfterRaf1 = afterTask();
     requestAnimationFrame(() => {
-      marks.raf2 = epochMs();
-      afterTask(() => {
-        marks.mcAfterRaf2 = epochMs();
-        send();
-      });
+      const raf2 = epochMs();
+      void Promise.all([mcAfterRaf1, afterTask()]).then(([first, second]) =>
+        measured({
+          variant,
+          commit,
+          raf1,
+          mcAfterRaf1: first,
+          raf2,
+          mcAfterRaf2: second,
+        }),
+      );
     });
   });
 }
@@ -85,7 +102,8 @@ export function markPageContent() {
 }
 
 export function resolveEntry(variant: Variant) {
-  if (entry !== null) return;
-  entry = variant;
-  send();
+  if (report.phase !== "awaitingEntry") return;
+  const marks = report.measured.get(variant);
+  if (marks) send(marks);
+  else report = { phase: "awaitingMarks", entry: variant };
 }

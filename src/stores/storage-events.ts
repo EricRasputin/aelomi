@@ -2,14 +2,45 @@ import { commands, events } from "../ipc";
 import { useQuitStore } from "./quit";
 import { useStorageHealthStore } from "./storage-health";
 
+/** Registration retries back off from the first delay to the cap. */
+const registrationRetry = { firstMs: 100, maxMs: 5_000 };
+
+/**
+ * Listens for health and quit events before reading their snapshots, then
+ * registers this webview for quit drains. Editing waits for that
+ * registration, so a refused quit status read or `frontendReady` call is
+ * retried until it succeeds or the connection is disposed. `ready` reports
+ * the first round's failures.
+ */
 export function connectStorageEvents() {
   let disposed = false;
   let healthEvents = 0;
   let quitListening = false;
+  let quitRead = false;
+  let retry: ReturnType<typeof setTimeout> | undefined;
   const unlisteners: (() => void)[] = [];
   const dispose = () => {
     disposed = true;
+    clearTimeout(retry);
     for (const unlisten of unlisteners.splice(0)) unlisten();
+  };
+  const register = async () => {
+    if (!quitRead) {
+      const status = await commands.quitStatus();
+      if (disposed) return;
+      quitRead = true;
+      useQuitStore.getState().receiveQuit(status);
+    }
+    await commands.frontendReady();
+    if (!disposed) useQuitStore.getState().register();
+  };
+  const retryRegistration = (delayMs: number) => {
+    retry = setTimeout(() => {
+      if (disposed) return;
+      register().catch(() =>
+        retryRegistration(Math.min(delayMs * 2, registrationRetry.maxMs)),
+      );
+    }, delayMs);
   };
   const ready = (async () => {
     const registrations = await Promise.allSettled([
@@ -54,13 +85,17 @@ export function connectStorageEvents() {
       useStorageHealthStore.getState().receiveHealth(health.value);
     }
     if (quit.status === "rejected") errors.push(quit.reason);
-    else if (!disposed) useQuitStore.getState().receiveQuit(quit.value);
-    if (!disposed && quitListening && quit.status === "fulfilled") {
+    else if (!disposed) {
+      quitRead = true;
+      useQuitStore.getState().receiveQuit(quit.value);
+    }
+    if (!disposed && quitListening) {
       try {
-        await commands.frontendReady();
-        if (!disposed) useQuitStore.getState().register();
+        if (quitRead) await register();
+        else retryRegistration(registrationRetry.firstMs);
       } catch (error: unknown) {
         errors.push(error);
+        if (!disposed) retryRegistration(registrationRetry.firstMs);
       }
     }
     if (errors.length > 0) {

@@ -1,0 +1,11 @@
+function run(argv) {
+  const se = Application("System Events");
+  const p = se.processes.whose({ unixId: Number(argv[0]) })[0];
+  p.frontmost = true;
+  delay(0.3);
+  for (const name of argv.slice(2)) {
+    p.menuBars[0].menuBarItems.byName(argv[1]).menus[0].menuItems.byName(name).click();
+    delay(0.3);
+  }
+  return "clicked " + argv.slice(1).join(" > ");
+}

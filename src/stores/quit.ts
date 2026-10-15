@@ -2,6 +2,9 @@ import { create } from "zustand";
 import { commands, type QuitStatus } from "../ipc";
 import { storageCopy } from "../storage-copy";
 
+/** Why the app is quitting: a drain that found nothing pending, or the user's Quit anyway. */
+export type QuitOrigin = "drained" | "userConfirmed";
+
 export type QuitDecision =
   | { kind: "open"; revision: number }
   | { kind: "draining"; revision: number }
@@ -15,8 +18,7 @@ export type QuitDecision =
       kind: "quitting";
       revision: number;
       pendingDocs: string[];
-      /** The user chose Quit anyway, rather than a drain finding nothing pending. */
-      asked: boolean;
+      origin: QuitOrigin;
     };
 
 type QuitStore = {
@@ -41,9 +43,11 @@ function decide(status: QuitStatus, current: QuitDecision): QuitDecision {
           : current.kind === "quitting" || current.kind === "asking"
             ? current.pendingDocs
             : [],
-      asked:
+      origin:
         current.kind === "asking" ||
-        (current.kind === "quitting" && current.asked),
+        (current.kind === "quitting" && current.origin === "userConfirmed")
+          ? "userConfirmed"
+          : "drained",
     };
   switch (phase) {
     case "Open":
@@ -91,7 +95,7 @@ export const useQuitStore = create<QuitStore>((set, get) => ({
         kind: "quitting",
         revision: decision.revision,
         pendingDocs: decision.pendingDocs,
-        asked: true,
+        origin: "userConfirmed",
       },
     });
     try {
@@ -120,6 +124,6 @@ export function canEdit(state: Pick<QuitStore, "decision" | "registered">) {
 export function quitDialogOpen(decision: QuitDecision) {
   return (
     decision.kind === "asking" ||
-    (decision.kind === "quitting" && decision.asked)
+    (decision.kind === "quitting" && decision.origin === "userConfirmed")
   );
 }
