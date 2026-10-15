@@ -1,0 +1,49 @@
+import json
+import subprocess
+import time
+from pathlib import Path
+
+RUN = '38816440437'
+HEAD = '53b8763c1ae1b4a46d193113fe67767bbde72578'
+root = Path('.audit/fix3')
+
+def gh(*args):
+    return subprocess.check_output(['gh', *args], text=True)
+
+def metadata():
+    data = json.loads(gh('run', 'view', RUN, '--json', 'headSha,status,attempt,jobs'))
+    assert data['headSha'] == HEAD, data['headSha']
+    return data
+
+for series in range(1, 4):
+    deadline = time.time() + 1800
+    while True:
+        data = metadata()
+        jobs = [job for job in data['jobs'] if job['name'] == 'cold-start']
+        if jobs and jobs[-1]['status'] == 'completed':
+            break
+        assert time.time() < deadline, 'cold-start exceeded the bounded wait'
+        time.sleep(30)
+    job = jobs[-1]
+    folder = root / f'series-{series}'
+    folder.mkdir()
+    subprocess.run(['gh', 'run', 'download', RUN, '-n', 'cold-start-results', '-D', str(folder)], check=True)
+    (folder / 'job.log').write_text(gh('run', 'view', RUN, '--job', str(job['databaseId']), '--log'))
+    (folder / 'run.json').write_text(json.dumps(data, indent=2))
+    print(f"series {series}: attempt {data['attempt']} job {job['databaseId']} {job['conclusion']}", flush=True)
+    for path in sorted(folder.rglob('results.json')):
+        result = json.loads(path.read_text())
+        print(result['expectedVariant'], result['endToEndMedian'], result['navToPaintMedian'], flush=True)
+    if series == 3:
+        break
+    while data['status'] != 'completed':
+        assert time.time() < deadline, 'workflow exceeded the bounded wait before job rerun'
+        time.sleep(30)
+        data = metadata()
+    subprocess.run(['gh', 'run', 'rerun', RUN, '--job', str(job['databaseId'])], check=True)
+    prior = data['attempt']
+    deadline = time.time() + 180
+    while metadata()['attempt'] <= prior:
+        assert time.time() < deadline, 'rerun was not observed'
+        time.sleep(10)
+    print(f'requested series {series + 1}', flush=True)
