@@ -1,0 +1,96 @@
+== round 1 base load { 6.25 6.79 7.04 }
+base-1 warmup-1: end-to-end 1155.0 ms | nav-to-paint 457.0 ms | processStart 1.1 main 9.7 setup 384.1 pageStart 731.1 navStart 698.0 pageDone 747.7 moduleEval 855.0 commit 1147.0 raf1 1151.0 rafMc 1155.0 raf2 1173.0 rafMc2 1176.0 received 1177.6 fcp 917.0
+base-1 run-1: end-to-end 599.0 ms | nav-to-paint 252.0 ms | processStart 0.7 main 5.6 setup 231.6 pageStart 349.2 navStart 347.0 pageDone 353.4 moduleEval 421.0 commit 596.0 raf1 598.0 rafMc 599.0 raf2 628.0 rafMc2 630.0 received 631.7 fcp 445.0
+base-1 run-2: end-to-end 621.0 ms | nav-to-paint 262.0 ms | processStart 1.4 main 11.2 setup 243.0 pageStart 362.5 navStart 359.0 pageDone 366.7 moduleEval 434.0 commit 617.0 raf1 619.0 rafMc 621.0 raf2 650.0 rafMc2 653.0 received 655.0 fcp 459.0
+base-1 run-3: end-to-end 632.0 ms | nav-to-paint 259.0 ms | processStart 0.3 main 5.9 setup 250.6 pageStart 375.2 navStart 373.0 pageDone 379.6 moduleEval 451.0 commit 628.0 raf1 631.0 rafMc 632.0 raf2 649.0 rafMc2 651.0 received 652.9 fcp 476.0
+base-1 run-4: end-to-end 599.0 ms | nav-to-paint 255.0 ms | processStart 1.0 main 6.3 setup 226.9 pageStart 347.3 navStart 344.0 pageDone 409.5 moduleEval 421.0 commit 596.0 raf1 598.0 rafMc 599.0 raf2 616.0 rafMc2 618.0 received 620.0 fcp 450.0
+base-1 run-5: end-to-end 602.0 ms | nav-to-paint 252.0 ms | processStart 0.2 main 6.8 setup 234.1 pageStart 351.4 navStart 350.0 pageDone 355.7 moduleEval 425.0 commit 599.0 raf1 601.0 rafMc 602.0 raf2 618.0 rafMc2 620.0 received 621.2 fcp 452.0
+base-1 run-6: end-to-end 617.0 ms | nav-to-paint 262.0 ms | processStart 0.7 main 6.1 setup 227.5 pageStart 356.8 navStart 355.0 pageDone 419.1 moduleEval 431.0 commit 613.0 raf1 615.0 rafMc 617.0 raf2 634.0 rafMc2 636.0 received 637.7 fcp 456.0
+base-1 run-7: end-to-end 608.0 ms | nav-to-paint 256.0 ms | processStart 0.2 main 7.5 setup 241.6 pageStart 353.6 navStart 352.0 pageDone 358.1 moduleEval 427.0 commit 605.0 raf1 607.0 rafMc 608.0 raf2 634.0 rafMc2 636.0 received 637.4 fcp 452.0
+base-1 run-8: end-to-end 605.0 ms | nav-to-paint 253.0 ms | processStart 0.4 main 5.3 setup 235.6 pageStart 353.6 navStart 352.0 pageDone 358.0 moduleEval 427.0 commit 602.0 raf1 604.0 rafMc 605.0 raf2 620.0 rafMc2 623.0 received 623.8 fcp 454.0
+base-1 run-9: end-to-end 607.0 ms | nav-to-paint 261.0 ms | processStart 0.7 main 5.8 setup 230.0 pageStart 348.1 navStart 346.0 pageDone 352.5 moduleEval 421.0 commit 604.0 raf1 606.0 rafMc 607.0 raf2 634.0 rafMc2 636.0 received 638.0 fcp 445.0
+base-1 run-10: end-to-end 600.0 ms | nav-to-paint 248.0 ms | processStart 0.5 main 7.1 setup 229.8 pageStart 354.0 navStart 352.0 pageDone 358.2 moduleEval 426.0 commit 597.0 raf1 599.0 rafMc 600.0 raf2 621.0 rafMc2 623.0 received 625.1 fcp 455.0
+base-1 median end-to-end 606.0 ms (10 runs, 599.0 to 632.0)
+base-1 median nav-to-paint 255.5 ms (10 runs, 248.0 to 262.0)
+base-1 load at end 9.84 7.54 7.31
+base-1 cold start: FAIL (budget miss) | NOISY: load 9.84 on 8 cores, rerun on a quiet Mac before trusting this number
+== round 1 v2 load { 6.12 6.94 7.10 }
+v2-1 warmup-1: end-to-end 535.0 ms | nav-to-paint 165.0 ms | processStart 1.0 main 9.2 setup 243.5 pageStart 374.0 navStart 370.0 pageDone 438.1 moduleEval 450.0 commit 532.0 raf1 534.0 rafMc 535.0 raf2 575.0 rafMc2 577.0 received 578.7 fcp 481.0
+v2-1 run-1: end-to-end 530.0 ms | nav-to-paint 162.0 ms | processStart 1.2 main 8.4 setup 242.8 pageStart 370.1 navStart 368.0 pageDone 374.9 moduleEval 445.0 commit 527.0 raf1 529.0 rafMc 530.0 raf2 551.0 rafMc2 553.0 received 554.2 fcp 477.0
+v2-1 run-2: end-to-end 541.0 ms | nav-to-paint 106.0 ms | processStart 1.1 main 7.0 setup 240.2 pageStart 436.8 navStart 435.0 pageDone 441.1 moduleEval 454.0 commit 538.0 raf1 540.0 rafMc 541.0 raf2 567.0 rafMc2 569.0 received 569.9 fcp 485.0
+v2-1 run-3: end-to-end 513.0 ms | nav-to-paint 162.0 ms | processStart 1.0 main 6.2 setup 230.4 pageStart 352.8 navStart 351.0 pageDone 357.3 moduleEval 428.0 commit 510.0 raf1 512.0 rafMc 513.0 raf2 539.0 rafMc2 541.0 received 542.3 fcp 458.0
+v2-1 run-4: end-to-end 501.0 ms | nav-to-paint 161.0 ms | processStart 0.6 main 5.9 setup 220.9 pageStart 341.6 navStart 340.0 pageDone 346.1 moduleEval 417.0 commit 498.0 raf1 500.0 rafMc 501.0 raf2 522.0 rafMc2 524.0 received 525.7 fcp 448.0
+v2-1 run-5: end-to-end 539.0 ms | nav-to-paint 178.0 ms | processStart 0.2 main 5.6 setup 237.0 pageStart 362.7 navStart 361.0 pageDone 434.6 moduleEval 447.0 commit 536.0 raf1 538.0 rafMc 539.0 raf2 566.0 rafMc2 568.0 received 568.9 fcp 479.0
+v2-1 run-6: end-to-end 551.0 ms | nav-to-paint 181.0 ms | processStart 0.6 main 8.8 setup 248.6 pageStart 372.5 navStart 370.0 pageDone 438.5 moduleEval 451.0 commit 547.0 raf1 549.0 rafMc 551.0 raf2 568.0 rafMc2 570.0 received 570.7 fcp 488.0
+v2-1 run-7: end-to-end 529.0 ms | nav-to-paint 165.0 ms | processStart 0.4 main 6.7 setup 242.9 pageStart 368.6 navStart 364.0 pageDone 372.5 moduleEval 445.0 commit 526.0 raf1 528.0 rafMc 529.0 raf2 550.0 rafMc2 552.0 received 553.3 fcp 475.0
+v2-1 run-8: end-to-end 523.0 ms | nav-to-paint 172.0 ms | processStart 0.2 main 5.6 setup 226.6 pageStart 354.1 navStart 351.0 pageDone 358.6 moduleEval 430.0 commit 514.0 raf1 522.0 rafMc 523.0 raf2 536.0 rafMc2 538.0 received 540.0 fcp 485.0
+v2-1 run-9: end-to-end 601.0 ms | nav-to-paint 182.0 ms | processStart 0.3 main 6.1 setup 233.4 pageStart 420.7 navStart 419.0 pageDone 487.8 moduleEval 500.0 commit 593.0 raf1 600.0 rafMc 601.0 raf2 617.0 rafMc2 619.0 received 620.9 fcp 576.0
+v2-1 run-10: end-to-end 517.0 ms | nav-to-paint 162.0 ms | processStart 0.9 main 6.3 setup 223.7 pageStart 358.1 navStart 355.0 pageDone 362.0 moduleEval 432.0 commit 514.0 raf1 515.0 rafMc 517.0 raf2 536.0 rafMc2 537.0 received 539.3 fcp 463.0
+v2-1 median end-to-end 529.5 ms (10 runs, 501.0 to 601.0)
+v2-1 median nav-to-paint 163.5 ms (10 runs, 106.0 to 182.0)
+v2-1 load at end 5.96 6.88 7.07
+v2-1 cold start: FAIL (budget miss)
+== round 2 base load { 5.96 6.88 7.07 }
+base-2 warmup-1: end-to-end 622.0 ms | nav-to-paint 259.0 ms | processStart 1.0 main 8.6 setup 244.1 pageStart 366.4 navStart 363.0 pageDone 426.8 moduleEval 439.0 commit 619.0 raf1 621.0 rafMc 622.0 raf2 642.0 rafMc2 644.0 received 645.3 fcp 464.0
+base-2 run-1: end-to-end 614.0 ms | nav-to-paint 264.0 ms | processStart 0.4 main 5.8 setup 229.1 pageStart 351.8 navStart 350.0 pageDone 356.1 moduleEval 426.0 commit 610.0 raf1 612.0 rafMc 614.0 raf2 630.0 rafMc2 631.0 received 632.8 fcp 450.0
+base-2 run-2: end-to-end 604.0 ms | nav-to-paint 250.0 ms | processStart 0.8 main 6.0 setup 234.1 pageStart 355.4 navStart 354.0 pageDone 359.5 moduleEval 429.0 commit 600.0 raf1 602.0 rafMc 604.0 raf2 618.0 rafMc2 619.0 received 620.6 fcp 453.0
+base-2 run-3: end-to-end 700.0 ms | nav-to-paint 333.0 ms | processStart 0.6 main 6.5 setup 235.7 pageStart 369.3 navStart 367.0 pageDone 373.3 moduleEval 441.0 commit 696.0 raf1 699.0 rafMc 700.0 raf2 717.0 rafMc2 719.0 received 721.4 fcp 475.0
+base-2 run-4: end-to-end 641.0 ms | nav-to-paint 283.0 ms | processStart 1.2 main 6.8 setup 245.7 pageStart 360.8 navStart 358.0 pageDone 364.5 moduleEval 452.0 commit 637.0 raf1 640.0 rafMc 641.0 raf2 659.0 rafMc2 662.0 received 662.9 fcp 479.0
+base-2 run-5: end-to-end 726.0 ms | nav-to-paint 330.0 ms | processStart 0.5 main 7.1 setup 255.9 pageStart 399.4 navStart 396.0 pageDone 404.0 moduleEval 482.0 commit 722.0 raf1 725.0 rafMc 726.0 raf2 746.0 rafMc2 748.0 received 749.3 fcp 516.0
+base-2 run-6: end-to-end 641.0 ms | nav-to-paint 217.0 ms | processStart 0.9 main 6.8 setup 240.6 pageStart 425.7 navStart 424.0 pageDone 430.4 moduleEval 442.0 commit 638.0 raf1 640.0 rafMc 641.0 raf2 666.0 rafMc2 668.0 received 669.3 fcp 468.0
+base-2 run-7: end-to-end 634.0 ms | nav-to-paint 277.0 ms | processStart 0.6 main 5.5 setup 234.8 pageStart 358.9 navStart 357.0 pageDone 363.3 moduleEval 433.0 commit 629.0 raf1 630.0 rafMc 634.0 raf2 660.0 rafMc2 662.0 received 663.7 fcp 461.0
+base-2 run-8: end-to-end 607.0 ms | nav-to-paint 263.0 ms | processStart 0.7 main 5.9 setup 233.8 pageStart 346.1 navStart 344.0 pageDone 350.6 moduleEval 419.0 commit 603.0 raf1 605.0 rafMc 607.0 raf2 625.0 rafMc2 627.0 received 629.0 fcp 445.0
+base-2 run-9: end-to-end 648.0 ms | nav-to-paint 258.0 ms | processStart 0.2 main 5.7 setup 256.2 pageStart 392.4 navStart 390.0 pageDone 397.1 moduleEval 468.0 commit 644.0 raf1 646.0 rafMc 648.0 raf2 667.0 rafMc2 669.0 received 671.3 fcp 491.0
+base-2 run-10: end-to-end 615.0 ms | nav-to-paint 263.0 ms | processStart 0.5 main 6.6 setup 235.5 pageStart 354.2 navStart 352.0 pageDone 358.6 moduleEval 428.0 commit 611.0 raf1 613.0 rafMc 615.0 raf2 629.0 rafMc2 631.0 received 633.2 fcp 453.0
+base-2 median end-to-end 637.5 ms (10 runs, 604.0 to 726.0)
+base-2 median nav-to-paint 263.5 ms (10 runs, 217.0 to 333.0)
+base-2 load at end 7.90 7.30 7.22
+base-2 cold start: FAIL (budget miss) | NOISY: load 7.90 on 8 cores, rerun on a quiet Mac before trusting this number
+== round 2 v2 load { 6.07 6.92 7.09 }
+v2-2 warmup-1: end-to-end 537.0 ms | nav-to-paint 165.0 ms | processStart 0.7 main 8.3 setup 246.6 pageStart 376.2 navStart 372.0 pageDone 440.2 moduleEval 452.0 commit 534.0 raf1 536.0 rafMc 537.0 raf2 557.0 rafMc2 559.0 received 560.2 fcp 483.0
+v2-2 run-1: end-to-end 521.0 ms | nav-to-paint 165.0 ms | processStart 0.5 main 6.2 setup 228.0 pageStart 357.9 navStart 356.0 pageDone 422.7 moduleEval 434.0 commit 518.0 raf1 520.0 rafMc 521.0 raf2 540.0 rafMc2 541.0 received 542.8 fcp 487.0
+v2-2 run-2: end-to-end 520.0 ms | nav-to-paint 157.0 ms | processStart 1.0 main 6.3 setup 238.7 pageStart 364.5 navStart 363.0 pageDone 368.8 moduleEval 440.0 commit 517.0 raf1 519.0 rafMc 520.0 raf2 552.0 rafMc2 552.0 received 553.2 fcp 492.0
+v2-2 run-3: end-to-end 512.0 ms | nav-to-paint 162.0 ms | processStart 0.9 main 6.2 setup 227.7 pageStart 352.1 navStart 350.0 pageDone 356.6 moduleEval 427.0 commit 509.0 raf1 511.0 rafMc 512.0 raf2 535.0 rafMc2 537.0 received 538.4 fcp 481.0
+v2-2 run-4: end-to-end 513.0 ms | nav-to-paint 163.0 ms | processStart 0.9 main 6.4 setup 228.2 pageStart 352.1 navStart 350.0 pageDone 357.0 moduleEval 429.0 commit 511.0 raf1 512.0 rafMc 513.0 raf2 534.0 rafMc2 536.0 received 537.9 fcp 459.0
+v2-2 run-5: end-to-end 525.0 ms | nav-to-paint 166.0 ms | processStart 0.6 main 6.3 setup 239.9 pageStart 360.9 navStart 359.0 pageDone 365.6 moduleEval 438.0 commit 521.0 raf1 523.0 rafMc 525.0 raf2 552.0 rafMc2 554.0 received 555.3 fcp 493.0
+v2-2 run-6: end-to-end 520.0 ms | nav-to-paint 163.0 ms | processStart 0.6 main 6.0 setup 238.3 pageStart 359.6 navStart 357.0 pageDone 364.0 moduleEval 437.0 commit 516.0 raf1 518.0 rafMc 520.0 raf2 550.0 rafMc2 553.0 received 554.6 fcp 489.0
+v2-2 run-7: end-to-end 512.0 ms | nav-to-paint 164.0 ms | processStart 0.7 main 6.9 setup 222.4 pageStart 350.0 navStart 348.0 pageDone 415.8 moduleEval 427.0 commit 509.0 raf1 511.0 rafMc 512.0 raf2 535.0 rafMc2 537.0 received 538.3 fcp 457.0
+v2-2 run-8: end-to-end 522.0 ms | nav-to-paint 160.0 ms | processStart 0.3 main 5.2 setup 235.2 pageStart 363.8 navStart 362.0 pageDone 368.5 moduleEval 439.0 commit 519.0 raf1 521.0 rafMc 522.0 raf2 548.0 rafMc2 550.0 received 551.9 fcp 469.0
+v2-2 run-9: end-to-end 526.0 ms | nav-to-paint 162.0 ms | processStart 1.1 main 6.6 setup 238.7 pageStart 366.5 navStart 364.0 pageDone 371.4 moduleEval 442.0 commit 523.0 raf1 525.0 rafMc 526.0 raf2 549.0 rafMc2 550.0 received 552.1 fcp 473.0
+v2-2 run-10: end-to-end 513.0 ms | nav-to-paint 161.0 ms | processStart 0.9 main 6.1 setup 226.5 pageStart 353.8 navStart 352.0 pageDone 358.3 moduleEval 429.0 commit 510.0 raf1 512.0 rafMc 513.0 raf2 535.0 rafMc2 537.0 received 538.4 fcp 459.0
+v2-2 median end-to-end 520.0 ms (10 runs, 512.0 to 526.0)
+v2-2 median nav-to-paint 162.5 ms (10 runs, 157.0 to 166.0)
+v2-2 load at end 5.59 6.79 7.04
+v2-2 cold start: FAIL (budget miss)
+== round 3 base load { 5.59 6.79 7.04 }
+base-3 warmup-1: end-to-end 615.0 ms | nav-to-paint 264.0 ms | processStart 1.0 main 9.4 setup 240.1 pageStart 354.1 navStart 351.0 pageDone 415.9 moduleEval 427.0 commit 611.0 raf1 613.0 rafMc 615.0 raf2 638.0 rafMc2 640.0 received 641.0 fcp 455.0
+base-3 run-1: end-to-end 600.0 ms | nav-to-paint 250.0 ms | processStart 0.9 main 6.4 setup 238.6 pageStart 351.3 navStart 350.0 pageDone 355.6 moduleEval 424.0 commit 596.0 raf1 598.0 rafMc 600.0 raf2 617.0 rafMc2 620.0 received 621.0 fcp 451.0
+base-3 run-2: end-to-end 685.0 ms | nav-to-paint 307.0 ms | processStart 0.4 main 6.6 setup 243.2 pageStart 382.0 navStart 378.0 pageDone 468.5 moduleEval 483.0 commit 681.0 raf1 683.0 rafMc 685.0 raf2 702.0 rafMc2 704.0 received 705.1 fcp 518.0
+base-3 run-3: end-to-end 614.0 ms | nav-to-paint 262.0 ms | processStart 1.1 main 5.9 setup 236.2 pageStart 353.4 navStart 352.0 pageDone 415.8 moduleEval 428.0 commit 610.0 raf1 612.0 rafMc 614.0 raf2 631.0 rafMc2 633.0 received 634.2 fcp 452.0
+base-3 run-4: end-to-end 605.0 ms | nav-to-paint 246.0 ms | processStart 1.0 main 5.7 setup 233.2 pageStart 360.4 navStart 359.0 pageDone 364.9 moduleEval 433.0 commit 602.0 raf1 604.0 rafMc 605.0 raf2 630.0 rafMc2 633.0 received 633.7 fcp 456.0
+base-3 run-5: end-to-end 636.0 ms | nav-to-paint 268.0 ms | processStart 0.8 main 7.1 setup 243.6 pageStart 370.6 navStart 368.0 pageDone 375.0 moduleEval 443.0 commit 632.0 raf1 635.0 rafMc 636.0 raf2 651.0 rafMc2 653.0 received 655.0 fcp 468.0
+base-3 run-6: end-to-end 594.0 ms | nav-to-paint 255.0 ms | processStart 0.4 main 5.5 setup 220.1 pageStart 341.0 navStart 339.0 pageDone 345.0 moduleEval 414.0 commit 591.0 raf1 593.0 rafMc 594.0 raf2 612.0 rafMc2 614.0 received 616.1 fcp 438.0
+base-3 run-7: end-to-end 608.0 ms | nav-to-paint 252.0 ms | processStart 0.9 main 6.0 setup 233.1 pageStart 357.9 navStart 356.0 pageDone 418.9 moduleEval 430.0 commit 605.0 raf1 607.0 rafMc 608.0 raf2 626.0 rafMc2 628.0 received 629.6 fcp 454.0
+base-3 run-8: end-to-end 607.0 ms | nav-to-paint 257.0 ms | processStart 0.2 main 5.5 setup 232.4 pageStart 351.4 navStart 350.0 pageDone 355.5 moduleEval 425.0 commit 603.0 raf1 606.0 rafMc 607.0 raf2 630.0 rafMc2 632.0 received 633.0 fcp 450.0
+base-3 run-9: end-to-end 649.0 ms | nav-to-paint 275.0 ms | processStart 0.4 main 5.5 setup 244.6 pageStart 376.0 navStart 374.0 pageDone 381.0 moduleEval 454.0 commit 645.0 raf1 647.0 rafMc 649.0 raf2 668.0 rafMc2 670.0 received 671.6 fcp 485.0
+base-3 run-10: end-to-end 604.0 ms | nav-to-paint 251.0 ms | processStart 0.9 main 7.5 setup 237.8 pageStart 355.3 navStart 353.0 pageDone 416.9 moduleEval 428.0 commit 601.0 raf1 603.0 rafMc 604.0 raf2 629.0 rafMc2 631.0 received 633.4 fcp 452.0
+base-3 median end-to-end 607.5 ms (10 runs, 594.0 to 685.0)
+base-3 median nav-to-paint 256.0 ms (10 runs, 246.0 to 307.0)
+base-3 load at end 5.03 6.60 6.97
+base-3 cold start: FAIL (budget miss)
+== round 3 v2 load { 5.03 6.60 6.97 }
+v2-3 warmup-1: end-to-end 521.0 ms | nav-to-paint 161.0 ms | processStart 1.4 main 8.8 setup 234.6 pageStart 364.6 navStart 360.0 pageDone 427.1 moduleEval 438.0 commit 518.0 raf1 520.0 rafMc 521.0 raf2 544.0 rafMc2 546.0 received 548.3 fcp 468.0
+v2-3 run-1: end-to-end 510.0 ms | nav-to-paint 160.0 ms | processStart 0.9 main 7.0 setup 227.7 pageStart 351.8 navStart 350.0 pageDone 356.3 moduleEval 427.0 commit 507.0 raf1 509.0 rafMc 510.0 raf2 534.0 rafMc2 535.0 received 536.3 fcp 457.0
+v2-3 run-2: end-to-end 524.0 ms | nav-to-paint 161.0 ms | processStart 0.5 main 5.9 setup 239.0 pageStart 365.4 navStart 363.0 pageDone 369.9 moduleEval 440.0 commit 521.0 raf1 523.0 rafMc 524.0 raf2 544.0 rafMc2 545.0 received 547.4 fcp 493.0
+v2-3 run-3: end-to-end 548.0 ms | nav-to-paint 199.0 ms | processStart 0.8 main 6.2 setup 227.9 pageStart 350.4 navStart 349.0 pageDone 354.9 moduleEval 460.0 commit 545.0 raf1 547.0 rafMc 548.0 raf2 569.0 rafMc2 571.0 received 571.7 fcp 518.0
+v2-3 run-4: end-to-end 519.0 ms | nav-to-paint 160.0 ms | processStart 0.7 main 5.9 setup 236.1 pageStart 360.8 navStart 359.0 pageDone 365.5 moduleEval 436.0 commit 516.0 raf1 518.0 rafMc 519.0 raf2 536.0 rafMc2 538.0 received 539.3 fcp 488.0
+v2-3 run-5: end-to-end 509.0 ms | nav-to-paint 160.0 ms | processStart 0.5 main 6.4 setup 234.2 pageStart 351.1 navStart 349.0 pageDone 414.8 moduleEval 427.0 commit 506.0 raf1 508.0 rafMc 509.0 raf2 533.0 rafMc2 535.0 received 536.3 fcp 456.0
+v2-3 run-6: end-to-end 514.0 ms | nav-to-paint 160.0 ms | processStart 0.9 main 6.4 setup 228.8 pageStart 356.2 navStart 354.0 pageDone 360.7 moduleEval 430.0 commit 511.0 raf1 513.0 rafMc 514.0 raf2 535.0 rafMc2 537.0 received 538.5 fcp 461.0
+v2-3 run-7: end-to-end 515.0 ms | nav-to-paint 160.0 ms | processStart 0.3 main 5.3 setup 239.5 pageStart 357.0 navStart 355.0 pageDone 361.5 moduleEval 432.0 commit 512.0 raf1 514.0 rafMc 515.0 raf2 535.0 rafMc2 537.0 received 538.2 fcp 461.0
+v2-3 run-8: end-to-end 505.0 ms | nav-to-paint 158.0 ms | processStart 0.6 main 6.5 setup 226.3 pageStart 348.9 navStart 347.0 pageDone 353.3 moduleEval 425.0 commit 502.0 raf1 504.0 rafMc 505.0 raf2 526.0 rafMc2 526.0 received 528.1 fcp 476.0
+v2-3 run-9: end-to-end 514.0 ms | nav-to-paint 163.0 ms | processStart 0.4 main 7.2 setup 226.5 pageStart 352.8 navStart 351.0 pageDone 357.3 moduleEval 428.0 commit 511.0 raf1 513.0 rafMc 514.0 raf2 535.0 rafMc2 536.0 received 537.5 fcp 482.0
+v2-3 run-10: end-to-end 501.0 ms | nav-to-paint 159.0 ms | processStart 0.4 main 5.9 setup 221.7 pageStart 344.0 navStart 342.0 pageDone 348.4 moduleEval 418.0 commit 498.0 raf1 500.0 rafMc 501.0 raf2 522.0 rafMc2 523.0 received 525.1 fcp 471.0
+v2-3 median end-to-end 514.0 ms (10 runs, 501.0 to 548.0)
+v2-3 median nav-to-paint 160.0 ms (10 runs, 158.0 to 199.0)
+v2-3 load at end 6.36 6.83 7.04
+v2-3 cold start: FAIL (budget miss)

@@ -1,0 +1,8 @@
+function run(argv) {
+  const se = Application("System Events");
+  const p = se.processes.whose({ unixId: Number(argv[0]) })[0];
+  const f = p.attributes.byName("AXFocusedUIElement").value();
+  let sel = "";
+  try { sel = f.attributes.byName("AXSelectedText").value(); } catch (e) { sel = "(no AXSelectedText)"; }
+  return JSON.stringify({ role: f.role(), description: f.description(), selected: String(sel).slice(0, 120) });
+}

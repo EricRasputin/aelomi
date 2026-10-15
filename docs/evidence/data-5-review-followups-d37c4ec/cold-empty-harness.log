@@ -1,0 +1,23 @@
+cold-start harness (local, gates specMs). node v24.13.1, 8 cpus (Apple M1), load 4.05 4.12 5.01, 2026-10-15T05:40:58.581Z
+app <worktree>/target/release/bundle/macos/Aelomi.app/Contents/MacOS/aelomi
+data folder /var/folders/m2/kvd1y03j1fxc_ym_gc6jkfbc0000gn/T/aelomi-cold-start-RJXZ5v
+expected first content variant index; supplied data folder is never removed
+plan: 1 discarded warm-up, then 10 timed runs. T0 is the wall clock (Date.now, 1 ms resolution) read just before spawn, the same clock as the kernel's process start stamp. Marks are ms after T0. First content frame = min(rAF+MessageChannel, double rAF). 10 s timeout per run.
+warmup-1: end-to-end 429.0 ms | nav-to-paint 100.0 ms | processStart 1.2 main 6.8 setup 217.1 pageStart 330.7 navStart 329.0 pageDone 334.9 moduleEval 404.0 commit 421.0 raf1 429.0 rafMc 429.0 raf2 445.0 rafMc2 446.0 received 447.1 fcp 429.0
+run-1: end-to-end 454.0 ms | nav-to-paint 97.0 ms | processStart 1.5 main 14.5 setup 252.7 pageStart 359.3 navStart 357.0 pageDone 363.5 moduleEval 432.0 commit 449.0 raf1 454.0 rafMc 454.0 raf2 468.0 rafMc2 469.0 received 470.5 fcp 454.0
+run-2: end-to-end 455.0 ms | nav-to-paint 97.0 ms | processStart 1.2 main 13.0 setup 251.7 pageStart 359.7 navStart 358.0 pageDone 363.8 moduleEval 432.0 commit 449.0 raf1 454.0 rafMc 455.0 raf2 468.0 rafMc2 469.0 received 469.8 fcp 454.0
+run-3: end-to-end 458.0 ms | nav-to-paint 97.0 ms | processStart 1.0 main 13.3 setup 252.1 pageStart 363.1 navStart 361.0 pageDone 367.1 moduleEval 435.0 commit 452.0 raf1 457.0 rafMc 458.0 raf2 469.0 rafMc2 470.0 received 471.3 fcp 457.0
+run-4: end-to-end 463.0 ms | nav-to-paint 101.0 ms | processStart 1.3 main 11.9 setup 252.3 pageStart 364.7 navStart 362.0 pageDone 426.2 moduleEval 438.0 commit 457.0 raf1 462.0 rafMc 463.0 raf2 471.0 rafMc2 471.0 received 472.1 fcp 462.0
+run-5: end-to-end 437.0 ms | nav-to-paint 100.0 ms | processStart 0.5 main 10.4 setup 233.4 pageStart 339.0 navStart 337.0 pageDone 343.4 moduleEval 412.0 commit 430.0 raf1 436.0 rafMc 437.0 raf2 452.0 rafMc2 452.0 received 453.6 fcp 436.0
+run-6: end-to-end 458.0 ms | nav-to-paint 100.0 ms | processStart 1.3 main 13.6 setup 245.8 pageStart 359.6 navStart 358.0 pageDone 423.3 moduleEval 435.0 commit 452.0 raf1 457.0 rafMc 458.0 raf2 469.0 rafMc2 469.0 received 470.2 fcp 457.0
+run-7: end-to-end 468.0 ms | nav-to-paint 110.0 ms | processStart 0.8 main 12.3 setup 244.8 pageStart 360.0 navStart 358.0 pageDone 364.3 moduleEval 435.0 commit 452.0 raf1 468.0 rafMc 468.0 raf2 484.0 rafMc2 484.0 received 486.1 fcp 468.0
+run-8: end-to-end 468.0 ms | nav-to-paint 112.0 ms | processStart 1.2 main 15.0 setup 245.5 pageStart 358.1 navStart 356.0 pageDone 363.0 moduleEval 436.0 commit 456.0 raf1 468.0 rafMc 468.0 raf2 484.0 rafMc2 484.0 received 486.2 fcp 468.0
+run-9: end-to-end 453.0 ms | nav-to-paint 105.0 ms | processStart 0.7 main 9.8 setup 236.0 pageStart 350.0 navStart 348.0 pageDone 415.0 moduleEval 426.0 commit 446.0 raf1 452.0 rafMc 453.0 raf2 469.0 rafMc2 469.0 received 471.0 fcp 452.0
+run-10: end-to-end 502.0 ms | nav-to-paint 118.0 ms | processStart 1.3 main 11.6 setup 265.2 pageStart 386.5 navStart 384.0 pageDone 391.1 moduleEval 469.0 commit 488.0 raf1 501.0 rafMc 502.0 raf2 518.0 rafMc2 518.0 received 520.1 fcp 502.0
+
+median end-to-end 458.0 ms (10 runs, 437.0 to 502.0)
+median nav-to-paint 100.5 ms (10 runs, 97.0 to 118.0)
+hosted verdict (information): end-to-end 458.0 ms <= 2500 ms PASS; nav-to-paint 100.5 ms <= 400 ms PASS
+spec verdict (gate): end-to-end 458.0 ms <= 500 ms PASS
+load at end 5.16 4.36 5.09
+cold start: PASS

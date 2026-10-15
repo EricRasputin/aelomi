@@ -1,0 +1,274 @@
+{
+  "mode": "local",
+  "node": "v24.13.1",
+  "cpus": 8,
+  "budgets": {
+    "specMs": {
+      "value": 500,
+      "why": "CLAUDE.md budget: process launch to first usable content, median of 10. Populated workspaces require the editable page frame; an empty workspace reports its index screen. pnpm perf:cold enforces 500 ms on Apple Silicon, while CI gates its separately measured hosted budget. The maintainer accepted the current 10,001-page first-editable-frame result of 618 ms median on 2026-10-15 and deferred optimization. This value retains the 500 ms goal; the recorded local FAIL is not relabeled as a pass. Hosted CI budgets remain unchanged."
+    },
+    "hostedCiMs": {
+      "value": 2500,
+      "why": "End-to-end budget on hosted macos-15. Three VMs of the same image measured series medians of 1449, 475, and 1634 ms with this harness, so the runner, not the app, sets the floor. 1.5 times the worst median, rounded up."
+    },
+    "hostedNavToPaintMs": {
+      "value": 400,
+      "why": "Navigation start to first content frame on hosted macos-15, the part the frontend controls. The same three VMs measured 242, 84, and 250 ms. 1.5 times the worst median, rounded up."
+    },
+    "warmupRuns": {
+      "value": 1,
+      "why": "The first launch of a fresh build pays signature checks and a cold page cache. Users see it once after brew upgrade, so it is logged and discarded."
+    },
+    "timedRuns": {
+      "value": 10,
+      "why": "SPEC: median of 10 runs. With an even count the median is the mean of the 5th and 6th sorted runs."
+    }
+  },
+  "expectedVariant": "index",
+  "runs": [
+    {
+      "tag": "run-1",
+      "variant": "index",
+      "t0": 1792042859543,
+      "exit": "exit 0",
+      "ms": {
+        "processStart": 1.4609375,
+        "main": 14.5029296875,
+        "setup": 252.7490234375,
+        "pageStart": 359.31005859375,
+        "navStart": 357,
+        "pageDone": 363.47900390625,
+        "moduleEval": 432,
+        "commit": 449,
+        "raf1": 454,
+        "rafMc": 454,
+        "raf2": 468,
+        "rafMc2": 469,
+        "received": 470.47802734375,
+        "fcp": 454
+      },
+      "endToEnd": 454,
+      "navToPaint": 97
+    },
+    {
+      "tag": "run-2",
+      "variant": "index",
+      "t0": 1792042860527,
+      "exit": "exit 0",
+      "ms": {
+        "processStart": 1.154052734375,
+        "main": 12.9580078125,
+        "setup": 251.66796875,
+        "pageStart": 359.73193359375,
+        "navStart": 358,
+        "pageDone": 363.8291015625,
+        "moduleEval": 432,
+        "commit": 449,
+        "raf1": 454,
+        "rafMc": 455,
+        "raf2": 468,
+        "rafMc2": 469,
+        "received": 469.8349609375,
+        "fcp": 454
+      },
+      "endToEnd": 455,
+      "navToPaint": 97
+    },
+    {
+      "tag": "run-3",
+      "variant": "index",
+      "t0": 1792042861509,
+      "exit": "exit 0",
+      "ms": {
+        "processStart": 0.967041015625,
+        "main": 13.3349609375,
+        "setup": 252.139892578125,
+        "pageStart": 363.136962890625,
+        "navStart": 361,
+        "pageDone": 367.054931640625,
+        "moduleEval": 435,
+        "commit": 452,
+        "raf1": 457,
+        "rafMc": 458,
+        "raf2": 469,
+        "rafMc2": 470,
+        "received": 471.26904296875,
+        "fcp": 457
+      },
+      "endToEnd": 458,
+      "navToPaint": 97
+    },
+    {
+      "tag": "run-4",
+      "variant": "index",
+      "t0": 1792042862492,
+      "exit": "exit 0",
+      "ms": {
+        "processStart": 1.260986328125,
+        "main": 11.9189453125,
+        "setup": 252.280029296875,
+        "pageStart": 364.72900390625,
+        "navStart": 362,
+        "pageDone": 426.23193359375,
+        "moduleEval": 438,
+        "commit": 457,
+        "raf1": 462,
+        "rafMc": 463,
+        "raf2": 471,
+        "rafMc2": 471,
+        "received": 472.139892578125,
+        "fcp": 462
+      },
+      "endToEnd": 463,
+      "navToPaint": 101
+    },
+    {
+      "tag": "run-5",
+      "variant": "index",
+      "t0": 1792042863476,
+      "exit": "exit 0",
+      "ms": {
+        "processStart": 0.472900390625,
+        "main": 10.389892578125,
+        "setup": 233.39599609375,
+        "pageStart": 338.965087890625,
+        "navStart": 337,
+        "pageDone": 343.406005859375,
+        "moduleEval": 412,
+        "commit": 430,
+        "raf1": 436,
+        "rafMc": 437,
+        "raf2": 452,
+        "rafMc2": 452,
+        "received": 453.64208984375,
+        "fcp": 436
+      },
+      "endToEnd": 437,
+      "navToPaint": 100
+    },
+    {
+      "tag": "run-6",
+      "variant": "index",
+      "t0": 1792042864443,
+      "exit": "exit 0",
+      "ms": {
+        "processStart": 1.2548828125,
+        "main": 13.593994140625,
+        "setup": 245.846923828125,
+        "pageStart": 359.550048828125,
+        "navStart": 358,
+        "pageDone": 423.2509765625,
+        "moduleEval": 435,
+        "commit": 452,
+        "raf1": 457,
+        "rafMc": 458,
+        "raf2": 469,
+        "rafMc2": 469,
+        "received": 470.23388671875,
+        "fcp": 457
+      },
+      "endToEnd": 458,
+      "navToPaint": 100
+    },
+    {
+      "tag": "run-7",
+      "variant": "index",
+      "t0": 1792042865428,
+      "exit": "exit 0",
+      "ms": {
+        "processStart": 0.804931640625,
+        "main": 12.31005859375,
+        "setup": 244.798095703125,
+        "pageStart": 360.01806640625,
+        "navStart": 358,
+        "pageDone": 364.258056640625,
+        "moduleEval": 435,
+        "commit": 452,
+        "raf1": 468,
+        "rafMc": 468,
+        "raf2": 484,
+        "rafMc2": 484,
+        "received": 486.06298828125,
+        "fcp": 468
+      },
+      "endToEnd": 468,
+      "navToPaint": 110
+    },
+    {
+      "tag": "run-8",
+      "variant": "index",
+      "t0": 1792042866428,
+      "exit": "exit 0",
+      "ms": {
+        "processStart": 1.199951171875,
+        "main": 14.9990234375,
+        "setup": 245.47412109375,
+        "pageStart": 358.1279296875,
+        "navStart": 356,
+        "pageDone": 362.9560546875,
+        "moduleEval": 436,
+        "commit": 456,
+        "raf1": 468,
+        "rafMc": 468,
+        "raf2": 484,
+        "rafMc2": 484,
+        "received": 486.16796875,
+        "fcp": 468
+      },
+      "endToEnd": 468,
+      "navToPaint": 112
+    },
+    {
+      "tag": "run-9",
+      "variant": "index",
+      "t0": 1792042867427,
+      "exit": "exit 0",
+      "ms": {
+        "processStart": 0.715087890625,
+        "main": 9.804931640625,
+        "setup": 235.951904296875,
+        "pageStart": 350.0458984375,
+        "navStart": 348,
+        "pageDone": 415.034912109375,
+        "moduleEval": 426,
+        "commit": 446,
+        "raf1": 452,
+        "rafMc": 453,
+        "raf2": 469,
+        "rafMc2": 469,
+        "received": 470.9970703125,
+        "fcp": 452
+      },
+      "endToEnd": 453,
+      "navToPaint": 105
+    },
+    {
+      "tag": "run-10",
+      "variant": "index",
+      "t0": 1792042868411,
+      "exit": "exit 0",
+      "ms": {
+        "processStart": 1.281005859375,
+        "main": 11.6220703125,
+        "setup": 265.2080078125,
+        "pageStart": 386.465087890625,
+        "navStart": 384,
+        "pageDone": 391.134033203125,
+        "moduleEval": 469,
+        "commit": 488,
+        "raf1": 501,
+        "rafMc": 502,
+        "raf2": 518,
+        "rafMc2": 518,
+        "received": 520.135009765625,
+        "fcp": 502
+      },
+      "endToEnd": 502,
+      "navToPaint": 118
+    }
+  ],
+  "endToEndMedian": 458,
+  "navToPaintMedian": 100.5,
+  "hostedPass": true,
+  "specPass": true
+}

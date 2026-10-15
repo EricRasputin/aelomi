@@ -1,0 +1,10 @@
+storage status=Ready path=/private/tmp/aelomi-f70-78/native/d70
+index status=Rebuilding t_ms=269.1
+storage open ms=1.798 t_ms=269.1
+index cache=created t_ms=283.6
+tree warm pages=9701 ms=219.742 t_ms=488.9
+ping seq=1
+quit frontend ready
+index status=Ready t_ms=3900.5
+index startup total_ms=3631.363 check_open_ms=14.476 schema_ms=- integrity_ms=- title_fts_ms=- block_fts_ms=- workspace_load_ms=114.163 workspace_decode_ms=83.387 workspace_forest_ms=21.613 workspace_sql_ms=199.397 pages=10001 loaded_bytes=6539644 page_load_ms=1021.160 page_decode_ms=72.326 page_project_ms=21.999 page_sql_ms=2061.402 publish_ms=0.025 t_ms=3900.5
+index main_peak_rss_bytes=331776000 t_ms=3900.6

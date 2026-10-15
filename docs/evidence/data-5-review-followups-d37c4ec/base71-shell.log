@@ -1,0 +1,10 @@
+sandbox_extension_issue_file_to_process failed for /tmp/aelomi-f70-78/baseline-target/release/bundle/macos/Aelomi.app: 1 (Operation not permitted)
+storage status=Ready path=/private/tmp/aelomi-f70-78/native/base71
+index status=Rebuilding t_ms=271.3
+storage open ms=2.493 t_ms=271.3
+index cache=reused t_ms=285.2
+index status=Ready t_ms=289.2
+index startup total_ms=17.879 check_open_ms=13.878 schema_ms=6.579 integrity_ms=0.751 title_fts_ms=0.066 block_fts_ms=0.211 workspace_load_ms=2.579 workspace_decode_ms=0.130 workspace_forest_ms=0.012 workspace_sql_ms=0.097 pages=8 loaded_bytes=2246 page_load_ms=0.875 page_decode_ms=0.062 page_project_ms=0.022 page_sql_ms=0.106 publish_ms=0.025 t_ms=289.2
+index main_peak_rss_bytes=100155392 t_ms=289.2
+ping seq=1
+quit frontend ready

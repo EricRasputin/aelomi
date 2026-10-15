@@ -1,0 +1,16 @@
+#!/bin/zsh
+# Alternates cold-start harness series between apps on one data folder.
+# usage: run-ab.sh <rounds> <data-dir> <out-root> <name>=<app> ...
+set -u
+rounds=$1; data=$2; out=$3; shift 3
+repo=<worktree>
+mkdir -p "$out"
+for round in $(seq 1 "$rounds"); do
+  for pair in "$@"; do
+    name=${pair%%=*}; app=${pair#*=}
+    until [ "$(sysctl -n vm.loadavg | awk '{print ($2 < 6.4)}')" = 1 ]; do sleep 5; done
+    echo "== round $round $name load $(sysctl -n vm.loadavg)"
+    (cd "$repo" && node perf/cold-start.ts --app "$app" --data-dir "$data" --expected-variant page --out "$out/$name-$round") \
+      | grep -E "^(warmup|run-|median|load at end|cold start)" | sed "s/^/$name-$round /"
+  done
+done
