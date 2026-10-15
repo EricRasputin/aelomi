@@ -1,7 +1,8 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { commands } from "../ipc";
 import { installMock } from "../ipc/mock";
-import { drainDeliveries } from "./delivery";
+import { drainDeliveries, useDeliveryStore } from "./delivery";
 import { openPage, type PageSession } from "./page-session";
 
 vi.mock("../ipc", async (importOriginal) => {
@@ -45,7 +46,13 @@ beforeEach(() => {
     { id: "block-plan", content: ["plan"] },
   ]);
 });
-afterEach(() => backend().reset());
+afterEach(async () => {
+  backend().storage.refuseAppends(null);
+  vi.restoreAllMocks();
+  await drainDeliveries();
+  vi.useRealTimers();
+  backend().reset();
+});
 
 test("closing a mounted page keeps its doc syncing until the editor unmounts", async () => {
   const session = await open();
@@ -74,4 +81,66 @@ test("unmounting first, then closing, ends the page once", async () => {
   session.close();
   session.close();
   expect(backend().bodies.text("page-daily")).toBe("plany");
+});
+
+test("a page reopened before recovery shows every refused edit and subsequent typing persists both", async () => {
+  const first = await open();
+  const unmountFirst = first.mount(document.createElement("div"));
+  vi.useFakeTimers();
+  backend().storage.refuseAppends({ Io: "Read failed" });
+  first.editor.setTextCursorPosition("block-plan", "end");
+  first.editor.insertInlineContent(" x");
+  await vi.advanceTimersByTimeAsync(0);
+  first.close();
+  unmountFirst();
+  expect(backend().bodies.text("page-daily")).toBe("plan");
+  const reopened = await open();
+  const unmountReopened = reopened.mount(document.createElement("div"));
+  expect(reopened.editor.document[0]?.content).toEqual([
+    { type: "text", text: "plan x", styles: {} },
+  ]);
+  backend().storage.refuseAppends(null);
+  await vi.advanceTimersByTimeAsync(100);
+  expect([...useDeliveryStore.getState().failing]).toEqual([]);
+  expect(backend().bodies.text("page-daily")).toBe("plan x");
+  expect(reopened.editor.document[0]?.content).toEqual([
+    { type: "text", text: "plan x", styles: {} },
+  ]);
+  reopened.editor.setTextCursorPosition("block-plan", "end");
+  expect(await typed(reopened, " y")).toBe("plan x y");
+  reopened.close();
+  unmountReopened();
+});
+
+test("a reopened load includes an in-flight edit accepted after its stored snapshot was read", async () => {
+  const first = await open();
+  const unmountFirst = first.mount(document.createElement("div"));
+  const append = commands.docAppend;
+  let release = async () => {};
+  vi.spyOn(commands, "docAppend").mockImplementationOnce(
+    (docId, update) =>
+      new Promise((done) => {
+        release = async () => {
+          done(await append(docId, update));
+        };
+      }),
+  );
+  first.editor.setTextCursorPosition("block-plan", "end");
+  first.editor.insertInlineContent(" x");
+  first.close();
+  unmountFirst();
+  const load = commands.docLoad;
+  vi.spyOn(commands, "docLoad").mockImplementationOnce(async (docId) => {
+    const snapshot = await load(docId);
+    await release();
+    return snapshot;
+  });
+  const reopened = await open();
+  const unmountReopened = reopened.mount(document.createElement("div"));
+  expect(reopened.editor.document[0]?.content).toEqual([
+    { type: "text", text: "plan x", styles: {} },
+  ]);
+  expect(backend().bodies.text("page-daily")).toBe("plan x");
+  reopened.close();
+  unmountReopened();
 });

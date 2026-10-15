@@ -3,7 +3,7 @@ import { commands, type StorageError } from "../ipc";
 import { toBase64 } from "../ipc/base64";
 
 type DocDelivery = {
-  outstanding: Set<Promise<void>>;
+  outstanding: Map<Promise<void>, Uint8Array>;
   failed: Uint8Array[];
   error: StorageError | null;
   retryTimer: ReturnType<typeof setTimeout> | undefined;
@@ -44,7 +44,7 @@ function deliveryFor(docId: string): DocDelivery {
   let delivery = deliveries.get(docId);
   if (!delivery) {
     delivery = {
-      outstanding: new Set(),
+      outstanding: new Map(),
       failed: [],
       error: null,
       retryTimer: undefined,
@@ -98,7 +98,12 @@ function invoke(docId: string, delivery: DocDelivery, update: Uint8Array) {
         }, delivery.retryDelayMs);
       }
     });
-  delivery.outstanding.add(sent);
+  delivery.outstanding.set(sent, update);
+}
+
+export function pendingUpdates(docId: string): Uint8Array[] {
+  const delivery = deliveries.get(docId);
+  return delivery ? [...delivery.failed, ...delivery.outstanding.values()] : [];
 }
 
 function retry(docId: string, delivery: DocDelivery) {
@@ -123,7 +128,7 @@ export function deliver(docId: string, update: Uint8Array) {
 async function settle(docId: string, delivery: DocDelivery) {
   retry(docId, delivery);
   while (delivery.outstanding.size > 0)
-    await Promise.all([...delivery.outstanding]);
+    await Promise.all(delivery.outstanding.keys());
 }
 
 /**
@@ -142,7 +147,8 @@ export async function drainDeliveries(): Promise<string[]> {
     if (waiting.length === 0) break;
     await Promise.all(
       waiting.map(([docId, delivery]) => {
-        if (retried.has(delivery)) return Promise.all(delivery.outstanding);
+        if (retried.has(delivery))
+          return Promise.all(delivery.outstanding.keys());
         retried.add(delivery);
         return settle(docId, delivery);
       }),

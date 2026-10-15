@@ -5,7 +5,7 @@ import { commands, type StorageError } from "../ipc";
 import { fromBase64 } from "../ipc/base64";
 import { checkBody, type GuardProblem } from "./body-guard";
 import { type Body, readShownBody, type ShownBlock } from "./body-reader";
-import { trackLoad } from "./delivery";
+import { pendingUpdates, trackLoad } from "./delivery";
 import { localImageUrl } from "./image-url";
 import { type PickerKey, pagePicker } from "./page-picker";
 import { loadOrigin, syncPage } from "./page-sync";
@@ -75,11 +75,13 @@ export async function openPage({
   onPickerKey,
   onTrip,
 }: OpenOptions): Promise<PageSession> {
+  const pending = pendingUpdates(pageId);
   const loaded = await trackLoad(commands.docLoad(pageId));
   if (loaded.status === "error") return { kind: "error", error: loaded.error };
-  const raw = fromBase64(loaded.data);
+  let raw = fromBase64(loaded.data);
   const ydoc = new Y.Doc();
   try {
+    raw = Y.mergeUpdates([raw, ...pending, ...pendingUpdates(pageId)]);
     Y.applyUpdate(ydoc, raw, loadOrigin);
   } catch {
     ydoc.destroy();
