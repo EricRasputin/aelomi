@@ -1,4 +1,0 @@
-cargo nextest run -p aelomi-core -E 'test(workspace::tests::edits) | test(seed::) | test(workspace::tests::ack) | test(storage::tests::record_edits)'
-cargo nextest run -p aelomi -E 'test(page_records_tests) | test(quit) | test(a_registered_webview_drains_every_route)'
-pnpm exec vitest run src/ipc/record-commands.test.ts src/editor/quit-drain.test.ts src/stores/page-tree.test.ts perf/cold-start-budget.test.ts perf/stats.test.ts scripts/check-all.test.ts
-pnpm typecheck

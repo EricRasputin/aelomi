@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+S=.claude/skills/verify-aelomi/scripts
+data="$(cat .audit/fix4/launch-one.path)/data"
+folder="$data/docs/workspace"
+mode=$(stat -f %Lp "$folder")
+printf '%s\n' "$mode" > .audit/fix4/workspace-original-mode.txt
+finish() {
+  chmod "$mode" "$folder"
+  if [ -s .audit/fix4/launch-four.path ]; then "$S/app.sh" cleanup "$(cat .audit/fix4/launch-four.path)"; fi
+}
+trap finish EXIT INT TERM
+chmod 000 "$folder"
+AELOMI_DATA_DIR="$data" "$S/app.sh" launch dev > .audit/fix4/launch-four.path
+"$S/app.sh" doctor "$(cat .audit/fix4/launch-four.path)"
+.audit/fix4/drive.sh "$(cat .audit/fix4/launch-four.path)" failure "$data" "$mode"

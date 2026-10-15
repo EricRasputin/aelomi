@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+record=docs/evidence/shell-page-records
+mkdir -p .audit/fix4
+for script in drive run-phase failure-run; do
+  cp "$record/$script.sh.txt" ".audit/fix4/$script.sh"
+  chmod u+x ".audit/fix4/$script.sh"
+done
+cp "$record/run-rest.sh.txt" .audit/fix4/post-main-rest.sh
+chmod u+x .audit/fix4/post-main-rest.sh
+ls -la ~/Library/Application\ Support/Aelomi > .audit/fix4/real-data-before.txt
+df -h /System/Volumes/Data
+.audit/fix4/run-phase.sh first one > .audit/fix4/post-main-first.log 2>&1
+.audit/fix4/post-main-rest.sh
