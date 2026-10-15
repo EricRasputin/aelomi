@@ -31,6 +31,10 @@ export function openPageLink(
     | "detail"
     | "clientX"
     | "clientY"
+    | "shiftKey"
+    | "altKey"
+    | "ctrlKey"
+    | "metaKey"
   >,
 ) {
   const start = pointerStarts.get(event.currentTarget);
@@ -42,6 +46,10 @@ export function openPageLink(
   const url = link.getAttribute("href");
   if (
     event.type === "contextmenu" ||
+    event.shiftKey ||
+    event.altKey ||
+    event.ctrlKey ||
+    event.metaKey ||
     event.detail > 1 ||
     (event.detail !== 0 &&
       (!start ||

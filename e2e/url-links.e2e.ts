@@ -130,3 +130,38 @@ test("SHELL-13 drag-select and a link context menu make no additional handoff", 
   ).toEqual([{ command: "openUrl", args: ["https://example.com"] }]);
   await expect(screen.getByRole("textbox", "Page body")).toHaveText("Example");
 });
+
+test("SHELL-13 shift-click makes no browser handoff", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  await app.open("/");
+  const body = screen.getByRole("textbox", "Page body");
+  await expect(browser.locator('[data-testid="page-editor"]')).toHaveAttribute(
+    "contenteditable",
+    "true",
+  );
+  await body.focus();
+  for (let i = 0; i < 7; i += 1) await browser.keyboard.press("ArrowLeft");
+  const link = screen.getByRole("link", "Example", { exact: true });
+  await link.click({ modifiers: ["Shift"] });
+  expect(
+    await browser.evaluate(
+      () =>
+        window.__aelomiMock?.calls.filter(
+          (call) => call.command === "openUrl",
+        ) ?? null,
+    ),
+  ).toEqual([]);
+  await link.click();
+  expect(
+    await browser.evaluate(
+      () =>
+        window.__aelomiMock?.calls.filter(
+          (call) => call.command === "openUrl",
+        ) ?? null,
+    ),
+  ).toEqual([{ command: "openUrl", args: ["https://example.com"] }]);
+  await expect(body).toHaveText("Example");
+});

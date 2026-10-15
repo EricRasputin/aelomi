@@ -45,6 +45,10 @@ test("keyboard and accessibility activation opens once even with selected text",
       detail: 0,
       clientX: 0,
       clientY: 0,
+      shiftKey: false,
+      altKey: false,
+      ctrlKey: false,
+      metaKey: false,
     });
     expect(preventDefault.mock.calls).toEqual([[]]);
     expect(opener.mock.calls).toEqual([["https://example.com"]]);
@@ -81,6 +85,10 @@ test("double-click then single click opens twice, while drag and context menu on
         button: 0,
         clientX: x,
         clientY: y,
+        shiftKey: false,
+        altKey: false,
+        ctrlKey: false,
+        metaKey: false,
         preventDefault: () => event.preventDefault(),
       });
     link.addEventListener(type, handle, { once: true });
@@ -107,3 +115,42 @@ test("double-click then single click opens twice, while drag and context menu on
     document.body.replaceChildren();
   }
 });
+
+test.each(["shiftKey", "altKey", "ctrlKey", "metaKey"] as const)(
+  "%s clicks prevent navigation without opening a link",
+  (modifier) => {
+    const root = document.createElement("div");
+    const link = document.createElement("a");
+    link.href = "https://example.com";
+    root.append(link);
+    const opener = vi
+      .spyOn(commands, "openUrl")
+      .mockResolvedValue({ status: "ok", data: null });
+    const preventDefault = vi.fn();
+    const click = {
+      target: link,
+      currentTarget: root,
+      preventDefault,
+      type: "click",
+      button: 0,
+      detail: 1,
+      clientX: 10,
+      clientY: 10,
+      shiftKey: false,
+      altKey: false,
+      ctrlKey: false,
+      metaKey: false,
+    };
+    try {
+      recordPageLinkPointer(click);
+      openPageLink({ ...click, [modifier]: true });
+      expect(preventDefault.mock.calls).toEqual([[]]);
+      expect(opener.mock.calls).toEqual([]);
+      recordPageLinkPointer(click);
+      openPageLink(click);
+      expect(opener.mock.calls).toEqual([["https://example.com"]]);
+    } finally {
+      vi.restoreAllMocks();
+    }
+  },
+);
