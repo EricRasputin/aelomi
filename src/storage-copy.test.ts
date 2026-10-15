@@ -20,15 +20,21 @@ test("keeps the complete storage IO reason", () => {
 test("maps a cloud refusal to its resolved path and move instructions", () => {
   expect(
     storageStartup({
-      CloudPath: { resolved: "~/Library/Mobile Documents/Aelomi" },
+      CloudPath: {
+        configured: "/Users/test/Library/Application Support/Aelomi Dev",
+        resolved: "~/Library/Mobile Documents/Aelomi",
+      },
     }),
   ).toEqual({
     kind: "refused",
     title: "Move your data folder out of cloud storage",
     message:
-      "Cloud sync corrupts the database. Aelomi can't open this folder safely.",
+      "Cloud sync corrupts the database. Aelomi can't open this folder safely. Aelomi hasn't opened or changed anything in it.",
     detail: "~/Library/Mobile Documents/Aelomi",
-    recovery: "moveFolder",
+    recovery: {
+      configured: "/Users/test/Library/Application Support/Aelomi Dev",
+      resolved: "~/Library/Mobile Documents/Aelomi",
+    },
   });
 });
 
@@ -45,7 +51,7 @@ test("maps every other startup outcome to a plain message", () => {
       kind: "refused",
       title: "This data folder is already open",
       message:
-        "Another Aelomi process is using this folder. Quit that process, then reopen Aelomi.",
+        "Another copy of Aelomi is using this folder. Quit both copies, then open Aelomi again.",
       detail: null,
       recovery: null,
     },

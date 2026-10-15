@@ -1,6 +1,10 @@
 import { create } from "zustand";
-import { commands, events, type StorageStatus } from "../ipc";
-import { type StorageStartup, storageStartup } from "../storage-copy";
+import { commands, type StorageStatus } from "../ipc";
+import {
+  type StorageStartup,
+  storageCopy,
+  storageStartup,
+} from "../storage-copy";
 
 export const useStorageStartupStore = create<{
   startup: StorageStartup;
@@ -12,33 +16,27 @@ export const useStorageStartupStore = create<{
 
 export function connectStorageStartup() {
   let disposed = false;
-  let changed = false;
-  let unlisten: (() => void) | undefined;
-  const receive = (status: StorageStatus) => {
-    if (!disposed) useStorageStartupStore.getState().receive(status);
-  };
-  const ready = (async () => {
-    try {
-      unlisten = await events.storageStatusChanged.listen(({ payload }) => {
-        changed = true;
-        receive(payload);
-      });
-      if (disposed) {
-        unlisten();
-        return;
-      }
-      const status = await commands.storageStatus();
-      if (!changed) receive(status);
-    } catch (error: unknown) {
-      if (!changed)
-        receive({ Io: error instanceof Error ? error.message : String(error) });
-    }
-  })();
+  const ready = commands.storageStatus().then(
+    (status) => {
+      if (!disposed) useStorageStartupStore.getState().receive(status);
+    },
+    (error: unknown) => {
+      if (!disposed)
+        useStorageStartupStore.setState({
+          startup: {
+            kind: "refused",
+            title: storageCopy.startupTitle,
+            message: storageCopy.startup,
+            detail: error instanceof Error ? error.message : String(error),
+            recovery: null,
+          },
+        });
+    },
+  );
   return {
     ready,
     dispose: () => {
       disposed = true;
-      unlisten?.();
     },
   };
 }

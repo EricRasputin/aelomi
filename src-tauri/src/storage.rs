@@ -38,7 +38,10 @@ pub fn data_location(
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Type)]
 pub enum StorageStatus {
     Ready,
-    CloudPath { resolved: String },
+    CloudPath {
+        configured: String,
+        resolved: String,
+    },
     Locked,
     NewerFormat,
     UnknownFormat,
@@ -102,6 +105,7 @@ impl Storage {
             ),
             Err(DataPathError::CloudFolder { resolved, .. }) => storage(
                 Err(StorageStatus::CloudPath {
+                    configured: location.path.to_string_lossy().into_owned(),
                     resolved: resolved.to_string_lossy().into_owned(),
                 }),
                 resolved,
@@ -260,9 +264,6 @@ impl From<std::io::Error> for StorageError {
 
 #[derive(Clone, Serialize, Type, tauri_specta::Event)]
 pub struct StorageHealthChanged(pub Health);
-
-#[derive(Clone, Serialize, Type, tauri_specta::Event)]
-pub struct StorageStatusChanged(pub StorageStatus);
 
 #[cfg(test)]
 pub(crate) mod tests {
@@ -453,14 +454,25 @@ pub(crate) mod tests {
         let storage = Storage::open(&location, |_| {});
 
         assert_eq!(
+            serde_json::to_value(storage.status()).unwrap(),
+            serde_json::json!({ "CloudPath": {
+                "configured": location.path.to_string_lossy(),
+                "resolved": resolved,
+            }}),
+        );
+        assert_eq!(
             storage.status(),
             StorageStatus::CloudPath {
+                configured: location.path.to_string_lossy().into_owned(),
                 resolved: resolved.clone()
             }
         );
         assert_eq!(
             storage.startup_line(),
-            format!("storage status=CloudPath {{ resolved: {resolved:?} }} path={resolved}")
+            format!(
+                "storage status=CloudPath {{ configured: {:?}, resolved: {resolved:?} }} path={resolved}",
+                location.path.to_string_lossy()
+            )
         );
         assert_eq!(std::fs::read_dir(target).unwrap().count(), 0);
         let names: Vec<_> = std::fs::read_dir(cloud)

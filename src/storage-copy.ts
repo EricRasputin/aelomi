@@ -22,18 +22,23 @@ export const storageCopy = {
   opening: "Opening your data folder…",
   cloudTitle: "Move your data folder out of cloud storage",
   cloudRisk:
-    "Cloud sync corrupts the database. Aelomi can't open this folder safely.",
-  resolvedPath: "Resolved data folder",
+    "Cloud sync corrupts the database. Aelomi can't open this folder safely. Aelomi hasn't opened or changed anything in it.",
+  configuredPath: "Configured data folder",
+  resolvedPath: "Points to this cloud folder",
+  finder: "In Finder, choose Go > Go to Folder (⇧⌘G) and paste a path.",
   moveTitle: "Move it back to this Mac",
   moveSteps: [
-    "Quit Aelomi.",
-    "Move the data folder to the location below.",
+    "Quit Aelomi (⌘Q).",
+    "Remove any symbolic link at the configured path or its parents first. Keep the folder it points to, and restore linked parents as local folders.",
+    "Move the cloud folder to the configured path once it is local. Do not overwrite an existing folder.",
+    "If AELOMI_DATA_DIR points directly into cloud storage, set it to a local folder and move the data there instead.",
     "Reopen Aelomi.",
   ],
-  localPath: "~/Library/Application Support/Aelomi",
+  startupTitle: "Aelomi couldn't start",
+  startup: "Aelomi couldn't read its startup status. Quit and reopen it.",
   lockedTitle: "This data folder is already open",
   locked:
-    "Another Aelomi process is using this folder. Quit that process, then reopen Aelomi.",
+    "Another copy of Aelomi is using this folder. Quit both copies, then open Aelomi again.",
   newerTitle: "This data folder needs a newer Aelomi",
   newer:
     "A newer version of Aelomi created this folder. Open it with that version or a later one.",
@@ -52,7 +57,9 @@ export type StorageStartup =
       title: string;
       message: string;
       detail: string | null;
-      recovery: "moveFolder" | null;
+      recovery:
+        | Extract<StorageStatus, { CloudPath: object }>["CloudPath"]
+        | null;
     };
 
 export function storageStartup(status: StorageStatus): StorageStartup {
@@ -63,7 +70,7 @@ export function storageStartup(status: StorageStatus): StorageStartup {
         title: storageCopy.cloudTitle,
         message: storageCopy.cloudRisk,
         detail: status.CloudPath.resolved,
-        recovery: "moveFolder",
+        recovery: status.CloudPath,
       };
     return {
       kind: "refused",

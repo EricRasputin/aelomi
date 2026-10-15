@@ -46,14 +46,11 @@ function ShellStatus({ landmark }: { landmark: boolean }) {
 
 function RootLayout() {
   const startup = useStorageStartupStore((state) => state.startup);
-  useEffect(() => {
-    if (startup.kind === "ready") void usePageTreeStore.getState().refresh();
-  }, [startup]);
   if (startup.kind !== "ready")
     return (
       <>
-        <ShellStatus landmark />
         <StorageRefusal startup={startup} />
+        <ShellStatus landmark />
       </>
     );
   return <WorkspaceLayout />;

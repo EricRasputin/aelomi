@@ -146,7 +146,6 @@ function mockEvent<T>(name: string) {
 
 export const events = {
   menuCommand: mockEvent<MenuCommand>("menu-command"),
-  storageStatusChanged: mockEvent<StorageStatus>("storage-status-changed"),
   indexChanged: mockEvent<IndexChanged>("index-changed"),
   indexStatusChanged: mockEvent<IndexStatus>("index-status-changed"),
   quitStatusChanged: mockEvent<QuitStatus>("quit-status-changed"),
@@ -835,7 +834,6 @@ const control = {
     },
     setStatus(status: StorageStatus) {
       storage.status = status;
-      void events.storageStatusChanged.emit(structuredClone(status));
     },
     /**
      * Keeps every doc for the next load of this tab, as the store keeps

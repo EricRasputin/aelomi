@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { commands, events, type StorageStatus } from "../ipc";
+import { commands, type StorageStatus } from "../ipc";
 import { installMock } from "../ipc/mock";
 import {
   connectStorageStartup,
@@ -35,33 +35,15 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-test("reads startup and receives later refusals", async () => {
+test("reads the immutable native startup status once", async () => {
+  const read = vi.spyOn(commands, "storageStatus").mockResolvedValue({
+    CloudPath: { configured: "/local/data", resolved: "/cloud/data" },
+  });
   await connect().ready;
-  expect(useStorageStartupStore.getState().startup).toEqual({ kind: "ready" });
-  await events.storageStatusChanged.emit({
-    CloudPath: { resolved: "/cloud/data" },
-  });
+  expect(read.mock.calls).toEqual([[]]);
   expect(useStorageStartupStore.getState().startup).toMatchObject({
     kind: "refused",
-    detail: "/cloud/data",
-    recovery: "moveFolder",
-  });
-});
-
-test("an event supersedes a delayed startup snapshot", async () => {
-  let resolve = (_status: StorageStatus): void => {};
-  const snapshot = new Promise<StorageStatus>((done) => {
-    resolve = done;
-  });
-  const read = vi.spyOn(commands, "storageStatus").mockReturnValue(snapshot);
-  const connection = connect();
-  await vi.waitFor(() => expect(read).toHaveBeenCalledOnce());
-  await events.storageStatusChanged.emit("Locked");
-  resolve("Ready");
-  await connection.ready;
-  expect(useStorageStartupStore.getState().startup).toMatchObject({
-    kind: "refused",
-    title: "This data folder is already open",
+    recovery: { configured: "/local/data", resolved: "/cloud/data" },
   });
 });
 
@@ -72,16 +54,23 @@ test("a failed status read refuses to mount the editor", async () => {
   await connect().ready;
   expect(useStorageStartupStore.getState().startup).toMatchObject({
     kind: "refused",
-    title: "Aelomi couldn't open its data folder",
+    title: "Aelomi couldn't start",
     detail: "IPC unavailable",
   });
 });
 
-test("disposal ignores late snapshots and events", async () => {
+test("disposal ignores late snapshots", async () => {
+  let resolve = (_status: StorageStatus) => {};
+  vi.spyOn(commands, "storageStatus").mockImplementationOnce(
+    () =>
+      new Promise((done) => {
+        resolve = done;
+      }),
+  );
   const connection = connect();
   connection.dispose();
+  resolve("Ready");
   await connection.ready;
-  await events.storageStatusChanged.emit("Ready");
   expect(useStorageStartupStore.getState().startup).toEqual({
     kind: "loading",
   });

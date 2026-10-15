@@ -9,9 +9,7 @@ use tauri::{AppHandle, Manager, Runtime, State};
 
 use crate::index::{self, IndexChanged, IndexStatusChanged};
 use crate::quit::{QuitPhase, QuitStatus, QuitStatusChanged};
-use crate::storage::{
-    Health, Storage, StorageError, StorageHealthChanged, StorageStatus, StorageStatusChanged,
-};
+use crate::storage::{Health, Storage, StorageError, StorageHealthChanged, StorageStatus};
 use crate::trace::IpcMeasurements;
 
 #[derive(Clone, Serialize, Type, tauri_specta::Event)]
@@ -309,7 +307,6 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
             open_url,
         ])
         .events(tauri_specta::collect_events![
-            StorageStatusChanged,
             StorageHealthChanged,
             QuitStatusChanged,
             IndexStatusChanged,
