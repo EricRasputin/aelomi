@@ -62,6 +62,7 @@ export const commands = {
 export const events = {
 	indexChanged: makeEvent<IndexChanged>("index-changed"),
 	indexStatusChanged: makeEvent<IndexStatusChanged>("index-status-changed"),
+	menuCommand: makeEvent<MenuCommand>("menu-command"),
 	quitStatusChanged: makeEvent<QuitStatusChanged>("quit-status-changed"),
 	storageHealthChanged: makeEvent<StorageHealthChanged>("storage-health-changed"),
 };
@@ -138,6 +139,10 @@ export type InvalidQuery =
 { TooManyExcluded: {
 	max: number,
 } };
+
+export type MenuCommand = {
+	command: string,
+};
 
 export type OpenPagePatch = { Set: SettingsOpenPage } | "Clear";
 

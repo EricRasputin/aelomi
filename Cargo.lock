@@ -21,6 +21,7 @@ dependencies = [
  "aelomi-core",
  "base64 0.22.1",
  "libc",
+ "muda",
  "objc2",
  "objc2-app-kit",
  "serde",

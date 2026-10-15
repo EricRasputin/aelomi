@@ -101,7 +101,14 @@ export function PageView({
     });
     const stop = usePickerStore.getState().attach(editor);
     const view = editor.prosemirrorView;
-    if (view) setActiveEditor({ dom: view.dom, focus: () => editor.focus() });
+    if (view)
+      setActiveEditor({
+        dom: view.dom,
+        focus: () => editor.focus(),
+        isEditable: () => editor.isEditable,
+        undo: () => editor.undo(),
+        redo: () => editor.redo(),
+      });
     return () => {
       setActiveEditor(null);
       stop();

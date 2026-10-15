@@ -15,6 +15,7 @@ import {
   type IndexChanged,
   type IndexStatus,
   MAX_EXCLUDED_PAGES,
+  type MenuCommand,
   type PageIssue,
   type PageProblem,
   type PageTree,
@@ -140,6 +141,7 @@ function mockEvent<T>(name: string) {
 }
 
 export const events = {
+  menuCommand: mockEvent<MenuCommand>("menu-command"),
   indexChanged: mockEvent<IndexChanged>("index-changed"),
   indexStatusChanged: mockEvent<IndexStatus>("index-status-changed"),
   quitStatusChanged: mockEvent<QuitStatus>("quit-status-changed"),
@@ -685,6 +687,11 @@ function pageWrite(update: () => void) {
 }
 
 const control = {
+  menu: {
+    activate(command: MenuCommand["command"]) {
+      return events.menuCommand.emit({ command });
+    },
+  },
   get calls(): readonly MockCall[] {
     return calls;
   },

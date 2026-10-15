@@ -5,51 +5,185 @@ use objc2::encode::{Encode, EncodeArguments, EncodeReturn};
 use objc2::runtime::{AnyClass, AnyObject, Imp, MethodImplementation, Sel};
 use objc2::{MainThreadMarker, sel};
 use objc2_app_kit::{NSApplication, NSApplicationTerminateReply};
-use tauri::menu::{Menu, MenuItem, MenuItemKind};
+use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Runtime};
+use tauri_specta::Event;
 
 use crate::storage::DataLocation;
-
-const QUIT: &str = "quit";
 
 static APP: OnceLock<AppHandle> = OnceLock::new();
 
 type ShouldTerminate =
     extern "C" fn(*mut AnyObject, Sel, *mut AnyObject) -> NSApplicationTerminateReply;
 
+#[derive(serde::Deserialize)]
+struct MenuDefinition {
+    id: String,
+    label: String,
+    items: Vec<MenuEntry>,
+}
+
+#[derive(serde::Deserialize)]
+struct MenuEntry {
+    command: String,
+    label: String,
+    group: u32,
+    accelerator: Option<String>,
+    action: MenuAction,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(tag = "owner", rename_all = "camelCase")]
+enum MenuAction {
+    Webview,
+    Native { role: NativeRole },
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+enum NativeRole {
+    About,
+    Services,
+    Hide,
+    HideOthers,
+    ShowAll,
+    Quit,
+    CloseWindow,
+    Cut,
+    Copy,
+    Paste,
+    SelectAll,
+    Fullscreen,
+    Minimize,
+    Zoom,
+    BringAllToFront,
+}
+
+const MENU: &str = include_str!("../menu.json");
+
+fn menu_definitions() -> serde_json::Result<Vec<MenuDefinition>> {
+    serde_json::from_str(MENU)
+}
+
+enum MenuRow<'a> {
+    Separator,
+    Command(&'a MenuEntry),
+}
+
+fn menu_rows(definition: &MenuDefinition) -> Vec<MenuRow<'_>> {
+    let mut rows = Vec::new();
+    let mut group = None;
+    for entry in &definition.items {
+        if group.is_some_and(|group| group != entry.group) {
+            rows.push(MenuRow::Separator);
+        }
+        rows.push(MenuRow::Command(entry));
+        group = Some(entry.group);
+    }
+    rows
+}
+
+fn submenu_id(id: &str) -> &str {
+    match id {
+        "window" => tauri::menu::WINDOW_SUBMENU_ID,
+        "help" => tauri::menu::HELP_SUBMENU_ID,
+        _ => id,
+    }
+}
+
+fn build_menu<R: Runtime>(
+    app: &AppHandle<R>,
+    definitions: &[MenuDefinition],
+) -> tauri::Result<Menu<R>> {
+    let menu = Menu::new(app)?;
+    for definition in definitions {
+        let submenu = Submenu::with_id(app, submenu_id(&definition.id), &definition.label, true)?;
+        for row in menu_rows(definition) {
+            match row {
+                MenuRow::Separator => submenu.append(&PredefinedMenuItem::separator(app)?)?,
+                MenuRow::Command(entry) => match &entry.action {
+                    MenuAction::Webview
+                    | MenuAction::Native {
+                        role: NativeRole::Quit,
+                    } => {
+                        submenu.append(&MenuItem::with_id(
+                            app,
+                            &entry.command,
+                            &entry.label,
+                            true,
+                            entry.accelerator.as_deref(),
+                        )?)?;
+                    }
+                    MenuAction::Native { role } => {
+                        let text = Some(entry.label.as_str());
+                        let item = match role {
+                            NativeRole::About => PredefinedMenuItem::about(
+                                app,
+                                text,
+                                Some(AboutMetadata {
+                                    name: Some(app.package_info().name.clone()),
+                                    version: Some(app.package_info().version.to_string()),
+                                    ..Default::default()
+                                }),
+                            ),
+                            NativeRole::Services => PredefinedMenuItem::services(app, text),
+                            NativeRole::Hide => PredefinedMenuItem::hide(app, text),
+                            NativeRole::HideOthers => PredefinedMenuItem::hide_others(app, text),
+                            NativeRole::ShowAll => PredefinedMenuItem::show_all(app, text),
+                            NativeRole::CloseWindow => PredefinedMenuItem::close_window(app, text),
+                            NativeRole::Cut => PredefinedMenuItem::cut(app, text),
+                            NativeRole::Copy => PredefinedMenuItem::copy(app, text),
+                            NativeRole::Paste => PredefinedMenuItem::paste(app, text),
+                            NativeRole::SelectAll => PredefinedMenuItem::select_all(app, text),
+                            NativeRole::Fullscreen => PredefinedMenuItem::fullscreen(app, text),
+                            NativeRole::Minimize => PredefinedMenuItem::minimize(app, text),
+                            NativeRole::Zoom => PredefinedMenuItem::maximize(app, text),
+                            NativeRole::BringAllToFront => {
+                                PredefinedMenuItem::bring_all_to_front(app, text)
+                            }
+                            NativeRole::Quit => {
+                                unreachable!("Quit uses the drain-aware custom item")
+                            }
+                        }?;
+                        submenu.append(&item)?;
+                    }
+                },
+            }
+        }
+        menu.append(&submenu)?;
+    }
+    Ok(menu)
+}
+
 pub fn setup(app: &tauri::App) -> tauri::Result<()> {
-    let menu = Menu::default(app.handle())?;
-    replace_quit(app, &menu)?;
-    app.set_menu(menu)?;
-    app.on_menu_event(|app, event| {
-        if event.id() == QUIT {
-            app.exit(0);
+    let definitions = menu_definitions()?;
+    app.set_menu(build_menu(app.handle(), &definitions)?)?;
+    app.on_menu_event(move |app, event| {
+        let Some(entry) = definitions
+            .iter()
+            .flat_map(|menu| &menu.items)
+            .find(|entry| entry.command == event.id().as_ref())
+        else {
+            return;
+        };
+        match entry.action {
+            MenuAction::Native {
+                role: NativeRole::Quit,
+            } => app.exit(0),
+            MenuAction::Webview => {
+                if let Err(error) = (crate::commands::MenuCommand {
+                    command: entry.command.clone(),
+                })
+                .emit(app)
+                {
+                    eprintln!("menu command delivery failed: {error}");
+                }
+            }
+            MenuAction::Native { .. } => {}
         }
     });
     hold_terminate(app);
     Ok(())
-}
-
-fn replace_quit(app: &tauri::App, menu: &Menu<tauri::Wry>) -> tauri::Result<()> {
-    let Some(MenuItemKind::Submenu(app_menu)) = menu.items()?.into_iter().next() else {
-        return Ok(());
-    };
-    let predefined_quit = app_menu.items()?.into_iter().find(|item| {
-        item.as_predefined_menuitem()
-            .and_then(|item| item.text().ok())
-            .is_some_and(|text| text.starts_with("Quit"))
-    });
-    if let Some(item) = predefined_quit {
-        app_menu.remove(&item)?;
-    }
-    let text = format!("Quit {}", app.package_info().name);
-    app_menu.append(&MenuItem::with_id(
-        app,
-        QUIT,
-        text,
-        true,
-        Some("CmdOrCtrl+Q"),
-    )?)
 }
 
 /// Logout, the Dock's Quit, and AppleScript `quit` send `terminate:`. tao's app delegate has no
@@ -171,6 +305,92 @@ mod tests {
     use crate::quit::{QuitPhase, QuitStatus};
 
     use super::*;
+
+    #[test]
+    fn window_and_help_use_tauri_installation_ids() {
+        assert_eq!(submenu_id("window"), tauri::menu::WINDOW_SUBMENU_ID);
+        assert_eq!(submenu_id("help"), tauri::menu::HELP_SUBMENU_ID);
+        assert_eq!(submenu_id("edit"), "edit");
+    }
+
+    #[test]
+    fn menu_rows_insert_only_group_separators_in_input_order() {
+        let definition = serde_json::from_str(
+            r#"{
+            "id":"test", "label":"Test", "items":[
+                {"command":"first", "label":"First", "group":0,
+                 "accelerator":"Super+K", "action":{"owner":"webview"}},
+                {"command":"second", "label":"Second", "group":0,
+                 "accelerator":null, "action":{"owner":"native","role":"copy"}},
+                {"command":"third", "label":"Third", "group":1,
+                 "accelerator":null, "action":{"owner":"webview"}}
+            ]
+        }"#,
+        )
+        .unwrap();
+        let rows: Vec<_> = menu_rows(&definition)
+            .into_iter()
+            .map(|row| match row {
+                MenuRow::Separator => "---",
+                MenuRow::Command(entry) => entry.command.as_str(),
+            })
+            .collect();
+        assert_eq!(rows, ["first", "second", "---", "third"]);
+    }
+
+    #[test]
+    fn every_generated_accelerator_parses_with_muda() {
+        for entry in menu_definitions()
+            .unwrap()
+            .iter()
+            .flat_map(|menu| &menu.items)
+        {
+            if let Some(accelerator) = &entry.accelerator {
+                assert!(
+                    accelerator
+                        .parse::<muda::accelerator::Accelerator>()
+                        .is_ok(),
+                    "{} has an unsupported accelerator: {accelerator}",
+                    entry.command
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn native_role_accelerators_match_muda_defaults() {
+        for entry in menu_definitions()
+            .unwrap()
+            .iter()
+            .flat_map(|menu| &menu.items)
+        {
+            let MenuAction::Native { role } = &entry.action else {
+                continue;
+            };
+            let expected = match role {
+                NativeRole::About
+                | NativeRole::Services
+                | NativeRole::ShowAll
+                | NativeRole::Zoom
+                | NativeRole::BringAllToFront => None,
+                NativeRole::Hide => Some("Super+H"),
+                NativeRole::HideOthers => Some("Super+Alt+H"),
+                NativeRole::Quit => Some("Super+Q"),
+                NativeRole::CloseWindow => Some("Super+W"),
+                NativeRole::Cut => Some("Super+X"),
+                NativeRole::Copy => Some("Super+C"),
+                NativeRole::Paste => Some("Super+V"),
+                NativeRole::SelectAll => Some("Super+A"),
+                NativeRole::Fullscreen => Some("Super+Control+F"),
+                NativeRole::Minimize => Some("Super+M"),
+            };
+            assert_eq!(
+                entry.accelerator.as_deref(),
+                expected,
+                "{role:?} must retain muda's default accelerator"
+            );
+        }
+    }
 
     #[test]
     fn the_hook_installs_once_on_the_delegate_class() {

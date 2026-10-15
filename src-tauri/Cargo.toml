@@ -30,3 +30,6 @@ specta-typescript = "=0.0.12"
 tauri = { version = "2", features = ["specta", "test"] }
 tempfile = "3.27.0"
 yrs = "0.28"
+
+[target.'cfg(target_os = "macos")'.dev-dependencies]
+muda = { version = "=0.20.0", default-features = false }

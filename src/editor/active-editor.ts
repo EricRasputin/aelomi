@@ -1,9 +1,19 @@
-type Focusable = { dom: HTMLElement; focus: () => void };
+export type ActiveEditor = {
+  dom: HTMLElement;
+  focus: () => void;
+  isEditable: () => boolean;
+  undo: () => boolean;
+  redo: () => boolean;
+};
 
-let active: Focusable | null = null;
+let active: ActiveEditor | null = null;
 
-export function setActiveEditor(editor: Focusable | null) {
+export function setActiveEditor(editor: ActiveEditor | null) {
   active = editor;
+}
+
+export function getActiveEditor(): ActiveEditor | null {
+  return active;
 }
 
 /** Focuses `element`, through ProseMirror when it is the editor so its selection returns at once. */
