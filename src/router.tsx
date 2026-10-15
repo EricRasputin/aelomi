@@ -50,6 +50,7 @@ function RootLayout() {
     return (
       <>
         <StorageRefusal startup={startup} />
+        <QuitConfirmation />
         <ShellStatus landmark />
       </>
     );

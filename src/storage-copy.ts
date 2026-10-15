@@ -23,9 +23,9 @@ export const storageCopy = {
   cloudTitle: "Move your data folder out of cloud storage",
   cloudRisk: "Cloud sync corrupts the database.",
   cloudDataPath: "Where your data really is",
-  recoveryKeepOpen: "Keep this window open until the last step.",
+  recoveryKeepOpen: "Keep Aelomi open until the last step.",
   details: "Details",
-  unchanged: "Nothing in this folder was changed.",
+  unchanged: "Aelomi hasn't changed anything in your data folder.",
   restart: "Quit Aelomi and open it again.",
   override:
     "Set AELOMI_DATA_DIR to a folder outside cloud storage, or unset it.",
@@ -83,8 +83,9 @@ function cloudRecovery(
       },
       {
         kind: "text",
-        text: "In your cloud app's settings, turn off syncing for this folder so it is a regular folder on this Mac. Then quit Aelomi and open it again.",
+        text: "In your cloud app's settings, turn off syncing for this folder so it is a regular folder on this Mac.",
       },
+      { kind: "text", text: storageCopy.restart },
     ];
   } else {
     const {
@@ -100,15 +101,19 @@ function cloudRecovery(
     steps = [
       {
         kind: "folder",
-        text: "In Finder, choose Go > Go to Folder (⇧⌘G) and paste:",
+        text: "In Finder, choose Go > Go to Folder (⇧⌘G) and copy and paste:",
         path: configured_parent,
-        after: `Find "${configured_name}". It has a small arrow because it is a link. Drag it to the Trash. This removes only the link, not your pages.`,
+        after: `Find "${configured_name}". It has a small arrow because it is a link. Drag it to the Trash. This removes only the link, not your pages. Leave this Finder window open.`,
       },
       {
         kind: "folder",
-        text: "In Finder, choose File > New Finder Window (⌘N). Then choose Go > Go to Folder and paste:",
+        text: "In Finder, choose File > New Finder Window (⌘N). Then choose Go > Go to Folder and copy and paste:",
         path: resolved_parent,
-        after: `Drag "${resolved_name}" into the window from step 1.${rename}`,
+        after: `Move the new window so the window from step 1 shows. Drag "${resolved_name}" onto an empty area of the window from step 1, not onto a folder.${rename}`,
+      },
+      {
+        kind: "text",
+        text: `Check that "${configured_name}" is now in the window from step 1, without an arrow.`,
       },
       { kind: "text", text: storageCopy.restart },
     ];

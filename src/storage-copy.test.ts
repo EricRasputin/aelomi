@@ -35,16 +35,21 @@ test.each([
     steps: [
       {
         kind: "folder",
-        text: "In Finder, choose Go > Go to Folder (⇧⌘G) and paste:",
+        text: "In Finder, choose Go > Go to Folder (⇧⌘G) and copy and paste:",
         path: "/Users/test/Library/Application Support",
         after:
-          'Find "Aelomi". It has a small arrow because it is a link. Drag it to the Trash. This removes only the link, not your pages.',
+          'Find "Aelomi". It has a small arrow because it is a link. Drag it to the Trash. This removes only the link, not your pages. Leave this Finder window open.',
       },
       {
         kind: "folder",
-        text: "In Finder, choose File > New Finder Window (⌘N). Then choose Go > Go to Folder and paste:",
+        text: "In Finder, choose File > New Finder Window (⌘N). Then choose Go > Go to Folder and copy and paste:",
         path: "/Users/test/Library/Mobile Documents",
-        after: 'Drag "Aelomi" into the window from step 1.',
+        after:
+          'Move the new window so the window from step 1 shows. Drag "Aelomi" onto an empty area of the window from step 1, not onto a folder.',
+      },
+      {
+        kind: "text",
+        text: 'Check that "Aelomi" is now in the window from step 1, without an arrow.',
       },
       { kind: "text", text: "Quit Aelomi and open it again." },
     ],
@@ -66,17 +71,21 @@ test.each([
     steps: [
       {
         kind: "folder",
-        text: "In Finder, choose Go > Go to Folder (⇧⌘G) and paste:",
+        text: "In Finder, choose Go > Go to Folder (⇧⌘G) and copy and paste:",
         path: "/Users/test/Library/Application Support",
         after:
-          'Find "Aelomi". It has a small arrow because it is a link. Drag it to the Trash. This removes only the link, not your pages.',
+          'Find "Aelomi". It has a small arrow because it is a link. Drag it to the Trash. This removes only the link, not your pages. Leave this Finder window open.',
       },
       {
         kind: "folder",
-        text: "In Finder, choose File > New Finder Window (⌘N). Then choose Go > Go to Folder and paste:",
+        text: "In Finder, choose File > New Finder Window (⌘N). Then choose Go > Go to Folder and copy and paste:",
         path: "/Users/test/Library/CloudStorage/Dropbox/Apps",
         after:
-          'Drag "Aelomi Notes" into the window from step 1. Then rename it "Aelomi".',
+          'Move the new window so the window from step 1 shows. Drag "Aelomi Notes" onto an empty area of the window from step 1, not onto a folder. Then rename it "Aelomi".',
+      },
+      {
+        kind: "text",
+        text: 'Check that "Aelomi" is now in the window from step 1, without an arrow.',
       },
       { kind: "text", text: "Quit Aelomi and open it again." },
     ],
@@ -100,8 +109,9 @@ test.each([
       },
       {
         kind: "text",
-        text: "In your cloud app's settings, turn off syncing for this folder so it is a regular folder on this Mac. Then quit Aelomi and open it again.",
+        text: "In your cloud app's settings, turn off syncing for this folder so it is a regular folder on this Mac.",
       },
+      { kind: "text", text: "Quit Aelomi and open it again." },
     ],
   },
   {
@@ -136,16 +146,21 @@ test.each([
     steps: [
       {
         kind: "folder",
-        text: "In Finder, choose Go > Go to Folder (⇧⌘G) and paste:",
+        text: "In Finder, choose Go > Go to Folder (⇧⌘G) and copy and paste:",
         path: "/Users/test/Library/Application Support",
         after:
-          'Find "Aelomi Dev". It has a small arrow because it is a link. Drag it to the Trash. This removes only the link, not your pages.',
+          'Find "Aelomi Dev". It has a small arrow because it is a link. Drag it to the Trash. This removes only the link, not your pages. Leave this Finder window open.',
       },
       {
         kind: "folder",
-        text: "In Finder, choose File > New Finder Window (⌘N). Then choose Go > Go to Folder and paste:",
+        text: "In Finder, choose File > New Finder Window (⌘N). Then choose Go > Go to Folder and copy and paste:",
         path: "/Users/test/Library/Mobile Documents",
-        after: 'Drag "Aelomi Dev" into the window from step 1.',
+        after:
+          'Move the new window so the window from step 1 shows. Drag "Aelomi Dev" onto an empty area of the window from step 1, not onto a folder.',
+      },
+      {
+        kind: "text",
+        text: 'Check that "Aelomi Dev" is now in the window from step 1, without an arrow.',
       },
       { kind: "text", text: "Quit Aelomi and open it again." },
     ],
