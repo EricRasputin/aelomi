@@ -104,6 +104,7 @@ export async function openPage({
     withCollaboration({
       schema: editorSchema,
       trailingBlock: false,
+      links: { onClick: () => true },
       resolveFileUrl: async (url) => localImageUrl(url),
       domAttributes: {
         editor: {

@@ -21,6 +21,10 @@ test("SHELL-13 acceptance 9: a URL opens in the default browser and the page sta
   });
   await app.open("/");
   await expect(screen.getByRole("textbox", "Page body")).toHaveText("Example");
+  await expect(browser.locator('[data-testid="page-editor"]')).toHaveAttribute(
+    "contenteditable",
+    "true",
+  );
   await screen.getByRole("link", "Example", { exact: true }).click();
   expect(
     await browser.evaluate(
