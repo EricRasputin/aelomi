@@ -67,6 +67,32 @@ impl SettingsUpdate {
     }
 }
 
+/// An open store before any index reader starts. The shell may seed it, then start the workspace.
+pub struct PreparedWorkspace {
+    store: Store,
+    index_path: PathBuf,
+    record_client: yrs::ClientID,
+}
+
+impl PreparedWorkspace {
+    fn new(store: Store, index_path: PathBuf) -> Self {
+        Self {
+            store,
+            index_path,
+            record_client: yrs::ClientID::random(),
+        }
+    }
+
+    pub fn start(self, on_index: impl Fn(&IndexEvent) + Send + Sync + 'static) -> Workspace {
+        Workspace::start_prepared(
+            self,
+            index::Config::DEFAULT,
+            Arc::new(on_index),
+            Arc::default(),
+        )
+    }
+}
+
 /// The newest tree and the revision being projected, so callers for that revision wait for
 /// its projection instead of repeating it.
 #[derive(Default)]
@@ -113,19 +139,19 @@ impl Workspace {
         root: impl AsRef<Path>,
         on_index: impl Fn(&IndexEvent) + Send + Sync + 'static,
     ) -> Result<Self, OpenError> {
+        Ok(Self::prepare(root)?.start(on_index))
+    }
+
+    /// Opens only the store, before the shell's optional first-run seed and index startup.
+    pub fn prepare(root: impl AsRef<Path>) -> Result<PreparedWorkspace, OpenError> {
         let store = Store::open(root.as_ref())?;
         let root = std::fs::canonicalize(root)?;
-        let workspace = Self::start(
-            store,
-            root.join(index::FILE),
-            index::Config::DEFAULT,
-            Arc::new(on_index),
-            Arc::default(),
-        );
-        workspace
-            .seed_if_pristine()
-            .map_err(|e| OpenError::Io(io::Error::other(e)))?;
-        Ok(workspace)
+        Ok(PreparedWorkspace::new(store, root.join(index::FILE)))
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn prepare_with_store(store: Store, index_path: PathBuf) -> PreparedWorkspace {
+        PreparedWorkspace::new(store, index_path)
     }
 
     /// Indexes `store`, such as one on a simulated disk, into the file at `index_path`.
@@ -145,6 +171,7 @@ impl Workspace {
         )
     }
 
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn start(
         store: Store,
         index_path: PathBuf,
@@ -152,6 +179,25 @@ impl Workspace {
         on_index: Arc<dyn Fn(&IndexEvent) + Send + Sync>,
         gate: Arc<index::gate::Gate>,
     ) -> Self {
+        Self::start_prepared(
+            PreparedWorkspace::new(store, index_path),
+            config,
+            on_index,
+            gate,
+        )
+    }
+
+    fn start_prepared(
+        prepared: PreparedWorkspace,
+        config: index::Config,
+        on_index: Arc<dyn Fn(&IndexEvent) + Send + Sync>,
+        gate: Arc<index::gate::Gate>,
+    ) -> Self {
+        let PreparedWorkspace {
+            store,
+            index_path,
+            record_client,
+        } = prepared;
         let store = Arc::new(store);
         let index = Index::start(
             Arc::new(StoreSource(store.clone())),
@@ -168,7 +214,7 @@ impl Workspace {
             tree_projected: Condvar::new(),
             settings: Mutex::default(),
             record_edits: Mutex::new(()),
-            record_client: yrs::ClientID::random(),
+            record_client,
         }
     }
 
@@ -226,7 +272,11 @@ impl Workspace {
         self.append_unlocked(doc, update)
     }
 
-    fn append_record_update(&self, update: &[u8]) -> Result<Seq, AppendError> {
+    fn append_record_update(
+        &self,
+        _held: &MutexGuard<'_, ()>,
+        update: &[u8],
+    ) -> Result<Seq, AppendError> {
         self.append_unlocked(&DocId::workspace(), update)
     }
 

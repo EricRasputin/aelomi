@@ -7,6 +7,12 @@ use crate::workspace::fixture::{Editor, erase_page};
 use crate::workspace::records::read_pages;
 use crate::workspace::{PageEdit, Workspace, body};
 
+fn open_seeded(path: &std::path::Path) -> Workspace {
+    let mut prepared = Workspace::prepare(path).unwrap();
+    prepared.seed_getting_started(Instant::now() + Duration::from_secs(5));
+    prepared.start(|_| {})
+}
+
 fn flush(w: &Workspace) {
     assert_eq!(w.flush(Instant::now() + Duration::from_secs(5)), []);
 }
@@ -46,11 +52,11 @@ fn assert_seed(w: &Workspace) -> String {
 #[test]
 fn a_new_folder_opened_twice_has_one_getting_started_page_with_the_same_id_and_three_lines() {
     let dir = tempfile::tempdir().unwrap();
-    let first = Workspace::open(dir.path(), |_| {}).unwrap();
+    let first = open_seeded(dir.path());
     let id = assert_seed(&first);
     flush(&first);
     drop(first);
-    let second = Workspace::open(dir.path(), |_| {}).unwrap();
+    let second = open_seeded(dir.path());
     assert_eq!(assert_seed(&second), id);
     assert_eq!(
         read_pages(&doc_of(&second.load(&DocId::workspace()).unwrap()).transact())
@@ -64,7 +70,7 @@ fn a_new_folder_opened_twice_has_one_getting_started_page_with_the_same_id_and_t
 fn all_trashed_or_all_erased_workspaces_are_never_reseeded() {
     for erase in [false, true] {
         let dir = tempfile::tempdir().unwrap();
-        let w = Workspace::open(dir.path(), |_| {}).unwrap();
+        let w = open_seeded(dir.path());
         let id = w.tree().unwrap().pages[0].id.clone();
         if erase {
             let mut editor = Editor::new(199);
@@ -76,7 +82,7 @@ fn all_trashed_or_all_erased_workspaces_are_never_reseeded() {
         }
         flush(&w);
         drop(w);
-        let w = Workspace::open(dir.path(), |_| {}).unwrap();
+        let w = open_seeded(dir.path());
         assert_eq!(w.tree().unwrap().pages, []);
         let records =
             read_pages(&doc_of(&w.load(&DocId::workspace()).unwrap()).transact()).unwrap();
@@ -116,7 +122,7 @@ fn a_crash_after_the_seed_body_but_before_the_record_reuses_the_body_and_page_id
     assert_eq!(store.flush(Instant::now() + Duration::from_secs(5)), []);
     let before = store.load(&DocId::new("getting-started").unwrap()).unwrap();
     drop(store);
-    let w = Workspace::open(dir.path(), |_| {}).unwrap();
+    let w = open_seeded(dir.path());
     assert_eq!(assert_seed(&w), "getting-started");
     let after = w.load(&DocId::new("getting-started").unwrap()).unwrap();
     assert_eq!(
@@ -133,6 +139,38 @@ fn even_an_empty_stored_workspace_update_prevents_seeding() {
     store.append(&DocId::workspace(), &[0, 0]).unwrap();
     assert_eq!(store.flush(Instant::now() + Duration::from_secs(5)), []);
     drop(store);
+    let w = open_seeded(dir.path());
+    assert_eq!(w.tree().unwrap().pages, []);
+}
+
+#[test]
+fn core_workspace_open_never_adds_a_page() {
+    let dir = tempfile::tempdir().unwrap();
     let w = Workspace::open(dir.path(), |_| {}).unwrap();
     assert_eq!(w.tree().unwrap().pages, []);
+}
+
+#[test]
+fn prepared_workspace_starts_no_index_reader_and_seeds_at_most_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut prepared = Workspace::prepare(dir.path()).unwrap();
+    assert!(!dir.path().join("index.sqlite").exists());
+    prepared.seed_getting_started(Instant::now() + Duration::from_secs(5));
+    prepared.seed_getting_started(Instant::now() + Duration::from_secs(5));
+    assert!(!dir.path().join("index.sqlite").exists());
+    let w = prepared.start(|_| {});
+    let id = assert_seed(&w);
+    w.edit_page(PageEdit::Rename {
+        page: crate::workspace::records::PageId::new(id).unwrap(),
+        title: "renamed".into(),
+    })
+    .unwrap();
+    assert_eq!(
+        doc_of(&w.load(&DocId::workspace()).unwrap())
+            .transact()
+            .state_vector()
+            .len(),
+        1
+    );
+    assert_eq!(w.tree().unwrap().pages[0].title, "renamed");
 }

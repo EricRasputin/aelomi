@@ -172,8 +172,11 @@ impl Storage {
         };
         match core::check_data_path(&configured, &location.cloud_roots) {
             Ok(resolved) => storage(
-                Workspace::open(&resolved, on_index)
-                    .map(Arc::new)
+                Workspace::prepare(&resolved)
+                    .map(|mut prepared| {
+                        prepared.seed_getting_started(Instant::now() + QUIT_FLUSH_TIMEOUT);
+                        Arc::new(prepared.start(on_index))
+                    })
                     .map_err(StorageStatus::from),
                 resolved,
             ),

@@ -6,6 +6,7 @@ A fresh data folder opens one page titled **Getting started** with three editabl
 
 - `seed-first-open` shows **Getting started** and the three instructions on first launch.
 - `seed-editable` accepts typing in **Page body**.
+- `seed-deferred` keeps the app open without a first page when its first body write fails, with the normal save-failure banner and retry. Corrupt workspace history never creates a first page.
 - `seed-relaunch` opens the same page with the typed text after a normal quit and relaunch.
 
 ## How to get to it (user POV)

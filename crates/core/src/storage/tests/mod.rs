@@ -12,6 +12,7 @@ mod real_disk;
 mod record_edits;
 mod refusals;
 mod salvage;
+mod seed;
 mod snapshot_copies;
 mod store;
 
