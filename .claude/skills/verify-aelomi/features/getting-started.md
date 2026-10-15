@@ -7,6 +7,7 @@ A fresh data folder opens one page titled **Getting started** with three editabl
 - `seed-first-open` shows **Getting started** and the three instructions on first launch.
 - `seed-editable` accepts typing in **Page body**.
 - `seed-deferred` keeps the app open without a first page when its first body write fails, with the normal save-failure banner and retry. Corrupt workspace history never creates a first page.
+- `record-quit` keeps a page rename issued just before ⌘Q after relaunch.
 - `seed-relaunch` opens the same page with the typed text after a normal quit and relaunch.
 
 ## How to get to it (user POV)
@@ -24,6 +25,7 @@ Preconditions:
 - **First open.** Run `$S/app.sh tree "$RUN"`. Expect **Getting started**, **Page body**, and `⌘K to search and run commands`, `/ to insert a block`, and `[[ to link a page`. Capture `$S/app.sh screenshot "$RUN" before`.
 - **Edit.** Run `$S/app.sh focus "$RUN" "Page body"`, then `$S/app.sh keys "$RUN" " seed proof"`. Capture `$S/app.sh screenshot "$RUN" after` and check that the body contains the synthetic text.
 - **Relaunch.** Quit with `$S/app.sh keys "$RUN" q command`. Require the quit log to show `pending=[]`, then clean up the run. Launch again with `AELOMI_DATA_DIR="$RUN/data" $S/app.sh launch dev`. Run doctor and capture `relaunch`. Expect the same title, instructions, and typed text.
+- **Rename and quit.** In a dev build, open **Storage probe**, press **Rename Getting started**, then immediately send `$S/app.sh keys "$RUN" q command`. Relaunch on that data folder. Expect **Quit rename proof**, the same page ID, and the typed body. The quit log must show `pending=[]`.
 - **Page identity.** The page route in the second run must name the same ID as the first. The core test for two opens also asserts exactly one stored page and reads the three lines from its body.
 
 ## Gotchas

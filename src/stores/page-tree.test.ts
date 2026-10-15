@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import * as Y from "yjs";
 import { commands } from "../ipc";
-import { fromBase64 } from "../ipc/base64";
+import { fromBase64, toBase64 } from "../ipc/base64";
 import { installMock } from "../ipc/mock";
 import { connectIndexEvents } from "./index-status";
 import { usePageTreeStore } from "./page-tree";
@@ -151,4 +151,40 @@ test("a source event overtakes a stale tree snapshot", async () => {
   await pending;
   expect(shown().pages.map((p) => p.id)).toEqual([id]);
   vi.restoreAllMocks();
+});
+
+test("mock record edits store their transaction delta without pending foreign structs", async () => {
+  const id = await create();
+  const loaded = await commands.docLoad("workspace");
+  if (loaded.status === "error") throw new Error(JSON.stringify(loaded.error));
+  const foreign = new Y.Doc();
+  foreign.clientID = 9;
+  Y.applyUpdate(foreign, fromBase64(loaded.data));
+  let delta = new Uint8Array();
+  foreign.on("update", (update: Uint8Array) => {
+    delta = update;
+  });
+  foreign.getText("future").insert(0, "dependency ");
+  const dependency = delta;
+  foreign.getText("future").insert(11, "arrives");
+  await commands.docAppend("workspace", toBase64(delta));
+  await commands.pageRename(id, "After");
+  const accepted = window.__aelomiMock?.storage.updates("workspace").at(-1);
+  if (!accepted) throw new Error("missing record update");
+  expect(
+    Y.decodeUpdate(accepted)
+      .structs.map((struct) => struct.id.client)
+      .includes(9),
+  ).toBe(false);
+  await commands.docAppend("workspace", toBase64(dependency));
+  const state = await commands.docLoad("workspace");
+  if (state.status === "error") throw new Error(JSON.stringify(state.error));
+  const doc = new Y.Doc();
+  Y.applyUpdate(doc, fromBase64(state.data));
+  expect(doc.getText("future").toString()).toBe("dependency arrives");
+  expect(doc.getMap<Y.Map<unknown>>("pages").get(id)?.get("title")).toBe(
+    "After",
+  );
+  foreign.destroy();
+  doc.destroy();
 });

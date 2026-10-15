@@ -273,6 +273,7 @@ impl Storage {
     }
 
     pub fn flush_before_quit(&self, timeout: Duration) -> Result<(), Pending> {
+        self.quit.wait_for_record_edits();
         let Ok(workspace) = &self.opened else {
             return Ok(());
         };

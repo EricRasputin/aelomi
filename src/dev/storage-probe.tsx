@@ -78,6 +78,15 @@ async function measureTransport(): Promise<string> {
   return `storage transport load_bytes=${state.length} load_ms_median=${ms(median(loads))} append_bytes=${bytes} append_ms_median=${ms(median(appends))}`;
 }
 
+async function renameSeed(): Promise<string> {
+  const reply = await commands.pageRename(
+    "getting-started",
+    "Quit rename proof",
+  );
+  if (reply.status === "error") throw new Error(JSON.stringify(reply.error));
+  return "page rename accepted title=Quit rename proof";
+}
+
 export default function StorageProbe() {
   const [text, setText] = useState("Storage probe idle");
   const [busy, setBusy] = useState(false);
@@ -128,6 +137,14 @@ export default function StorageProbe() {
           className="rounded-md border border-[var(--border)] bg-[var(--button)] px-3 py-1.5 text-sm font-medium hover:bg-[var(--button-hover)] disabled:opacity-50"
         >
           Run probe
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={run(renameSeed)}
+          className="rounded-md border border-[var(--border)] bg-[var(--button)] px-3 py-1.5 text-sm font-medium hover:bg-[var(--button-hover)] disabled:opacity-50"
+        >
+          Rename Getting started
         </button>
         <button
           type="button"

@@ -257,6 +257,13 @@ impl Workspace {
         Ok(snapshot)
     }
 
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn hold_record_edits(&self) -> MutexGuard<'_, ()> {
+        self.record_edits
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+    }
+
     /// See [`Store::load`].
     pub fn load(&self, doc: &DocId) -> io::Result<Vec<u8>> {
         self.store.load(doc)

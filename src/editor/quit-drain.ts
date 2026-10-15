@@ -4,6 +4,7 @@ import {
   hasPendingCommands,
   setCommandAdmission,
 } from "../ipc/pending-commands";
+import { drainRecordCommands } from "../ipc/record-commands";
 import { useQuitStore } from "../stores/quit";
 import { drainDeliveries, hasOutstandingDeliveries } from "./delivery";
 
@@ -31,7 +32,8 @@ async function drain(revision: number) {
   for (const editor of editors) editor.freeze();
   let failed: string[];
   do {
-    [failed] = await Promise.all([drainDeliveries(), drainCommands()]);
+    const failures = await Promise.all([drainDeliveries(), drainCommands(), drainRecordCommands()]);
+    failed = [...new Set(failures.flat())];
   } while (hasOutstandingDeliveries() || hasPendingCommands());
   const quit = useQuitStore.getState();
   if (quit.decision.kind !== "draining" || quit.decision.revision !== revision)

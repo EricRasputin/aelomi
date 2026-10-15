@@ -27,7 +27,10 @@ fn shell(storage: Storage) -> Shell {
         .build(mock_context(noop_assets()))
         .unwrap();
     tauri_specta::Builder::<MockRuntime>::new()
-        .events(tauri_specta::collect_events![PageRecordsChanged])
+        .events(tauri_specta::collect_events![
+            PageRecordsChanged,
+            crate::quit::QuitStatusChanged
+        ])
         .mount_events(&app);
     let events = Arc::new(Mutex::new(0));
     let seen = events.clone();
@@ -162,4 +165,79 @@ fn page_commands_return_typed_errors_and_do_not_write_when_storage_is_unavailabl
         []
     );
     assert_eq!(*shell.events.lock().unwrap(), 0);
+}
+
+#[test]
+fn complete_quit_waits_for_a_rename_held_on_the_record_lock_and_reopens_with_its_title() {
+    use aelomi_core::storage::DocId;
+    use aelomi_core::workspace::PageEdit;
+    use aelomi_core::workspace::records::read_pages;
+    use std::future::Future;
+    use std::sync::mpsc;
+    use std::task::{Context, Poll, Waker};
+    use std::time::{Duration, Instant};
+    use yrs::updates::decoder::Decode;
+    use yrs::{Doc, Transact, Update};
+
+    let disk = SimDisk::default();
+    let shell = shell(crate::storage::tests::open_on(&disk));
+    let workspace = shell.app.state::<Storage>().workspace().unwrap();
+    let id = workspace
+        .edit_page(PageEdit::Create {
+            parent: None,
+            title: "Before".into(),
+        })
+        .unwrap()
+        .created_page()
+        .unwrap();
+    assert_eq!(workspace.flush(Instant::now() + Duration::from_secs(5)), []);
+    let handle = shell.app.handle();
+    let held = workspace.hold_record_edits();
+    let mut rename = Box::pin(page_rename(
+        handle.clone(),
+        handle.state(),
+        id.to_string(),
+        "Just before quit".into(),
+    ));
+    assert!(matches!(
+        rename
+            .as_mut()
+            .poll(&mut Context::from_waker(Waker::noop())),
+        Poll::Pending
+    ));
+    let storage = handle.state::<Storage>();
+    storage.quit().register_frontend();
+    let crate::quit::QuitRequest::StartDrain(status) = storage.quit().request() else {
+        panic!()
+    };
+    let (send, receive) = mpsc::channel();
+    let waited = std::thread::scope(|scope| {
+        let quit = scope.spawn(|| {
+            let result =
+                super::complete_quit_with(handle, status.revision, || send.send(()).unwrap());
+            assert_eq!(result.phase, crate::quit::QuitPhase::Confirmed);
+        });
+        let waited = matches!(
+            receive.recv_timeout(Duration::from_millis(100)),
+            Err(mpsc::RecvTimeoutError::Timeout)
+        );
+        drop(held);
+        assert!(tauri::async_runtime::block_on(rename).is_ok());
+        quit.join().unwrap();
+        waited
+    });
+    assert!(
+        waited,
+        "quit confirmed before the blocked page command appended"
+    );
+    disk.crash();
+    let reopened = disk.open(std::path::Path::new("/data")).unwrap();
+    let doc = Doc::new();
+    doc.transact_mut()
+        .apply_update(Update::decode_v1(&reopened.load(&DocId::workspace()).unwrap()).unwrap())
+        .unwrap();
+    assert_eq!(
+        read_pages(&doc.transact()).unwrap()[&id].title,
+        "Just before quit"
+    );
 }

@@ -235,6 +235,7 @@ pub fn doc_append(
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Type)]
 pub enum PageError {
     Unavailable,
+    Quitting,
     InvalidPageId,
     NotActive,
     MissingBatch,
@@ -272,7 +273,13 @@ async fn apply_page_edit<R: Runtime>(
     workspace: std::sync::Arc<aelomi_core::workspace::Workspace>,
     edit: aelomi_core::workspace::PageEdit,
 ) -> Result<aelomi_core::workspace::PageEditReply, PageError> {
+    let record_edit = app
+        .state::<Storage>()
+        .quit()
+        .record_edit()
+        .ok_or(PageError::Quitting)?;
     tauri::async_runtime::spawn_blocking(move || {
+        let _record_edit = record_edit;
         use tauri_specta::Event;
         let reply = workspace.edit_page(edit)?;
         if let Err(error) = PageRecordsChanged.emit(&app) {

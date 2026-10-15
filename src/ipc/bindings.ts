@@ -162,7 +162,7 @@ export type MenuCommand = {
 
 export type OpenPagePatch = { Set: SettingsOpenPage } | "Clear";
 
-export type PageError = "Unavailable" | "InvalidPageId" | "NotActive" | "MissingBatch" | "Cycle" | "OrderExhausted" | "InvalidTime" | "InvalidUpdate" | ({ Malformed: {
+export type PageError = "Unavailable" | "Quitting" | "InvalidPageId" | "NotActive" | "MissingBatch" | "Cycle" | "OrderExhausted" | "InvalidTime" | "InvalidUpdate" | ({ Malformed: {
 	reason: string,
 } }) & { Io?: never } | ({ Io: string }) & { Malformed?: never };
 

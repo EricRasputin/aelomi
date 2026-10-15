@@ -391,6 +391,7 @@ function search(text: string, limit: number, scope: Scope): MockHit[] {
 
 function recordFailure(ids: readonly string[]): PageError | null {
   if (storage.status !== "Ready") return "Unavailable";
+  if (quit.phase === "Confirmed") return "Quitting";
   if (ids.some((id) => !isPageId(id))) return "InvalidPageId";
   const problem = pagesRootProblem(workspaceDoc());
   const all = records();
@@ -411,9 +412,17 @@ function recordFailure(ids: readonly string[]): PageError | null {
 
 function acceptRecordEdit(edit: () => void) {
   const stored = mockDoc(workspaceDocId);
-  const vector = Y.encodeStateVector(stored.doc);
-  stored.doc.transact(edit);
-  stored.updates.push(Y.encodeStateAsUpdate(stored.doc, vector));
+  const updates: Uint8Array[] = [];
+  const collect = (update: Uint8Array) => {
+    updates.push(update);
+  };
+  stored.doc.on("update", collect);
+  try {
+    stored.doc.transact(edit);
+  } finally {
+    stored.doc.off("update", collect);
+  }
+  stored.updates.push(...updates);
   stored.pending = storage.failWrites;
   storage.seq += 1;
   refreshHealth();

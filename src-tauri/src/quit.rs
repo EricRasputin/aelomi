@@ -1,4 +1,4 @@
-use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
 use aelomi_core::storage::{DocId, Pending};
@@ -39,8 +39,22 @@ pub struct QuitStatusChanged(pub QuitStatus);
 /// Lives as long as the process. Each mutator returns the new status when it changed the
 /// decision, for the caller to publish, and `None` when it changed nothing.
 pub struct QuitGate {
-    gate: Mutex<Gate>,
+    gate: Arc<Mutex<Gate>>,
+    record_edits_done: Arc<Condvar>,
     drain_timeout: Duration,
+}
+
+pub struct RecordEdit {
+    gate: Arc<Mutex<Gate>>,
+    done: Arc<Condvar>,
+}
+
+impl Drop for RecordEdit {
+    fn drop(&mut self) {
+        let mut gate = self.gate.lock().unwrap_or_else(PoisonError::into_inner);
+        gate.record_edits -= 1;
+        self.done.notify_all();
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -56,6 +70,8 @@ struct Gate {
     revision: u32,
     frontend: bool,
     phase: Phase,
+    record_edits: usize,
+    records_closed: bool,
 }
 
 #[derive(Default)]
@@ -108,8 +124,32 @@ impl Gate {
 impl QuitGate {
     pub fn with_drain_timeout(drain_timeout: Duration) -> Self {
         Self {
-            gate: Mutex::default(),
+            gate: Arc::default(),
+            record_edits_done: Arc::default(),
             drain_timeout,
+        }
+    }
+
+    pub fn record_edit(&self) -> Option<RecordEdit> {
+        let mut gate = self.lock();
+        if gate.records_closed || matches!(gate.phase, Phase::Completing | Phase::Confirmed) {
+            return None;
+        }
+        gate.record_edits += 1;
+        Some(RecordEdit {
+            gate: self.gate.clone(),
+            done: self.record_edits_done.clone(),
+        })
+    }
+
+    pub fn wait_for_record_edits(&self) {
+        let mut gate = self.lock();
+        gate.records_closed = true;
+        while gate.record_edits != 0 {
+            gate = self
+                .record_edits_done
+                .wait(gate)
+                .unwrap_or_else(PoisonError::into_inner);
         }
     }
 
@@ -215,7 +255,10 @@ impl QuitGate {
     pub fn keep_open(&self, revision: u32) -> Option<QuitStatus> {
         let mut gate = self.lock();
         let asked = matches!(gate.phase, Phase::Asking(_)) && gate.revision == revision;
-        asked.then(|| gate.change(Phase::Open))
+        asked.then(|| {
+            gate.records_closed = false;
+            gate.change(Phase::Open)
+        })
     }
 
     /// Quit anyway. `Some` only the first time.
@@ -251,6 +294,24 @@ mod tests {
                 pending_settings: false,
             },
         )
+    }
+
+    #[test]
+    fn record_command_admission_closes_for_quit_and_keep_open_reopens_it() {
+        let gate = QuitGate::default();
+        let edit = gate.record_edit().expect("open command admission");
+        drop(edit);
+        gate.wait_for_record_edits();
+        assert!(gate.record_edit().is_none());
+        let asked = gate.refuse(&docs(&["workspace"])).unwrap();
+        assert_eq!(
+            gate.keep_open(asked.revision).unwrap().phase,
+            QuitPhase::Open
+        );
+        let edit = gate.record_edit().expect("keep open admits commands again");
+        drop(edit);
+        gate.confirm();
+        assert!(gate.record_edit().is_none());
     }
 
     #[test]
