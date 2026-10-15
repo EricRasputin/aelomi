@@ -35,9 +35,31 @@ pub enum PageEdit {
 
 #[derive(Clone, Debug)]
 pub struct PageEditReply {
-    pub page: Option<PageId>,
-    pub batch: Option<String>,
+    pub change: PageChange,
     pub seq: Seq,
+}
+
+#[derive(Clone, Debug)]
+pub enum PageChange {
+    Created(PageId),
+    Edited,
+    Trashed(String),
+    Restored(String),
+}
+
+impl PageEditReply {
+    pub fn created_page(self) -> Option<PageId> {
+        match self.change {
+            PageChange::Created(page) => Some(page),
+            _ => None,
+        }
+    }
+    pub fn trash_batch(self) -> Option<String> {
+        match self.change {
+            PageChange::Trashed(batch) | PageChange::Restored(batch) => Some(batch),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -123,8 +145,7 @@ impl Workspace {
             }
         };
         let mut reply = PageEditReply {
-            page: None,
-            batch: None,
+            change: PageChange::Edited,
             seq: Seq(0),
         };
         match edit {
@@ -132,8 +153,15 @@ impl Workspace {
                 if let Some(parent) = &parent {
                     active(parent)?;
                 }
-                let page =
-                    create_id.unwrap_or(PageId::new(random_id()?).expect("hex is a page ID"));
+                let page = match create_id {
+                    Some(page) => page,
+                    None => loop {
+                        let candidate = PageId::new(random_id()?).expect("hex is a page ID");
+                        if !records.contains_key(&candidate) {
+                            break candidate;
+                        }
+                    },
+                };
                 let order = end_order(&records, parent.as_ref())?;
                 records.insert(
                     page.clone(),
@@ -146,7 +174,7 @@ impl Workspace {
                         updated_at: now,
                     },
                 );
-                reply.page = Some(page);
+                reply.change = PageChange::Created(page);
             }
             PageEdit::Rename { page, title } => {
                 active(&page)?;
@@ -216,7 +244,7 @@ impl Workspace {
                     });
                     record.updated_at = now;
                 }
-                reply.batch = Some(batch);
+                reply.change = PageChange::Trashed(batch);
             }
             PageEdit::Restore { batch } => {
                 let restoring: BTreeSet<_> = records
@@ -272,7 +300,7 @@ impl Workspace {
                     record.updated_at = now;
                     active.insert(id);
                 }
-                reply.batch = Some(batch);
+                reply.change = PageChange::Restored(batch);
             }
         }
         let vector = doc.transact().state_vector();

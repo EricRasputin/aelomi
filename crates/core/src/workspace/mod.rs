@@ -5,7 +5,7 @@ mod seed;
 pub mod tree;
 mod write;
 
-pub use edit::{PageEdit, PageEditError, PageEditReply};
+pub use edit::{PageChange, PageEdit, PageEditError, PageEditReply};
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod fixture;

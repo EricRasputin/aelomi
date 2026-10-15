@@ -427,9 +427,12 @@ pub(crate) mod tests {
         );
         assert_eq!(
             std::fs::read_to_string(dir.path().join("format.json")).unwrap(),
-            "{\n  \"format\": 1\n}\n"
+            "{\n  \"format\": 2\n}\n"
         );
         assert!(dir.path().join("docs").is_dir());
+        let tree = storage.workspace().unwrap().tree().unwrap();
+        assert_eq!(tree.pages.len(), 1);
+        assert_eq!(tree.pages[0].title, "Getting started");
     }
 
     #[test]

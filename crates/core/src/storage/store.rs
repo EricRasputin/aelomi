@@ -131,6 +131,8 @@ impl Store {
     }
 
     pub(crate) fn is_pristine(&self, doc: &DocId) -> io::Result<bool> {
+        let slot = self.shared.slot(doc);
+        let files = slot.files_waking_writer(&self.shared);
         let names = match self.shared.fs.list(&self.shared.layout.doc_dir(doc)) {
             Ok(names) => names,
             Err(e) if e.kind() == io::ErrorKind::NotFound => Vec::new(),
@@ -159,6 +161,7 @@ impl Store {
                 super::layout::DocFile::SnapshotTmp(..) => return Ok(false),
             }
         }
+        drop(files);
         self.shared.with_doc(doc, |ydoc, state| {
             let txn = ydoc.transact();
             txn.state_vector().is_empty() && !txn.has_missing_updates() && state.queue.is_empty()

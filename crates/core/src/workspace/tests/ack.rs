@@ -47,7 +47,7 @@ fn typing_paste_drag_rename_move_trash_and_restore_are_flushed_within_100_ms() {
         })
         .unwrap();
     ack("create", &DocId::workspace(), create.seq, start);
-    let page = create.page.unwrap();
+    let page = create.created_page().unwrap();
     let mut editor = Editor::new(180);
     for name in ["typing", "paste", "drag"] {
         let start = clock.now();
@@ -90,7 +90,7 @@ fn typing_paste_drag_rename_move_trash_and_restore_are_flushed_within_100_ms() {
     let start = clock.now();
     let restore = w
         .edit_page(PageEdit::Restore {
-            batch: trash.batch.unwrap(),
+            batch: trash.trash_batch().unwrap(),
         })
         .unwrap();
     ack("restore", &DocId::workspace(), restore.seq, start);

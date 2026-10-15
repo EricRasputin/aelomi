@@ -32,6 +32,7 @@ export type {
   InvalidQuery,
   MenuCommand,
   OpenPagePatch,
+  PageError,
   PageIssue,
   PageProblem,
   PageTree,

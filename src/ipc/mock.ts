@@ -16,6 +16,7 @@ import {
   type IndexStatus,
   MAX_EXCLUDED_PAGES,
   type MenuCommand,
+  type PageError,
   type PageIssue,
   type PageProblem,
   type PageTree,
@@ -144,8 +145,15 @@ function mockEvent<T>(name: string) {
   return Object.assign(() => base, base);
 }
 
+function mockSignal(name: string) {
+  const event = mockEvent<null>(name);
+  const base = { ...event(), emit: () => event.emit(null) };
+  return Object.assign(() => base, base);
+}
+
 export const events = {
   menuCommand: mockEvent<MenuCommand>("menu-command"),
+  pageRecordsChanged: mockSignal("page-records-changed"),
   indexChanged: mockEvent<IndexChanged>("index-changed"),
   indexStatusChanged: mockEvent<IndexStatus>("index-status-changed"),
   quitStatusChanged: mockEvent<QuitStatus>("quit-status-changed"),
@@ -381,6 +389,38 @@ function search(text: string, limit: number, scope: Scope): MockHit[] {
   return searchPages(orderedPages(), text, limit, scope);
 }
 
+function recordFailure(ids: readonly string[]): PageError | null {
+  if (storage.status !== "Ready") return "Unavailable";
+  if (ids.some((id) => !isPageId(id))) return "InvalidPageId";
+  const problem = pagesRootProblem(workspaceDoc());
+  const all = records();
+  if (
+    problem !== null ||
+    all.size !== workspaceDoc().getMap("pages").size ||
+    [...all].some(
+      ([id, record]) =>
+        !isPageId(id) ||
+        (record.parentId !== null && !isPageId(record.parentId)) ||
+        (record.trash?.originalParentId != null &&
+          !isPageId(record.trash.originalParentId)),
+    )
+  )
+    return { Malformed: { reason: problem ?? "malformed page record" } };
+  return null;
+}
+
+function acceptRecordEdit(edit: () => void) {
+  const stored = mockDoc(workspaceDocId);
+  const vector = Y.encodeStateVector(stored.doc);
+  stored.doc.transact(edit);
+  stored.updates.push(Y.encodeStateAsUpdate(stored.doc, vector));
+  stored.pending = storage.failWrites;
+  storage.seq += 1;
+  refreshHealth();
+  markChanged({ workspace: true, pages: [] });
+  void events.pageRecordsChanged.emit();
+}
+
 export const commands = {
   settingsGet: async () => {
     calls.push({ command: "settingsGet", args: [] });
@@ -548,6 +588,66 @@ export const commands = {
         : { workspace: false, pages: [docId] },
     );
     return { status: "ok", data: storage.seq };
+  },
+  pageCreate: async (parentId) => {
+    calls.push({ command: "pageCreate", args: [parentId] });
+    await setupReady;
+    const error = recordFailure(parentId === null ? [] : [parentId]);
+    if (error) return { status: "error", error };
+    if (
+      parentId !== null &&
+      !sourceTree().tree.pages.some((p) => p.id === parentId)
+    )
+      return { status: "error", error: "NotActive" };
+    const step = 2 ** 20;
+    const order =
+      [...records().values()]
+        .filter((r) => r.parentId === parentId)
+        .reduce((max, record) => Math.max(max, record.order), 0) + step;
+    if (!Number.isSafeInteger(order))
+      return { status: "error", error: "OrderExhausted" };
+    const id = crypto.randomUUID();
+    const now = Date.now();
+    acceptRecordEdit(() =>
+      writeRecords(workspaceDoc(), [
+        {
+          id,
+          title: "",
+          parentId,
+          order,
+          createdAt: now,
+          updatedAt: now,
+        },
+      ]),
+    );
+    return { status: "ok", data: id };
+  },
+  pageRename: async (pageId, title) => {
+    calls.push({ command: "pageRename", args: [pageId, title] });
+    await setupReady;
+    const error = recordFailure([pageId]);
+    if (error) return { status: "error", error };
+    if (!sourceTree().tree.pages.some((p) => p.id === pageId))
+      return { status: "error", error: "NotActive" };
+    acceptRecordEdit(() => {
+      const map = workspaceDoc().getMap<Y.Map<unknown>>("pages").get(pageId);
+      map?.set("title", title);
+      map?.set("updatedAt", Date.now());
+    });
+    return { status: "ok", data: null };
+  },
+  pageTrash: async (pageId) => {
+    calls.push({ command: "pageTrash", args: [pageId] });
+    await setupReady;
+    const error = recordFailure([pageId]);
+    if (error) return { status: "error", error };
+    if (!sourceTree().tree.pages.some((p) => p.id === pageId))
+      return { status: "error", error: "NotActive" };
+    const batch = crypto.randomUUID();
+    acceptRecordEdit(() =>
+      trashPage(workspaceDoc(), pageId, batch, Date.now()),
+    );
+    return { status: "ok", data: batch };
   },
   devProbeLog: async (line) => {
     calls.push({ command: "devProbeLog", args: [line] });

@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { commands, type PageTree, type TreePage } from "../ipc";
+import { commands, events, type PageTree, type TreePage } from "../ipc";
 
 export type SourceTree =
   | { kind: "loading" }
@@ -40,6 +40,12 @@ export const usePageTreeStore = create<PageTreeStore>((set, get) => ({
     return next;
   },
 }));
+
+export function listenForPageEdits() {
+  return events.pageRecordsChanged.listen(() => {
+    void usePageTreeStore.getState().refresh();
+  });
+}
 
 export const untitled = "Untitled";
 export const deletedPage = "Deleted page";

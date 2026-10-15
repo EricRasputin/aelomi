@@ -24,7 +24,7 @@ fn create(w: &Workspace, parent: Option<PageId>, title: &str) -> PageId {
         title: title.into(),
     })
     .unwrap()
-    .page
+    .created_page()
     .unwrap()
 }
 fn records(w: &Workspace) -> BTreeMap<PageId, PageRecord> {
@@ -97,7 +97,7 @@ fn trash_restore_preserves_tree_sibling_order_and_favorites_field_by_field() {
     let batch = w
         .edit_page(PageEdit::Trash { page: a })
         .unwrap()
-        .batch
+        .trash_batch()
         .unwrap();
     assert_eq!(
         w.tree()
@@ -140,7 +140,7 @@ fn moves_refuse_cycles_and_restore_uses_top_level_when_original_parent_is_inacti
             page: child.clone(),
         })
         .unwrap()
-        .batch
+        .trash_batch()
         .unwrap();
     w.edit_page(PageEdit::Trash { page: a }).unwrap();
     let last = create(&w, None, "last");
@@ -257,6 +257,7 @@ proptest! {
             let mut seen = BTreeSet::new();
             let mut orders = BTreeSet::new();
             for p in &tree.pages {
+                prop_assert_eq!(&p.parent, &after[&p.id].placement.parent);
                 if let Some(parent) = &p.parent { prop_assert!(seen.contains(parent)); }
                 prop_assert!(seen.insert(p.id.clone()));
                 prop_assert!(orders.insert((p.parent.clone(), after[&p.id].placement.order)));

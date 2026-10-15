@@ -17,7 +17,13 @@ fn title(opened: &super::Opened, id: &str) -> String {
 }
 
 fn rename(opened: &super::Opened, id: &str, to: &str) {
-    opened.edit_records(|records| records.get_mut(&page(id)).unwrap().title = to.into());
+    opened
+        .workspace
+        .edit_page(crate::workspace::PageEdit::Rename {
+            page: page(id),
+            title: to.into(),
+        })
+        .unwrap();
 }
 
 #[test]

@@ -70,15 +70,12 @@ fn a_query_while_a_trash_is_unapplied_answers_indexing_never_the_trashed_page() 
     let opened = seeded(dir.path());
     assert_eq!(words(&opened, "cafe"), ["reading"]);
     opened.gate.arm(HoldPoint::BeforeCommit);
-    opened.edit_records(|records| {
-        let reading = records.get_mut(&page("reading")).unwrap();
-        reading.trash = Some(crate::workspace::records::Trash {
-            original_parent: reading.placement.parent.clone(),
-            original_order: 1,
-            batch_id: "b".into(),
-            trashed_at: 5,
-        });
-    });
+    opened
+        .workspace
+        .edit_page(crate::workspace::PageEdit::Trash {
+            page: page("reading"),
+        })
+        .unwrap();
     opened.gate.wait_held(&HoldPoint::BeforeCommit);
     assert_eq!(
         opened.workspace.search(&all("cafe", 10)),

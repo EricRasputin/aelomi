@@ -30,8 +30,7 @@ const { values: args } = parseArgs({
   },
 });
 const binary = resolve(args.app, "Contents/MacOS/aelomi");
-const expectedVariant =
-  args["expected-variant"] ?? (args["data-dir"] ? "page" : "index");
+const expectedVariant = args["expected-variant"] ?? "page";
 if (expectedVariant !== "index" && expectedVariant !== "page") {
   throw new Error("--expected-variant must be index or page");
 }

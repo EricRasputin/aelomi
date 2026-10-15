@@ -1,6 +1,6 @@
 # App window
 
-Aelomi opens one window titled `Aelomi` with standard macOS window controls and a native menu bar. The window shows an `Aelomi` header and, below it, the IPC status line and a **Ping again** button. The sidebar and pages from SHELL-1 do not exist yet.
+Aelomi opens one window titled `Aelomi` with standard macOS window controls and a native menu bar. The window keeps an `Aelomi` header, the IPC status line, and a **Ping again** button. A fresh data folder opens the editable **Getting started** page. The sidebar belongs to a later change.
 
 ## Sub-features
 
@@ -24,7 +24,7 @@ Preconditions:
 - **Window opens.** Launch the app. Run `$S/app.sh screenshot "$RUN" window`. The first line of `window.ax.txt` reads `title="Aelomi"` with `w=960 h=640`, and `window.png` shows one window with the title `Aelomi`.
 - **Window controls.** Look at `window.png`. The red, yellow, and green buttons are at the top left of the title bar.
 - **Menu bar.** Run `$S/app.sh menus "$RUN"`. The output is `Apple`, `Aelomi`, `File`, `Edit`, `View`, `Window`, and `Help`, one per line.
-- **Window content.** Run `$S/app.sh tree "$RUN"`. The tree has `AXGroup/AXLandmarkBanner` containing `AXStaticText "Aelomi"`, and `AXGroup/AXLandmarkMain` containing the status group and `AXButton "Ping again"`.
+- **Window content.** Run `$S/app.sh tree "$RUN"`. The tree has `AXGroup/AXLandmarkBanner` containing `AXStaticText "Aelomi"`, and `AXGroup/AXLandmarkMain` containing the **Getting started** page and **Page body** editor. The status group and `AXButton "Ping again"` remain visible.
 - **Mock browser.** Run `$S/mock-drive.mjs`. `before.aria.yml` lists `banner: Aelomi`, the `status` line, and `button "Ping again"`.
 - **Proof.** Keep `window.png`, `window.ax.txt`, and the `menus` output. The screenshot shows the title bar, the header, and the welcome section.
 
