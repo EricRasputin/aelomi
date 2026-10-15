@@ -1,0 +1,11 @@
+#!/bin/sh
+# Seeds the 10,000-page fixture and the 5,000-block BlockNote page through the real Store, which
+# compacts the big page as it closes, then lists the big page's files. Run from the repository root.
+set -eu
+run=${1:?usage: d70c-proof.sh <new run folder>}
+mkdir -p "$(dirname "$run")" && mkdir "$run"
+git rev-parse HEAD > "$run/head.txt"
+cargo run --release -q -p aelomi-core --features test-support --example seed_index -- \
+  "$run/seed" search-10k --big-page > "$run/seed.log" 2>&1 || { cat "$run/seed.log"; exit 1; }
+cat "$run/seed.log"
+ls "$run/seed/docs/big-page" | tee "$run/big-page-files.txt"
