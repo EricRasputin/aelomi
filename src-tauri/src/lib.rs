@@ -515,11 +515,11 @@ pub(crate) mod tests {
         );
         assert_eq!(
             commands::quit_drain_failed_with(app.handle(), 3, &[DocId::new("other").unwrap()]),
-            asking(4, &["other"])
+            asking(4, &["other", "page"])
         );
         assert_eq!(
             commands::quit_drain_failed_with(app.handle(), 3, &[]),
-            asking(4, &["other"]),
+            asking(4, &["other", "page"]),
             "a stale failure changes nothing"
         );
         assert_eq!(
@@ -534,7 +534,7 @@ pub(crate) mod tests {
                 r#"quit-status-changed {"revision":1,"phase":"Draining"}"#,
                 r#"quit-status-changed {"revision":2,"phase":{"Asking":{"pending_docs":["page"]}}}"#,
                 r#"quit-status-changed {"revision":3,"phase":"Draining"}"#,
-                r#"quit-status-changed {"revision":4,"phase":{"Asking":{"pending_docs":["other"]}}}"#,
+                r#"quit-status-changed {"revision":4,"phase":{"Asking":{"pending_docs":["other","page"]}}}"#,
                 r#"quit-status-changed {"revision":5,"phase":"Open"}"#,
                 r#"quit-status-changed {"revision":6,"phase":"Confirmed"}"#,
             ]
