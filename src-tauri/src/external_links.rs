@@ -18,9 +18,7 @@ pub(crate) fn navigation(url: &Url, dev_url: Option<&Url>) -> Navigation {
     };
     let is_app = match dev_url {
         Some(app) => same_origin(app),
-        None => {
-            url.scheme() == "tauri" && url.host_str() == Some("localhost") && url.port().is_none()
-        }
+        None => same_origin(&Url::parse(crate::PACKAGED_APP_ORIGIN).expect("packaged app origin")),
     };
     if is_app {
         Navigation::App
@@ -116,9 +114,12 @@ mod tests {
 
     #[test]
     fn navigation_permits_only_the_app_origin() {
-        let decide = |input| navigation(&Url::parse(input).unwrap(), None);
+        let decide = |input: &str| navigation(&Url::parse(input).unwrap(), None);
         assert_eq!(
-            decide("tauri://localhost/page/page-a?block=a#b"),
+            decide(&format!(
+                "{}/page/page-a?block=a#b",
+                crate::PACKAGED_APP_ORIGIN
+            )),
             Navigation::App
         );
         for input in [
@@ -143,7 +144,7 @@ mod tests {
     #[test]
     fn development_allows_only_the_configured_origin() {
         let app = Url::parse("http://localhost:1420").unwrap();
-        let decide = |input| navigation(&Url::parse(input).unwrap(), Some(&app));
+        let decide = |input: &str| navigation(&Url::parse(input).unwrap(), Some(&app));
         assert_eq!(decide("http://localhost:1420/page/page-a"), Navigation::App);
         for input in [
             "http://localhost:1421",

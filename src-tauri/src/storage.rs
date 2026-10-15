@@ -41,6 +41,7 @@ pub enum StorageStatus {
     CloudPath {
         configured: String,
         resolved: String,
+        link: Option<String>,
     },
     Locked,
     NewerFormat,
@@ -96,17 +97,27 @@ impl Storage {
             #[cfg(test)]
             _index_dir: None,
         };
-        match core::check_data_path(&location.path, &location.cloud_roots) {
+        let configured = match std::path::absolute(&location.path) {
+            Ok(path) => path,
+            Err(error) => {
+                return storage(
+                    Err(StorageStatus::Io(error.to_string())),
+                    location.path.clone(),
+                );
+            }
+        };
+        match core::check_data_path(&configured, &location.cloud_roots) {
             Ok(resolved) => storage(
                 Workspace::open(&resolved, on_index)
                     .map(Arc::new)
                     .map_err(StorageStatus::from),
                 resolved,
             ),
-            Err(DataPathError::CloudFolder { resolved, .. }) => storage(
+            Err(DataPathError::CloudFolder { resolved, link, .. }) => storage(
                 Err(StorageStatus::CloudPath {
-                    configured: location.path.to_string_lossy().into_owned(),
+                    configured: configured.to_string_lossy().into_owned(),
                     resolved: resolved.to_string_lossy().into_owned(),
+                    link: link.map(|path| path.to_string_lossy().into_owned()),
                 }),
                 resolved,
             ),
@@ -458,19 +469,22 @@ pub(crate) mod tests {
             serde_json::json!({ "CloudPath": {
                 "configured": location.path.to_string_lossy(),
                 "resolved": resolved,
+                "link": location.path.to_string_lossy(),
             }}),
         );
         assert_eq!(
             storage.status(),
             StorageStatus::CloudPath {
                 configured: location.path.to_string_lossy().into_owned(),
-                resolved: resolved.clone()
+                resolved: resolved.clone(),
+                link: Some(location.path.to_string_lossy().into_owned()),
             }
         );
         assert_eq!(
             storage.startup_line(),
             format!(
-                "storage status=CloudPath {{ configured: {:?}, resolved: {resolved:?} }} path={resolved}",
+                "storage status=CloudPath {{ configured: {:?}, resolved: {resolved:?}, link: Some({:?}) }} path={resolved}",
+                location.path.to_string_lossy(),
                 location.path.to_string_lossy()
             )
         );
@@ -480,6 +494,48 @@ pub(crate) mod tests {
             .map(|entry| entry.unwrap().file_name())
             .collect();
         assert_eq!(names, [OsString::from("data")]);
+    }
+
+    #[test]
+    fn cloud_status_names_a_parent_link_or_a_direct_override_without_changing_data() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path().canonicalize().unwrap();
+        let cloud = base.join("cloud");
+        let target = cloud.join("Aelomi Dev");
+        std::fs::create_dir_all(&target).unwrap();
+        std::fs::write(target.join("sentinel"), b"cloud data stays intact").unwrap();
+        let link = base.join("Support");
+        std::os::unix::fs::symlink(&cloud, &link).unwrap();
+        for (configured, expected_link) in [
+            (
+                link.join("Aelomi Dev"),
+                Some(link.to_string_lossy().into_owned()),
+            ),
+            (target.clone(), None),
+        ] {
+            let storage = Storage::open(
+                &DataLocation {
+                    path: configured.clone(),
+                    cloud_roots: vec![cloud.clone()],
+                },
+                |_| {},
+            );
+            assert_eq!(
+                serde_json::to_value(storage.status()).unwrap(),
+                serde_json::json!({ "CloudPath": {
+                    "configured": configured.to_string_lossy(), "resolved": target.to_string_lossy(), "link": expected_link,
+                }})
+            );
+            let names: Vec<_> = std::fs::read_dir(&target)
+                .unwrap()
+                .map(|entry| entry.unwrap().file_name())
+                .collect();
+            assert_eq!(names, [OsString::from("sentinel")]);
+            assert_eq!(
+                std::fs::read(target.join("sentinel")).unwrap(),
+                b"cloud data stays intact"
+            );
+        }
     }
 
     pub(crate) fn open_on(disk: &SimDisk) -> Storage {

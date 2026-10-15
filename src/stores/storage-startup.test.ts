@@ -37,7 +37,11 @@ afterEach(() => {
 
 test("reads the immutable native startup status once", async () => {
   const read = vi.spyOn(commands, "storageStatus").mockResolvedValue({
-    CloudPath: { configured: "/local/data", resolved: "/cloud/data" },
+    CloudPath: {
+      configured: "/local/data",
+      resolved: "/cloud/data",
+      link: "/local/data",
+    },
   });
   await connect().ready;
   expect(read.mock.calls).toEqual([[]]);

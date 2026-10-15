@@ -9,6 +9,7 @@ pub enum DataPathError {
     CloudFolder {
         resolved: PathBuf,
         root: PathBuf,
+        link: Option<PathBuf>,
     },
     Io(io::Error),
 }
@@ -20,10 +21,34 @@ pub fn check_data_path(path: &Path, forbidden_roots: &[PathBuf]) -> Result<PathB
     for root in forbidden_roots {
         let root = canonicalize_allowing_missing(root)?;
         if inside(&resolved, &root) {
-            return Err(DataPathError::CloudFolder { resolved, root });
+            let link = first_cloud_link(path, &root)?;
+            return Err(DataPathError::CloudFolder {
+                resolved,
+                root,
+                link,
+            });
         }
     }
     Ok(resolved)
+}
+
+fn first_cloud_link(path: &Path, root: &Path) -> io::Result<Option<PathBuf>> {
+    let absolute = std::path::absolute(path)?;
+    let mut component_path = PathBuf::new();
+    for part in absolute.components() {
+        if part == Component::ParentDir {
+            component_path = canonicalize_allowing_missing(&component_path)?;
+            component_path.pop();
+            continue;
+        }
+        component_path.push(part);
+        if std::fs::read_link(&component_path).is_ok()
+            && inside(&canonicalize_allowing_missing(&component_path)?, root)
+        {
+            return Ok(Some(component_path));
+        }
+    }
+    Ok(None)
 }
 
 /// Ignores case, as APFS does by default. The filesystem fixes the case of parts that exist,
@@ -96,7 +121,7 @@ impl From<io::Error> for DataPathError {
 impl fmt::Display for DataPathError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::CloudFolder { resolved, root } => write!(
+            Self::CloudFolder { resolved, root, .. } => write!(
                 f,
                 "the data folder resolves to {}, inside the cloud-synced folder {}",
                 resolved.display(),
@@ -147,7 +172,7 @@ mod tests {
 
         fn check(&self, relative: &str) -> Result<PathBuf, (PathBuf, PathBuf)> {
             check_data_path(&self.path(relative), &self.cloud_roots()).map_err(|e| match e {
-                DataPathError::CloudFolder { resolved, root } => (resolved, root),
+                DataPathError::CloudFolder { resolved, root, .. } => (resolved, root),
                 DataPathError::Io(e) => panic!("{e}"),
             })
         }
@@ -204,6 +229,33 @@ mod tests {
                 home.path("Library/CloudStorage")
             ))
         );
+    }
+
+    #[test]
+    fn reports_the_first_cloud_link_component_and_skips_local_aliases() {
+        let home = Home::new();
+        let cloud = home.path("Library/CloudStorage/Dropbox");
+        let support = home.path("Library/Support");
+        let alias = home.path("local-library");
+        symlink(&cloud, &support).unwrap();
+        symlink(home.path("Library"), &alias).unwrap();
+        let data = home.path("Library/Application Support/Aelomi Dev");
+        symlink(cloud.join("Aelomi Dev"), &data).unwrap();
+        for (configured, expected) in [
+            (data.clone(), Some(data)),
+            (support.join("Aelomi"), Some(support)),
+            (alias.join("Support/Aelomi"), Some(alias.join("Support"))),
+            (
+                home.path("Library/missing/../Support/Aelomi"),
+                Some(home.path("Library/Support")),
+            ),
+            (cloud.join("Aelomi"), None),
+        ] {
+            match check_data_path(&configured, &home.cloud_roots()) {
+                Err(DataPathError::CloudFolder { link, .. }) => assert_eq!(link, expected),
+                other => panic!("expected a cloud refusal for {configured:?}, got {other:?}"),
+            }
+        }
     }
 
     #[test]

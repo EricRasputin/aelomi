@@ -24,23 +24,27 @@ export function StorageRefusal({
               {startup.title}
             </h1>
             <p className="storage-refusal-message">{startup.message}</p>
-            {startup.recovery && (
+            {startup.recovery &&
+              startup.recovery.configured !== startup.recovery.resolved && (
+                <div className="storage-refusal-detail">
+                  <p>{storageCopy.configuredPath}</p>
+                  <p className="storage-refusal-path" dir="ltr">
+                    {startup.recovery.configured}
+                  </p>
+                </div>
+              )}
+            {startup.recovery !== null && (
               <div className="storage-refusal-detail">
-                <p>{storageCopy.configuredPath}</p>
+                <p>{storageCopy.cloudDataPath}</p>
                 <p className="storage-refusal-path" dir="ltr">
-                  {startup.recovery.configured}
+                  {startup.recovery.resolved}
                 </p>
               </div>
             )}
             {startup.detail !== null && (
               <div className="storage-refusal-detail">
-                {startup.recovery !== null && <p>{storageCopy.resolvedPath}</p>}
-                <p
-                  className="storage-refusal-path"
-                  dir={startup.recovery ? "ltr" : "auto"}
-                >
-                  {startup.detail}
-                </p>
+                <p>{storageCopy.details}</p>
+                <p>{startup.detail}</p>
               </div>
             )}
             {startup.recovery !== null && (
@@ -50,8 +54,9 @@ export function StorageRefusal({
               >
                 <h2 id="storage-recovery-title">{storageCopy.moveTitle}</h2>
                 <p>{storageCopy.finder}</p>
+                <p>{storageCopy.occupiedDestination}</p>
                 <ol>
-                  {storageCopy.moveSteps.map((step) => (
+                  {startup.recovery.steps.map((step) => (
                     <li key={step}>{step}</li>
                   ))}
                 </ol>

@@ -17,24 +17,60 @@ test("keeps the complete storage IO reason", () => {
   const reason = `Write failed for a local folder. ${"detail ".repeat(100)}`;
   expect(storageFailureReason({ Io: reason })).toBe(reason);
 });
-test("maps a cloud refusal to its resolved path and move instructions", () => {
-  expect(
-    storageStartup({
-      CloudPath: {
-        configured: "/Users/test/Library/Application Support/Aelomi Dev",
-        resolved: "~/Library/Mobile Documents/Aelomi",
-      },
-    }),
-  ).toEqual({
+test.each([
+  {
+    name: "link at the data folder",
+    configured: "/Users/test/Library/Application Support/Aelomi",
+    resolved: "/Users/test/Library/Mobile Documents/Aelomi",
+    link: "/Users/test/Library/Application Support/Aelomi",
+    steps: [
+      'In Finder, open /Users/test/Library/Application Support with Go > Go to Folder (⇧⌘G). Drag "Aelomi" (it has an arrow badge) to the Trash. The cloud folder it points to stays where it is.',
+      "Move /Users/test/Library/Mobile Documents/Aelomi so its new path is /Users/test/Library/Application Support/Aelomi.",
+      "Quit Aelomi and reopen it.",
+    ],
+  },
+  {
+    name: "link at a parent",
+    configured: "/Users/test/Library/Support/Aelomi",
+    resolved: "/Users/test/Library/CloudStorage/Dropbox/Aelomi",
+    link: "/Users/test/Library/Support",
+    steps: [
+      'In Finder, open /Users/test/Library with Go > Go to Folder (⇧⌘G). Drag "Support" (it has an arrow badge) to the Trash. The cloud folder it points to stays where it is.',
+      'Create a regular folder named "Support" in /Users/test/Library. Recreate any other folders needed to reach /Users/test/Library/Support.',
+      "Move /Users/test/Library/CloudStorage/Dropbox/Aelomi so its new path is /Users/test/Library/Support/Aelomi.",
+      "Quit Aelomi and reopen it.",
+    ],
+  },
+  {
+    name: "direct override",
+    configured: "/Users/test/Library/Mobile Documents/Aelomi",
+    resolved: "/Users/test/Library/Mobile Documents/Aelomi",
+    link: null,
+    steps: [
+      "Choose a local path on this Mac, outside cloud storage. Set AELOMI_DATA_DIR to that path.",
+      "Move /Users/test/Library/Mobile Documents/Aelomi so its new path is the AELOMI_DATA_DIR path.",
+      "Quit Aelomi and reopen it.",
+    ],
+  },
+  {
+    name: "debug build path",
+    configured: "/Users/test/Library/Application Support/Aelomi Dev",
+    resolved: "/Users/test/Library/Mobile Documents/Aelomi Dev",
+    link: "/Users/test/Library/Application Support/Aelomi Dev",
+    steps: [
+      'In Finder, open /Users/test/Library/Application Support with Go > Go to Folder (⇧⌘G). Drag "Aelomi Dev" (it has an arrow badge) to the Trash. The cloud folder it points to stays where it is.',
+      "Move /Users/test/Library/Mobile Documents/Aelomi Dev so its new path is /Users/test/Library/Application Support/Aelomi Dev.",
+      "Quit Aelomi and reopen it.",
+    ],
+  },
+])("maps safe recovery steps for $name", ({ name: _name, steps, ...cloud }) => {
+  expect(storageStartup({ CloudPath: cloud })).toEqual({
     kind: "refused",
     title: "Move your data folder out of cloud storage",
     message:
       "Cloud sync corrupts the database. Aelomi can't open this folder safely. Aelomi hasn't opened or changed anything in it.",
-    detail: "~/Library/Mobile Documents/Aelomi",
-    recovery: {
-      configured: "/Users/test/Library/Application Support/Aelomi Dev",
-      resolved: "~/Library/Mobile Documents/Aelomi",
-    },
+    detail: null,
+    recovery: { configured: cloud.configured, resolved: cloud.resolved, steps },
   });
 });
 

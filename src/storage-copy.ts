@@ -24,16 +24,15 @@ export const storageCopy = {
   cloudRisk:
     "Cloud sync corrupts the database. Aelomi can't open this folder safely. Aelomi hasn't opened or changed anything in it.",
   configuredPath: "Configured data folder",
-  resolvedPath: "Points to this cloud folder",
-  finder: "In Finder, choose Go > Go to Folder (⇧⌘G) and paste a path.",
+  cloudDataPath: "Cloud data folder",
+  details: "Details",
+  finder: "Keep this screen open while you move the folder in Finder.",
   moveTitle: "Move it back to this Mac",
-  moveSteps: [
-    "Quit Aelomi (⌘Q).",
-    "If the configured path or a parent is a symbolic link into cloud storage, remove that link first. Keep its target folder and restore a local parent.",
-    "Move the cloud folder to the configured path once it is local. Do not overwrite an existing folder.",
-    "If AELOMI_DATA_DIR points directly into cloud storage, set it to a local folder and move the data there instead.",
-    "Reopen Aelomi.",
-  ],
+  occupiedDestination:
+    "If a folder already exists at the destination, Aelomi may have created it when it last opened. Move it aside, then move your data in.",
+  restart: "Quit Aelomi and reopen it.",
+  override:
+    "Choose a local path on this Mac, outside cloud storage. Set AELOMI_DATA_DIR to that path.",
   startupTitle: "Aelomi couldn't start",
   startup: "Aelomi couldn't read its startup status. Quit and reopen it.",
   lockedTitle: "This data folder is already open",
@@ -57,10 +56,44 @@ export type StorageStartup =
       title: string;
       message: string;
       detail: string | null;
-      recovery:
-        | Extract<StorageStatus, { CloudPath: object }>["CloudPath"]
-        | null;
+      recovery: {
+        configured: string;
+        resolved: string;
+        steps: readonly string[];
+      } | null;
     };
+
+function cloudRecovery(
+  cloud: Extract<StorageStatus, { CloudPath: object }>["CloudPath"],
+) {
+  const { configured, resolved, link } = cloud;
+  const steps: string[] = [];
+  if (link !== null) {
+    const slash = link.lastIndexOf("/");
+    const parent = link.slice(0, slash) || "/";
+    const name = link.slice(slash + 1);
+    steps.push(
+      `In Finder, open ${parent} with Go > Go to Folder (⇧⌘G). Drag "${name}" (it has an arrow badge) to the Trash. The cloud folder it points to stays where it is.`,
+    );
+    if (link !== configured) {
+      const destinationParent = configured.slice(
+        0,
+        configured.lastIndexOf("/"),
+      );
+      steps.push(
+        `Create a regular folder named "${name}" in ${parent}. Recreate any other folders needed to reach ${destinationParent}.`,
+      );
+    }
+    steps.push(`Move ${resolved} so its new path is ${configured}.`);
+  } else {
+    steps.push(
+      storageCopy.override,
+      `Move ${resolved} so its new path is the AELOMI_DATA_DIR path.`,
+    );
+  }
+  steps.push(storageCopy.restart);
+  return { configured, resolved, steps };
+}
 
 export function storageStartup(status: StorageStatus): StorageStartup {
   if (typeof status === "object") {
@@ -69,8 +102,8 @@ export function storageStartup(status: StorageStatus): StorageStartup {
         kind: "refused",
         title: storageCopy.cloudTitle,
         message: storageCopy.cloudRisk,
-        detail: status.CloudPath.resolved,
-        recovery: status.CloudPath,
+        detail: null,
+        recovery: cloudRecovery(status.CloudPath),
       };
     return {
       kind: "refused",

@@ -11,6 +11,8 @@ use tauri_specta::Event;
 
 use crate::storage::DataLocation;
 
+pub(crate) const PACKAGED_APP_ORIGIN: &str = "tauri://localhost";
+
 static APP: OnceLock<AppHandle> = OnceLock::new();
 
 type ShouldTerminate =

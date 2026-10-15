@@ -1,4 +1,5 @@
 import { test as base } from "@e2e-dev/web";
+import { guardWebSocket } from "../tests/guard-websocket";
 import { isLocalUrl } from "../tests/is-local-url";
 import { acceptanceContext } from "./browser";
 
@@ -11,14 +12,15 @@ export const test = base.extend<{ networkGuard: undefined }>({
       requests.push(`${route.request.method} ${route.request.url}`);
       await route.abort();
     });
-    await acceptanceContext().routeWebSocket(/.*/, (socket) => {
-      if (isLocalUrl(socket.url())) socket.connectToServer();
-      else {
-        requests.push(`WS ${socket.url()}`);
-        void socket.close();
-      }
-    });
+    const context = acceptanceContext();
+    await context.routeWebSocket(/.*/, (socket) =>
+      guardWebSocket(socket, requests),
+    );
     await use(undefined);
+    if (acceptanceContext() !== context)
+      throw new Error(
+        "SHELL-13 acceptance context was replaced. Reinstall the WebSocket guard after clearing or restoring browser state.",
+      );
     if (requests.length > 0) {
       throw new Error(`SHELL-13 non-local requests:\n${requests.join("\n")}`);
     }

@@ -291,6 +291,7 @@ export type StorageHealthChanged = Health;
 export type StorageStatus = "Ready" | ({ CloudPath: {
 	configured: string,
 	resolved: string,
+	link: string | null,
 } }) & { Io?: never } | "Locked" | "NewerFormat" | "UnknownFormat" | ({ Io: string }) & { CloudPath?: never };
 
 export type TextPart = {

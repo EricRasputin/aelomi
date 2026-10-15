@@ -9,6 +9,11 @@ mod settings;
 mod storage;
 mod trace;
 
+#[cfg(target_os = "macos")]
+use macos::PACKAGED_APP_ORIGIN;
+#[cfg(not(target_os = "macos"))]
+const PACKAGED_APP_ORIGIN: &str = "tauri://localhost";
+
 use aelomi_core::index::IndexEvent;
 #[cfg(test)]
 use aelomi_core::storage::DocId;

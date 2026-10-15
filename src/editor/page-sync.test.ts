@@ -319,7 +319,7 @@ test("an older successful flush cannot clear a newer refused edit", async () => 
   await vi.advanceTimersByTimeAsync(0);
   window.__aelomiMock?.storage.refuseAppends(null);
   let release = () => {};
-  vi.spyOn(commands, "storageFlush").mockImplementationOnce(
+  const flush = vi.spyOn(commands, "storageFlush").mockImplementationOnce(
     () =>
       new Promise((done) => {
         release = () => done({ status: "ok", data: true });
@@ -329,14 +329,19 @@ test("an older successful flush cannot clear a newer refused edit", async () => 
   window.__aelomiMock?.storage.refuseAppends({ Io: "New read failed" });
   ydoc.getText("t").insert(1, "y");
   await vi.advanceTimersByTimeAsync(0);
+  window.__aelomiMock?.storage.refuseAppends(null);
+  await vi.advanceTimersByTimeAsync(200);
+  expect(stored("page-flush-race")).toBe("xy");
+  expect(flush.mock.calls).toEqual([[]]);
   release();
   await vi.advanceTimersByTimeAsync(0);
-  expect(stored("page-flush-race")).toBe("x");
+  expect(stored("page-flush-race")).toBe("xy");
   expect([...useDeliveryStore.getState().failing]).toEqual([
     ["page-flush-race", { Io: "New read failed" }],
   ]);
-  window.__aelomiMock?.storage.refuseAppends(null);
-  await vi.advanceTimersByTimeAsync(200);
+  expect(flush.mock.calls).toEqual([[]]);
+  await vi.advanceTimersByTimeAsync(400);
+  expect(flush.mock.calls).toEqual([[], []]);
   expect([...useDeliveryStore.getState().failing]).toEqual([]);
   expect(stored("page-flush-race")).toBe("xy");
   stop();
