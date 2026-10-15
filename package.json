@@ -23,7 +23,8 @@
     "check:no-mock": "node scripts/check-no-mock.mjs",
     "perf:cold": "node perf/cold-start.ts",
     "fixtures": "node fixtures/generate.ts",
-    "perf:keystroke": "playwright test --project perf --workers 1"
+    "perf:keystroke": "playwright test --project perf --workers 1",
+    "menu:generate": "node scripts/generate-menu.ts"
   },
   "dependencies": {
     "@base-ui/react": "1.9.0",

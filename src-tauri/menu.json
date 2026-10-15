@@ -1,0 +1,232 @@
+[
+  {
+    "id": "app",
+    "label": "Aelomi",
+    "items": [
+      {
+        "command": "about",
+        "label": "About Aelomi",
+        "group": 0,
+        "accelerator": null,
+        "action": {
+          "owner": "native",
+          "role": "about"
+        }
+      },
+      {
+        "command": "openSettings",
+        "label": "Settings…",
+        "group": 1,
+        "accelerator": "Super+Comma",
+        "action": {
+          "owner": "webview"
+        }
+      },
+      {
+        "command": "services",
+        "label": "Services",
+        "group": 2,
+        "accelerator": null,
+        "action": {
+          "owner": "native",
+          "role": "services"
+        }
+      },
+      {
+        "command": "hide",
+        "label": "Hide Aelomi",
+        "group": 3,
+        "accelerator": "Super+H",
+        "action": {
+          "owner": "native",
+          "role": "hide"
+        }
+      },
+      {
+        "command": "hideOthers",
+        "label": "Hide Others",
+        "group": 3,
+        "accelerator": "Super+Alt+H",
+        "action": {
+          "owner": "native",
+          "role": "hideOthers"
+        }
+      },
+      {
+        "command": "showAll",
+        "label": "Show All",
+        "group": 3,
+        "accelerator": null,
+        "action": {
+          "owner": "native",
+          "role": "showAll"
+        }
+      },
+      {
+        "command": "quit",
+        "label": "Quit Aelomi",
+        "group": 4,
+        "accelerator": "Super+Q",
+        "action": {
+          "owner": "native",
+          "role": "quit"
+        }
+      }
+    ]
+  },
+  {
+    "id": "file",
+    "label": "File",
+    "items": [
+      {
+        "command": "closeWindow",
+        "label": "Close Window",
+        "group": 0,
+        "accelerator": "Super+W",
+        "action": {
+          "owner": "native",
+          "role": "closeWindow"
+        }
+      }
+    ]
+  },
+  {
+    "id": "edit",
+    "label": "Edit",
+    "items": [
+      {
+        "command": "undo",
+        "label": "Undo",
+        "group": 0,
+        "accelerator": "Super+Z",
+        "action": {
+          "owner": "webview"
+        }
+      },
+      {
+        "command": "redo",
+        "label": "Redo",
+        "group": 0,
+        "accelerator": "Super+Shift+Z",
+        "action": {
+          "owner": "webview"
+        }
+      },
+      {
+        "command": "cut",
+        "label": "Cut",
+        "group": 1,
+        "accelerator": "Super+X",
+        "action": {
+          "owner": "native",
+          "role": "cut"
+        }
+      },
+      {
+        "command": "copy",
+        "label": "Copy",
+        "group": 1,
+        "accelerator": "Super+C",
+        "action": {
+          "owner": "native",
+          "role": "copy"
+        }
+      },
+      {
+        "command": "paste",
+        "label": "Paste",
+        "group": 1,
+        "accelerator": "Super+V",
+        "action": {
+          "owner": "native",
+          "role": "paste"
+        }
+      },
+      {
+        "command": "selectAll",
+        "label": "Select All",
+        "group": 1,
+        "accelerator": "Super+A",
+        "action": {
+          "owner": "native",
+          "role": "selectAll"
+        }
+      }
+    ]
+  },
+  {
+    "id": "view",
+    "label": "View",
+    "items": [
+      {
+        "command": "openPalette",
+        "label": "Search and commands",
+        "group": 0,
+        "accelerator": "Super+K",
+        "action": {
+          "owner": "webview"
+        }
+      },
+      {
+        "command": "toggleSidebar",
+        "label": "Toggle Sidebar",
+        "group": 0,
+        "accelerator": "Super+Backslash",
+        "action": {
+          "owner": "webview"
+        }
+      },
+      {
+        "command": "fullscreen",
+        "label": "Enter Full Screen",
+        "group": 1,
+        "accelerator": "Super+Control+F",
+        "action": {
+          "owner": "native",
+          "role": "fullscreen"
+        }
+      }
+    ]
+  },
+  {
+    "id": "window",
+    "label": "Window",
+    "items": [
+      {
+        "command": "minimize",
+        "label": "Minimize",
+        "group": 0,
+        "accelerator": "Super+M",
+        "action": {
+          "owner": "native",
+          "role": "minimize"
+        }
+      },
+      {
+        "command": "zoom",
+        "label": "Zoom",
+        "group": 0,
+        "accelerator": null,
+        "action": {
+          "owner": "native",
+          "role": "zoom"
+        }
+      },
+      {
+        "command": "bringAllToFront",
+        "label": "Bring All to Front",
+        "group": 1,
+        "accelerator": null,
+        "action": {
+          "owner": "native",
+          "role": "bringAllToFront"
+        }
+      }
+    ]
+  },
+  {
+    "id": "help",
+    "label": "Help",
+    "items": []
+  }
+]
