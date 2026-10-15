@@ -305,7 +305,8 @@ fn pending_independent_record_fields_win_after_rename_in_both_client_orders() {
             ),
         ] {
             let dir = tempfile::tempdir().unwrap();
-            let w = empty(dir.path());
+            let mut w = empty(dir.path());
+            w.record_client = yrs::ClientID::new(100);
             let page = create(&w, None, "Before");
             let id = DocId::workspace();
             let mut foreign = Editor::new(client);
@@ -505,4 +506,40 @@ fn trash_restore_round_trips_self_parent_and_two_page_cycles_field_by_field() {
         assert_eq!(after_tree, *before_tree);
         assert_eq!(after_tree.pages[0].parent, None);
     }
+}
+
+#[test]
+fn record_edits_add_one_client_per_launch_and_resume_its_clock() {
+    let dir = tempfile::tempdir().unwrap();
+    let w = empty(dir.path());
+    let id = create(&w, None, "Before");
+    for i in 0..20 {
+        w.edit_page(PageEdit::Rename {
+            page: id.clone(),
+            title: format!("title {i}"),
+        })
+        .unwrap();
+    }
+    let first = doc_of(&w.load(&DocId::workspace()).unwrap())
+        .transact()
+        .state_vector();
+    assert_eq!(first.len(), 1);
+    assert_eq!(w.flush(Instant::now() + Duration::from_secs(5)), []);
+    drop(w);
+    let w = empty(dir.path());
+    for i in 0..20 {
+        w.edit_page(PageEdit::Rename {
+            page: id.clone(),
+            title: format!("reopened {i}"),
+        })
+        .unwrap();
+    }
+    let second = doc_of(&w.load(&DocId::workspace()).unwrap())
+        .transact()
+        .state_vector();
+    assert_eq!(second.len(), 2);
+    for (client, clock) in first.iter() {
+        assert_eq!(second.get(client), *clock);
+    }
+    assert_eq!(records(&w)[&id].title, "reopened 19");
 }

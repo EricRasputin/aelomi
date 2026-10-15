@@ -123,7 +123,7 @@ impl Workspace {
         edit: PageEdit,
         create_id: Option<PageId>,
     ) -> Result<PageEditReply, PageEditError> {
-        let doc = Doc::new();
+        let doc = Doc::with_client_id(self.record_client.get());
         doc.transact_mut()
             .apply_update(
                 Update::decode_v1(&self.load(&DocId::workspace())?)

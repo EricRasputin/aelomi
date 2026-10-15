@@ -37,6 +37,7 @@ pub struct Workspace {
     tree: Mutex<TreeMemo>,
     tree_projected: Condvar,
     record_edits: Mutex<()>,
+    record_client: yrs::ClientID,
     settings: Mutex<Option<crate::settings::Settings>>,
 }
 
@@ -167,6 +168,7 @@ impl Workspace {
             tree_projected: Condvar::new(),
             settings: Mutex::default(),
             record_edits: Mutex::new(()),
+            record_client: yrs::ClientID::random(),
         }
     }
 
