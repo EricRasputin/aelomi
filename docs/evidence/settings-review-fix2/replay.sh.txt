@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+set -euo pipefail
+S=.claude/skills/verify-aelomi/scripts
+first=$($S/app.sh launch dev)
+mode=$(stat -f '%Lp' "$first/data")
+second=
+third=
+wait_exit() {
+  python3 - "$1" <<'PYWAIT'
+from pathlib import Path
+import os,sys,time
+root=Path(sys.argv[1])
+pid=int(next(line.split('=')[1] for line in (root/'run.env').read_text().splitlines() if line.startswith('APP_PID=')))
+for attempt in range(200):
+    try: os.kill(pid,0)
+    except ProcessLookupError: break
+    time.sleep(.05)
+else: raise AssertionError('the native quit did not exit')
+PYWAIT
+}
+cleanup() {
+  chmod "$mode" "$first/data"
+  for run in "$first" "$second" "$third"; do
+    if [ -n "$run" ]; then "$S/app.sh" cleanup "$run"; fi
+  done
+}
+trap cleanup EXIT
+$S/app.sh doctor "$first"
+$S/app.sh press "$first" 'Settings probe'
+$S/app.sh screenshot "$first" settings-before
+$S/app.sh press "$first" 'Write session settings'
+$S/app.sh screenshot "$first" settings-written
+chmod 0555 "$first/data"
+$S/app.sh press "$first" 'Write session settings'
+$S/app.sh screenshot "$first" settings-failed
+$S/app.sh keys "$first" q command
+$S/app.sh wait-dialog "$first" 'Quit with unsaved changes?'
+$S/app.sh screenshot "$first" settings-confirmation
+$S/app.sh press "$first" 'Keep app open'
+chmod "$mode" "$first/data"
+python3 - "$first" <<'PY'
+import subprocess,sys,time
+from pathlib import Path
+run=sys.argv[1]
+for attempt in range(20):
+    tree=subprocess.check_output(['.claude/skills/verify-aelomi/scripts/app.sh','tree',run],text=True)
+    if "Changes aren't being saved." not in tree: break
+    time.sleep(.25)
+else: raise AssertionError('the failure banner did not clear')
+PY
+$S/app.sh screenshot "$first" settings-recovered
+$S/app.sh keys "$first" q command
+wait_exit "$first"
+$S/app.sh cleanup "$first"
+second=$($S/app.sh launch dev)
+$S/app.sh doctor "$second"
+$S/app.sh press "$second" 'Settings probe'
+$S/app.sh screenshot "$second" immediate-before
+python3 - <<'PY'
+from pathlib import Path
+s=Path('.claude/skills/verify-aelomi/scripts/ax.js').read_text().replace('function run(argv) {','function control(argv) {',1)
+s+='''
+function run(argv) {
+  const pid = Number(argv[0]);
+  const se = Application("System Events");
+  const proc = se.processes.whose({ unixId: pid })[0];
+  ready(proc, { front: true });
+  const button = findByName(webArea(proc), "Write session settings");
+  button.actions.whose({ name: "AXPress" })[0].perform();
+  se.keystroke("q", { using: ["command down"] });
+  return "Pressed Write session settings and sent Command-Q without awaiting the reply";
+}
+'''
+Path('/tmp/aelomi-pr83-r2-write-quit.js').write_text(s)
+PY
+source "$second/run.env"
+osascript -l JavaScript /tmp/aelomi-pr83-r2-write-quit.js "$APP_PID"
+python3 - "$second" "$APP_PID" <<'PY'
+from pathlib import Path
+import json,os,sys,time
+run,pid=Path(sys.argv[1]),int(sys.argv[2])
+for attempt in range(200):
+    try: os.kill(pid,0)
+    except ProcessLookupError: break
+    time.sleep(.05)
+else: raise AssertionError('the native quit did not exit')
+assert json.loads((run/'data/settings.json').read_text()) == {
+    'theme':'Dark', 'openPage':{'pageId':'probe-page','topVisibleBlockId':'probe-block'},
+    'recentPages':['probe-page','older-page'], 'expandedRows':['parent-page','probe-page']
+}
+PY
+$S/app.sh cleanup "$second"
+third=$(AELOMI_DATA_DIR="$second/data" $S/app.sh launch dev)
+$S/app.sh doctor "$third"
+$S/app.sh press "$third" 'Settings probe'
+$S/app.sh screenshot "$third" settings-reopened
+$S/app.sh tree "$third"
+python3 - "$second" "$third" <<'PYREAD'
+from pathlib import Path
+import json,sys
+second,third=map(Path,sys.argv[1:])
+settings=[]
+for line in (third/'settings-reopened.ax.txt').read_text().splitlines():
+    if 'AXStaticText ' not in line: continue
+    value=json.loads(line.split('AXStaticText ',1)[1])
+    if value.startswith('{'): settings.append(json.loads(value))
+expected={'theme':'Dark','open_page':{'page_id':'probe-page','top_visible_block_id':'probe-block'},'recent_pages':['probe-page','older-page'],'expanded_rows':['parent-page','probe-page']}
+assert settings==[expected],settings
+raw=json.loads((second/'data/settings.json').read_text())
+assert {'theme':raw['theme'],'open_page':{'page_id':raw['openPage']['pageId'],'top_visible_block_id':raw['openPage']['topVisibleBlockId']},'recent_pages':raw['recentPages'],'expanded_rows':raw['expandedRows']}==expected
+PYREAD
+$S/app.sh keys "$third" q command
+wait_exit "$third"

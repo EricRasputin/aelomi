@@ -200,7 +200,7 @@ export type QuitPhase =
  *  revision.
  */
 "Draining" | 
-/**  A quit was refused with these docs not yet saved, and waits for the user's answer. */
+/**  A quit was refused with pending documents or settings, and waits for the user's answer. */
 { Asking: {
 	pending_docs: string[],
 	pending_settings: boolean,
