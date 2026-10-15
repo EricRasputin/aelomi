@@ -38,6 +38,6 @@ Preconditions:
 ## Gotchas
 
 - A seed page opens only on the native fresh-folder path. An empty mock workspace stays empty.
-- Move and restore have no commands or UI yet. Create, rename, and trash have commands; later sidebar and title UI provide their user paths.
+- Move and restore have no commands or UI yet. Create, rename, and trash are available through the [sidebar and title](./shell-sidebar.md).
 - A read-only notice or a missing **Page body** editor fails the editability proof.
 - A warm workspace can accept record edits from memory while its files are inaccessible. To exercise a record failure before acceptance, quit the synthetic instance, record the workspace folder mode, set that folder to `000`, then relaunch with the same explicit `AELOMI_DATA_DIR`. The dev header still exposes **Storage probe**. After both normal quits ask, restore the exact original mode and require the retry to update the indexed title before the final normal quit.

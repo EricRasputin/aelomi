@@ -1,0 +1,41 @@
+#!/bin/bash
+set -euo pipefail
+trap 'python3 /tmp/aelomi-d1-lock.py release' ERR
+D1_RUN=$(cat /tmp/aelomi-d1-native-run)
+S=.claude/skills/verify-aelomi/scripts
+$S/app.sh keys "$D1_RUN" '\' command
+$S/app.sh press "$D1_RUN" 'New page'
+$S/app.sh keys "$D1_RUN" 'D1 notes'
+$S/app.sh keys "$D1_RUN" '\' command
+$S/app.sh tree "$D1_RUN" > "$D1_RUN/created-tree.txt"
+python3 - "$D1_RUN/created-tree.txt" <<'PY'
+import pathlib,sys
+s=pathlib.Path(sys.argv[1]).read_text()
+assert 'AXTextArea "Page title" = "D1 notes"' in s
+assert 'AXButton "D1 notes"' in s
+print('PASS new page title focus and matching sidebar title')
+PY
+$S/app.sh screenshot "$D1_RUN" new-page-title
+source "$D1_RUN/run.env"
+osascript -l JavaScript /tmp/aelomi-d1-key.js "$APP_PID" 36
+$S/app.sh keys "$D1_RUN" 'body token'
+$S/app.sh focus "$D1_RUN" 'Page title'
+$S/app.sh keys "$D1_RUN" 'x'
+$S/app.sh keys "$D1_RUN" z command
+$S/app.sh tree "$D1_RUN" > "$D1_RUN/title-undo-tree.txt"
+python3 - "$D1_RUN/title-undo-tree.txt" <<'PY'
+import pathlib,sys
+s=pathlib.Path(sys.argv[1]).read_text()
+assert 'AXTextArea "Page title" = "D1 notes"' in s
+assert 'AXTextArea "Page body" = "body token"' in s
+print('PASS title Return and title-only Undo preserve body token')
+PY
+$S/app.sh screenshot "$D1_RUN" sidebar-dark
+$S/app.sh keys "$D1_RUN" '\' command
+$S/app.sh screenshot "$D1_RUN" sidebar-hidden
+$S/app.sh keys "$D1_RUN" '\' command
+osascript -e 'tell application "System Events" to tell appearance preferences to set dark mode to false'
+$S/app.sh screenshot "$D1_RUN" sidebar-light
+osascript -e 'tell application "System Events" to tell appearance preferences to set dark mode to true'
+$S/app.sh keys "$D1_RUN" q command
+python3 /tmp/aelomi-d1-lock.py release
