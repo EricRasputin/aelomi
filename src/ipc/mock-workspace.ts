@@ -268,7 +268,7 @@ export function trashPage(
       const record = records.get(id);
       const map = pages.get(id);
       if (!record || !(map instanceof Y.Map)) continue;
-      map.set("updatedAt", trashedAt);
+      if (map.get("updatedAt") !== trashedAt) map.set("updatedAt", trashedAt);
       map.set("trash", {
         originalParentId: record.parentId,
         originalOrder: record.order,

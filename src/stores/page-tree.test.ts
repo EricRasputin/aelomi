@@ -266,3 +266,30 @@ test("an accepted command refreshes the source tree even when its native event i
     expect(shown().pages.map((page) => page.id)).toEqual([reply.data]),
   );
 });
+
+test("mock end append follows projected orphan roots", async () => {
+  window.__aelomiMock?.workspace.seed([
+    { id: "orphan", title: "Orphan", parentId: "missing", order: 10 * 2 ** 20 },
+    { id: "root", title: "Root", order: 2 ** 20 },
+  ]);
+  const id = await create();
+  expect(id).toMatch(/^[0-9a-f]{32}$/);
+  expect(
+    window.__aelomiMock?.workspace.tree().pages.map((page) => page.id),
+  ).toEqual(["root", "orphan", id]);
+});
+
+test("a mock rename whose typed fields are unchanged appends only an empty transaction delta", async () => {
+  window.__aelomiMock?.workspace.seed([{ id: "a", title: "A", updatedAt: 42 }]);
+  vi.spyOn(Date, "now").mockReturnValue(42);
+  expect(await commands.pageRename("a", "A")).toEqual({
+    status: "ok",
+    data: null,
+  });
+  expect(window.__aelomiMock?.storage.updates("workspace")).toEqual([
+    Uint8Array.of(0, 0),
+  ]);
+  expect(
+    window.__aelomiMock?.workspace.tree().pages.map((page) => page.title),
+  ).toEqual(["A"]);
+});

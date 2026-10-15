@@ -422,7 +422,9 @@ function acceptRecordEdit(edit: () => void) {
   } finally {
     stored.doc.off("update", collect);
   }
-  stored.updates.push(...updates);
+  stored.updates.push(
+    ...(updates.length === 0 ? [Uint8Array.of(0, 0)] : updates),
+  );
   stored.pending = storage.failWrites;
   storage.seq += 1;
   refreshHealth();
@@ -609,13 +611,18 @@ export const commands = {
     )
       return { status: "error", error: "NotActive" };
     const step = 2 ** 20;
+    const siblings = new Set(
+      sourceTree()
+        .tree.pages.filter((page) => page.parent_id === parentId)
+        .map((page) => page.id),
+    );
     const order =
-      [...records().values()]
-        .filter((r) => r.parentId === parentId)
-        .reduce((max, record) => Math.max(max, record.order), 0) + step;
+      [...records().entries()]
+        .filter(([id]) => siblings.has(id))
+        .reduce((max, [, record]) => Math.max(max, record.order), 0) + step;
     if (!Number.isSafeInteger(order))
       return { status: "error", error: "OrderExhausted" };
-    const id = crypto.randomUUID();
+    const id = crypto.randomUUID().replaceAll("-", "");
     const now = Date.now();
     acceptRecordEdit(() =>
       writeRecords(workspaceDoc(), [
@@ -640,8 +647,9 @@ export const commands = {
       return { status: "error", error: "NotActive" };
     acceptRecordEdit(() => {
       const map = workspaceDoc().getMap<Y.Map<unknown>>("pages").get(pageId);
-      map?.set("title", title);
-      map?.set("updatedAt", Date.now());
+      const now = Date.now();
+      if (map?.get("title") !== title) map?.set("title", title);
+      if (map?.get("updatedAt") !== now) map?.set("updatedAt", now);
     });
     return { status: "ok", data: null };
   },
@@ -652,7 +660,7 @@ export const commands = {
     if (error) return { status: "error", error };
     if (!sourceTree().tree.pages.some((p) => p.id === pageId))
       return { status: "error", error: "NotActive" };
-    const batch = crypto.randomUUID();
+    const batch = crypto.randomUUID().replaceAll("-", "");
     acceptRecordEdit(() =>
       trashPage(workspaceDoc(), pageId, batch, Date.now()),
     );
