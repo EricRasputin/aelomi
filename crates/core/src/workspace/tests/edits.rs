@@ -274,3 +274,81 @@ proptest! {
         }
     }
 }
+
+#[test]
+fn pending_independent_record_fields_win_after_rename_in_both_client_orders() {
+    for client in [1, (1 << 53) - 1] {
+        for (key, value) in [
+            (
+                "favorite",
+                Any::from(std::collections::HashMap::from([(
+                    "order".into(),
+                    Any::from(7),
+                )])),
+            ),
+            (
+                "placement",
+                Any::from(std::collections::HashMap::from([
+                    ("parentId".into(), Any::Null),
+                    ("order".into(), Any::from(99)),
+                ])),
+            ),
+            (
+                "trash",
+                Any::from(std::collections::HashMap::from([
+                    ("originalParentId".into(), Any::Null),
+                    ("originalOrder".into(), Any::from(99)),
+                    ("batchId".into(), Any::from("foreign-batch")),
+                    ("trashedAt".into(), Any::from(50)),
+                ])),
+            ),
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let w = empty(dir.path());
+            let page = create(&w, None, "Before");
+            let id = DocId::workspace();
+            let mut foreign = Editor::new(client);
+            foreign.apply(&id, &w.load(&id).unwrap());
+            let dependency = foreign.edit(&id, |txn| {
+                let root = txn.get_or_insert_map("pages");
+                let yrs::Out::YMap(record) = root.get(txn, page.as_str()).unwrap() else {
+                    panic!()
+                };
+                let yrs::Out::Any(baseline) = record.get(txn, key).unwrap() else {
+                    panic!()
+                };
+                record.insert(txn, key, baseline);
+            });
+            let pending = foreign.edit(&id, |txn| {
+                let root = txn.get_or_insert_map("pages");
+                let yrs::Out::YMap(record) = root.get(txn, page.as_str()).unwrap() else {
+                    panic!()
+                };
+                record.insert(txn, key, value.clone());
+            });
+            w.append(&id, &pending).unwrap();
+            assert_eq!(w.flush(Instant::now() + Duration::from_secs(5)), []);
+            w.edit_page(PageEdit::Rename {
+                page: page.clone(),
+                title: "After".into(),
+            })
+            .unwrap_or_else(|e| panic!("{key}, client {client}: {e}; {:?}", records(&w)));
+            assert_eq!(w.flush(Instant::now() + Duration::from_secs(5)), []);
+            drop(w);
+            let w = empty(dir.path());
+            w.append(&id, &dependency).unwrap();
+            assert_eq!(records(&w)[&page].title, "After");
+            let doc = doc_of(&w.load(&id).unwrap());
+            let txn = doc.transact();
+            let root = txn.get_map("pages").unwrap();
+            let yrs::Out::YMap(record) = root.get(&txn, page.as_str()).unwrap() else {
+                panic!()
+            };
+            assert_eq!(
+                record.get(&txn, key),
+                Some(yrs::Out::Any(value)),
+                "{key}, client {client}"
+            );
+        }
+    }
+}

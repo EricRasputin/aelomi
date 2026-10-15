@@ -69,7 +69,7 @@ impl Editor {
 }
 
 pub fn put_page(txn: &mut TransactionMut, id: &PageId, record: &PageRecord) {
-    super::write::put_page(txn, id, record);
+    super::write::put_page(txn, id, None, record);
 }
 
 /// Removes page `id`'s record, as erasing does (TREE-14).

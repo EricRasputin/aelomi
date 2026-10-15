@@ -6,57 +6,74 @@ fn pages(txn: &mut TransactionMut) -> MapRef {
     txn.get_or_insert_map(PAGES)
 }
 
-/// Writes `record` as page `id`'s record, keeping every key and object field it does not know.
-pub(crate) fn put_page(txn: &mut TransactionMut, id: &PageId, record: &PageRecord) {
+/// Writes changed typed fields, keeping every unknown key and coupled object field.
+pub(crate) fn put_page(
+    txn: &mut TransactionMut,
+    id: &PageId,
+    prior: Option<&PageRecord>,
+    record: &PageRecord,
+) {
     let pages = pages(txn);
     let map = match pages.get(txn, id.as_str()) {
         Some(Out::YMap(map)) => map,
         _ => pages.insert(txn, id.as_str(), MapPrelim::default()),
     };
-    map.insert(txn, key::TITLE, record.title.as_str());
-    let placement = merge(
-        &map,
-        txn,
-        key::PLACEMENT,
-        [
-            (
-                key::PARENT_ID,
-                page_or_null(record.placement.parent.as_ref()),
-            ),
-            (key::ORDER, number(record.placement.order)),
-        ],
-    );
-    map.insert(txn, key::PLACEMENT, placement);
-    let favorite = match &record.favorite {
-        None => Any::Null,
-        Some(favorite) => merge(
+    if prior.is_none_or(|p| p.title != record.title) {
+        map.insert(txn, key::TITLE, record.title.as_str());
+    }
+    if prior.is_none_or(|p| p.placement != record.placement) {
+        let placement = merge(
             &map,
             txn,
-            key::FAVORITE,
-            [(key::ORDER, number(favorite.order))],
-        ),
-    };
-    map.insert(txn, key::FAVORITE, favorite);
-    let trash = match &record.trash {
-        None => Any::Null,
-        Some(trash) => merge(
-            &map,
-            txn,
-            key::TRASH,
+            key::PLACEMENT,
             [
                 (
-                    key::ORIGINAL_PARENT_ID,
-                    page_or_null(trash.original_parent.as_ref()),
+                    key::PARENT_ID,
+                    page_or_null(record.placement.parent.as_ref()),
                 ),
-                (key::ORIGINAL_ORDER, number(trash.original_order)),
-                (key::BATCH_ID, Any::from(trash.batch_id.as_str())),
-                (key::TRASHED_AT, number(trash.trashed_at)),
+                (key::ORDER, number(record.placement.order)),
             ],
-        ),
-    };
-    map.insert(txn, key::TRASH, trash);
-    map.insert(txn, key::CREATED_AT, number(record.created_at));
-    map.insert(txn, key::UPDATED_AT, number(record.updated_at));
+        );
+        map.insert(txn, key::PLACEMENT, placement);
+    }
+    if prior.is_none_or(|p| p.favorite != record.favorite) {
+        let favorite = match &record.favorite {
+            None => Any::Null,
+            Some(favorite) => merge(
+                &map,
+                txn,
+                key::FAVORITE,
+                [(key::ORDER, number(favorite.order))],
+            ),
+        };
+        map.insert(txn, key::FAVORITE, favorite);
+    }
+    if prior.is_none_or(|p| p.trash != record.trash) {
+        let trash = match &record.trash {
+            None => Any::Null,
+            Some(trash) => merge(
+                &map,
+                txn,
+                key::TRASH,
+                [
+                    (
+                        key::ORIGINAL_PARENT_ID,
+                        page_or_null(trash.original_parent.as_ref()),
+                    ),
+                    (key::ORIGINAL_ORDER, number(trash.original_order)),
+                    (key::BATCH_ID, Any::from(trash.batch_id.as_str())),
+                    (key::TRASHED_AT, number(trash.trashed_at)),
+                ],
+            ),
+        };
+        map.insert(txn, key::TRASH, trash);
+    }
+    if prior.is_none_or(|p| p.created_at != record.created_at) {
+        map.insert(txn, key::CREATED_AT, number(record.created_at));
+    }
+    if prior.is_none_or(|p| p.updated_at != record.updated_at) {
+        map.insert(txn, key::UPDATED_AT, number(record.updated_at));
+    }
 }
 
 fn merge<const N: usize>(

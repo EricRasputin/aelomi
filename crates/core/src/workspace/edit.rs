@@ -307,7 +307,7 @@ impl Workspace {
             let mut txn = doc.transact_mut();
             for (id, record) in &records {
                 if prior.get(id) != Some(record) {
-                    write::put_page(&mut txn, id, record);
+                    write::put_page(&mut txn, id, prior.get(id), record);
                 }
             }
             txn.encode_update_v1()
