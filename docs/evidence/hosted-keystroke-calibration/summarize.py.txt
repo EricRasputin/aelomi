@@ -1,0 +1,102 @@
+import collections
+import json
+import statistics
+import sys
+
+record = json.load(open(sys.argv[1]))
+rows = record['rows']
+unique = []
+seen = {}
+carried = {}
+for row in rows:
+    key = row['run'], row.get('started')
+    if row['job'] and key in seen:
+        carried[row['run'], row['attempt']] = seen[key]['attempt']
+    else:
+        unique.append(row)
+        if row['job']:
+            seen[key] = row
+
+surfaces = ['editor-empty', 'editor-page-5000-blocks', 'empty', 'page-5000-blocks', 'layout-delay']
+metrics = [('palette', lambda r: r.get('palette', {}).get('p95')),
+           ('scroll work', lambda r: r.get('scroll', {}).get('p95')),
+           ('scroll longest', lambda r: r.get('scroll', {}).get('longest'))]
+metrics += [(s, lambda r, s=s: r.get('typing', {}).get(s, {}).get('p95')) for s in surfaces]
+
+def span(values):
+    return 'missing' if not values else f'{min(values):g} / {statistics.median(values):g} / {max(values):g}'
+
+def r2(pairs):
+    if len(pairs) < 2:
+        return 'n/a'
+    xs, ys = zip(*pairs)
+    mx, my = statistics.mean(xs), statistics.mean(ys)
+    xx = sum((x - mx) ** 2 for x in xs)
+    yy = sum((y - my) ** 2 for y in ys)
+    return 'n/a' if not xx or not yy else f'{100 * sum((x-mx)*(y-my) for x,y in pairs)**2 / (xx*yy):.1f}%'
+
+print('## Collection and metric ranges\n')
+print(f"{record['runs']} CI runs produced {len(rows)} attempt rows. Nine rows carry forward an earlier job's start and measurements.")
+print(f"There are {len(unique)} rows after counting those jobs once, including missing jobs. Log states are {dict(collections.Counter(r.get('log', 'no-job') for r in unique))}.\n")
+print('| Metric, ms | Unique jobs | All min / median / max | Main min / median / max | PR min / median / max |')
+print('|---|---:|---|---|---|')
+for name, value in metrics:
+    measured = [r for r in unique if value(r) is not None]
+    print(f"| {name} | {len(measured)} | {span([value(r) for r in measured])} | {span([value(r) for r in measured if r['branch']=='main'])} | {span([value(r) for r in measured if r['branch']!='main'])} |")
+
+print('\n## Load associations and repeated checkouts\n')
+print('| Metric | Wait-entry load R squared, all jobs | Repeated checkout jobs / groups | Within-checkout variation / total, repeated subset | Load R squared after checkout centering |')
+print('|---|---:|---:|---:|---:|')
+for name, value in metrics:
+    measured = [r for r in unique if value(r) is not None and r.get('wait') and r.get('checkout')]
+    groups = collections.defaultdict(list)
+    for r in measured:
+        groups[r['checkout']].append(r)
+    repeated = [g for g in groups.values() if len(g) > 1]
+    subset = [r for g in repeated for r in g]
+    within = sum(sum((value(r)-statistics.mean(value(s) for s in g))**2 for r in g) for g in repeated)
+    total = sum((value(r)-statistics.mean(value(s) for s in subset))**2 for r in subset)
+    centered = [(r['wait']['startLoad1']-statistics.mean(s['wait']['startLoad1'] for s in g), value(r)-statistics.mean(value(s) for s in g)) for g in repeated for r in g]
+    share = 'n/a' if not total else f'{100*within/total:.1f}%'
+    print(f"| {name} | {r2([(r['wait']['startLoad1'],value(r)) for r in measured])} | {len(subset)} / {len(repeated)} | {share} | {r2(centered)} |")
+
+print('\n| Checkout SHA | Head SHA | Wait-entry loads | Palette p95, ms | Scroll work p95, ms | Scroll longest, ms | Typing p95 by surface, ms |')
+print('|---|---|---|---|---|---|---|')
+groups = collections.defaultdict(list)
+for row in unique:
+    if row.get('checkout') and row.get('palette', {}).get('p95') is not None:
+        groups[row['checkout']].append(row)
+for checkout, group in groups.items():
+    if len(group) < 2:
+        continue
+    sequence = lambda f: ', '.join(str(f(r)) for r in group)
+    typing = '; '.join(s + ' ' + sequence(lambda r,s=s:r.get('typing',{}).get(s,{}).get('p95')) for s in surfaces)
+    print(f"| `{checkout}` | `{group[0]['head']}` | {sequence(lambda r:r['wait']['startLoad1'])} | {sequence(lambda r:r['palette']['p95'])} | {sequence(lambda r:r['scroll']['p95'])} | {sequence(lambda r:r['scroll']['longest'])} | {typing} |")
+
+waits = [r['wait'] for r in unique if r.get('wait')]
+print('\n## Quiet-machine wait\n')
+print(f"{len(waits)} unique jobs logged a wait. Entry load min / median / max was {span([w['startLoad1'] for w in waits])}. Exit load was {span([w['endLoad1'] for w in waits])}.")
+print(f"Load fell in {sum(w['endLoad1']<w['startLoad1'] for w in waits)} jobs. {sum(w['endLoad1']<2.5 for w in waits)} reached the quiet threshold. {sum(w['seconds']>=120 for w in waits)} exhausted at least 120 seconds.")
+
+print('\n## Extracted attempt table\n')
+print('All times are milliseconds except the wait duration in seconds. `missing` means no compatible summary was logged, not zero. Wait is entry load, exit load, and duration. Palette is p95, key count, and end load. Scroll is work p95, longest raw interval, frame count, and end load. Typing columns are pooled app-owned p95.\n')
+print('| Run / attempt | Branch | Head SHA | Checkout SHA | Job result / log | Wait | Palette | Scroll | editor-empty | editor-page-5000-blocks | empty | page-5000-blocks | layout-delay |')
+print('|---|---|---|---|---|---|---|---|---:|---:|---:|---:|---:|')
+for r in rows:
+    job = f"[{r['status']}](https://github.com/aelomi/aelomi/actions/runs/{r['run']}/job/{r['job']})" if r['job'] else r['status']
+    state = 'carried from attempt ' + str(carried[r['run'],r['attempt']]) if (r['run'],r['attempt']) in carried else r.get('log','no-job')
+    fmt = lambda v: 'missing' if v is None else str(v)
+    w = r.get('wait')
+    wait = '/'.join(str(w[k]) for k in ['startLoad1','endLoad1','seconds']) if w else 'missing'
+    pal = '/'.join(fmt(r.get('palette',{}).get(k)) for k in ['p95','keys','load1'])
+    scroll = '/'.join(fmt(r.get('scroll',{}).get(k)) for k in ['p95','longest','frames','load1'])
+    typing = ' | '.join(fmt(r.get('typing',{}).get(s,{}).get('p95')) for s in surfaces)
+    print(f"| [{r['run']}/{r['attempt']}](https://github.com/aelomi/aelomi/actions/runs/{r['run']}/attempts/{r['attempt']}) | {r['branch']} | `{r['head']}` | {r.get('checkout','missing')} | {job}, {state} | {wait} | {pal} | {scroll} | {typing} |")
+
+for r in unique:
+    if r.get('palette',{}).get('p95') is not None:
+        assert r['palette']['keys'] == 55
+    for s in r.get('typing',{}).values():
+        assert s['samples'] == 405
+    if r.get('scroll',{}).get('longest') is not None:
+        assert r['scroll']['frames'] > 200
