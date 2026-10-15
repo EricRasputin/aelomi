@@ -5,6 +5,7 @@ import { setActiveEditor } from "../editor/active-editor";
 import { renderSegments, type ShownBlock } from "../editor/body-reader";
 import { inCode, type PickerKey, pickerTrigger } from "../editor/page-picker";
 import { openPage, type PageSession } from "../editor/page-session";
+import { openPageLink } from "../editor/url-links";
 import { markPageContent } from "../perf/cold-start";
 import { storageErrorText } from "../storage-copy";
 import { displayTitle, linkText, usePageTreeStore } from "../stores/page-tree";
@@ -140,7 +141,12 @@ export function PageView({
   }, [editor, focusBlock, editable]);
 
   return (
-    <article className="page" aria-label="Page">
+    <article
+      className="page"
+      aria-label="Page"
+      onClickCapture={openPageLink}
+      onAuxClickCapture={openPageLink}
+    >
       <PageTitle pageId={pageId} />
       {view.kind === "readOnly" && (
         <>

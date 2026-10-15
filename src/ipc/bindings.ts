@@ -56,6 +56,7 @@ export const commands = {
 	devProbeLog: (line: string) => __TAURI_INVOKE<void>("dev_probe_log", { line }),
 	settingsGet: () => typedError<Settings, SettingsError>(__TAURI_INVOKE("settings_get")),
 	settingsUpdate: (patch: SettingsPatch) => typedError<Settings, SettingsError>(__TAURI_INVOKE("settings_update", { patch })),
+	openUrl: (url: string) => typedError<null, string>(__TAURI_INVOKE("open_url", { url })),
 };
 
 /** Events */

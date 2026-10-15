@@ -1,0 +1,138 @@
+use tauri::{Manager, Url};
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum Navigation {
+    App,
+    Browser,
+    Blocked,
+}
+
+pub(crate) fn allowed_url(url: &Url) -> bool {
+    matches!(url.scheme(), "http" | "https" | "mailto")
+}
+
+pub(crate) fn navigation(url: &Url, dev_url: Option<&Url>) -> Navigation {
+    let same_origin = |app: &Url| {
+        url.scheme() == app.scheme()
+            && url.host_str() == app.host_str()
+            && url.port_or_known_default() == app.port_or_known_default()
+    };
+    let is_app = match dev_url {
+        Some(app) => same_origin(app),
+        None => {
+            url.scheme() == "tauri" && url.host_str() == Some("localhost") && url.port().is_none()
+        }
+    };
+    if is_app {
+        Navigation::App
+    } else if allowed_url(url) {
+        Navigation::Browser
+    } else {
+        Navigation::Blocked
+    }
+}
+
+pub(crate) fn open(url: &str) -> Result<(), String> {
+    let parsed = Url::parse(url).map_err(|_| "The URL isn't valid.".to_owned())?;
+    if !allowed_url(&parsed) {
+        return Err("Only http, https, and mailto links can open.".into());
+    }
+    tauri_plugin_opener::open_url(url, None::<&str>).map_err(|error| error.to_string())?;
+    println!("url opener handed_to_browser=true");
+    Ok(())
+}
+
+pub(crate) fn guard() -> tauri::plugin::TauriPlugin<tauri::Wry> {
+    tauri::plugin::Builder::new("navigation-guard")
+        .on_navigation(|webview, url| {
+            let dev_url = tauri::is_dev()
+                .then_some(webview.app_handle().config().build.dev_url.as_ref())
+                .flatten();
+            match navigation(url, dev_url) {
+                Navigation::App => true,
+                Navigation::Browser => {
+                    let url = url.to_string();
+                    tauri::async_runtime::spawn_blocking(move || {
+                        if let Err(error) = open(&url) {
+                            eprintln!("url opener failed: {error}");
+                        }
+                    });
+                    false
+                }
+                Navigation::Blocked => false,
+            }
+        })
+        .build()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_web_and_mail_schemes_can_open() {
+        for input in [
+            "http://example.com",
+            "https://example.com",
+            "mailto:hello@example.com",
+        ] {
+            assert!(allowed_url(&Url::parse(input).unwrap()), "{input}");
+        }
+        for input in [
+            "file:///tmp/private",
+            "javascript:alert(1)",
+            "data:text/html,test",
+            "ftp://example.com",
+            "tauri://localhost/page",
+        ] {
+            assert!(!allowed_url(&Url::parse(input).unwrap()), "{input}");
+        }
+        assert_eq!(
+            open("file:///tmp/private"),
+            Err("Only http, https, and mailto links can open.".into())
+        );
+        assert_eq!(open("not a url"), Err("The URL isn't valid.".into()));
+    }
+
+    #[test]
+    fn navigation_keeps_the_app_and_hands_only_allowed_schemes_to_the_browser() {
+        let decide = |input| navigation(&Url::parse(input).unwrap(), None);
+        assert_eq!(
+            decide("tauri://localhost/page/page-a?block=a#b"),
+            Navigation::App
+        );
+        for input in [
+            "https://example.com",
+            "http://localhost:9999",
+            "mailto:hello@example.com",
+            "http://tauri.localhost",
+        ] {
+            assert_eq!(decide(input), Navigation::Browser, "{input}");
+        }
+        for input in [
+            "tauri://example.com",
+            "file:///tmp/page",
+            "javascript:alert(1)",
+            "about:blank",
+            "data:text/html,test",
+        ] {
+            assert_eq!(decide(input), Navigation::Blocked, "{input}");
+        }
+    }
+
+    #[test]
+    fn development_allows_only_the_configured_origin() {
+        let app = Url::parse("http://localhost:1420").unwrap();
+        let decide = |input| navigation(&Url::parse(input).unwrap(), Some(&app));
+        assert_eq!(decide("http://localhost:1420/page/page-a"), Navigation::App);
+        for input in [
+            "http://localhost:1421",
+            "https://localhost:1420",
+            "http://127.0.0.1:1420",
+            "http://localhost.example.com:1420",
+        ] {
+            assert_eq!(decide(input), Navigation::Browser, "{input}");
+        }
+        assert_eq!(decide("tauri://localhost"), Navigation::Blocked);
+    }
+}

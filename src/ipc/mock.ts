@@ -549,6 +549,10 @@ export const commands = {
   devProbeLog: async (line) => {
     calls.push({ command: "devProbeLog", args: [line] });
   },
+  openUrl: async (url) => {
+    calls.push({ command: "openUrl", args: [url] });
+    return { status: "ok", data: null };
+  },
 } satisfies Commands;
 
 function seedBodies(bodies: Record<string, SeedBlock[]>) {

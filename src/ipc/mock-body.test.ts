@@ -27,6 +27,7 @@ const seed: SeedBlock[] = [
       "see ",
       { link: "page-target" },
       { text: " today", styles: ["italic", "code"] },
+      { text: " example", url: "https://example.com" },
     ],
     children: [
       { id: "b", type: "bulletListItem", content: ["child"] },
@@ -48,11 +49,19 @@ function toBlock(block: SeedBlock): PartialBlock {
       ? { type: "text" as const, text: inline, styles: {} }
       : "link" in inline
         ? { type: "pageLink" as const, props: { targetPageId: inline.link } }
-        : {
-            type: "text" as const,
-            text: inline.text,
-            styles: Object.fromEntries(inline.styles.map((s) => [s, true])),
-          },
+        : "url" in inline
+          ? {
+              type: "link" as const,
+              href: inline.url,
+              content: [
+                { type: "text" as const, text: inline.text, styles: {} },
+              ],
+            }
+          : {
+              type: "text" as const,
+              text: inline.text,
+              styles: Object.fromEntries(inline.styles.map((s) => [s, true])),
+            },
   );
   const plain = (block.content ?? [])
     .map((inline) => (typeof inline === "string" ? inline : ""))

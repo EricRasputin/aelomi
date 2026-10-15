@@ -276,6 +276,14 @@ pub async fn settings_update(
     .map_err(|_| crate::settings::SettingsError::Internal)?
 }
 
+#[tauri::command]
+#[specta::specta]
+pub async fn open_url(url: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || crate::external_links::open(&url))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
 pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
     tauri_specta::Builder::new()
         .commands(tauri_specta::collect_commands![
@@ -298,6 +306,7 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
             dev_probe_log,
             settings_get,
             settings_update,
+            open_url,
         ])
         .events(tauri_specta::collect_events![
             StorageStatusChanged,
