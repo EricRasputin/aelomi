@@ -67,6 +67,7 @@ This file maps the code. `SPEC.md` has the behaviors and the budgets, and `READM
 | `src/styles.css` | Tailwind v4 import and the light and dark color variables |
 | `e2e/` | TesterArmy acceptance tests and their guarded fixture |
 | `tests/playwright/` | Playwright WebKit tests and their guarded fixture |
+| `playwright.config.ts` | WebKit and perf projects; `AELOMI_TEST_PORT` overrides port 4173 for isolated local runs |
 | `perf/` | Native cold-start and RSS harnesses, frame timing, statistics and performance budgets |
 | `scripts/check-search.ts` | Serial release gate for complete public index queries, shared by CI and check:all |
 | `patches/` | Version-pinned dependency patches installed through pnpm |
