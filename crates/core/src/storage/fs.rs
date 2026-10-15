@@ -13,6 +13,7 @@ pub(crate) trait Fs: Send + Sync {
     fn full_sync(&self, path: &Path) -> io::Result<()>;
     fn rename(&self, from: &Path, to: &Path) -> io::Result<()>;
     fn replace_format(&self, root: &Path) -> io::Result<()>;
+    fn replace_settings(&self, root: &Path) -> io::Result<()>;
     fn remove(&self, path: &Path) -> io::Result<()>;
     fn list(&self, dir: &Path) -> io::Result<Vec<String>>;
     fn read(&self, path: &Path) -> io::Result<Vec<u8>>;
@@ -116,6 +117,12 @@ impl Fs for OsFs {
         // The OS cannot report prior durability, so establish it before publishing the name.
         self.full_sync(&from)?;
         std::fs::rename(from, root.join("format.json"))
+    }
+
+    fn replace_settings(&self, root: &Path) -> io::Result<()> {
+        let from = root.join("settings.json.tmp");
+        self.full_sync(&from)?;
+        std::fs::rename(from, root.join("settings.json"))
     }
 
     fn remove(&self, path: &Path) -> io::Result<()> {

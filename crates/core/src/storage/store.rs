@@ -90,6 +90,14 @@ struct Signal {
 }
 
 impl Store {
+    pub fn load_settings(&self) -> crate::settings::Settings {
+        crate::settings::load(&*self.shared.fs, self.shared.layout.root())
+    }
+
+    pub fn write_settings(&self, settings: &crate::settings::Settings) -> io::Result<()> {
+        crate::settings::write(&*self.shared.fs, self.shared.layout.root(), settings)
+    }
+
     pub fn open(root: impl AsRef<Path>) -> Result<Self, OpenError> {
         let clock = Arc::new(SystemClock::new());
         let fs = Arc::new(OsFs);

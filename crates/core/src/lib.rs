@@ -1,4 +1,5 @@
 pub mod index;
+pub mod settings;
 pub mod storage;
 pub mod workspace;
 

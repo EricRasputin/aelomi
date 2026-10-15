@@ -131,6 +131,14 @@ impl Workspace {
         }
     }
 
+    pub fn load_settings(&self) -> crate::settings::Settings {
+        self.store.load_settings()
+    }
+
+    pub fn write_settings(&self, settings: &crate::settings::Settings) -> io::Result<()> {
+        self.store.write_settings(settings)
+    }
+
     /// See [`Store::load`].
     pub fn load(&self, doc: &DocId) -> io::Result<Vec<u8>> {
         self.store.load(doc)

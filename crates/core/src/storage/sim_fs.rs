@@ -23,6 +23,7 @@ pub(crate) enum OpKind {
     FullSync,
     Rename,
     ReplaceFormat,
+    ReplaceSettings,
     Remove,
     List,
     Read,
@@ -160,6 +161,7 @@ struct DirNode {
     synced: BTreeMap<String, usize>,
     durable: BTreeMap<String, usize>,
     format_replacements: Vec<usize>,
+    settings_replacements: Vec<usize>,
 }
 
 const ROOT: usize = 0;
@@ -266,6 +268,13 @@ impl SimFs {
                             dir.durable.insert("format.json".into(), id);
                         }
                     }
+                    for &id in &dir.settings_replacements {
+                        if rng.as_mut().is_some_and(|rng| rng.below(2) == 1) {
+                            dir.durable.remove("settings.json.tmp");
+                            dir.durable.insert("settings.json".into(), id);
+                        }
+                    }
+                    dir.settings_replacements.clear();
                     dir.format_replacements.clear();
                     dir.live = dir.durable.clone();
                     dir.synced = dir.durable.clone();
@@ -674,6 +683,13 @@ impl Fs for SimFs {
                     Node::Dir(dir) => {
                         dir.durable = dir.synced.clone();
                         if let Some(published) = dir
+                            .settings_replacements
+                            .iter()
+                            .rposition(|id| dir.durable.get("settings.json") == Some(id))
+                        {
+                            dir.settings_replacements.drain(..=published);
+                        }
+                        if let Some(published) = dir
                             .format_replacements
                             .iter()
                             .rposition(|id| dir.durable.get("format.json") == Some(id))
@@ -719,6 +735,26 @@ impl Fs for SimFs {
             dir.live.remove(&name);
             dir.live.insert("format.json".into(), id);
             dir.format_replacements.push(id);
+            Ok(())
+        })
+    }
+
+    fn replace_settings(&self, root: &Path) -> io::Result<()> {
+        let from = root.join("settings.json.tmp");
+        let to = root.join("settings.json");
+        self.run(OpKind::ReplaceSettings, &from, Some(&to), &[], |sim| {
+            let (id, file) = sim.file(&from)?;
+            if file.durable != file.data.len() {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "settings are not durable",
+                ));
+            }
+            let (dir, name) = sim.parent(&from)?;
+            let dir = sim.dir_mut(dir);
+            dir.live.remove(&name);
+            dir.live.insert("settings.json".into(), id);
+            dir.settings_replacements.push(id);
             Ok(())
         })
     }

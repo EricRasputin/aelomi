@@ -178,6 +178,12 @@ To add a job, add its ID to `CHECKS` in `scripts/protect-main.sh` and rerun the 
 - **Fixtures.** `fixtures/generator.ts` (`pnpm fixtures`) writes `fixtures/generated/`: 10,000 pages for search, their expected query results, and a 5,000-block BlockNote page. `fixtures/generator.test.ts` regenerates them and compares hashes, so a hand edit fails Vitest.
 - **CI.** The `cold-start` job downloads the `build-app` artifact. The `keystroke` job runs the `perf` project. Both are in `CHECKS` in `scripts/protect-main.sh`.
 
+## Settings and session state
+
+`crates/core/src/settings.rs` owns the DATA-4 model and file encoding. `Settings` holds a theme, an optional open page and block anchor, recent page IDs in newest-first order, and a sorted set of expanded page IDs. Recent pages keep their first occurrence and at most 50 IDs. This bounds file size while retaining navigation history. Root and open-page extension maps preserve future JSON keys. An unknown theme retains its original string.
+
+`settings.json` sits beside `format.json`. A missing file loads defaults. Invalid or unreadable configuration logs a failure and loads defaults. The next write replaces it. Each write removes a stale `settings.json.tmp`, creates a new temporary file, fully syncs it, replaces only `settings.json`, then syncs and fully syncs the root directory. Both OS and simulated filesystems expose this narrow replace through `Fs`; document publication and retirement rules remain append-only.
+
 ## Data model and storage
 
 Yjs is the source of truth (DATA-1, DATA-2). Each page body is one Y.Doc, and one workspace Y.Doc, `DocId::workspace()`, holds every page's record. Each database in v2 will be one Y.Doc with a Y.Map per row. `aelomi_core::storage::Store` keeps them.
