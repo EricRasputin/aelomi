@@ -251,6 +251,8 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
             IndexStatusChanged,
             IndexChanged
         ])
+        .constant("MAX_SEARCH_LIMIT", aelomi_core::index::MAX_LIMIT)
+        .constant("MAX_EXCLUDED_PAGES", aelomi_core::index::MAX_EXCLUDED)
 }
 
 #[cfg(test)]

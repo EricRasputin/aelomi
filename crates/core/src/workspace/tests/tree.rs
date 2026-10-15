@@ -145,3 +145,38 @@ fn a_missing_parent_or_a_cycle_never_hides_a_page() {
         ]
     );
 }
+
+fn arbitrary_records() -> impl proptest::strategy::Strategy<Value = BTreeMap<PageId, PageRecord>> {
+    use proptest::prelude::*;
+    const IDS: [&str; 10] = ["a", "b", "c", "d", "e", "f", "g", "h", "i", "j"];
+    let record = (
+        prop::option::of(prop::sample::select(
+            &["a", "b", "c", "d", "e", "f", "g", "h", "i", "j", "gone"][..],
+        )),
+        0u64..4,
+        prop::option::of((prop::sample::select(&["b1", "b2"][..]), 0u64..5)),
+        prop::option::of(0u64..3),
+    )
+        .prop_map(|(parent, order, trash, favorite)| {
+            let mut record = rec(parent, order);
+            if let Some((batch, at)) = trash {
+                record = trashed(record, batch, at);
+            }
+            if let Some(order) = favorite {
+                record = fav(record, order);
+            }
+            record
+        });
+    prop::collection::btree_map(prop::sample::select(&IDS[..]).prop_map(page), record, 0..10)
+}
+
+proptest::proptest! {
+    #![proptest_config(proptest::prelude::ProptestConfig::with_cases(4000))]
+    #[test]
+    fn the_projection_matches_its_reference_on_any_records(records in arbitrary_records()) {
+        let reference = super::tree_reference::reference_tree(&records);
+        proptest::prop_assert_eq!(tree(&records), reference);
+        let crate::workspace::tree::Forest { parent, active } = crate::workspace::tree::forest(&records);
+        proptest::prop_assert_eq!((parent, active), super::tree_reference::reference_forest(&records));
+    }
+}

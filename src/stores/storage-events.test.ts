@@ -1,13 +1,17 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { commands, events, type Health, type QuitStatus } from "../ipc";
 import { installMock } from "../ipc/mock";
-import { useQuitStore } from "./quit";
+import { canEdit, useQuitStore } from "./quit";
 import { connectStorageEvents } from "./storage-events";
 import { useStorageHealthStore } from "./storage-health";
 
-vi.mock("../ipc", async () => {
+vi.mock("../ipc", async (importOriginal) => {
   const mock = await import("../ipc/mock");
-  return { commands: mock.commands, events: mock.events };
+  return {
+    ...(await importOriginal<typeof import("../ipc")>()),
+    commands: mock.commands,
+    events: mock.events,
+  };
 });
 
 const failing: Health = {
@@ -55,6 +59,7 @@ beforeEach(() => {
 });
 afterEach(() => {
   for (const connection of connections.splice(0)) connection.dispose();
+  vi.useRealTimers();
   vi.restoreAllMocks();
   window.__aelomiMock?.reset();
   vi.unstubAllGlobals();
@@ -531,7 +536,7 @@ test("Quit anyway exits once and stays quitting through its own status", async (
     kind: "quitting",
     revision: 3,
     pendingDocs: ["page"],
-    asked: true,
+    origin: "userConfirmed",
   });
   mock.quit.request();
   await useQuitStore.getState().quitAnyway();
@@ -563,7 +568,7 @@ test("double confirmation and repeated blocked requests exit once", async () => 
     kind: "quitting",
     revision: 2,
     pendingDocs: ["other"],
-    asked: true,
+    origin: "userConfirmed",
   });
   exit.resolve();
   await confirmed;
@@ -591,6 +596,64 @@ test("failed confirmation restores choices and allows another decision", async (
     kind: "quitting",
     revision: 1,
     pendingDocs: ["page"],
-    asked: true,
+    origin: "userConfirmed",
   });
+});
+
+test("a refused frontendReady keeps editing paused and retries with backoff until it registers", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  const ready = vi
+    .spyOn(commands, "frontendReady")
+    .mockRejectedValueOnce(new Error("IPC unavailable"))
+    .mockRejectedValueOnce(new Error("IPC unavailable"))
+    .mockRejectedValueOnce(new Error("IPC unavailable"));
+  await expect(connect().ready).rejects.toThrow(
+    "Storage event connection failed",
+  );
+  const attempts: [number, number, boolean][] = [];
+  for (const elapsed of [0, 99, 1, 199, 1, 399, 1]) {
+    await vi.advanceTimersByTimeAsync(elapsed);
+    const { registered, decision } = useQuitStore.getState();
+    attempts.push([
+      ready.mock.calls.length,
+      elapsed,
+      canEdit({ registered, decision }),
+    ]);
+  }
+  expect(attempts).toEqual([
+    [1, 0, false],
+    [1, 99, false],
+    [2, 1, false],
+    [2, 199, false],
+    [3, 1, false],
+    [3, 399, false],
+    [4, 1, true],
+  ]);
+  await vi.advanceTimersByTimeAsync(10_000);
+  expect(ready).toHaveBeenCalledTimes(4);
+});
+
+test("a refused quit status read is retried before registration, and disposing stops retries", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  const status = vi
+    .spyOn(commands, "quitStatus")
+    .mockRejectedValueOnce(new Error("IPC unavailable"));
+  const ready = vi.spyOn(commands, "frontendReady");
+  await expect(connect().ready).rejects.toThrow(
+    "Storage event connection failed",
+  );
+  expect([status.mock.calls.length, ready.mock.calls.length]).toEqual([1, 0]);
+  expect(useQuitStore.getState().registered).toBe(false);
+  await vi.advanceTimersByTimeAsync(100);
+  expect([status.mock.calls.length, ready.mock.calls.length]).toEqual([2, 1]);
+  expect(useQuitStore.getState().registered).toBe(true);
+
+  useQuitStore.setState(useQuitStore.getInitialState(), true);
+  ready.mockRejectedValue(new Error("IPC unavailable"));
+  const second = connect();
+  await expect(second.ready).rejects.toThrow("Storage event connection failed");
+  second.dispose();
+  await vi.advanceTimersByTimeAsync(60_000);
+  expect(ready).toHaveBeenCalledTimes(2);
+  expect(useQuitStore.getState().registered).toBe(false);
 });

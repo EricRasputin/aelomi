@@ -1,4 +1,5 @@
 import * as Y from "yjs";
+import { rootContent, rootHasContent } from "./yjs-roots";
 
 export const bodyRoot = "prosemirror";
 
@@ -8,20 +9,28 @@ export type Segment =
 
 export type BodyBlock = { id: string; segments: Segment[] };
 
+/** A block the read-only view shows, including one with no ID. */
+export type ShownBlock = { id: string | null; segments: Segment[] };
+
 /** Listed in precedence order: a body reports only the first that applies. */
 export type BodyProblem =
   | { kind: "Undecodable" }
   | { kind: "UnrecognizedRoot"; root: string }
+  | { kind: "NotAFragment" }
   | { kind: "MissingBlockId" }
   | { kind: "InvalidPageLink" };
 
-export type Body = { blocks: BodyBlock[]; problem: BodyProblem | null };
+export type Body<Block = BodyBlock> = {
+  blocks: Block[];
+  problem: BodyProblem | null;
+};
 
 const problemRank: Record<BodyProblem["kind"], number> = {
   Undecodable: 0,
   UnrecognizedRoot: 1,
-  MissingBlockId: 2,
-  InvalidPageLink: 3,
+  NotAFragment: 2,
+  MissingBlockId: 3,
+  InvalidPageLink: 4,
 };
 
 const pageIdPattern = /^[0-9a-z-]{1,64}$/;
@@ -34,45 +43,41 @@ export function isPageId(value: unknown): value is string {
   );
 }
 
-type RootType = {
-  _start: { deleted: boolean; right: unknown } | null;
-  _map: Map<string, { deleted: boolean }>;
-};
-
-/** Whether a root holds anything not deleted, whatever type it was made as. */
-export function rootHasContent(type: unknown): boolean {
-  const root = type as RootType;
-  let item = root._start;
-  while (item) {
-    if (!item.deleted) return true;
-    item = item.right as RootType["_start"];
-  }
-  for (const entry of root._map.values()) if (!entry.deleted) return true;
-  return false;
-}
+type XmlNode = Y.XmlElement | Y.XmlText;
 
 /**
  * Mirrors `crates/core/src/workspace/body.rs`: every block in document order,
  * parents before children. A block with no ID is skipped but its children are
  * read. An invalid page link reads as one space, so its neighbours never join
- * into a word that isn't there.
+ * into a word that isn't there. Content that is not XML is skipped and named.
  */
-export function readBody(
-  doc: Y.Doc,
-  { keepUnidentified = false }: { keepUnidentified?: boolean } = {},
-): Body {
+export function readBody(doc: Y.Doc): Body {
+  const { blocks, problem } = readShownBody(doc);
+  return {
+    blocks: blocks.flatMap(({ id, segments }) =>
+      id === null ? [] : [{ id, segments }],
+    ),
+    problem,
+  };
+}
+
+/** `readBody`, keeping blocks with no ID for the read-only view. */
+export function readShownBody(doc: Y.Doc): Body<ShownBlock> {
   let problem: BodyProblem | null = null;
   const report = (next: BodyProblem) => {
     if (!problem || problemRank[next.kind] < problemRank[problem.kind])
       problem = next;
   };
-  let fragment: Y.XmlFragment;
-  try {
-    fragment = doc.getXmlFragment(bodyRoot);
-  } catch {
-    return { blocks: [], problem: { kind: "Undecodable" } };
-  }
-  if (fragment.length === 0) {
+  const nodes = (values: readonly unknown[]): XmlNode[] =>
+    values.flatMap((value) => {
+      if (value instanceof Y.XmlElement || value instanceof Y.XmlText)
+        return [value];
+      report({ kind: "NotAFragment" });
+      return [];
+    });
+  const root = doc.share.get(bodyRoot);
+  const content = root ? rootContent(root) : { sequence: [], entries: [] };
+  if (content.sequence.length === 0 && content.entries.length === 0) {
     for (const [name, type] of doc.share) {
       if (name !== bodyRoot && rootHasContent(type))
         return {
@@ -82,29 +87,30 @@ export function readBody(
     }
     return { blocks: [], problem: null };
   }
-  const blocks: BodyBlock[] = [];
-  const stack: (Y.XmlElement | Y.XmlText | Y.XmlHook)[] = fragment
-    .toArray()
-    .reverse();
+  if (content.entries.length > 0) report({ kind: "NotAFragment" });
+  const blocks: ShownBlock[] = [];
+  const stack = nodes(
+    content.sequence.flatMap((item) => item.content.getContent()),
+  ).reverse();
   while (stack.length > 0) {
     const node = stack.pop();
     if (!(node instanceof Y.XmlElement)) continue;
     if (node.nodeName !== "blockContainer") {
-      stack.push(...node.toArray().reverse());
+      stack.push(...nodes(node.toArray()).reverse());
       continue;
     }
-    const id = node.getAttribute("id") as unknown;
+    const id: unknown = node.getAttribute("id");
     const segments: Segment[] = [];
-    const nested: (Y.XmlElement | Y.XmlText | Y.XmlHook)[] = [];
-    for (const child of node.toArray()) {
+    const nested: XmlNode[] = [];
+    for (const child of nodes(node.toArray())) {
       if (child instanceof Y.XmlElement && child.nodeName === "blockGroup")
-        nested.push(...child.toArray());
-      else readContent(child, segments, report);
+        nested.push(...nodes(child.toArray()));
+      else readContent(child, segments, report, nodes);
     }
     if (typeof id === "string" && id !== "") blocks.push({ id, segments });
     else {
       report({ kind: "MissingBlockId" });
-      if (keepUnidentified) blocks.push({ id: "", segments });
+      blocks.push({ id: null, segments });
     }
     stack.push(...nested.reverse());
   }
@@ -119,9 +125,10 @@ function pushText(segments: Segment[], text: string) {
 }
 
 function readContent(
-  content: Y.XmlElement | Y.XmlText | Y.XmlHook,
+  content: XmlNode,
   segments: Segment[],
   report: (problem: BodyProblem) => void,
+  nodes: (values: readonly unknown[]) => XmlNode[],
 ) {
   const stack = [content];
   while (stack.length > 0) {
@@ -133,17 +140,17 @@ function readContent(
     } else if (node instanceof Y.XmlElement) {
       if (node.nodeName === "hardBreak") pushText(segments, "\n");
       else if (node.nodeName === "pageLink") {
-        const target = node.getAttribute("targetPageId") as unknown;
+        const target: unknown = node.getAttribute("targetPageId");
         if (isPageId(target)) segments.push({ kind: "link", pageId: target });
         else {
           report({ kind: "InvalidPageLink" });
           pushText(segments, " ");
         }
       } else {
-        const caption = node.getAttribute("caption") as unknown;
+        const caption: unknown = node.getAttribute("caption");
         if (node.nodeName === "image" && typeof caption === "string")
           pushText(segments, caption);
-        stack.push(...node.toArray().reverse());
+        stack.push(...nodes(node.toArray()).reverse());
       }
     }
   }

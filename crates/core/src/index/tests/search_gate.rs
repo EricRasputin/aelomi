@@ -3,6 +3,7 @@ use std::time::{Duration, Instant};
 
 use super::search_fixture::{QUERIES, fixture_docs, oracle_pages, title_group};
 use super::{Opened, all, content, index_path, open_with, ready};
+use crate::index::db::SLOT_BITS;
 use crate::index::query::{self, Plan, Scope};
 use crate::index::{Config, SearchHit, SearchQuery};
 use crate::storage::{Driver, Limits, SimFs, Store, SystemClock};
@@ -81,7 +82,9 @@ fn cardinality(conn: &rusqlite::Connection, expression: &str) -> Cardinality {
     let count = |sql: &str| -> i64 { conn.query_row(sql, [expression], |row| row.get(0)).unwrap() };
     Cardinality {
         blocks: count("SELECT count(*) FROM block_fts WHERE block_fts MATCH ?1"),
-        pages: count("SELECT count(DISTINCT rowid >> 20) FROM block_fts WHERE block_fts MATCH ?1"),
+        pages: count(&format!(
+            "SELECT count(DISTINCT rowid >> {SLOT_BITS}) FROM block_fts WHERE block_fts MATCH ?1"
+        )),
         titles: count("SELECT count(*) FROM title_fts WHERE title_fts MATCH ?1"),
     }
 }

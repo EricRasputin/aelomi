@@ -7,22 +7,23 @@ import {
   renderSegments,
 } from "../editor/body-reader";
 import { fromBase64, toBase64 } from "./base64";
-import type {
-  FailReason,
-  commands as generatedCommands,
-  events as generatedEvents,
-  Health,
-  IndexChanged,
-  IndexStatus,
-  PageIssue,
-  PageProblem,
-  PageTree,
-  QueryError,
-  QuitPhase,
-  QuitStatus,
-  SearchScope,
-  StorageError,
-  StorageStatus,
+import {
+  type FailReason,
+  type commands as generatedCommands,
+  type events as generatedEvents,
+  type Health,
+  type IndexChanged,
+  type IndexStatus,
+  MAX_EXCLUDED_PAGES,
+  type PageIssue,
+  type PageProblem,
+  type PageTree,
+  type QueryError,
+  type QuitPhase,
+  type QuitStatus,
+  type SearchScope,
+  type StorageError,
+  type StorageStatus,
 } from "./bindings";
 import { type SeedBlock, writeBody } from "./mock-body";
 import {
@@ -35,6 +36,7 @@ import {
 } from "./mock-search";
 import {
   type PageRecord,
+  pagesRootProblem,
   projectTree,
   readRecords,
   type SeedPage,
@@ -58,6 +60,8 @@ export type MockSetup = {
   bodies?: Record<string, SeedBlock[]>;
   /** Page bodies as base64 Yjs updates, applied as stored. */
   rawBodies?: Record<string, string>;
+  /** A base64 Yjs update applied to the workspace doc as stored. */
+  rawWorkspace?: string;
   /** Loads the 10,000-page search fixture as the workspace. */
   searchFixture?: boolean;
 };
@@ -310,8 +314,8 @@ function scopeError(scope: SearchScope): QueryError | null {
   if (scope === "All") return null;
   const exclude = new Set(scope.Content.exclude);
   if ([...exclude].some((id) => !isPageId(id))) return "InvalidPageId";
-  if (exclude.size > 200)
-    return { InvalidQuery: { TooManyExcluded: { max: 200 } } };
+  if (exclude.size > MAX_EXCLUDED_PAGES)
+    return { InvalidQuery: { TooManyExcluded: { max: MAX_EXCLUDED_PAGES } } };
   return null;
 }
 
@@ -387,6 +391,12 @@ export const commands = {
     await setupReady;
     if (storage.status !== "Ready")
       return { status: "error", error: "Unavailable" };
+    const problem = pagesRootProblem(workspaceDoc());
+    if (problem !== null)
+      return {
+        status: "error",
+        error: { Failed: { reason: `workspace doc: ${problem}` } },
+      };
     const tree: PageTree = structuredClone(sourceTree().tree);
     return { status: "ok", data: tree };
   },
@@ -579,6 +589,10 @@ async function applySetup(setup: MockSetup | undefined) {
   }
   if (setup.bodies) seedBodies(setup.bodies);
   if (setup.rawBodies) seedRawBodies(setup.rawBodies);
+  if (setup.rawWorkspace) {
+    Y.applyUpdate(workspaceDoc(), fromBase64(setup.rawWorkspace));
+    markChanged({ workspace: true, pages: [] });
+  }
   if (setup.searchFixture) await loadSearchFixture();
 }
 

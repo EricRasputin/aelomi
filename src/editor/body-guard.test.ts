@@ -3,7 +3,7 @@ import { BlockNoteEditor } from "@blocknote/core";
 import { blocksToYXmlFragment } from "@blocknote/core/yjs";
 import { expect, test } from "vitest";
 import * as Y from "yjs";
-import { writeBody } from "../ipc/mock-body";
+import { storeAttribute, writeBody } from "../ipc/mock-body";
 import { checkBody } from "./body-guard";
 import { editorSchema } from "./schema";
 
@@ -40,14 +40,8 @@ test("anything y-prosemirror would delete or rewrite opens read-only", () => {
   const cases: [string, Parameters<typeof canonical>[0]][] = [
     ["unknownNode", (p) => p.insert(0, [new Y.XmlElement("mention")])],
     ["unknownAttribute", (p) => p.setAttribute("fontFamily", "Serif")],
-    [
-      "changedAttribute",
-      (p) => p.setAttribute("textAlignment", undefined as unknown as string),
-    ],
-    [
-      "changedAttribute",
-      (p) => p.setAttribute("textColor", null as unknown as string),
-    ],
+    ["changedAttribute", (p) => storeAttribute(p, "textAlignment", undefined)],
+    ["changedAttribute", (p) => storeAttribute(p, "textColor", null)],
     [
       "unknownMark",
       (p) => (p.get(0) as Y.XmlText).format(0, 3, { highlight: {} }),
@@ -102,6 +96,31 @@ test("anything y-prosemirror would delete or rewrite opens read-only", () => {
       kind: "readOnly",
       problem: { kind },
     });
+});
+
+test("a body root that is not XML opens read-only without changing the doc", () => {
+  const readOnly = { kind: "readOnly", problem: { kind: "notAFragment" } };
+  const replay = (doc: Y.Doc) => {
+    const copy = new Y.Doc();
+    Y.applyUpdate(copy, Y.encodeStateAsUpdate(doc));
+    return copy;
+  };
+  const text = new Y.Doc();
+  text.getText("prosemirror").insert(0, "body text in a Y.Text");
+  const map = new Y.Doc();
+  map.getMap("prosemirror").set("type", "doc");
+  const xml = new Y.Doc();
+  writeBody(xml, [{ id: "block-a", content: ["kept"] }]);
+  const foreign = new Y.Doc();
+  foreign.getArray("prosemirror").insert(0, [7]);
+  const stray = new Y.Doc();
+  Y.applyUpdate(stray, Y.encodeStateAsUpdate(foreign));
+  Y.applyUpdate(stray, Y.encodeStateAsUpdate(xml));
+  for (const doc of [text, replay(text), replay(map), stray]) {
+    const before = Y.encodeStateAsUpdate(doc);
+    expect(checkBody(doc, schema)).toEqual(readOnly);
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+  }
 });
 
 function firstText(parent: Y.XmlFragment | Y.XmlElement): Y.XmlText {
@@ -171,11 +190,13 @@ test("no mark in the schema overlaps itself, so no canonical key is hashed", () 
 
 test("BlockNote's own undefined `start` on a numbered item stays editable", () => {
   const doc = new Y.Doc();
+  const numbered = BlockNoteEditor.create({
+    schema: editorSchema,
+    initialContent: [{ id: "n-1", type: "numberedListItem", content: "first" }],
+  });
   blocksToYXmlFragment(
-    editor,
-    [
-      { id: "n-1", type: "numberedListItem", content: "first" },
-    ] as unknown as typeof editor.document,
+    numbered,
+    numbered.document,
     doc.getXmlFragment("prosemirror"),
   );
   const item = (

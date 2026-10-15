@@ -11,7 +11,7 @@ use std::fmt;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
 use std::time::Instant;
 
 use yrs::updates::decoder::Decode;
@@ -29,7 +29,20 @@ pub struct Workspace {
     index: Index,
     store: Arc<Store>,
     revision: AtomicU64,
-    tree: Mutex<Option<(u64, Arc<Tree>)>>,
+    tree: Mutex<TreeMemo>,
+    tree_projected: Condvar,
+}
+
+/// The newest tree and the revision being projected, so callers for that revision wait for
+/// its projection instead of repeating it.
+#[derive(Default)]
+struct TreeMemo {
+    known: Option<(u64, Arc<Tree>)>,
+    projecting: Option<u64>,
+    #[cfg(test)]
+    projections: usize,
+    #[cfg(test)]
+    waits: usize,
 }
 
 #[derive(Debug)]
@@ -113,7 +126,8 @@ impl Workspace {
             index,
             store,
             revision: AtomicU64::new(0),
-            tree: Mutex::new(None),
+            tree: Mutex::default(),
+            tree_projected: Condvar::new(),
         }
     }
 
@@ -148,29 +162,61 @@ impl Workspace {
     /// The page tree, read from the workspace doc, whatever the index status. Reused until the
     /// next accepted workspace append.
     pub fn tree(&self) -> Result<Arc<Tree>, TreeError> {
-        let revision = self.revision.load(Ordering::SeqCst);
-        if let Some(tree) = self.memo(revision)
-            && self.revision.load(Ordering::SeqCst) == revision
+        let mut memo = self.lock_tree();
+        let revision = loop {
+            let revision = self.revision.load(Ordering::SeqCst);
+            if let Some((known, tree)) = &memo.known
+                && *known == revision
+            {
+                return Ok(tree.clone());
+            }
+            if memo.projecting != Some(revision) {
+                break revision;
+            }
+            #[cfg(test)]
+            {
+                memo.waits += 1;
+            }
+            memo = self
+                .tree_projected
+                .wait(memo)
+                .unwrap_or_else(PoisonError::into_inner);
+        };
+        memo.projecting = Some(revision);
+        #[cfg(test)]
         {
-            return Ok(tree);
+            memo.projections += 1;
         }
+        drop(memo);
+        let projecting = Projecting {
+            workspace: self,
+            revision,
+        };
         self.index.hold(HoldPoint::TreeBeforeLoad);
         let tree = Arc::new(self.project_tree()?);
         self.index.hold(HoldPoint::TreeBeforeInstall);
-        if self.revision.load(Ordering::SeqCst) == revision {
-            let mut memo = self.tree.lock().unwrap_or_else(PoisonError::into_inner);
-            if memo.as_ref().is_none_or(|(known, _)| *known < revision) {
-                *memo = Some((revision, tree.clone()));
-            }
+        let mut memo = self.lock_tree();
+        if self.revision.load(Ordering::SeqCst) == revision
+            && memo
+                .known
+                .as_ref()
+                .is_none_or(|(known, _)| *known < revision)
+        {
+            memo.known = Some((revision, tree.clone()));
         }
+        drop(memo);
+        drop(projecting);
         Ok(tree)
     }
 
-    fn memo(&self, revision: u64) -> Option<Arc<Tree>> {
-        match &*self.tree.lock().unwrap_or_else(PoisonError::into_inner) {
-            Some((known, tree)) if *known == revision => Some(tree.clone()),
-            _ => None,
-        }
+    fn lock_tree(&self) -> MutexGuard<'_, TreeMemo> {
+        self.tree.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn tree_projections(&self) -> (usize, usize) {
+        let memo = self.lock_tree();
+        (memo.projections, memo.waits)
     }
 
     fn project_tree(&self) -> Result<Tree, TreeError> {
@@ -207,6 +253,24 @@ impl Workspace {
     #[cfg(test)]
     pub(crate) fn index(&self) -> &Index {
         &self.index
+    }
+}
+
+/// Ends a projection however it ends, so callers waiting for its revision go on, and project
+/// it themselves if it failed or was overtaken by an append.
+struct Projecting<'a> {
+    workspace: &'a Workspace,
+    revision: u64,
+}
+
+impl Drop for Projecting<'_> {
+    fn drop(&mut self) {
+        let mut memo = self.workspace.lock_tree();
+        if memo.projecting == Some(self.revision) {
+            memo.projecting = None;
+        }
+        drop(memo);
+        self.workspace.tree_projected.notify_all();
     }
 }
 

@@ -1,7 +1,7 @@
 [
   {
     "attempt": 1,
-    "log": "/tmp/aelomi-data5-ci-nextest-0ad6f34.log",
+    "log": "nextest-attempt-1.log",
     "query_cases": 192,
     "first_queries_per_case": 30,
     "steady_queries_per_case": 200,
@@ -28,7 +28,7 @@
   },
   {
     "attempt": 2,
-    "log": "/tmp/aelomi-data5-ci-nextest-0ad6f34-r2.log",
+    "log": "nextest-attempt-2.log",
     "query_cases": 192,
     "first_queries_per_case": 30,
     "steady_queries_per_case": 200,

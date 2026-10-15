@@ -36,122 +36,172 @@ pub(crate) struct Forest {
 }
 
 pub(crate) fn forest(records: &BTreeMap<PageId, PageRecord>) -> Forest {
-    let mut parent = drop_missing_parents(records);
-    cut_cycles_at_min_id(records, &mut parent);
-    let active = mark_active(records, &parent);
-    Forest { parent, active }
-}
-
-fn drop_missing_parents(
-    records: &BTreeMap<PageId, PageRecord>,
-) -> BTreeMap<PageId, Option<PageId>> {
-    records
-        .iter()
-        .map(|(id, record)| {
-            let parent = record
-                .placement
-                .parent
-                .clone()
-                .filter(|p| records.contains_key(p));
-            (id.clone(), parent)
-        })
-        .collect()
-}
-
-fn cut_cycles_at_min_id(
-    records: &BTreeMap<PageId, PageRecord>,
-    parent: &mut BTreeMap<PageId, Option<PageId>>,
-) {
-    let mut done = BTreeSet::new();
-    for start in records.keys() {
-        let mut path: Vec<PageId> = Vec::new();
-        let mut next = Some(start.clone());
-        while let Some(page) = next {
-            if done.contains(&page) {
-                break;
-            }
-            if let Some(at) = path.iter().position(|p| *p == page) {
-                let cut = path[at..].iter().min().expect("a cycle has pages").clone();
-                parent.insert(cut, None);
-                break;
-            }
-            next = parent[&page].clone();
-            path.push(page);
-        }
-        done.extend(path);
+    let pages = Pages::of(records);
+    Forest {
+        parent: pages
+            .ids
+            .iter()
+            .zip(&pages.parent)
+            .map(|(id, parent)| ((*id).clone(), parent.map(|p| pages.ids[p].clone())))
+            .collect(),
+        active: pages
+            .ids
+            .iter()
+            .zip(&pages.active)
+            .filter(|(_, active)| **active)
+            .map(|(id, _)| (*id).clone())
+            .collect(),
     }
 }
 
-fn mark_active(
-    records: &BTreeMap<PageId, PageRecord>,
-    parent: &BTreeMap<PageId, Option<PageId>>,
-) -> BTreeSet<PageId> {
-    let mut active = BTreeSet::new();
-    let mut inactive = BTreeSet::new();
-    for start in records.keys() {
-        let mut path = Vec::new();
+/// The records by position in page ID order, so the projection compares and looks up integers
+/// instead of page IDs. Position order is page ID order, so the smallest position in a cycle is
+/// its smallest page ID.
+struct Pages<'a> {
+    ids: Vec<&'a PageId>,
+    records: Vec<&'a PageRecord>,
+    /// A missing parent becomes the top level, and a parent cycle is cut at its smallest ID.
+    parent: Vec<Option<usize>>,
+    /// The page and every ancestor have no `trash`.
+    active: Vec<bool>,
+}
+
+impl<'a> Pages<'a> {
+    fn of(records: &'a BTreeMap<PageId, PageRecord>) -> Self {
+        let ids: Vec<&PageId> = records.keys().collect();
+        let records: Vec<&PageRecord> = records.values().collect();
+        let mut parent: Vec<Option<usize>> = records
+            .iter()
+            .map(|record| {
+                let parent = record.placement.parent.as_ref()?;
+                ids.binary_search(&parent).ok()
+            })
+            .collect();
+        cut_cycles_at_min_id(&mut parent);
+        let active = mark_active(&records, &parent);
+        Self {
+            ids,
+            records,
+            parent,
+            active,
+        }
+    }
+}
+
+fn cut_cycles_at_min_id(parent: &mut [Option<usize>]) {
+    #[derive(Clone, Copy, PartialEq)]
+    enum Walk {
+        New,
+        OnPath,
+        Done,
+    }
+    let mut walk = vec![Walk::New; parent.len()];
+    let mut path = Vec::new();
+    for start in 0..parent.len() {
+        let mut next = Some(start);
+        while let Some(page) = next {
+            match walk[page] {
+                Walk::Done => break,
+                Walk::OnPath => {
+                    let at = path.iter().position(|p| *p == page).expect("on the path");
+                    let cut = *path[at..].iter().min().expect("a cycle has pages");
+                    parent[cut] = None;
+                    break;
+                }
+                Walk::New => {}
+            }
+            walk[page] = Walk::OnPath;
+            next = parent[page];
+            path.push(page);
+        }
+        for page in path.drain(..) {
+            walk[page] = Walk::Done;
+        }
+    }
+}
+
+fn mark_active(records: &[&PageRecord], parent: &[Option<usize>]) -> Vec<bool> {
+    #[derive(Clone, Copy, PartialEq)]
+    enum Known {
+        Unknown,
+        Active,
+        Inactive,
+    }
+    let mut known = vec![Known::Unknown; records.len()];
+    let mut path = Vec::new();
+    for start in 0..records.len() {
         let mut next = Some(start);
         let is_active = loop {
             let Some(page) = next else { break true };
-            if active.contains(page) {
-                break true;
+            match known[page] {
+                Known::Active => break true,
+                Known::Inactive => break false,
+                Known::Unknown if records[page].trash.is_some() => break false,
+                Known::Unknown => {}
             }
-            if inactive.contains(page) || records[page].trash.is_some() {
-                break false;
-            }
-            path.push(page.clone());
-            next = parent[page].as_ref();
+            path.push(page);
+            next = parent[page];
         };
-        if is_active {
-            active.extend(path);
+        let mark = if is_active {
+            Known::Active
         } else {
-            inactive.extend(path);
+            Known::Inactive
+        };
+        for page in path.drain(..) {
+            known[page] = mark;
         }
     }
-    active
+    known.into_iter().map(|k| k == Known::Active).collect()
 }
 
 pub fn tree(records: &BTreeMap<PageId, PageRecord>) -> Tree {
-    let Forest { parent, active } = forest(records);
-    let mut children: BTreeMap<Option<&PageId>, Vec<&PageId>> = BTreeMap::new();
-    for id in &active {
-        children.entry(parent[id].as_ref()).or_default().push(id);
+    let pages = Pages::of(records);
+    let Pages {
+        ids,
+        records,
+        parent,
+        active,
+    } = &pages;
+    let mut roots = Vec::new();
+    let mut children: Vec<Vec<usize>> = vec![Vec::new(); ids.len()];
+    for page in (0..ids.len()).filter(|page| active[*page]) {
+        match parent[page] {
+            None => roots.push(page),
+            Some(p) => children[p].push(page),
+        }
     }
-    for siblings in children.values_mut() {
-        siblings.sort_by_key(|id| (records[*id].placement.order, *id));
+    let order = |page: &usize| (records[*page].placement.order, *page);
+    roots.sort_by_key(order);
+    for siblings in &mut children {
+        siblings.sort_by_key(order);
     }
-    let mut pages = Vec::with_capacity(active.len());
-    let mut stack: Vec<&PageId> = children.get(&None).cloned().unwrap_or_default();
-    stack.reverse();
-    while let Some(id) = stack.pop() {
-        let record = &records[id];
-        pages.push(TreePage {
-            id: id.clone(),
-            parent: parent[id].clone(),
+    let mut tree_pages = Vec::with_capacity(roots.len());
+    let mut stack: Vec<usize> = roots.into_iter().rev().collect();
+    while let Some(page) = stack.pop() {
+        let record = records[page];
+        tree_pages.push(TreePage {
+            id: ids[page].clone(),
+            parent: parent[page].map(|p| ids[p].clone()),
             title: record.title.clone(),
             created_at: record.created_at,
             updated_at: record.updated_at,
         });
-        if let Some(kids) = children.get(&Some(id)) {
-            stack.extend(kids.iter().rev());
-        }
+        stack.extend(children[page].iter().rev());
     }
-    let mut favorites: Vec<(u64, &PageId)> = active
-        .iter()
-        .filter_map(|id| Some((records[id].favorite.as_ref()?.order, id)))
+    let mut favorites: Vec<(u64, usize)> = (0..ids.len())
+        .filter(|page| active[*page])
+        .filter_map(|page| Some((records[page].favorite.as_ref()?.order, page)))
         .collect();
     favorites.sort();
-    let mut trash: Vec<TrashedPage> = records
-        .iter()
-        .filter_map(|(id, record)| {
-            let trash = record.trash.as_ref()?;
-            let parent_batch = parent[id]
-                .as_ref()
+    let mut trash: Vec<TrashedPage> = (0..ids.len())
+        .filter_map(|page| {
+            let trash = records[page].trash.as_ref()?;
+            let parent_batch = parent[page]
                 .and_then(|p| records[p].trash.as_ref())
                 .map(|t| &t.batch_id);
             (parent_batch != Some(&trash.batch_id)).then(|| TrashedPage {
-                id: id.clone(),
-                title: record.title.clone(),
+                id: ids[page].clone(),
+                title: records[page].title.clone(),
                 batch_id: trash.batch_id.clone(),
                 trashed_at: trash.trashed_at,
             })
@@ -163,8 +213,11 @@ pub fn tree(records: &BTreeMap<PageId, PageRecord>) -> Tree {
             .then_with(|| a.id.cmp(&b.id))
     });
     Tree {
-        pages,
-        favorites: favorites.into_iter().map(|(_, id)| id.clone()).collect(),
+        pages: tree_pages,
+        favorites: favorites
+            .into_iter()
+            .map(|(_, page)| ids[page].clone())
+            .collect(),
         trash,
     }
 }

@@ -1,5 +1,12 @@
 import { expect } from "e2e";
+import * as Y from "yjs";
 import { test } from "./fixtures";
+
+declare global {
+  interface Window {
+    __flashes?: string[];
+  }
+}
 
 const daily = {
   pages: [{ id: "page-daily", title: "Daily" }],
@@ -181,7 +188,7 @@ test("CMD-4 and CMD-7 the palette opens a title match, and a content match at it
   );
   await browser.evaluate(() => {
     const seen: string[] = [];
-    Object.assign(window, { __flashes: seen });
+    window.__flashes = seen;
     new MutationObserver((records) => {
       for (const record of records)
         for (const node of record.addedNodes)
@@ -192,16 +199,49 @@ test("CMD-4 and CMD-7 the palette opens a title match, and a content match at it
   });
   await browser.keyboard.press("Enter");
   await expect(screen.getByRole("dialog", "Command palette")).not.toBeVisible();
-  expect(
-    await browser.evaluate(
-      () => (window as unknown as { __flashes: string[] }).__flashes.length,
-    ),
-  ).toBe(1);
+  expect(await browser.evaluate(() => window.__flashes?.length ?? 0)).toBe(1);
   await browser.keyboard.type("Q2 ");
   expect(
     await browser.evaluate(
       () => window.__aelomiMock?.bodies.text("page-aelomi") ?? null,
     ),
   ).toBe("intro\nQ2 quarterly roadmap");
+  expect(nonLocalRequests).toEqual([]);
+});
+
+test("DATA-2 a page list another writer stored as a sequence says why no page opens, and nothing is written", async ({
+  app,
+  browser,
+  screen,
+  nonLocalRequests,
+}) => {
+  const foreign = new Y.Doc();
+  foreign.clientID = 9;
+  foreign.getArray("pages").insert(0, ["foreign"]);
+  const rawWorkspace = Buffer.from(Y.encodeStateAsUpdate(foreign)).toString(
+    "base64",
+  );
+  await browser.addInitScript(
+    (setup) => {
+      window.__aelomiMockSetup = setup;
+    },
+    { ...daily, rawWorkspace },
+  );
+  await app.open("/");
+  const alert = screen.getByRole("alert");
+  await expect(alert).toContainText(
+    "Aelomi can't read this workspace's page list, so no page can open. Nothing on disk was changed.",
+  );
+  await expect(alert).toContainText(
+    "workspace doc: the pages root is not a Y.Map, found a sequence",
+  );
+  expect(
+    await browser.evaluate(
+      () =>
+        window.__aelomiMock?.calls
+          .filter((call) => call.command === "docAppend")
+          .map((call) => call.args[0]) ?? null,
+    ),
+  ).toEqual([]);
   expect(nonLocalRequests).toEqual([]);
 });

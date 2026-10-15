@@ -6,9 +6,13 @@ import { installMock } from "../ipc/mock";
 import { drainDeliveries, useDeliveryStore } from "./delivery";
 import { loadOrigin, syncPage } from "./page-sync";
 
-vi.mock("../ipc", async () => {
+vi.mock("../ipc", async (importOriginal) => {
   const mock = await import("../ipc/mock");
-  return { commands: mock.commands, events: mock.events };
+  return {
+    ...(await importOriginal<typeof import("../ipc")>()),
+    commands: mock.commands,
+    events: mock.events,
+  };
 });
 
 function loaded(docId: string, text: string) {

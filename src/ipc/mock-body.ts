@@ -28,9 +28,10 @@ export type SeedBlock = {
 const colors = { backgroundColor: "default", textColor: "default" };
 const aligned = { ...colors, textAlignment: "left" };
 
-function attributes(
-  block: SeedBlock,
-): Record<string, string | number | boolean | undefined> {
+/** An attribute value as BlockNote's Yjs binding stores it. */
+export type StoredAttribute = string | number | boolean | null | undefined;
+
+function attributes(block: SeedBlock): Record<string, StoredAttribute> {
   switch (block.type ?? "paragraph") {
     case "numberedListItem":
       return { ...aligned, start: undefined };
@@ -47,6 +48,22 @@ function attributes(
     default:
       return aligned;
   }
+}
+
+/**
+ * Stores one attribute as BlockNote 0.55 does. Yjs types attribute values
+ * without `undefined`, yet BlockNote writes `start: undefined` on every
+ * numbered item, so that value alone needs the cast.
+ */
+export function storeAttribute(
+  element: Y.XmlElement,
+  key: string,
+  value: StoredAttribute,
+) {
+  const stored: Y.XmlElement<{
+    [key: string]: string | number | boolean | null;
+  }> = element;
+  stored.setAttribute(key, value === undefined ? (value as never) : value);
 }
 
 function inlineNodes(
@@ -88,10 +105,8 @@ function container(block: SeedBlock): Y.XmlElement {
   const outer = new Y.XmlElement("blockContainer");
   outer.setAttribute("id", block.id);
   const content = new Y.XmlElement(block.type ?? "paragraph");
-  for (const [key, value] of Object.entries(attributes(block))) {
-    // BlockNote writes `start: undefined` on every numbered item.
-    content.setAttribute(key, value as string);
-  }
+  for (const [key, value] of Object.entries(attributes(block)))
+    storeAttribute(content, key, value);
   content.insert(0, inlineNodes(block.content ?? []));
   const parts: Y.XmlElement[] = [content];
   if (block.children && block.children.length > 0) {

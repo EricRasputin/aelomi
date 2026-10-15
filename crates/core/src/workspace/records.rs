@@ -3,6 +3,8 @@
 use std::collections::BTreeMap;
 use std::fmt;
 
+use yrs::branch::{Branch, BranchPtr};
+use yrs::types::TypeRef;
 use yrs::{Any, Array, ArrayRef, Map, MapRef, Out, ReadTxn};
 
 use crate::storage::{DocId, InvalidDocId};
@@ -130,10 +132,11 @@ impl fmt::Display for RecordError {
 
 impl std::error::Error for RecordError {}
 
-/// Every page record in the workspace doc. A doc without the `pages` root has none.
+/// Every page record in the workspace doc. A doc without the `pages` root, or with an empty one,
+/// has none.
 pub fn read_pages<T: ReadTxn>(txn: &T) -> Result<BTreeMap<PageId, PageRecord>, RecordError> {
     let mut pages = BTreeMap::new();
-    let Some(Out::YMap(root)) = txn.get(PAGES).map(|root| as_map(txn, root)) else {
+    let Some(root) = pages_root(txn)? else {
         return Ok(pages);
     };
     for (id, value) in root.iter(txn) {
@@ -154,18 +157,39 @@ pub fn read_pages<T: ReadTxn>(txn: &T) -> Result<BTreeMap<PageId, PageRecord>, R
     Ok(pages)
 }
 
-/// A root that arrived in an update has no type yet. Reading it as a map is safe only when it
-/// has no sequence content, which a map never has.
-fn as_map<T: ReadTxn>(txn: &T, root: Out) -> Out {
-    match root {
-        Out::UndefinedRef(branch) => {
-            if ArrayRef::from(branch).len(txn) > 0 {
-                Out::Any(Any::Undefined)
-            } else {
-                Out::YMap(MapRef::from(branch))
-            }
-        }
-        other => other,
+/// A root that arrived in an update has no type until someone asks for one, and another writer
+/// can put a sequence under the reserved name. Content this reader would skip fails the whole
+/// workspace, so it never reads as a workspace without pages.
+fn pages_root<T: ReadTxn>(txn: &T) -> Result<Option<MapRef>, RecordError> {
+    let Some(root) = txn.get(PAGES) else {
+        return Ok(None);
+    };
+    let branch: &Branch = match &root {
+        Out::UndefinedRef(branch) => branch,
+        Out::YMap(map) => map.as_ref(),
+        Out::YArray(array) => array.as_ref(),
+        Out::YText(text) => text.as_ref(),
+        Out::YXmlFragment(fragment) => fragment.as_ref(),
+        Out::YXmlElement(element) => element.as_ref(),
+        Out::YXmlText(text) => text.as_ref(),
+        Out::Any(_) | Out::YDoc(_) => return Err(not_a_map("another value")),
+    };
+    let branch = BranchPtr::from(branch);
+    if ArrayRef::from(branch).len(txn) > 0 {
+        return Err(not_a_map("a sequence"));
+    }
+    let entries = MapRef::from(branch);
+    match (branch.type_ref(), entries.len(txn)) {
+        (TypeRef::Map | TypeRef::Undefined, _) => Ok(Some(entries)),
+        (_, 0) => Ok(None),
+        _ => Err(not_a_map("another shared type")),
+    }
+}
+
+fn not_a_map(found: &str) -> RecordError {
+    RecordError {
+        page: None,
+        problem: format!("the {PAGES} root is not a Y.Map, found {found}"),
     }
 }
 
@@ -220,11 +244,11 @@ fn read_record<T: ReadTxn>(txn: &T, record: &MapRef) -> Result<PageRecord, Strin
     })
 }
 
-type Object = std::collections::HashMap<String, Any>;
+type Object = std::sync::Arc<std::collections::HashMap<String, Any>>;
 
 fn object(name: &str, value: Option<Out>) -> Result<Object, String> {
     match value {
-        Some(Out::Any(Any::Map(map))) => Ok((*map).clone()),
+        Some(Out::Any(Any::Map(map))) => Ok(map),
         other => Err(expected(name, "an object", other.as_ref())),
     }
 }

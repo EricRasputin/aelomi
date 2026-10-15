@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use super::search_oracle::{self, Hit, Page, generated};
 use super::{Docs, all, content, eventually, hit_ids, ready};
+use crate::index::db::SLOT_BITS;
 use crate::index::query::{self, Plan, Scope, Walk};
 use crate::index::{Config, Index, IndexStatus, SearchHit, SearchQuery};
 use crate::storage::DocId;
@@ -367,8 +368,9 @@ fn match_cardinalities_equal_the_oracle_and_the_measured_figures() {
                 .unwrap() as usize
         };
         let blocks = count("SELECT count(*) FROM block_fts WHERE block_fts MATCH ?1");
-        let pages_matched =
-            count("SELECT count(DISTINCT rowid >> 20) FROM block_fts WHERE block_fts MATCH ?1");
+        let pages_matched = count(&format!(
+            "SELECT count(DISTINCT rowid >> {SLOT_BITS}) FROM block_fts WHERE block_fts MATCH ?1"
+        ));
         let none = HashSet::new();
         let (all_pages, _) = search_oracle::expected(
             &pages,

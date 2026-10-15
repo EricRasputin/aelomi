@@ -2,16 +2,10 @@ import { spawnSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { cpus, loadavg } from "node:os";
 import { resolve } from "node:path";
-import { STAGES } from "./check-all-stages.ts";
+import { LOCAL_ENV, STAGES } from "./check-all-stages.ts";
 
 const root = resolve(import.meta.dirname, "..");
-// CI makes Vitest and Playwright reject a leftover test.only, as they do in CI.
-const env = {
-  ...process.env,
-  CI: "true",
-  E2E_TELEMETRY_DISABLED: "1",
-  DO_NOT_TRACK: "1",
-};
+const env = { ...process.env, ...LOCAL_ENV };
 
 const git = (...args: string[]) =>
   spawnSync("git", args, { cwd: root, encoding: "utf8" }).stdout.trim();

@@ -14,9 +14,10 @@ use crate::index::{
     CacheProblem, CacheState, Config, Corrupt, Index, IndexEvent, IndexStatus, PageIssue,
     PageProblem, QueryError, Reply, Source,
 };
+use crate::storage::clock::{Clock, ManualClock};
 use crate::storage::{Crash, DocId, Driver, Limits, OpKind, SimFs, Store, SystemClock};
 use crate::workspace::TreeError;
-use crate::workspace::fixture::{index_fixture, paragraph, text, write_body};
+use crate::workspace::fixture::{index_fixture, insert_block, paragraph, text, write_body};
 
 fn failed(reason: &str) -> IndexStatus {
     IndexStatus::Failed {
@@ -192,6 +193,81 @@ fn a_malformed_record_fails_the_index_and_the_tree_until_fixed() {
         ids,
         ["daily", "untitled"],
         "the rename reached the title and a link to it"
+    );
+}
+
+#[test]
+fn a_pages_root_holding_a_sequence_fails_without_erasing_the_cache() {
+    use yrs::{Array, Map, Out, ReadTxn, Transact};
+    let dir = tempfile::tempdir().unwrap();
+    let opened = open(dir.path());
+    opened.append(&index_fixture());
+    opened.settle();
+    let before = snapshot(&opened.workspace);
+    let workspace = DocId::workspace();
+    let mut foreign = crate::workspace::fixture::Editor::new(42);
+    foreign.apply(&workspace, &opened.workspace.load(&workspace).unwrap());
+    let sequence = foreign.edit(&workspace, |txn| {
+        txn.get_or_insert_array("pages").insert(txn, 0, "foreign");
+    });
+    let events = opened.events().len();
+    opened.workspace.append(&workspace, &sequence).unwrap();
+    assert_eq!(
+        opened
+            .workspace
+            .flush(Instant::now() + Duration::from_secs(5)),
+        []
+    );
+    let source = super::source_files(dir.path());
+    opened.settle();
+
+    let reason = "workspace: workspace doc: the pages root is not a Y.Map, found a sequence";
+    assert_eq!(opened.workspace.index_status(), failed(reason));
+    assert_eq!(
+        opened.workspace.search(&all("roadmap", 10)),
+        Err(QueryError::Failed(reason.into()))
+    );
+    assert!(matches!(
+        opened.workspace.tree(),
+        Err(TreeError::Malformed(_))
+    ));
+    assert_eq!(
+        opened.events()[events..],
+        [
+            IndexEvent::Status(failed(reason)),
+            IndexEvent::Changed(crate::index::IndexChange {
+                workspace: true,
+                pages: vec![],
+            }),
+        ],
+        "no cache replacement for erased pages"
+    );
+    let cached: i64 = rusqlite::Connection::open(index_path(dir.path()))
+        .unwrap()
+        .query_row("SELECT count(*) FROM pages", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(cached, 8, "every cached page row is kept");
+    assert_eq!(super::source_files(dir.path()), source);
+    let records = super::doc_of(&opened.workspace.load(&workspace).unwrap());
+    let Some(Out::UndefinedRef(root)) = records.transact().get("pages") else {
+        unreachable!()
+    };
+    assert_eq!(yrs::MapRef::from(root).len(&records.transact()), 8);
+
+    let undo = foreign.edit(&workspace, |txn| {
+        txn.get_or_insert_array("pages").remove(txn, 0);
+    });
+    opened.workspace.append(&workspace, &undo).unwrap();
+    opened.settle();
+    assert_eq!(opened.workspace.index_status(), IndexStatus::Ready);
+    assert_eq!(snapshot(&opened.workspace), before);
+    assert!(
+        !opened
+            .events()
+            .iter()
+            .any(|event| matches!(event, IndexEvent::Cache(CacheState::Replaced(_)))),
+        "{:?}",
+        opened.events()
     );
 }
 
@@ -832,6 +908,72 @@ fn an_index_worker_that_cannot_start_fails_once_and_docs_stay_usable() {
 }
 
 #[test]
+fn a_body_root_of_another_type_is_an_issue_and_every_other_page_still_reads() {
+    use crate::workspace::records::{PageRecord, Placement};
+    use yrs::{ReadTxn, Transact};
+    let dir = tempfile::tempdir().unwrap();
+    let opened = open(dir.path());
+    opened.append(&index_fixture());
+    opened.settle();
+    let before = ready(opened.workspace.search(&all("roadmap", 50)).unwrap());
+    let typed = DocId::new("typed-text").unwrap();
+    let doc = yrs::Doc::new();
+    let body = doc.get_or_insert_text("prosemirror");
+    yrs::Text::insert(
+        &body,
+        &mut doc.transact_mut(),
+        0,
+        "plain kestrel words, café 😀",
+    );
+    let encoded = doc
+        .transact()
+        .encode_state_as_update_v1(&Default::default());
+    opened.workspace.append(&typed, &encoded).unwrap();
+    opened.edit_records(|records| {
+        records.insert(
+            page("typed-text"),
+            PageRecord {
+                title: "Typed".into(),
+                placement: Placement {
+                    parent: None,
+                    order: 9,
+                },
+                favorite: None,
+                trash: None,
+                created_at: 900,
+                updated_at: 900,
+            },
+        );
+    });
+    assert_eq!(
+        opened
+            .workspace
+            .flush(Instant::now() + Duration::from_secs(5)),
+        []
+    );
+    let source = super::source_files(dir.path());
+    opened.settle();
+
+    let issue = PageIssue {
+        page_id: page("typed-text"),
+        problem: PageProblem::NotAFragment,
+        indexed_blocks: 0,
+    };
+    let (hits, issues) = ready_with_issues(
+        opened
+            .workspace
+            .search(&content("kestrel", 10, &[]))
+            .unwrap(),
+    );
+    assert_eq!(hit_ids(&hits), ["aelomi"]);
+    assert_eq!(issues, std::slice::from_ref(&issue));
+    let (hits, issues) = ready_with_issues(opened.workspace.search(&all("roadmap", 50)).unwrap());
+    assert_eq!(hits, before);
+    assert_eq!(issues, [issue]);
+    assert_eq!(super::source_files(dir.path()), source);
+}
+
+#[test]
 fn a_body_under_another_root_or_not_a_yjs_update_is_named_with_no_blocks() {
     let dir = tempfile::tempdir().unwrap();
     let opened = open(dir.path());
@@ -892,5 +1034,321 @@ fn a_body_under_another_root_or_not_a_yjs_update_is_named_with_no_blocks() {
             problem: PageProblem::Undecodable,
             indexed_blocks: 0,
         }]
+    );
+}
+
+const REPAIRED_REPEATEDLY: &str = "the index was repaired repeatedly: corrupt (field)";
+
+fn ms(n: u64) -> Duration {
+    Duration::from_millis(n)
+}
+
+fn on_a_manual_clock(dir: &Path) -> (super::Opened, Arc<ManualClock>) {
+    let clock = Arc::new(ManualClock::default());
+    let config = Config {
+        clock: Some(clock.clone()),
+        ..Config::DEFAULT
+    };
+    let opened = open_with(
+        Store::open(dir).unwrap(),
+        index_path(dir),
+        config,
+        Arc::default(),
+    );
+    opened.append(&index_fixture());
+    opened.settle();
+    (opened, clock)
+}
+
+/// Damages the cache and has a query find the damage.
+fn fault(opened: &super::Opened, dir: &Path) {
+    tamper(
+        dir,
+        "UPDATE pages SET title = x'00' WHERE page_id = 'reading'",
+    );
+    assert_eq!(
+        opened.workspace.search(&content("cafe", 10, &[])),
+        Ok(Reply::Indexing)
+    );
+}
+
+fn waiting(opened: &super::Opened, waits: usize) {
+    let index = opened.workspace.index().shared();
+    eventually(Duration::from_secs(10), || {
+        (index.waits().len() == waits).then_some(())
+    });
+}
+
+/// Proves the worker waits `wait` on the index clock, then lets it go on.
+fn wait_out(opened: &super::Opened, clock: &ManualClock, wait: Duration) {
+    let index = opened.workspace.index().shared();
+    let almost = clock.now() + wait - ms(1);
+    clock.advance_to(almost);
+    eventually(Duration::from_secs(10), || {
+        (index.kept_waiting_at() == Some(almost)).then_some(())
+    });
+    assert_eq!(opened.workspace.index_status(), failed(REPAIRED_REPEATEDLY));
+    clock.advance(ms(1));
+    ready_again(opened);
+}
+
+fn ready_again(opened: &super::Opened) {
+    eventually(Duration::from_secs(10), || {
+        (opened.workspace.index_status() == IndexStatus::Ready).then_some(())
+    });
+    opened.settle();
+}
+
+fn repaired(first: IndexStatus) -> [IndexEvent; 3] {
+    [
+        IndexEvent::Status(first),
+        IndexEvent::Cache(CacheState::Replaced(CacheProblem::Corrupt(Corrupt::Field))),
+        IndexEvent::Status(IndexStatus::Ready),
+    ]
+}
+
+#[test]
+fn a_fault_that_recurs_after_every_ready_backs_off_fails_and_recovers() {
+    let dir = tempfile::tempdir().unwrap();
+    let (opened, clock) = on_a_manual_clock(dir.path());
+    let index = opened.workspace.index().shared();
+    assert_eq!(
+        opened
+            .workspace
+            .flush(Instant::now() + Duration::from_secs(10)),
+        []
+    );
+    let expected = snapshot(&opened.workspace);
+    let source = super::source_files(dir.path());
+
+    let before = after_settled(&opened).len();
+    fault(&opened, dir.path());
+    opened.settle();
+    assert_eq!(
+        after_settled(&opened)[before..],
+        repaired(IndexStatus::Rebuilding),
+        "the first repair runs at once"
+    );
+    assert_eq!(index.waits(), []);
+
+    let waits = [
+        ms(100),
+        ms(200),
+        ms(400),
+        ms(800),
+        ms(1_600),
+        ms(3_200),
+        ms(6_400),
+        ms(12_800),
+        ms(25_600),
+        ms(30_000),
+        ms(30_000),
+    ];
+    for (n, wait) in waits.into_iter().enumerate() {
+        let before = after_settled(&opened).len();
+        fault(&opened, dir.path());
+        waiting(&opened, n + 1);
+        assert_eq!(opened.workspace.index_status(), failed(REPAIRED_REPEATEDLY));
+        assert_eq!(
+            opened.workspace.search(&all("cafe", 5)),
+            Err(QueryError::Failed(REPAIRED_REPEATEDLY.into()))
+        );
+        assert_eq!(
+            opened.workspace.backlinks(&page("reading")),
+            Err(QueryError::Failed(REPAIRED_REPEATEDLY.into()))
+        );
+        wait_out(&opened, &clock, wait);
+        assert_eq!(
+            after_settled(&opened)[before..],
+            repaired(failed(REPAIRED_REPEATEDLY)),
+            "repair {n}"
+        );
+    }
+    assert_eq!(index.waits(), waits);
+    assert_eq!(snapshot(&opened.workspace), expected);
+
+    clock.advance(ms(30_000) - ms(1));
+    fault(&opened, dir.path());
+    waiting(&opened, waits.len() + 1);
+    assert_eq!(
+        index.waits()[waits.len()..],
+        [ms(30_000)],
+        "Ready for less than 30 s does not clear the fault"
+    );
+    wait_out(&opened, &clock, ms(30_000));
+
+    clock.advance(ms(30_000));
+    let before = after_settled(&opened).len();
+    fault(&opened, dir.path());
+    opened.settle();
+    assert_eq!(
+        after_settled(&opened)[before..],
+        repaired(IndexStatus::Rebuilding),
+        "a fault after 30 s Ready is new and repaired at once"
+    );
+    assert_eq!(index.waits().len(), waits.len() + 1);
+    assert_eq!(snapshot(&opened.workspace), expected);
+    assert_eq!(super::source_files(dir.path()), source);
+}
+
+#[test]
+fn erasing_a_page_after_repeated_repairs_still_replaces_the_cache_at_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let (opened, clock) = on_a_manual_clock(dir.path());
+    let index = opened.workspace.index().shared();
+    fault(&opened, dir.path());
+    opened.settle();
+    fault(&opened, dir.path());
+    waiting(&opened, 1);
+    wait_out(&opened, &clock, ms(100));
+
+    let before = after_settled(&opened).len();
+    opened.edit_records(|records| {
+        records.remove(&page("daily"));
+    });
+    opened.settle();
+    assert_eq!(
+        after_settled(&opened)[before..],
+        [
+            IndexEvent::Status(IndexStatus::Rebuilding),
+            IndexEvent::Cache(CacheState::Replaced(CacheProblem::ErasedPages { count: 1 })),
+            IndexEvent::Status(IndexStatus::Ready),
+        ]
+    );
+    assert_eq!(index.waits(), [ms(100)], "the erase waited for nothing");
+    assert_eq!(
+        ready(
+            opened
+                .workspace
+                .search(&content("quarterly", 10, &[]))
+                .unwrap()
+        ),
+        []
+    );
+
+    fault(&opened, dir.path());
+    waiting(&opened, 2);
+    assert_eq!(
+        index.waits(),
+        [ms(100), ms(200)],
+        "the erase neither spent nor reset the repair backoff"
+    );
+    assert_eq!(opened.workspace.index_status(), failed(REPAIRED_REPEATEDLY));
+    wait_out(&opened, &clock, ms(200));
+}
+
+#[test]
+fn appends_and_flushes_are_acknowledged_while_a_repeated_repair_waits() {
+    let dir = tempfile::tempdir().unwrap();
+    let (opened, clock) = on_a_manual_clock(dir.path());
+    let index = opened.workspace.index().shared();
+    fault(&opened, dir.path());
+    opened.settle();
+    fault(&opened, dir.path());
+    waiting(&opened, 1);
+
+    opened.edit_body("daily", |txn| {
+        insert_block(txn, 0, &paragraph("w1", vec![text("waitword")]))
+    });
+    assert_eq!(
+        opened
+            .workspace
+            .flush(Instant::now() + Duration::from_secs(10)),
+        []
+    );
+    let almost = clock.now() + ms(99);
+    clock.advance_to(almost);
+    eventually(Duration::from_secs(10), || {
+        (index.kept_waiting_at() == Some(almost)).then_some(())
+    });
+    assert_eq!(
+        opened.workspace.index_status(),
+        failed(REPAIRED_REPEATEDLY),
+        "a body edit does not cut the wait short"
+    );
+
+    opened.edit_records(|records| {
+        records.get_mut(&page("roadmap")).unwrap().title = "Roadmap waiting".into();
+    });
+    assert_eq!(
+        opened
+            .workspace
+            .flush(Instant::now() + Duration::from_secs(10)),
+        []
+    );
+    let tree = opened.workspace.tree().unwrap();
+    assert_eq!(
+        tree.pages
+            .iter()
+            .find(|p| p.id == page("roadmap"))
+            .map(|p| p.title.as_str()),
+        Some("Roadmap waiting")
+    );
+    ready_again(&opened);
+    assert_eq!(
+        clock.now(),
+        almost,
+        "a workspace edit repaired before the deadline"
+    );
+    assert_eq!(index.waits(), [ms(100)]);
+    assert_eq!(
+        hit_ids(&ready(
+            opened.workspace.search(&all("waitword", 5)).unwrap()
+        )),
+        ["daily"]
+    );
+    assert_eq!(
+        hit_ids(&ready(opened.workspace.search(&all("waiting", 5)).unwrap())),
+        ["roadmap", "aelomi"]
+    );
+}
+
+#[test]
+fn an_erasure_during_a_repair_wait_repairs_the_cache_at_once() {
+    let dir = tempfile::tempdir().unwrap();
+    let (opened, clock) = on_a_manual_clock(dir.path());
+    let index = opened.workspace.index().shared();
+    assert_eq!(
+        hit_ids(&ready(
+            opened
+                .workspace
+                .search(&content("quarterly", 10, &[]))
+                .unwrap()
+        )),
+        ["daily"]
+    );
+    fault(&opened, dir.path());
+    opened.settle();
+    fault(&opened, dir.path());
+    waiting(&opened, 1);
+    let started = clock.now();
+    let before = after_settled(&opened).len();
+
+    opened.edit_records(|records| {
+        records.remove(&page("daily"));
+    });
+    ready_again(&opened);
+    assert_eq!(clock.now(), started, "the erasure waited for nothing");
+    assert_eq!(
+        after_settled(&opened)[before..],
+        [
+            IndexEvent::Cache(CacheState::Replaced(CacheProblem::Corrupt(Corrupt::Field))),
+            IndexEvent::Status(IndexStatus::Ready),
+        ]
+    );
+    assert_eq!(index.waits(), [ms(100)]);
+    assert_eq!(
+        ready(
+            opened
+                .workspace
+                .search(&content("quarterly", 10, &[]))
+                .unwrap()
+        ),
+        []
+    );
+    let cache = std::fs::read(index_path(dir.path())).unwrap();
+    assert!(
+        !cache.windows(b"quarterly".len()).any(|w| w == b"quarterly"),
+        "the erased body left the cache file"
     );
 }

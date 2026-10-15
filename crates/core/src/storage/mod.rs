@@ -1,6 +1,6 @@
 //! The durable, append-only store of Y.Docs. See `ARCHITECTURE.md`, "Data model and storage".
 
-mod clock;
+pub(crate) mod clock;
 mod compact;
 mod data_path;
 mod decode;

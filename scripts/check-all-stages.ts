@@ -1,14 +1,26 @@
-// One stage per job in .github/workflows/ci.yml, named after it, running that job's
-// commands. check-all.test.ts fails when the jobs or their commands drift. e2e builds dist-mock/ once for playwright and keystroke, and
-// build-app builds the bundle cold-start launches, so the order matters. Perf stages gate
-// CI's runner-calibrated budgets, not the spec numbers, and wait for a quiet machine first.
-// pnpm perf:cold and pnpm perf:keystroke on their own check the spec numbers.
-export const STAGES: readonly {
+// Every stage runs with this on top of the caller's environment. CI makes Vitest
+// and Playwright reject a leftover test.only, as GitHub's runners set it too.
+export const LOCAL_ENV: Readonly<Record<string, string>> = {
+  CI: "true",
+  E2E_TELEMETRY_DISABLED: "1",
+  DO_NOT_TRACK: "1",
+};
+
+export type Stage = {
   job: string;
   commands: string[][];
   env?: Record<string, string>;
   perf?: true;
-}[] = [
+};
+
+// One stage per job in .github/workflows/ci.yml, named after it, running that job's
+// commands with that job's environment. check-all.test.ts fails when the jobs, their
+// commands or their environment drift. e2e builds dist-mock/ once for playwright and
+// keystroke, and build-app builds the bundle cold-start launches, so the order matters.
+// Perf stages gate CI's runner-calibrated budgets, not the spec numbers, and wait for a
+// quiet machine first. pnpm perf:cold and pnpm perf:keystroke on their own check the
+// spec numbers.
+export const STAGES: readonly Stage[] = [
   { job: "biome", commands: [["pnpm", "lint"]] },
   { job: "tsc", commands: [["pnpm", "typecheck"]] },
   {

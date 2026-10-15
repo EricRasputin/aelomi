@@ -191,6 +191,71 @@ fn an_empty_doc_has_no_blocks() {
     assert_eq!(body_of(|txn| write_body(txn, &[])), whole(vec![]));
 }
 
+fn not_a_fragment(blocks: Vec<Block>) -> Body {
+    Body {
+        blocks,
+        problem: Some(BodyProblem::NotAFragment),
+    }
+}
+
+#[test]
+fn a_body_root_of_another_type_is_named_not_read_as_empty() {
+    let doc = yrs::Doc::new();
+    let typed = doc.get_or_insert_text("prosemirror");
+    typed.insert(&mut doc.transact_mut(), 0, "body text in a Y.Text, café 😀");
+    assert_eq!(read_body(&doc.transact()), not_a_fragment(vec![]));
+    let encoded = doc
+        .transact()
+        .encode_state_as_update_v1(&Default::default());
+    assert_eq!(
+        read_body(&doc_of(&encoded).transact()),
+        not_a_fragment(vec![])
+    );
+
+    let map = body_of(|txn| {
+        yrs::Map::insert(&txn.get_or_insert_map("prosemirror"), txn, "type", "doc");
+    });
+    assert_eq!(map, not_a_fragment(vec![]));
+    let values = body_of(|txn| {
+        yrs::Array::insert(&txn.get_or_insert_array("prosemirror"), txn, 0, 7);
+    });
+    assert_eq!(values, not_a_fragment(vec![]));
+}
+
+#[test]
+fn a_stray_value_in_the_body_is_named_and_later_blocks_still_read() {
+    let mixed = body_of(|txn| {
+        write_body(
+            txn,
+            &[
+                paragraph("a", vec![text("first")]),
+                paragraph("b", vec![text("second")]),
+            ],
+        );
+        let fragment = txn.get_or_insert_xml_fragment("prosemirror");
+        let Some(yrs::XmlOut::Element(group)) = fragment.get(txn, 0) else {
+            unreachable!()
+        };
+        let branch = yrs::branch::BranchPtr::from(group.as_ref() as &yrs::branch::Branch);
+        yrs::Array::insert(&yrs::ArrayRef::from(branch), txn, 1, "stray");
+        yrs::Text::insert(&yrs::TextRef::from(branch), txn, 1, "naïve 😀");
+    });
+    assert_eq!(
+        mixed,
+        not_a_fragment(vec![b("a", vec![t("first")]), b("b", vec![t("second")])])
+    );
+}
+
+#[test]
+fn an_emptied_body_root_has_no_problem() {
+    let emptied = body_of(|txn| {
+        let typed = txn.get_or_insert_text("prosemirror");
+        typed.insert(txn, 0, "gone");
+        typed.remove_range(txn, 0, 4);
+    });
+    assert_eq!(emptied, whole(vec![]));
+}
+
 #[test]
 fn content_under_another_root_is_named_not_read_as_empty() {
     let refused = body_of(|txn| {

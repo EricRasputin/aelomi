@@ -148,6 +148,32 @@ pub enum CacheProblem {
     OrderChanged,
 }
 
+/// Why a cache needs replacing, which decides how soon the worker replaces it again.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ReplaceKind {
+    /// The file is damaged. Damage that recurs soon after a repair backs off.
+    Fault,
+    /// The source or another build moved on from the file. It is replaced at once.
+    Outdated,
+}
+
+impl CacheProblem {
+    pub(crate) fn kind(&self) -> ReplaceKind {
+        match self {
+            Self::NotAFile
+            | Self::NotADatabase(_)
+            | Self::SchemaMismatch
+            | Self::IntegrityCheck(_)
+            | Self::FtsIntegrityCheck(_)
+            | Self::Corrupt(_) => ReplaceKind::Fault,
+            Self::SchemaVersion { .. }
+            | Self::ErasedPages { .. }
+            | Self::KeySpace
+            | Self::OrderChanged => ReplaceKind::Outdated,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Corrupt {
     PageId,

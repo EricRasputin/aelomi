@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { expect, test } from "vitest";
 import * as Y from "yjs";
 import { writeBody } from "../ipc/mock-body";
-import { readBody, renderSegments } from "./body-reader";
+import { readBody, readShownBody, renderSegments } from "./body-reader";
 
 const t = (text: string) => ({ kind: "text" as const, text });
 const l = (pageId: string) => ({ kind: "link" as const, pageId });
@@ -70,8 +70,8 @@ test("salvages readable blocks and reports the most serious problem", () => {
     problem: { kind: "MissingBlockId" },
     blocks: [{ id: "child", segments: [t("kept")] }],
   });
-  expect(readBody(doc, { keepUnidentified: true }).blocks).toEqual([
-    { id: "", segments: [t("alpha beta")] },
+  expect(readShownBody(doc).blocks).toEqual([
+    { id: null, segments: [t("alpha beta")] },
     { id: "child", segments: [t("kept")] },
   ]);
 });
@@ -84,6 +84,46 @@ test("a body under another root is unrecognized, and an empty doc has no blocks"
     problem: { kind: "UnrecognizedRoot", root: "body" },
   });
   expect(readBody(new Y.Doc())).toEqual({ blocks: [], problem: null });
+});
+
+test("a body root that is not XML is named, as the Rust reader names it", () => {
+  const notAFragment = { blocks: [], problem: { kind: "NotAFragment" } };
+  const text = new Y.Doc();
+  text.getText("prosemirror").insert(0, "body text in a Y.Text");
+  expect(readBody(text)).toEqual(notAFragment);
+  const replayed = new Y.Doc();
+  Y.applyUpdate(replayed, Y.encodeStateAsUpdate(text));
+  expect(readBody(replayed)).toEqual(notAFragment);
+  const map = new Y.Doc();
+  map.getMap("prosemirror").set("type", "doc");
+  expect(readBody(map)).toEqual(notAFragment);
+  const values = new Y.Doc();
+  values.getArray("prosemirror").insert(0, [7]);
+  expect(readBody(values)).toEqual(notAFragment);
+  const emptied = new Y.Doc();
+  emptied.getText("prosemirror").insert(0, "gone");
+  emptied.getText("prosemirror").delete(0, 4);
+  expect(readBody(emptied)).toEqual({ blocks: [], problem: null });
+});
+
+test("a stray value beside the blocks is named and every block still reads", () => {
+  const xml = new Y.Doc();
+  writeBody(xml, [
+    { id: "a", content: ["first"] },
+    { id: "b", content: ["second"] },
+  ]);
+  const foreign = new Y.Doc();
+  foreign.getArray("prosemirror").insert(0, [7]);
+  const merged = new Y.Doc();
+  Y.applyUpdate(merged, Y.encodeStateAsUpdate(foreign));
+  Y.applyUpdate(merged, Y.encodeStateAsUpdate(xml));
+  expect(readBody(merged)).toEqual({
+    blocks: [
+      { id: "a", segments: [t("first")] },
+      { id: "b", segments: [t("second")] },
+    ],
+    problem: { kind: "NotAFragment" },
+  });
 });
 
 test("renders links with their current labels", () => {

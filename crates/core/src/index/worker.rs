@@ -8,7 +8,9 @@ use std::time::{Duration, Instant};
 use yrs::updates::decoder::Decode;
 use yrs::{Doc, Transact, Update};
 
-use super::db::{self, CacheOpen, CacheProblem, CachedPage, OrderKey, PageKey, RunError, Writer};
+use super::db::{
+    self, CacheOpen, CacheProblem, CachedPage, OrderKey, PageKey, ReplaceKind, RunError, Writer,
+};
 use super::{
     HoldPoint, IndexChange, IndexEvent, IndexStatus, PageIssue, PageProblem, Shared, Source,
     StartupReport,
@@ -22,10 +24,44 @@ const RETRY_FIRST: Duration = Duration::from_millis(100);
 const RETRY_MAX: Duration = Duration::from_secs(30);
 const PAGES_PER_TRANSACTION: usize = 128;
 const REPLACES_WITHOUT_READY: u32 = 2;
+/// A cache Ready for longer than the longest wait has stopped faulting, so its next fault is new.
+const HEALTHY: Duration = RETRY_MAX;
+const CLOCK_POLL: Duration = Duration::from_millis(10);
+
+/// When the worker repairs the next damaged cache. It returns to `Now` only once the index has
+/// stayed Ready for `HEALTHY`, so damage that recurs after every short-lived Ready backs off.
+#[derive(Clone, Copy)]
+enum Repair {
+    Now,
+    /// Fail the index for this long first.
+    After(Duration),
+}
+
+impl Repair {
+    /// Returns this repair's wait and leaves the next one's.
+    fn take(&mut self) -> Self {
+        let this = *self;
+        *self = Self::After(match this {
+            Self::Now => RETRY_FIRST,
+            Self::After(wait) => (wait * 2).min(RETRY_MAX),
+        });
+        this
+    }
+}
+
+/// What ends a retry wait besides its deadline.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Wake {
+    AtDeadline,
+    /// A workspace change may erase pages, whose bytes the repair removes from the cache, so it
+    /// repairs at once instead of waiting out the backoff.
+    AtDeadlineOrWorkspaceChange,
+}
 
 pub(super) fn run(shared: &Shared, source: &dyn Source, path: &Path) {
     shared.emit(&IndexEvent::Status(IndexStatus::Rebuilding));
     let mut retry = RETRY_FIRST;
+    let mut repair = Repair::Now;
     let mut opening = CacheOpen::ReuseOrCreate;
     let mut replaces = 0;
     loop {
@@ -40,17 +76,41 @@ pub(super) fn run(shared: &Shared, source: &dyn Source, path: &Path) {
             page_issues: BTreeMap::new(),
             retry: &mut retry,
             ready: false,
+            ready_at: None,
             report: StartupReport::default(),
         };
         let outcome = panic::catch_unwind(AssertUnwindSafe(|| {
             worker.run(std::mem::take(&mut opening))
         }));
-        let ready = worker.ready;
+        if worker.ready {
+            replaces = 0;
+        }
+        if worker
+            .ready_at
+            .is_some_and(|at| at + HEALTHY <= shared.clock.now())
+        {
+            repair = Repair::Now;
+        }
         let reason = match outcome {
             Ok(Ok(())) => return,
+            Ok(Err(RunError::Replace(problem))) if problem.kind() == ReplaceKind::Fault => {
+                match repair.take() {
+                    Repair::Now => shared.stop_serving(IndexStatus::Rebuilding),
+                    Repair::After(wait) => {
+                        shared.stop_serving(IndexStatus::Failed {
+                            reason: format!("the index was repaired repeatedly: {problem}"),
+                        });
+                        if !shared.sleep(wait, Wake::AtDeadlineOrWorkspaceChange) {
+                            return;
+                        }
+                    }
+                }
+                opening = CacheOpen::ForceReplace(problem);
+                continue;
+            }
             Ok(Err(RunError::Replace(problem))) => {
                 shared.stop_serving(IndexStatus::Rebuilding);
-                replaces = if ready { 1 } else { replaces + 1 };
+                replaces += 1;
                 let reason = format!("the index was replaced repeatedly: {problem}");
                 opening = CacheOpen::ForceReplace(problem);
                 if replaces <= REPLACES_WITHOUT_READY {
@@ -62,7 +122,7 @@ pub(super) fn run(shared: &Shared, source: &dyn Source, path: &Path) {
             Err(_) => "the index worker panicked".to_owned(),
         };
         shared.stop_serving(IndexStatus::Failed { reason });
-        if !shared.sleep(retry) {
+        if !shared.sleep(retry, Wake::AtDeadline) {
             return;
         }
         retry = (retry * 2).min(RETRY_MAX);
@@ -80,6 +140,8 @@ struct Worker<'a> {
     page_issues: BTreeMap<PageId, PageIssue>,
     retry: &'a mut Duration,
     ready: bool,
+    /// When this worker published Ready, on the index clock.
+    ready_at: Option<Duration>,
     report: StartupReport,
 }
 
@@ -113,6 +175,7 @@ impl Worker<'_> {
         let publishing = Instant::now();
         self.publish();
         self.ready = true;
+        self.ready_at = Some(self.shared.clock.now());
         self.report.publish = publishing.elapsed();
         self.report.total = started.elapsed();
         self.shared
@@ -306,6 +369,7 @@ impl Worker<'_> {
                             BodyProblem::UnrecognizedRoot(root) => {
                                 PageProblem::UnrecognizedRoot(root)
                             }
+                            BodyProblem::NotAFragment => PageProblem::NotAFragment,
                             BodyProblem::MissingBlockId => PageProblem::MissingBlockId,
                             BodyProblem::InvalidPageLink => PageProblem::InvalidPageLink,
                         });
@@ -462,23 +526,31 @@ impl Shared {
         }
     }
 
-    fn sleep(&self, delay: Duration) -> bool {
-        let deadline = Instant::now() + delay;
+    fn sleep(&self, delay: Duration, wake: Wake) -> bool {
+        let deadline = self.clock.now() + delay;
         let mut state = self.lock();
+        #[cfg(test)]
+        state.waits.push(delay);
         state.busy = false;
         self.changed.notify_all();
         loop {
             if state.shutdown {
                 return false;
             }
-            let now = Instant::now();
-            if now >= deadline {
+            let now = self.clock.now();
+            let woken = wake == Wake::AtDeadlineOrWorkspaceChange && state.workspace_dirty;
+            if now >= deadline || woken {
                 state.busy = true;
                 return true;
             }
+            #[cfg(test)]
+            {
+                state.kept_waiting_at = Some(now);
+            }
+            // A manual clock moves without notifying, so the wait polls it.
             state = self
                 .changed
-                .wait_timeout(state, deadline - now)
+                .wait_timeout(state, (deadline - now).min(CLOCK_POLL))
                 .unwrap_or_else(PoisonError::into_inner)
                 .0;
         }

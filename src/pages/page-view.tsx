@@ -2,8 +2,7 @@ import "@blocknote/core/style.css";
 import { SuggestionMenu } from "@blocknote/core";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { setActiveEditor } from "../editor/active-editor";
-import type { BodyBlock } from "../editor/body-reader";
-import { renderSegments } from "../editor/body-reader";
+import { renderSegments, type ShownBlock } from "../editor/body-reader";
 import { inCode, type PickerKey, pickerTrigger } from "../editor/page-picker";
 import { openPage, type PageSession } from "../editor/page-session";
 import { markPageContent } from "../perf/cold-start";
@@ -34,7 +33,7 @@ function PageTitle({ pageId }: { pageId: string }) {
   );
 }
 
-function ReadOnlyBody({ blocks }: { blocks: readonly BodyBlock[] }) {
+function ReadOnlyBody({ blocks }: { blocks: readonly ShownBlock[] }) {
   const source = usePageTreeStore((state) => state.source);
   return (
     <div className="page-readonly" data-testid="page-readonly">
@@ -87,12 +86,14 @@ export function PageView({
     };
   }, [pageId]);
 
-  const editor = view.kind === "editable" ? view.editor : null;
+  const session = view.kind === "editable" ? view : null;
+  const editor = session?.editor ?? null;
 
   useLayoutEffect(() => {
-    if (!editor || !host.current) return;
+    if (!session || !host.current) return;
+    const { editor } = session;
     editor.isEditable = false;
-    editor.mount(host.current);
+    const unmount = session.mount(host.current);
     const menu = editor.getExtension(SuggestionMenu);
     menu?.addSuggestionMenu({
       triggerCharacter: pickerTrigger,
@@ -105,9 +106,9 @@ export function PageView({
       setActiveEditor(null);
       stop();
       menu?.removeSuggestionMenu(pickerTrigger);
-      editor.unmount();
+      unmount();
     };
-  }, [editor]);
+  }, [session]);
 
   useEffect(() => {
     if (!editor) return;

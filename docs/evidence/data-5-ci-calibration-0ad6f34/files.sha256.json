@@ -61,8 +61,8 @@
   },
   {
     "path": "search-comparison.json",
-    "bytes": 1857,
-    "sha256": "83acf7e2938f85ca5159bf841a0f5b5377c655dafa15614c3ea0bb24438031f1"
+    "bytes": 1816,
+    "sha256": "2693a097664dcff07b95ca72be237d234409d5a52e4a85be1693bee9aba4cdb0"
   },
   {
     "path": "setup-local-5000-green.log",
