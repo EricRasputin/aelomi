@@ -1,6 +1,10 @@
 pub mod body;
+mod edit;
 pub mod records;
 pub mod tree;
+mod write;
+
+pub use edit::{PageEdit, PageEditError, PageEditReply};
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod fixture;
@@ -31,6 +35,7 @@ pub struct Workspace {
     revision: AtomicU64,
     tree: Mutex<TreeMemo>,
     tree_projected: Condvar,
+    record_edits: Mutex<()>,
     settings: Mutex<Option<crate::settings::Settings>>,
 }
 
@@ -156,6 +161,7 @@ impl Workspace {
             tree: Mutex::default(),
             tree_projected: Condvar::new(),
             settings: Mutex::default(),
+            record_edits: Mutex::new(()),
         }
     }
 
@@ -205,6 +211,19 @@ impl Workspace {
 
     /// See [`Store::append`]. Once the store accepts the update, marks the doc for the index.
     pub fn append(&self, doc: &DocId, update: &[u8]) -> Result<Seq, AppendError> {
+        let _held = (*doc == DocId::workspace()).then(|| {
+            self.record_edits
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+        });
+        self.append_unlocked(doc, update)
+    }
+
+    fn append_record_update(&self, update: &[u8]) -> Result<Seq, AppendError> {
+        self.append_unlocked(&DocId::workspace(), update)
+    }
+
+    fn append_unlocked(&self, doc: &DocId, update: &[u8]) -> Result<Seq, AppendError> {
         let seq = self.store.append(doc, update)?;
         if *doc == DocId::workspace() {
             self.revision.fetch_add(1, Ordering::SeqCst);

@@ -126,6 +126,10 @@ impl Store {
         self.shared.settings.wait(seq)
     }
 
+    pub(crate) fn unix_ms(&self) -> u64 {
+        self.shared.clock.unix_ms()
+    }
+
     pub fn open(root: impl AsRef<Path>) -> Result<Self, OpenError> {
         let clock = Arc::new(SystemClock::new());
         let fs = Arc::new(OsFs);
