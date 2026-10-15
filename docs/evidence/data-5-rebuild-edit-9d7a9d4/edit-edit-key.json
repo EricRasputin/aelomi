@@ -1,0 +1,10 @@
+{
+  "pid": 19344,
+  "key": "E",
+  "route": "none",
+  "startTicks": 26219876150362,
+  "keyCallReturnTicks": 26219876188017,
+  "scriptReturnTicks": 26219876188881,
+  "clock": "mach_continuous_time",
+  "startMeaning": "Before the System Events keystroke call, including automation overhead"
+}

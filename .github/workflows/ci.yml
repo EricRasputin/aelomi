@@ -58,12 +58,17 @@ jobs:
           cache: true
       - run: pnpm install --frozen-lockfile
       - run: pnpm test
+        env:
+          NODE_OPTIONS: "--max-old-space-size=2048"
 
   nextest:
     runs-on: macos-15
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version-file: .node-version
       - run: rustup show active-toolchain
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - uses: taiki-e/install-action@ab6895351a88b908e96a4697860d4ffea5e57dbe # v2.87.27
@@ -71,6 +76,8 @@ jobs:
           tool: cargo-nextest@0.9.148
           fallback: none
       - run: cargo nextest run --workspace --locked
+      - run: cargo nextest run -p aelomi-core --cargo-profile release --locked --run-ignored only --test-threads 1 index::tests::latency
+      - run: node scripts/check-search.ts --ci
 
   cargo-deny:
     runs-on: macos-15

@@ -1,0 +1,10 @@
+function run(argv) {
+  const pid=Number(argv[0]);
+  if (!Number.isInteger(pid) || pid<=0) throw new Error('Owned PID required');
+  const se=Application('System Events');
+  const p=se.processes.whose({unixId:pid});
+  if (p.length!==1 || p[0].windows.length<1) throw new Error('Owned app window absent');
+  p[0].frontmost=true;
+  se.keyCode(124,{using:['command down']});
+  return 'Moved caret to paragraph end in owned PID '+pid;
+}

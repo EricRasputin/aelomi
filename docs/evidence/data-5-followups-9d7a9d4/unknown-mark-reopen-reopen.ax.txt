@@ -1,0 +1,16 @@
+AXWebArea "Aelomi"
+  AXGroup/AXLandmarkBanner
+    AXStaticText "Aelomi"
+  AXGroup/AXApplicationStatus
+    AXStaticText "IPC ok · core 0.1.0 · seq 1"
+  AXGroup/AXLandmarkMain
+    AXGroup/AXDocumentArticle "Page"
+      AXHeading "Future formatting" = "1"
+        AXStaticText "Future formatting"
+      AXGroup
+        AXStaticText "Read-only. This page holds content this version of Aelomi can't edit without changing it."
+      AXGroup
+        AXStaticText "plain bold tail"
+      AXGroup
+        AXStaticText "other block"
+      AXGroup/AXEmptyGroup

@@ -2,49 +2,73 @@ import { create } from "zustand";
 import { commands, type QuitStatus } from "../ipc";
 import { storageCopy } from "../storage-copy";
 
-type QuitDecision =
+export type QuitDecision =
   | { kind: "open"; revision: number }
+  | { kind: "draining"; revision: number }
   | {
       kind: "asking";
       revision: number;
       pendingDocs: string[];
       error: string | null;
     }
-  | { kind: "quitting"; revision: number; pendingDocs: string[] };
+  | {
+      kind: "quitting";
+      revision: number;
+      pendingDocs: string[];
+      /** The user chose Quit anyway, rather than a drain finding nothing pending. */
+      asked: boolean;
+    };
 
 type QuitStore = {
   decision: QuitDecision;
+  /** `frontendReady` reached the shell, so quits wait for this webview. */
+  registered: boolean;
   receiveQuit: (status: QuitStatus) => void;
+  register: () => void;
   keepOpen: () => Promise<void>;
   quitAnyway: () => Promise<void>;
 };
 
+function decide(status: QuitStatus, current: QuitDecision): QuitDecision {
+  const { revision, phase } = status;
+  if (current.kind === "quitting" || phase === "Confirmed")
+    return {
+      kind: "quitting",
+      revision,
+      pendingDocs:
+        typeof phase === "object"
+          ? phase.Asking.pending_docs
+          : current.kind === "quitting" || current.kind === "asking"
+            ? current.pendingDocs
+            : [],
+      asked:
+        current.kind === "asking" ||
+        (current.kind === "quitting" && current.asked),
+    };
+  switch (phase) {
+    case "Open":
+      return { kind: "open", revision };
+    case "Draining":
+      return { kind: "draining", revision };
+    default:
+      return {
+        kind: "asking",
+        revision,
+        pendingDocs: phase.Asking.pending_docs,
+        error: null,
+      };
+  }
+}
+
 export const useQuitStore = create<QuitStore>((set, get) => ({
   decision: { kind: "open", revision: 0 },
-  receiveQuit: ({ revision, pending_docs }) => {
+  registered: false,
+  receiveQuit: (status) => {
     const decision = get().decision;
-    if (revision <= decision.revision) return;
-    if (decision.kind === "quitting") {
-      set({
-        decision: {
-          kind: "quitting",
-          revision,
-          pendingDocs: pending_docs ?? decision.pendingDocs,
-        },
-      });
-    } else if (pending_docs) {
-      set({
-        decision: {
-          kind: "asking",
-          revision,
-          pendingDocs: pending_docs,
-          error: null,
-        },
-      });
-    } else {
-      set({ decision: { kind: "open", revision } });
-    }
+    if (status.revision <= decision.revision) return;
+    set({ decision: decide(status, decision) });
   },
+  register: () => set({ registered: true }),
   keepOpen: async () => {
     const decision = get().decision;
     if (decision.kind !== "asking") return;
@@ -67,6 +91,7 @@ export const useQuitStore = create<QuitStore>((set, get) => ({
         kind: "quitting",
         revision: decision.revision,
         pendingDocs: decision.pendingDocs,
+        asked: true,
       },
     });
     try {
@@ -85,3 +110,16 @@ export const useQuitStore = create<QuitStore>((set, get) => ({
     }
   },
 }));
+
+/** Editing waits for the quit listener's registration and stops while a quit drains. */
+export function canEdit(state: Pick<QuitStore, "decision" | "registered">) {
+  return state.registered && state.decision.kind === "open";
+}
+
+/** The quit dialog shows while the user is asked, and through the quit they chose. */
+export function quitDialogOpen(decision: QuitDecision) {
+  return (
+    decision.kind === "asking" ||
+    (decision.kind === "quitting" && decision.asked)
+  );
+}

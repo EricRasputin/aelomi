@@ -1,8 +1,11 @@
 use std::ffi::OsString;
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use aelomi_core::storage::{self as core, DataPathError, DocId, OpenError, Store};
+use aelomi_core::index::IndexEvent;
+use aelomi_core::storage::{self as core, DataPathError, DocId, OpenError};
+use aelomi_core::workspace::Workspace;
 use serde::Serialize;
 use specta::Type;
 
@@ -70,36 +73,69 @@ pub enum StorageError {
 }
 
 pub struct Storage {
-    opened: Result<Store, StorageStatus>,
+    opened: Result<Arc<Workspace>, StorageStatus>,
     path: PathBuf,
     quit: QuitGate,
+    #[cfg(test)]
+    _index_dir: Option<tempfile::TempDir>,
 }
 
 impl Storage {
-    pub fn open(location: &DataLocation) -> Self {
+    pub fn open(
+        location: &DataLocation,
+        on_index: impl Fn(&IndexEvent) + Send + Sync + 'static,
+    ) -> Self {
+        let storage = |opened, path| Self {
+            opened,
+            path,
+            quit: QuitGate::default(),
+            #[cfg(test)]
+            _index_dir: None,
+        };
         match core::check_data_path(&location.path, &location.cloud_roots) {
-            Ok(resolved) => Self {
-                opened: Store::open(&resolved).map_err(StorageStatus::from),
-                path: resolved,
-                quit: QuitGate::default(),
-            },
-            Err(DataPathError::CloudFolder { resolved, .. }) => Self {
-                opened: Err(StorageStatus::CloudPath {
+            Ok(resolved) => storage(
+                Workspace::open(&resolved, on_index)
+                    .map(Arc::new)
+                    .map_err(StorageStatus::from),
+                resolved,
+            ),
+            Err(DataPathError::CloudFolder { resolved, .. }) => storage(
+                Err(StorageStatus::CloudPath {
                     resolved: resolved.to_string_lossy().into_owned(),
                 }),
-                path: resolved,
-                quit: QuitGate::default(),
-            },
-            Err(DataPathError::Io(error)) => Self {
-                opened: Err(StorageStatus::Io(error.to_string())),
-                path: location.path.clone(),
-                quit: QuitGate::default(),
-            },
+                resolved,
+            ),
+            Err(DataPathError::Io(error)) => storage(
+                Err(StorageStatus::Io(error.to_string())),
+                location.path.clone(),
+            ),
         }
     }
 
-    pub fn store(&self) -> Result<&Store, StorageError> {
-        self.opened.as_ref().map_err(|_| StorageError::Unavailable)
+    #[cfg(test)]
+    pub(crate) fn not_open() -> Self {
+        Self {
+            opened: Err(StorageStatus::Locked),
+            path: "/data".into(),
+            quit: QuitGate::default(),
+            _index_dir: None,
+        }
+    }
+
+    pub fn workspace(&self) -> Result<Arc<Workspace>, StorageError> {
+        self.opened
+            .as_ref()
+            .map(Arc::clone)
+            .map_err(|_| StorageError::Unavailable)
+    }
+
+    pub fn index_status(&self) -> crate::index::IndexStatus {
+        match &self.opened {
+            Ok(workspace) => workspace.index_status().into(),
+            Err(_) => crate::index::IndexStatus::Failed {
+                reason: "the data folder is not open".into(),
+            },
+        }
     }
 
     pub(crate) fn quit(&self) -> &QuitGate {
@@ -114,8 +150,8 @@ impl Storage {
     }
 
     pub fn health(&self) -> Health {
-        self.store()
-            .map_or(Health::Healthy, |store| (&store.health()).into())
+        self.workspace()
+            .map_or(Health::Healthy, |workspace| (&workspace.health()).into())
     }
 
     pub fn startup_line(&self) -> String {
@@ -126,11 +162,18 @@ impl Storage {
         )
     }
 
+    pub fn pending_docs(&self) -> Vec<DocId> {
+        match self.workspace().map(|workspace| workspace.health()) {
+            Ok(core::Health::Failing { pending_docs, .. }) => pending_docs,
+            _ => Vec::new(),
+        }
+    }
+
     pub fn flush_before_quit(&self, timeout: Duration) -> Result<(), Vec<DocId>> {
-        let Ok(store) = &self.opened else {
+        let Ok(workspace) = &self.opened else {
             return Ok(());
         };
-        let pending = store.flush(Instant::now() + timeout);
+        let pending = workspace.flush(Instant::now() + timeout);
         if pending.is_empty() {
             Ok(())
         } else {
@@ -178,6 +221,12 @@ impl From<core::AppendError> for StorageError {
             core::AppendError::InvalidUpdate => Self::InvalidUpdate,
             core::AppendError::Io(error) => Self::Io(error.to_string()),
         }
+    }
+}
+
+impl From<StorageError> for crate::index::QueryError {
+    fn from(_: StorageError) -> Self {
+        Self::Unavailable
     }
 }
 
@@ -258,7 +307,7 @@ pub(crate) mod tests {
             cloud_roots: vec![],
         };
 
-        let storage = Storage::open(&location);
+        let storage = Storage::open(&location, |_| {});
 
         assert_eq!(storage.status(), StorageStatus::Ready);
         assert_eq!(
@@ -278,13 +327,13 @@ pub(crate) mod tests {
     #[test]
     fn opening_a_folder_held_by_another_store_is_locked() {
         let dir = tempfile::tempdir().unwrap();
-        let first = Store::open(dir.path()).unwrap();
+        let first = aelomi_core::storage::Store::open(dir.path()).unwrap();
         let location = DataLocation {
             path: dir.path().to_path_buf(),
             cloud_roots: vec![],
         };
 
-        let storage = Storage::open(&location);
+        let storage = Storage::open(&location, |_| {});
 
         assert_eq!(storage.status(), StorageStatus::Locked);
         assert_eq!(
@@ -306,7 +355,7 @@ pub(crate) mod tests {
             cloud_roots: vec![],
         };
 
-        let storage = Storage::open(&location);
+        let storage = Storage::open(&location, |_| {});
 
         assert_eq!(storage.status(), StorageStatus::NewerFormat);
         assert_eq!(
@@ -327,7 +376,7 @@ pub(crate) mod tests {
             cloud_roots: vec![],
         };
 
-        let storage = Storage::open(&location);
+        let storage = Storage::open(&location, |_| {});
 
         assert_eq!(storage.status(), StorageStatus::UnknownFormat);
         assert_eq!(
@@ -349,7 +398,7 @@ pub(crate) mod tests {
             cloud_roots: vec![],
         };
 
-        let storage = Storage::open(&location);
+        let storage = Storage::open(&location, |_| {});
 
         assert_eq!(
             storage.status(),
@@ -382,7 +431,7 @@ pub(crate) mod tests {
             cloud_roots: vec![cloud.clone()],
         };
 
-        let storage = Storage::open(&location);
+        let storage = Storage::open(&location, |_| {});
 
         assert_eq!(
             storage.status(),
@@ -403,10 +452,20 @@ pub(crate) mod tests {
     }
 
     pub(crate) fn open_on(disk: &SimDisk) -> Storage {
+        open_on_with(disk, QuitGate::default())
+    }
+
+    pub(crate) fn open_on_with(disk: &SimDisk, quit: QuitGate) -> Storage {
+        let index_dir = tempfile::tempdir().unwrap();
+        let index = std::fs::canonicalize(index_dir.path())
+            .unwrap()
+            .join(aelomi_core::index::FILE);
+        let store = disk.open(Path::new("/data")).expect("opens");
         Storage {
-            opened: Ok(disk.open(Path::new("/data")).expect("opens")),
+            opened: Ok(Arc::new(Workspace::with_store(store, index, |_| {}))),
             path: "/data".into(),
-            quit: QuitGate::default(),
+            quit,
+            _index_dir: Some(index_dir),
         }
     }
 
@@ -426,7 +485,7 @@ pub(crate) mod tests {
         disk.set_full_sync_latency(Duration::from_millis(300));
         let doc = DocId::new("page").unwrap();
         let typed = update("typed just before quit");
-        storage.store().unwrap().append(&doc, &typed).unwrap();
+        storage.workspace().unwrap().append(&doc, &typed).unwrap();
 
         let start = Instant::now();
         assert_eq!(storage.flush_before_quit(QUIT_FLUSH_TIMEOUT), Ok(()));
@@ -451,7 +510,7 @@ pub(crate) mod tests {
         disk.fail_appends("docs/page/");
         let doc = DocId::new("page").unwrap();
         storage
-            .store()
+            .workspace()
             .unwrap()
             .append(&doc, &update("unsaved"))
             .unwrap();
@@ -477,6 +536,7 @@ pub(crate) mod tests {
             opened: Err(StorageStatus::Locked),
             path: "/data".into(),
             quit: QuitGate::default(),
+            _index_dir: None,
         };
         assert_eq!(storage.flush_before_quit(QUIT_FLUSH_TIMEOUT), Ok(()));
         assert_eq!(storage.status(), StorageStatus::Locked);

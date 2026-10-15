@@ -1,0 +1,7 @@
+id=26095 title="Aelomi" x=240 y=88 w=960 h=640
+AXWebArea "Aelomi"
+  AXGroup/AXApplicationDialog "Command palette"
+    AXComboBox "Search pages" = "roadmap"
+      AXStaticText "roadmap"
+    AXGroup/AXApplicationStatus "Search status"
+      AXStaticText "No page content matches."

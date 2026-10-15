@@ -46,6 +46,17 @@ Block types are the EDIT-2 set: `paragraph`, `heading` (levels 1 to 3),
 Image URLs use an `asset://` placeholder because the app's image URL scheme is
 not decided yet (DATA-3 names image files by content hash).
 
+Linked text never carries the `code` style. BlockNote's code mark excludes
+every other mark, link included, so the editor guard opens a body that stores
+both on one run read-only: typing in that run would drop the link. The version
+committed in `fe76bff` (2026-10-11, sha256 `5350a427…`) had five such runs.
+The generator now drops `code` from linked text after drawing it, so the
+2026-10-14 regeneration (sha256 `cb469d9c…`) changed only those five `styles`
+objects. Block IDs, text, types, nesting, other marks and both search files
+stayed byte for byte the same. The generator test checks that every run holds
+marks BlockNote can store together, and that inline code and links still
+appear.
+
 ## data-folders/
 
 One data folder per storage format, so every migration test can open each one

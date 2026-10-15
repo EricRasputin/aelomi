@@ -1,0 +1,16 @@
+storage status=Ready path=/private/tmp/aelomi-data5-final-native-MtjA/search-30k-aux-data
+storage open ms=4.589 t_ms=305.2
+index status=Rebuilding t_ms=305.6
+quit frontend ready
+ping seq=1
+ipc page_tree ms=387.973 pages=29100 bytes=5385495
+ipc doc_load ms=0.884 bytes=632
+index cache=reused t_ms=1456.5
+index status=Ready t_ms=6582.4
+index startup total_ms=6276.807 check_open_ms=1150.925 schema_ms=6.272 integrity_ms=765.779 title_fts_ms=34.363 block_fts_ms=289.692 workspace_load_ms=10.684 workspace_decode_ms=139.918 workspace_forest_ms=69.743 workspace_sql_ms=13.754 pages=30000 loaded_bytes=16026760 page_load_ms=4355.777 page_decode_ms=189.755 page_project_ms=58.428 page_sql_ms=230.679 publish_ms=0.040 t_ms=6582.4
+index main_peak_rss_bytes=452214784 t_ms=6582.4
+quit draining via=ExitRequested revision=1
+quit flush via=CompleteQuit pending=[]
+quit confirmed via=drain
+quit allowed via=ExitRequested confirmed=true
+quit flush via=Exit pending=[]

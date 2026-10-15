@@ -1,0 +1,5 @@
+storage status=Ready path=/private/tmp/aelomi-data5-native.KLBOtO/missing-data
+index status=Rebuilding
+index cache=created
+index status=Ready
+ping seq=1

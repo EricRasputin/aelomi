@@ -1,0 +1,5 @@
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.31s
+     Running `target/debug/examples/seed_index /tmp/aelomi-data5-native.KLBOtO/missing-proof-data missing`
+seeded /private/tmp/aelomi-data5-native.KLBOtO/missing-proof-data with index state missing
+active pages: Projects > Aelomi > Roadmap, Projects > Reading list, Daily, (untitled)
+trash: Archive (with Old notes); favorites: Reading list, Aelomi

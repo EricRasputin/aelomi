@@ -1,0 +1,38 @@
+
+ RUN  v5.0.3 <worktree>
+
+stderr | src/editor/y-binding-oracle.test.ts > every edit kind with undo and redo matches upstream on a rich body
+TextSelection endpoint not pointing into a node with inline content (blockContainer)
+
+ ✓ src/editor/y-binding-oracle.test.ts > the rebuilt upstream source is the pinned tarball's file 3ms
+ ✓ src/editor/y-binding-oracle.test.ts > audit repro: type over a cross-block range, undo, redo, type keeps upstream's caret 34ms
+ ✓ src/editor/y-binding-oracle.test.ts > audit repro: undoing a deleted image selects the image again, not the divider 14ms
+ ✓ src/editor/y-binding-oracle.test.ts > every edit kind with undo and redo matches upstream on a rich body 2386ms
+ ✓ src/editor/y-binding-oracle.test.ts > every edit kind with undo and redo matches upstream on the real BlockNote body 1721ms
+ ✓ src/editor/y-binding-oracle.test.ts > seeded random sessions match upstream step by step 205ms
+ ✓ src/editor/y-binding-oracle.test.ts > the 5,000-block page matches upstream at its first, nested, middle, and last blocks 33797ms
+ ✓ src/editor/y-binding-oracle.test.ts > on synced states every position encodes as upstream encodes it 37ms
+
+ Test Files  1 passed (1)
+      Tests  8 passed (8)
+   Start at  04:53:13
+   Duration  38.73s (tests 99%, environment 1%)
+
+       39.07 real        63.05 user         1.02 sys
+          1767473152  maximum resident set size
+                   0  average shared memory size
+                   0  average unshared data size
+                   0  average unshared stack size
+              151303  page reclaims
+                 281  page faults
+                   0  swaps
+                   0  block input operations
+                   0  block output operations
+                 120  messages sent
+                 110  messages received
+                   1  signals received
+                1255  voluntary context switches
+               52136  involuntary context switches
+           481173120  instructions retired
+           169239534  cycles elapsed
+            23825000  peak memory footprint

@@ -1,0 +1,27 @@
+
+running 1 test
+test index::tests::races::continuous_edits_never_starve_the_coalesced_update ... FAILED
+
+failures:
+
+failures:
+    index::tests::races::continuous_edits_never_starve_the_coalesced_update
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 251 filtered out; finished in 0.10s
+
+   Compiling aelomi-core v0.1.0 (<checkout>/crates/core)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.22s
+────────────
+ Nextest run ID bf98a785-0b39-41d3-be6f-ece24e90c23e with nextest profile: default
+    Starting 1 test across 1 binary (251 tests skipped)
+       START [         ] (1/1) aelomi-core index::tests::races::continuous_edits_never_starve_the_coalesced_update
+
+thread 'index::tests::races::continuous_edits_never_starve_the_coalesced_update' (59526518) panicked at crates/core/src/index/tests/races.rs:239:17:
+producer accepted 1 edits while the index was held: channel is empty and sending half is closed
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+        FAIL [   0.107s] (1/1) aelomi-core index::tests::races::continuous_edits_never_starve_the_coalesced_update
+  Cancelling due to test failure
+────────────
+     Summary [   0.107s] 1 test run: 0 passed, 1 failed, 251 skipped
+        FAIL [   0.107s] (1/1) aelomi-core index::tests::races::continuous_edits_never_starve_the_coalesced_update
+error: test run failed

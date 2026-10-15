@@ -1,0 +1,42 @@
+[
+  {
+    "file": "indexing-visible.png",
+    "bytes": 125747,
+    "sha256": "bf4c34bd079b02226fb2927cc3ded728e66bb02fa4f447030f7b0789304242aa"
+  },
+  {
+    "file": "indexing-ready-after.png",
+    "bytes": 214070,
+    "sha256": "052a19e46e0416edb3ca6425a819dda29c3a8e267ff89ac95193886d55abbb6f"
+  },
+  {
+    "file": "probe-edit-Z.png",
+    "bytes": 83056,
+    "sha256": "524fcf2be5e6a94d6860439ab9ea1598a358e1be76d5938b0a6aef17171eb993"
+  },
+  {
+    "file": "quit-recovered-Z.png",
+    "bytes": 82806,
+    "sha256": "a39df1b04af5408c7ca0d9db1dacdd8c2800a600c7c4993b3c2d9156e6ca6cae"
+  },
+  {
+    "file": "quit-recovered-ZQ.png",
+    "bytes": 83839,
+    "sha256": "e167ebf9a8b5f53c4e24fe7c388d2951479a6efa543c02a578e19160b4a89302"
+  },
+  {
+    "file": "quit-recovered-ZQW.png",
+    "bytes": 84816,
+    "sha256": "bf706536c29b9d2b4d5eea02f8c7e233612719d5192de8496bc9030b90be85af"
+  },
+  {
+    "file": "quit-recovered-ZQWA.png",
+    "bytes": 85346,
+    "sha256": "a1e6913abdbe27c49c52fc5ff935dc96592bd91a6fdeb0c0421cf0d995db3275"
+  },
+  {
+    "file": "quit-recovered-ZQWAL.png",
+    "bytes": 85282,
+    "sha256": "781ebf39c2150d60fe1631efa67aaee568b20766edb0afcda0b2ee98cfa1a2e9"
+  }
+]

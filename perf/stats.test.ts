@@ -35,11 +35,17 @@ test("budgets.json holds every gate with a value and a why", () => {
     "coldStart.timedRuns",
     "keystroke.p95Ms",
     "keystroke.hostedAppOwnedP95Ms",
-    "keystroke.gate",
     "keystroke.pageLoads",
     "keystroke.samplesPerLoad",
     "keystroke.discardedPerLoad",
     "keystroke.gapMs",
+    "palette.p95Ms",
+    "palette.hostedAppOwnedP95Ms",
+    "scroll.p95FrameMs",
+    "scroll.maxFrameMs",
+    "search.p95Ms",
+    "search.hostedP95Ms",
+    "search.firstSamples",
     "noise.maxLoadPerCore",
   ]);
   for (const entry of entries) {

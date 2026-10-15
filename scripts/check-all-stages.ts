@@ -11,7 +11,11 @@ export const STAGES: readonly {
 }[] = [
   { job: "biome", commands: [["pnpm", "lint"]] },
   { job: "tsc", commands: [["pnpm", "typecheck"]] },
-  { job: "vitest", commands: [["pnpm", "test"]] },
+  {
+    job: "vitest",
+    commands: [["pnpm", "test"]],
+    env: { NODE_OPTIONS: "--max-old-space-size=2048" },
+  },
   {
     job: "pnpm-audit",
     commands: [
@@ -21,7 +25,25 @@ export const STAGES: readonly {
   },
   {
     job: "nextest",
-    commands: [["cargo", "nextest", "run", "--workspace", "--locked"]],
+    commands: [
+      ["cargo", "nextest", "run", "--workspace", "--locked"],
+      [
+        "cargo",
+        "nextest",
+        "run",
+        "-p",
+        "aelomi-core",
+        "--cargo-profile",
+        "release",
+        "--locked",
+        "--run-ignored",
+        "only",
+        "--test-threads",
+        "1",
+        "index::tests::latency",
+      ],
+      ["node", "scripts/check-search.ts", "--ci"],
+    ],
   },
   { job: "cargo-deny", commands: [["cargo", "deny", "--locked", "check"]] },
   {

@@ -2,7 +2,7 @@
   "coldStart": {
     "specMs": {
       "value": 500,
-      "why": "CLAUDE.md budget: process launch to the index screen's first content frame, median of 10. pnpm perf:cold enforces it on Apple Silicon hardware. Hosted macos-15 runners cannot reach it, so CI enforces hostedCiMs instead and prints this verdict as information."
+      "why": "CLAUDE.md budget: process launch to first usable content, median of 10. Populated workspaces require the editable page frame; an empty workspace reports its index screen. pnpm perf:cold enforces 500 ms on Apple Silicon, while CI gates its separately measured hosted budget. The maintainer accepted the current 10,001-page first-editable-frame result of 618 ms median on 2026-10-15 and deferred optimization. This value retains the 500 ms goal; the recorded local FAIL is not relabeled as a pass. Hosted CI budgets remain unchanged."
     },
     "hostedCiMs": {
       "value": 2500,
@@ -23,16 +23,12 @@
   },
   "keystroke": {
     "p95Ms": {
-      "value": 16,
-      "why": "CLAUDE.md budget: key event to the first frame that shows the typed character, p95 in Playwright WebKit (EDIT-14)."
+      "value": 19,
+      "why": "The product goal remains 16 ms from the key event to the first frame showing the typed character. The maintainer allowed a small timing miss on 2026-10-15. This 19 ms ceiling accepts the measured immediate-source editor. Five alternating untraced rounds on the 5,000-block page read 18 ms and the quiet full-suite run read 19 ms. Every run kept 405 samples with exact character guards. Source updates stay inside the input event. The miss of 2 to 3 ms is explicit. These runs do not pass the original 16 ms goal. pnpm perf:keystroke enforces this ceiling on Apple Silicon."
     },
     "hostedAppOwnedP95Ms": {
-      "value": 16,
-      "why": "The app's share of key-to-paint on hosted macos-15: key event to the end of the input handler, plus the rendering update from its frame timestamp (the rAF callback argument, read before the first callback of the frame runs, so work the app queues in its own rAF counts) to the MessageChannel task after the recorder's rAF. One 60 Hz frame is 16 ms, so the app must finish its own work inside that. The tick wait in between is reported, not gated: the runner's first rendering update after input waits for its next 17 ms display tick, so three attempts of one job read tick-wait p95 18 ms and full key-to-paint p95 21 ms on the empty surface in every attempt while app-owned p95 read 4, 4, and 5 ms. The keystroke job gates this with AELOMI_PERF_CI=1. pnpm perf:keystroke gates p95Ms, the full key-to-paint, on Apple Silicon."
-    },
-    "gate": {
-      "value": "empty",
-      "why": "The surface whose p95 the keystroke job fails on, in both modes; the other surface is reported. Hosted calibration on 2026-10-11, three attempts of one macos-15 job, read app-owned p95 4, 4, and 5 ms on the empty surface and 17, 13, and 18 ms on the 5,000-block surface, whose render step has a tail (p50 5 to 6 ms, p95 10 to 13 ms) spread evenly over each run. The 5,000-block surface did not clear hostedAppOwnedP95Ms in every run, so the gate is the empty surface. Moves to the real editor when BlockNote lands."
+      "value": 45,
+      "why": "Provisional hosted macos-15 calibration from the unchanged 0ad6f34 head: the real 5,000-block editor measured 33 ms pooled app-owned p95 across three fresh loads, whose p95 values were 31, 30 and 41 ms. This ceiling rounds the worst measured load up by 4 ms. The second hosted attempt failed its 5-second fixture setup before collecting this surface, so it supplies no second typing series. Both jobs were noisy on three-core hosts. Full logs and limits are in docs/evidence/data-5-ci-calibration-0ad6f34. The local ceiling stays 19 ms and the product goal stays 16 ms. The clock adds key-to-input work and rendering work from the rAF timestamp to the following MessageChannel task. It excludes initial layout before that timestamp, scheduler and IPC delay, frame wait, and presentation. Source delivery stays inside input. Issue #72 tracks broader hosted calibration and complete presentation timing."
     },
     "pageLoads": {
       "value": 3,
@@ -49,6 +45,40 @@
     "gapMs": {
       "value": 100,
       "why": "Keys 100 ms apart let the display link go idle between samples. Back-to-back keys measure vsync wait, not the app."
+    }
+  },
+  "palette": {
+    "p95Ms": {
+      "value": 16,
+      "why": "SPEC section 5: a query keystroke to the first frame showing current results over the 10,000-page mock fixture, one frame at 60 Hz."
+    },
+    "hostedAppOwnedP95Ms": {
+      "value": 40,
+      "why": "Provisional hosted macos-15 calibration from two unchanged-head 0ad6f34 jobs: the 10,000-page palette measured 29 and 36 ms p95 over 55 query keys per job. This ceiling rounds the worse measured p95 up by 4 ms. Both jobs were noisy on three-core hosts. Full logs and limits are in docs/evidence/data-5-ci-calibration-0ad6f34. The local one-frame goal stays 16 ms. Issue #72 tracks broader hosted calibration and the recorder's presentation limits."
+    }
+  },
+  "scroll": {
+    "p95FrameMs": {
+      "value": 16.7,
+      "why": "SPEC section 3 requires per-frame rendering work p95 under 16.7 ms. The untraced WebKit recorder measures its rAF timestamp to the following MessageChannel task. Whole-millisecond stamps must read at most 16 ms; the comparison is strict. The raw maximum interval remains 50 ms. This work interval excludes pending layout before the rAF timestamp, scheduler and IPC delay, and presentation; report those limits and raw cadence separately."
+    },
+    "maxFrameMs": {
+      "value": 50,
+      "why": "SPEC editor fixture: no frame gap over 50 ms while scrolling the 5,000-block page. Both local and hosted modes enforce this maximum."
+    }
+  },
+  "search": {
+    "p95Ms": {
+      "value": 5,
+      "why": "SPEC section 5: the complete Rust content query must stay below 5 ms p95 on the 10,000-page fixture. The release gate includes broad prefixes, common words, winner highlights, cold readers, both result limits and the additional 5,000-block page."
+    },
+    "hostedP95Ms": {
+      "value": 35,
+      "why": "Provisional hosted macos-15 calibration from two unchanged-head 0ad6f34 release jobs. Each ran all 192 complete-query cases with 30 fresh-reader and 200 steady queries per case. Their worst fresh-reader p95 values were 27.137709 and 30.837625 ms; their worst steady p95 values were 5.006167 and 8.418250 ms. This ceiling rounds the worse measured fresh-reader p95 up to the next 5 ms. Three-core host load ranged from 10.07 to 31.03. Full logs and limits are in docs/evidence/data-5-ci-calibration-0ad6f34. The local product query gate remains 5 ms and all result-consumption and correctness assertions remain required. Issue #72 tracks broader hosted calibration."
+    },
+    "firstSamples": {
+      "value": 30,
+      "why": "Thirty fresh-reader queries per bucket, with open, statement preparation and tokenizer creation inside the clock. The Rust gate also runs 200 steady queries and refuses fewer than 30 first-query samples."
     }
   },
   "noise": {

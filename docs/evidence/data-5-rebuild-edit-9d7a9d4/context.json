@@ -1,0 +1,13 @@
+{
+  "source": "9d7a9d44acbe4a34d66bcf7f6c8edfb6fe6aa66c",
+  "gate_diagnostic_head": "2ed0b50ac8857f9ac4b6bc7135176638c381fff5",
+  "macos": "27.0.1",
+  "macos_build": "26A434",
+  "app_version": "0.1.0",
+  "architecture": "arm64",
+  "workspace_pages": 30000,
+  "run_mode": "real release app; isolated synthetic folder; native Accessibility and keyboard",
+  "first_helper_failure": "ReferenceError: Cannot find ensureWindow; no edit",
+  "normal_quit_runs": ["helper-failed", "reopen"],
+  "edit_run_normal_quit": false
+}

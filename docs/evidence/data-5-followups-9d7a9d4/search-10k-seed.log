@@ -1,0 +1,3 @@
+aelomi storage: compacting big-page failed: the snapshot read back differs from the doc
+seeded /private/tmp/aelomi-data5-final-native-MtjA/search-10k-data with the search fixture: pages=10001 copies=0 big_page=true updates=10003 fixture_crc32=48c7dc26 source_files=10005 source_bytes=12564561 seconds=2.5
+no index exists: the first launch builds it (cache=created)

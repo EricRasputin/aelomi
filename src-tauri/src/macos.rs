@@ -149,6 +149,15 @@ pub fn process_start_us() -> u64 {
     info.pbi_start_tvsec * 1_000_000 + info.pbi_start_tvusec
 }
 
+pub fn peak_rss_bytes() -> std::io::Result<u64> {
+    let mut usage: libc::rusage = unsafe { std::mem::zeroed() };
+    if unsafe { libc::getrusage(libc::RUSAGE_SELF, &mut usage) } != 0 {
+        return Err(std::io::Error::last_os_error());
+    }
+    u64::try_from(usage.ru_maxrss)
+        .map_err(|_| std::io::Error::other("the native RSS peak was negative"))
+}
+
 #[cfg(test)]
 mod tests {
     use aelomi_core::storage::test_support::SimDisk;
@@ -159,7 +168,7 @@ mod tests {
     use objc2::{ClassType, msg_send};
     use tauri::Manager;
 
-    use crate::quit::QuitStatus;
+    use crate::quit::{QuitPhase, QuitStatus};
 
     use super::*;
 
@@ -204,13 +213,15 @@ mod tests {
         );
         assert_eq!(
             *quit_events.lock().unwrap(),
-            [r#"quit-status-changed {"revision":1,"pending_docs":["page"]}"#]
+            [r#"quit-status-changed {"revision":1,"phase":{"Asking":{"pending_docs":["page"]}}}"#]
         );
         assert_eq!(
             crate::commands::quit_status(app.state()),
             QuitStatus {
                 revision: 1,
-                pending_docs: Some(vec!["page".into()])
+                phase: QuitPhase::Asking {
+                    pending_docs: vec!["page".into()],
+                }
             }
         );
 
@@ -221,7 +232,42 @@ mod tests {
         );
         assert_eq!(
             *quit_events.lock().unwrap(),
-            [r#"quit-status-changed {"revision":1,"pending_docs":["page"]}"#]
+            [r#"quit-status-changed {"revision":1,"phase":{"Asking":{"pending_docs":["page"]}}}"#]
+        );
+    }
+
+    #[test]
+    fn terminating_waits_for_a_registered_webview_without_blocking() {
+        let disk = SimDisk::default();
+        let crate::tests::BlockedApp {
+            app, quit_events, ..
+        } = crate::tests::app_with_page_pending(&disk);
+        app.state::<crate::storage::Storage>()
+            .quit()
+            .register_frontend();
+
+        assert_eq!(
+            terminate_reply(app.handle()),
+            NSApplicationTerminateReply::TerminateCancel
+        );
+        assert_eq!(
+            terminate_reply(app.handle()),
+            NSApplicationTerminateReply::TerminateCancel
+        );
+        disk.clear_faults();
+        let mut exits = 0;
+        crate::commands::complete_quit_with(app.handle(), 1, || exits += 1);
+        assert_eq!(exits, 1);
+        assert_eq!(
+            terminate_reply(app.handle()),
+            NSApplicationTerminateReply::TerminateNow
+        );
+        assert_eq!(
+            *quit_events.lock().unwrap(),
+            [
+                r#"quit-status-changed {"revision":1,"phase":"Draining"}"#,
+                r#"quit-status-changed {"revision":2,"phase":"Confirmed"}"#,
+            ]
         );
     }
 
@@ -245,15 +291,15 @@ mod tests {
         assert_eq!(
             *quit_events.lock().unwrap(),
             [
-                r#"quit-status-changed {"revision":1,"pending_docs":["page"]}"#,
-                r#"quit-status-changed {"revision":2,"pending_docs":null}"#,
+                r#"quit-status-changed {"revision":1,"phase":{"Asking":{"pending_docs":["page"]}}}"#,
+                r#"quit-status-changed {"revision":2,"phase":"Confirmed"}"#,
             ]
         );
         assert_eq!(
             crate::commands::quit_status(app.state()),
             QuitStatus {
                 revision: 2,
-                pending_docs: None
+                phase: QuitPhase::Confirmed
             }
         );
     }

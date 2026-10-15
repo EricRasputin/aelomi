@@ -1,12 +1,16 @@
 mod commands;
+mod index;
 #[cfg(target_os = "macos")]
 mod macos;
 mod perf;
 mod quit;
 mod storage;
+mod trace;
 
+use aelomi_core::index::IndexEvent;
 use aelomi_core::storage::DocId;
-use quit::{QuitStatus, QuitStatusChanged};
+use index::{IndexChanged, IndexStatusChanged};
+use quit::{QuitRequest, QuitStatus, QuitStatusChanged};
 use storage::{QUIT_FLUSH_TIMEOUT, Storage, StorageHealthChanged};
 use tauri::webview::PageLoadEvent;
 use tauri::{AppHandle, Manager, RunEvent, Runtime, WindowEvent};
@@ -77,24 +81,69 @@ fn open_storage(app: &tauri::App) {
         |name| std::env::var_os(name),
         cfg!(debug_assertions),
     );
-    let storage = Storage::open(&location);
+    let handle = app.handle().clone();
+    let started = std::time::Instant::now();
+    let storage = Storage::open(&location, move |event| publish_index(&handle, event));
     println!("{}", storage.startup_line());
-    if let Ok(store) = storage.store() {
+    println!(
+        "storage open ms={} t_ms={:.1}",
+        trace::ms(started.elapsed()),
+        trace::since_start_ms()
+    );
+    if let Ok(workspace) = storage.workspace() {
         let app = app.handle().clone();
-        store.subscribe_health(move |health| {
+        workspace.subscribe_health(move |health| {
             let _ = StorageHealthChanged(health.into()).emit(&app);
         });
     }
     app.manage(storage);
 }
 
+fn publish_index<R: Runtime>(app: &AppHandle<R>, event: &IndexEvent) {
+    match event {
+        IndexEvent::Status(status) => {
+            println!(
+                "index status={status:?} t_ms={:.1}",
+                trace::since_start_ms()
+            );
+            let _ = IndexStatusChanged(status.clone().into()).emit(app);
+        }
+        IndexEvent::Cache(state) => {
+            println!("index cache={state} t_ms={:.1}", trace::since_start_ms())
+        }
+        IndexEvent::Changed(change) => {
+            let _ = IndexChanged::from(change.clone()).emit(app);
+        }
+        IndexEvent::Startup(report) => {
+            println!("{}", trace::startup_line(report));
+            #[cfg(target_os = "macos")]
+            match macos::peak_rss_bytes() {
+                Ok(bytes) => println!(
+                    "index main_peak_rss_bytes={bytes} t_ms={:.1}",
+                    trace::since_start_ms()
+                ),
+                Err(error) => eprintln!("index main_peak_rss_unavailable={error}"),
+            }
+        }
+    }
+}
+
 fn flush_then_allow_quit<R: Runtime>(app: &AppHandle<R>, via: &str) -> bool {
     let Some(storage) = app.try_state::<Storage>() else {
         return true;
     };
-    if storage.quit().confirmed() {
-        println!("quit allowed via={via} confirmed=true");
-        return true;
+    match storage.quit().request() {
+        QuitRequest::Allow => {
+            println!("quit allowed via={via} confirmed=true");
+            return true;
+        }
+        QuitRequest::StartDrain(status) => {
+            println!("quit draining via={via} revision={}", status.revision);
+            start_drain(app, status);
+            return false;
+        }
+        QuitRequest::DrainInProgress => return false,
+        QuitRequest::FlushStore => {}
     }
     let Err(pending) = flush_before_quit(app, via) else {
         return true;
@@ -113,6 +162,44 @@ fn flush_then_allow_quit<R: Runtime>(app: &AppHandle<R>, via: &str) -> bool {
 
 fn publish_quit<R: Runtime>(app: &AppHandle<R>, status: &QuitStatus) {
     let _ = QuitStatusChanged(status.clone()).emit(app);
+}
+
+fn start_drain<R: Runtime>(app: &AppHandle<R>, status: QuitStatus) {
+    let revision = status.revision;
+    if QuitStatusChanged(status).emit(app).is_err() {
+        let pending = app.state::<Storage>().pending_docs();
+        drain_timed_out(app, revision, &pending);
+        return;
+    }
+    let timeout = app.state::<Storage>().quit().drain_timeout();
+    let handle = app.clone();
+    let timer = std::thread::Builder::new()
+        .name("aelomi-quit-drain".into())
+        .spawn(move || {
+            std::thread::sleep(timeout);
+            if !handle.state::<Storage>().quit().awaiting_drain(revision) {
+                return;
+            }
+            let pending = flush_before_quit(&handle, "DrainTimeout")
+                .err()
+                .unwrap_or_default();
+            drain_timed_out(&handle, revision, &pending);
+        });
+    if timer.is_err() {
+        let pending = app.state::<Storage>().pending_docs();
+        drain_timed_out(app, revision, &pending);
+    }
+}
+
+fn drain_timed_out<R: Runtime>(app: &AppHandle<R>, revision: u32, pending: &[DocId]) {
+    if let Some(status) = app
+        .state::<Storage>()
+        .quit()
+        .drain_timed_out(revision, pending)
+    {
+        println!("quit drain timed out revision={revision}");
+        publish_quit(app, &status);
+    }
 }
 
 fn flush_before_quit<R: Runtime>(app: &AppHandle<R>, via: &str) -> Result<(), Vec<DocId>> {
@@ -138,6 +225,7 @@ pub(crate) mod tests {
     use tauri::{App, Listener, WebviewUrl, WebviewWindowBuilder};
 
     use super::*;
+    use crate::quit::QuitPhase;
 
     pub(crate) type Seen = Arc<Mutex<Vec<String>>>;
 
@@ -167,7 +255,7 @@ pub(crate) mod tests {
         let storage = storage::tests::open_on(disk);
         disk.fail_appends("docs/page/");
         storage
-            .store()
+            .workspace()
             .unwrap()
             .append(
                 &DocId::new("page").unwrap(),
@@ -176,6 +264,210 @@ pub(crate) mod tests {
             .unwrap();
         app.manage(storage);
         app
+    }
+
+    fn app_with_webview(disk: &SimDisk, drain_timeout: Duration) -> BlockedApp {
+        let app = mock_builder()
+            .build(mock_context(noop_assets()))
+            .expect("builds the mock app");
+        tauri_specta::Builder::<MockRuntime>::new()
+            .events(tauri_specta::collect_events![QuitStatusChanged])
+            .mount_events(&app);
+        let storage =
+            storage::tests::open_on_with(disk, quit::QuitGate::with_drain_timeout(drain_timeout));
+        storage.quit().register_frontend();
+        app.manage(storage);
+        let (quit_events, quit_changed) = record_quit_status(&app);
+        BlockedApp {
+            app,
+            quit_events,
+            quit_changed,
+        }
+    }
+
+    fn status(revision: u32, phase: QuitPhase) -> QuitStatus {
+        QuitStatus { revision, phase }
+    }
+
+    fn asking(revision: u32, docs: &[&str]) -> QuitStatus {
+        status(
+            revision,
+            QuitPhase::Asking {
+                pending_docs: docs.iter().map(|d| d.to_string()).collect(),
+            },
+        )
+    }
+
+    #[test]
+    fn a_registered_webview_drains_every_route_before_the_app_exits() {
+        let disk = SimDisk::default();
+        let BlockedApp {
+            app, quit_events, ..
+        } = app_with_webview(&disk, Duration::from_secs(60));
+        let page = DocId::new("page").unwrap();
+        let storage = app.state::<Storage>();
+
+        for via in ["CloseRequested", "ExitRequested", "Terminate"] {
+            let started = Instant::now();
+            assert!(!flush_then_allow_quit(app.handle(), via), "{via}");
+            assert!(
+                started.elapsed() < Duration::from_millis(500),
+                "{via} never blocks"
+            );
+        }
+        assert_eq!(
+            commands::quit_status(app.state()),
+            status(1, QuitPhase::Draining)
+        );
+        storage
+            .workspace()
+            .unwrap()
+            .append(&page, &storage::tests::update("typed then quit"))
+            .unwrap();
+        let mut exits = 0;
+        assert_eq!(
+            commands::complete_quit_with(app.handle(), 0, || exits += 1),
+            status(1, QuitPhase::Draining),
+            "a stale completion changes nothing"
+        );
+        assert_eq!(
+            commands::complete_quit_with(app.handle(), 1, || exits += 1),
+            status(2, QuitPhase::Confirmed)
+        );
+        assert_eq!(
+            commands::complete_quit_with(app.handle(), 1, || exits += 1),
+            status(2, QuitPhase::Confirmed)
+        );
+        assert_eq!(exits, 1);
+        assert!(flush_then_allow_quit(app.handle(), "ExitRequested"));
+        assert_eq!(
+            *quit_events.lock().unwrap(),
+            [
+                r#"quit-status-changed {"revision":1,"phase":"Draining"}"#,
+                r#"quit-status-changed {"revision":2,"phase":"Confirmed"}"#,
+            ]
+        );
+        disk.crash();
+        let reopened = disk.open(std::path::Path::new("/data")).unwrap();
+        assert_eq!(
+            storage::tests::text_of(&reopened.load(&page).unwrap()),
+            "typed then quit"
+        );
+    }
+
+    #[test]
+    fn a_drain_with_unsaved_docs_asks_and_keep_open_reopens_editing() {
+        let disk = SimDisk::default();
+        let BlockedApp {
+            app, quit_events, ..
+        } = app_with_webview(&disk, Duration::from_secs(60));
+        let storage = app.state::<Storage>();
+        disk.fail_appends("docs/page/");
+        storage
+            .workspace()
+            .unwrap()
+            .append(
+                &DocId::new("page").unwrap(),
+                &storage::tests::update("unsaved"),
+            )
+            .unwrap();
+
+        assert!(!flush_then_allow_quit(app.handle(), "ExitRequested"));
+        let mut exits = 0;
+        assert_eq!(
+            commands::complete_quit_with(app.handle(), 1, || exits += 1),
+            asking(2, &["page"])
+        );
+        assert_eq!(exits, 0);
+        assert!(!flush_then_allow_quit(app.handle(), "ExitRequested"));
+        assert_eq!(
+            commands::quit_status(app.state()),
+            status(3, QuitPhase::Draining),
+            "quitting again while asked drains again"
+        );
+        assert_eq!(
+            commands::quit_drain_failed_with(app.handle(), 3, &[DocId::new("other").unwrap()]),
+            asking(4, &["other"])
+        );
+        assert_eq!(
+            commands::quit_drain_failed_with(app.handle(), 3, &[]),
+            asking(4, &["other"]),
+            "a stale failure changes nothing"
+        );
+        assert_eq!(
+            commands::keep_open_with(app.handle(), 4),
+            status(5, QuitPhase::Open)
+        );
+        commands::quit_anyway_with(app.handle(), || exits += 1);
+        assert_eq!(exits, 1);
+        assert_eq!(
+            *quit_events.lock().unwrap(),
+            [
+                r#"quit-status-changed {"revision":1,"phase":"Draining"}"#,
+                r#"quit-status-changed {"revision":2,"phase":{"Asking":{"pending_docs":["page"]}}}"#,
+                r#"quit-status-changed {"revision":3,"phase":"Draining"}"#,
+                r#"quit-status-changed {"revision":4,"phase":{"Asking":{"pending_docs":["other"]}}}"#,
+                r#"quit-status-changed {"revision":5,"phase":"Open"}"#,
+                r#"quit-status-changed {"revision":6,"phase":"Confirmed"}"#,
+            ]
+        );
+    }
+
+    #[test]
+    fn a_drain_the_webview_never_finishes_asks_after_the_timeout() {
+        let disk = SimDisk::default();
+        let BlockedApp {
+            app,
+            quit_events,
+            quit_changed,
+        } = app_with_webview(&disk, Duration::from_millis(50));
+
+        assert!(!flush_then_allow_quit(app.handle(), "CloseRequested"));
+        quit_changed.recv_timeout(Duration::from_secs(10)).unwrap();
+        quit_changed.recv_timeout(Duration::from_secs(10)).unwrap();
+        assert_eq!(commands::quit_status(app.state()), asking(2, &[]));
+        let mut exits = 0;
+        assert_eq!(
+            commands::complete_quit_with(app.handle(), 1, || exits += 1),
+            asking(2, &[]),
+            "a completion after the timeout cannot quit"
+        );
+        assert_eq!(exits, 0);
+        assert_eq!(
+            *quit_events.lock().unwrap(),
+            [
+                r#"quit-status-changed {"revision":1,"phase":"Draining"}"#,
+                r#"quit-status-changed {"revision":2,"phase":{"Asking":{"pending_docs":[]}}}"#,
+            ]
+        );
+    }
+
+    #[test]
+    fn an_accepted_completion_is_not_cut_short_by_the_timeout() {
+        let disk = SimDisk::default();
+        let BlockedApp { app, .. } = app_with_webview(&disk, Duration::from_millis(50));
+        disk.set_full_sync_latency(Duration::from_millis(300));
+        app.state::<Storage>()
+            .workspace()
+            .unwrap()
+            .append(
+                &DocId::new("page").unwrap(),
+                &storage::tests::update("slow disk"),
+            )
+            .unwrap();
+
+        assert!(!flush_then_allow_quit(app.handle(), "ExitRequested"));
+        let mut exits = 0;
+        assert_eq!(
+            commands::complete_quit_with(app.handle(), 1, || exits += 1),
+            status(2, QuitPhase::Confirmed)
+        );
+        assert_eq!(exits, 1);
+        thread::sleep(Duration::from_millis(100));
+        assert_eq!(
+            commands::quit_status(app.state()),
+            status(2, QuitPhase::Confirmed)
+        );
     }
 
     fn record_quit_status(app: &App<MockRuntime>) -> (Seen, mpsc::Receiver<()>) {
@@ -253,7 +545,7 @@ pub(crate) mod tests {
             *quit_events.lock().unwrap(),
             [
                 "CloseRequested",
-                r#"quit-status-changed {"revision":1,"pending_docs":["page"]}"#,
+                r#"quit-status-changed {"revision":1,"phase":{"Asking":{"pending_docs":["page"]}}}"#,
                 "CloseRequested",
                 "ExitRequested",
                 "Exit",
@@ -296,7 +588,7 @@ pub(crate) mod tests {
             *quit_events.lock().unwrap(),
             [
                 "ExitRequested",
-                r#"quit-status-changed {"revision":1,"pending_docs":["page"]}"#,
+                r#"quit-status-changed {"revision":1,"phase":{"Asking":{"pending_docs":["page"]}}}"#,
                 "ExitRequested",
                 "Exit",
             ]
@@ -334,14 +626,14 @@ pub(crate) mod tests {
                     commands::keep_open_with(&app, 1),
                     QuitStatus {
                         revision: 2,
-                        pending_docs: None
+                        phase: QuitPhase::Confirmed
                     }
                 );
                 let storage = app.state::<Storage>();
                 assert_eq!(
                     storage::tests::text_of(
                         &storage
-                            .store()
+                            .workspace()
                             .unwrap()
                             .load(&DocId::new("page").unwrap())
                             .unwrap()
@@ -356,8 +648,8 @@ pub(crate) mod tests {
             *quit_events.lock().unwrap(),
             [
                 "CloseRequested",
-                r#"quit-status-changed {"revision":1,"pending_docs":["page"]}"#,
-                r#"quit-status-changed {"revision":2,"pending_docs":null}"#,
+                r#"quit-status-changed {"revision":1,"phase":{"Asking":{"pending_docs":["page"]}}}"#,
+                r#"quit-status-changed {"revision":2,"phase":"Confirmed"}"#,
                 "CloseRequested",
                 "ExitRequested",
                 "Exit",
@@ -371,7 +663,9 @@ pub(crate) mod tests {
         let app = app_storing_page(&disk);
         let asked = QuitStatus {
             revision: 1,
-            pending_docs: Some(vec!["page".into()]),
+            phase: QuitPhase::Asking {
+                pending_docs: vec!["page".into()],
+            },
         };
 
         assert!(!flush_then_allow_quit(app.handle(), "ExitRequested"));
@@ -385,7 +679,7 @@ pub(crate) mod tests {
         let (late_listener, _) = record_quit_status(&app);
         let kept = QuitStatus {
             revision: 2,
-            pending_docs: None,
+            phase: QuitPhase::Open,
         };
         assert_eq!(commands::keep_open_with(app.handle(), 1), kept);
         assert_eq!(commands::keep_open_with(app.handle(), 1), kept);
@@ -393,7 +687,7 @@ pub(crate) mod tests {
 
         disk.fail_appends("docs/page/");
         storage
-            .store()
+            .workspace()
             .unwrap()
             .append(
                 &DocId::new("page").unwrap(),
@@ -405,14 +699,16 @@ pub(crate) mod tests {
             commands::quit_status(app.state()),
             QuitStatus {
                 revision: 3,
-                pending_docs: Some(vec!["page".into()]),
+                phase: QuitPhase::Asking {
+                    pending_docs: vec!["page".into()],
+                },
             }
         );
         assert_eq!(
             *late_listener.lock().unwrap(),
             [
-                r#"quit-status-changed {"revision":2,"pending_docs":null}"#,
-                r#"quit-status-changed {"revision":3,"pending_docs":["page"]}"#,
+                r#"quit-status-changed {"revision":2,"phase":"Open"}"#,
+                r#"quit-status-changed {"revision":3,"phase":{"Asking":{"pending_docs":["page"]}}}"#,
             ]
         );
     }
@@ -439,11 +735,13 @@ pub(crate) mod tests {
         let doc = yrs::Doc::new();
         let body = doc.get_or_insert_text("body");
         let mut txn = doc.transact_mut();
-        txn.apply_update(Update::decode_v1(&storage.store().unwrap().load(&id).unwrap()).unwrap())
-            .unwrap();
+        txn.apply_update(
+            Update::decode_v1(&storage.workspace().unwrap().load(&id).unwrap()).unwrap(),
+        )
+        .unwrap();
         body.insert(&mut txn, 7, " after confirmation");
         storage
-            .store()
+            .workspace()
             .unwrap()
             .append(&id, &txn.encode_update_v1())
             .unwrap();
@@ -459,8 +757,8 @@ pub(crate) mod tests {
         assert_eq!(
             *quit_events.lock().unwrap(),
             [
-                r#"quit-status-changed {"revision":1,"pending_docs":["page"]}"#,
-                r#"quit-status-changed {"revision":2,"pending_docs":null}"#,
+                r#"quit-status-changed {"revision":1,"phase":{"Asking":{"pending_docs":["page"]}}}"#,
+                r#"quit-status-changed {"revision":2,"phase":"Confirmed"}"#,
             ]
         );
     }

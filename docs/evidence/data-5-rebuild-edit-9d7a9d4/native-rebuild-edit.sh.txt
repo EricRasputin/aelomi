@@ -1,0 +1,39 @@
+#!/bin/bash
+set -euo pipefail
+base=/tmp/aelomi-data5-final-native-MtjA
+for name in index.sqlite index.sqlite-wal index.sqlite-shm index.sqlite-journal; do
+  path="$base/search-30k-aux-data/$name"
+  if [ -e "$path" ]; then [ -f "$path" ] && [ ! -L "$path" ]; rm "$path"; fi
+done
+AELOMI_DATA_DIR="$base/search-30k-aux-data" AELOMI_TRACE_IPC=1 .claude/skills/verify-aelomi/scripts/app.sh launch app --timeout 60 > "$base/rebuild-edit-fast-run.txt"
+run=$(cat "$base/rebuild-edit-fast-run.txt")
+. "$run/run.env"
+.claude/skills/verify-aelomi/scripts/app.sh doctor "$run"
+osascript -l JavaScript "$base/rebuild-edit-ax.js" focus-body-proof "$APP_PID" > "$run/before-body.json"
+python3 "$base/rebuild-edit-shot.py" "$run" before
+osascript -l JavaScript /var/folders/m2/kvd1y03j1fxc_ym_gc6jkfbc0000gn/T/aelomi-data5-durability-probe-0vx6yyny/key-once.js "$APP_PID" E none > "$run/edit-key.json"
+osascript -l JavaScript "$base/rebuild-edit-ax.js" focus-body-proof "$APP_PID" > "$run/after-body.json"
+python3 "$base/rebuild-edit-shot.py" "$run" after
+python3 "$base/rebuild-edit-result.py" "$run"
+python3 - "$run" <<'WAIT'
+import sys,time
+from pathlib import Path
+r=Path(sys.argv[1])
+for _ in range(300):
+ if 'index status=Ready' in (r/'shell.log').read_text():break
+ time.sleep(.2)
+else:raise SystemExit('index never reached Ready')
+WAIT
+.claude/skills/verify-aelomi/scripts/app.sh keys "$run" q command
+python3 - "$APP_PID" <<'QUIT'
+import sys,os,time
+pid=int(sys.argv[1])
+for _ in range(75):
+ try:os.kill(pid,0)
+ except ProcessLookupError:break
+ time.sleep(.2)
+else:raise SystemExit('owned app never exited')
+QUIT
+.claude/skills/verify-aelomi/scripts/app.sh cleanup "$run"
+cat "$base/rebuild-edit-fast-run.txt"
+read -r aelomi_native_hold

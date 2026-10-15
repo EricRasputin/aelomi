@@ -5,6 +5,7 @@ import { useStorageHealthStore } from "./storage-health";
 export function connectStorageEvents() {
   let disposed = false;
   let healthEvents = 0;
+  let quitListening = false;
   const unlisteners: (() => void)[] = [];
   const dispose = () => {
     disposed = true;
@@ -36,6 +37,7 @@ export function connectStorageEvents() {
           quitUnlisten();
           return;
         }
+        quitListening = true;
         unlisteners.push(quitUnlisten);
       })(),
     ]);
@@ -53,6 +55,14 @@ export function connectStorageEvents() {
     }
     if (quit.status === "rejected") errors.push(quit.reason);
     else if (!disposed) useQuitStore.getState().receiveQuit(quit.value);
+    if (!disposed && quitListening && quit.status === "fulfilled") {
+      try {
+        await commands.frontendReady();
+        if (!disposed) useQuitStore.getState().register();
+      } catch (error: unknown) {
+        errors.push(error);
+      }
+    }
     if (errors.length > 0) {
       throw new AggregateError(errors, "Storage event connection failed");
     }

@@ -1,0 +1,180 @@
+diff --git a/src/plugins/sync-plugin.js b/src/plugins/sync-plugin.js
+index dccfb76918c8c70fe5a5b12372cdabcc9d8c58dd..9bb49378ea9244755153e08f0fd8343b9f8d1588 100644
+--- a/src/plugins/sync-plugin.js
++++ b/src/plugins/sync-plugin.js
+@@ -285,18 +285,88 @@ const restoreRelativeSelection = (tr, relSel, binding) => {
+  */
+ export const getRelativeSelection = (pmbinding, state) => ({
+   type: /** @type {any} */ (state.selection).jsonID,
+-  anchor: absolutePositionToRelativePosition(
++  anchor: relativePositionNear(
++    state.doc,
+     state.selection.anchor,
+     pmbinding.type,
+     pmbinding.mapping
+   ),
+-  head: absolutePositionToRelativePosition(
++  head: relativePositionNear(
++    state.doc,
+     state.selection.head,
+     pmbinding.type,
+     pmbinding.mapping
+   )
+ })
+ 
++/**
++ * Aelomi patch: the last child found under each Y parent. Y lists have no
++ * index for XmlElement children, so `get` walks from the first one; typing
++ * keeps landing in the same block, which this finds again by its block ID.
++ *
++ * @type {WeakMap<Y.XmlFragment, Y.XmlElement>}
++ */
++const lastChild = new WeakMap()
++
++/**
++ * @param {Y.XmlFragment} ytype
++ * @param {number} index
++ * @param {PModel.Node} child
++ */
++const childAt = (ytype, index, child) => {
++  const id = child.attrs.id
++  const cached = lastChild.get(ytype)
++  if (
++    id != null && cached !== undefined && cached._item !== null &&
++    !cached._item.deleted && cached.parent === ytype &&
++    cached.getAttribute('id') === id
++  ) return cached
++  const found = ytype.get(index)
++  if (found instanceof Y.XmlElement) lastChild.set(ytype, found)
++  return found
++}
++
++/**
++ * Aelomi patch: absolutePositionToRelativePosition walks every earlier
++ * sibling from the root, which is every block before the caret on a long
++ * page, and it runs several times per keystroke. This descends by child
++ * index through the block elements that contain `pos`, but only while each
++ * Y element is mapped to exactly the ProseMirror node on the path, and it
++ * stops above the textblock. Upstream's walk then runs inside that element,
++ * so the encoding (item and association) is upstream's. A state the mapping
++ * no longer describes, such as one an undo already changed, falls back to
++ * the full walk.
++ *
++ * @param {PModel.Node} doc
++ * @param {number} pos
++ * @param {Y.XmlFragment} type
++ * @param {ProsemirrorMapping} mapping
++ */
++const relativePositionNear = (doc, pos, type, mapping) => {
++  let $pos
++  try {
++    $pos = doc.resolve(pos)
++  } catch (_) {
++    return absolutePositionToRelativePosition(pos, type, mapping)
++  }
++  let ytype = type
++  let start = 0
++  for (let depth = 0; depth < $pos.depth; depth++) {
++    const child = $pos.node(depth + 1)
++    if (child.isInline || child.inlineContent || $pos.node(depth).inlineContent) break
++    const ychild = childAt(ytype, $pos.index(depth), child)
++    if (
++      !(ychild instanceof Y.XmlElement) ||
++      ychild.nodeName !== child.type.name ||
++      (child.attrs.id != null && ychild.getAttribute('id') !== child.attrs.id) ||
++      mapping.get(ychild) !== child
++    ) break
++    ytype = ychild
++    start = $pos.start(depth + 1)
++  }
++  return absolutePositionToRelativePosition(pos - start, ytype, mapping)
++}
++
+ /**
+  * Binding for prosemirror.
+  *
+@@ -334,10 +404,17 @@ export class ProsemirrorBinding {
+     this.beforeTransactionSelection = null
+     this.beforeAllTransactions = () => {
+       if (this.beforeTransactionSelection === null && this.prosemirrorView != null) {
+-        this.beforeTransactionSelection = getRelativeSelection(
+-          this,
+-          this.prosemirrorView.state
+-        )
++        // Aelomi patch: inside the binding's own sync, _prosemirrorChanged
++        // overwrites this value in the same transaction before anything
++        // reads it, and its ProseMirror state is already ahead of the
++        // mapping, so computing it here would take the full walk for
++        // nothing. Undo and remote transactions run outside the mutex.
++        this.mux(() => {
++          this.beforeTransactionSelection = getRelativeSelection(
++            this,
++            this.prosemirrorView.state
++          )
++        })
+       }
+     }
+     this.afterAllTransactions = () => {
+@@ -989,6 +1066,19 @@ const equalYTypePNode = (ytype, pnode) => {
+     equalYTextPText(ytype, pnode)
+ }
+ 
++/**
++ * Aelomi patch: the Y element was mapped to a BlockNote blockGroup that
++ * ProseMirror has since replaced. Only a blockGroup's deep comparison walks
++ * many blocks; every other node keeps upstream's pairing.
++ *
++ * @param {PModel.Node | Array<PModel.Node> | undefined} mapped
++ * @param {PModel.Node | Array<PModel.Node>} pcontent
++ */
++const changedMappedElement = (mapped, pcontent) =>
++  mapped !== undefined && !(mapped instanceof Array) &&
++  !(pcontent instanceof Array) && mapped.type === pcontent.type &&
++  pcontent.type.name === 'blockGroup'
++
+ /**
+  * @param {PModel.Node | Array<PModel.Node> | undefined} mapped
+  * @param {PModel.Node | Array<PModel.Node>} pcontent
+@@ -1182,8 +1272,13 @@ export const updateYFragment = (y, yDomFragment, pNode, meta) => {
+   for (; left < minCnt; left++) {
+     const leftY = yChildren[left]
+     const leftP = pChildren[left]
+-    if (!mappedIdentity(meta.mapping.get(leftY), leftP)) {
+-      if (equalYTypePNode(leftY, leftP)) {
++    const leftMapped = meta.mapping.get(leftY)
++    if (!mappedIdentity(leftMapped, leftP)) {
++      // Aelomi patch: a mapped child whose ProseMirror node was replaced is
++      // updated in place below. Comparing it deeply first costs a walk of the
++      // whole subtree, which is the entire page for BlockNote's single root
++      // blockGroup, on every keystroke.
++      if (!changedMappedElement(leftMapped, leftP) && equalYTypePNode(leftY, leftP)) {
+         // update mapping
+         meta.mapping.set(leftY, leftP)
+       } else {
+@@ -1195,8 +1290,9 @@ export const updateYFragment = (y, yDomFragment, pNode, meta) => {
+   for (; right + left < minCnt; right++) {
+     const rightY = yChildren[yChildCnt - right - 1]
+     const rightP = pChildren[pChildCnt - right - 1]
+-    if (!mappedIdentity(meta.mapping.get(rightY), rightP)) {
+-      if (equalYTypePNode(rightY, rightP)) {
++    const rightMapped = meta.mapping.get(rightY)
++    if (!mappedIdentity(rightMapped, rightP)) {
++      if (!changedMappedElement(rightMapped, rightP) && equalYTypePNode(rightY, rightP)) {
+         // update mapping
+         meta.mapping.set(rightY, rightP)
+       } else {
+@@ -1221,7 +1317,13 @@ export const updateYFragment = (y, yDomFragment, pNode, meta) => {
+           matchNodeName(leftY, leftP)
+         let updateRight = rightY instanceof Y.XmlElement &&
+           matchNodeName(rightY, rightP)
+-        if (updateLeft && updateRight) {
++        if (updateLeft && updateRight && leftY === rightY && leftP === rightP) {
++          // Aelomi patch: one child left on each side, as with BlockNote's
++          // single root blockGroup. Both factors would be computed from the
++          // same pair and be equal, which updates the left one, so skip
++          // computing them over every grandchild.
++          updateRight = false
++        } else if (updateLeft && updateRight) {
+           // decide which which element to update
+           const equalityLeft = computeChildEqualityFactor(
+             /** @type {Y.XmlElement} */ (leftY),

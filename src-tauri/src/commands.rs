@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use aelomi_core::storage::DocId;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
@@ -5,8 +7,10 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri::{AppHandle, Manager, Runtime, State};
 
-use crate::quit::{QuitStatus, QuitStatusChanged};
+use crate::index::{self, IndexChanged, IndexStatusChanged};
+use crate::quit::{QuitPhase, QuitStatus, QuitStatusChanged};
 use crate::storage::{Health, Storage, StorageError, StorageHealthChanged, StorageStatus};
+use crate::trace::IpcMeasurements;
 
 #[derive(Deserialize, Type)]
 pub struct PingRequest {
@@ -96,12 +100,101 @@ pub(crate) fn quit_anyway_with<R: Runtime>(app: &AppHandle<R>, exit: impl FnOnce
     }
 }
 
-/// Returns the doc's full state as base64.
+/// The webview listens for quit status and holds the editor. Call it after the quit listener
+/// is registered and the quit status read, before editing is enabled. From then on every quit
+/// first waits for the webview to deliver its edits (`Draining`).
 #[tauri::command]
 #[specta::specta]
-pub fn doc_load(storage: State<'_, Storage>, doc_id: String) -> Result<String, StorageError> {
-    let state = storage.store()?.load(&DocId::new(doc_id)?)?;
-    Ok(BASE64.encode(state))
+pub fn frontend_ready(storage: State<'_, Storage>) {
+    storage.quit().register_frontend();
+    println!("quit frontend ready");
+}
+
+/// The webview delivered every edit of the drain at `revision`. Flushes the store: with
+/// nothing pending the quit is confirmed and the app exits, else the user is asked. A stale
+/// `revision` changes nothing. Returns the decision after the call.
+#[tauri::command]
+#[specta::specta]
+pub async fn complete_quit(app: tauri::AppHandle, revision: u32) -> QuitStatus {
+    let handle = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        complete_quit_with(&handle, revision, || handle.exit(0))
+    })
+    .await
+    .unwrap_or_else(|_| app.state::<Storage>().quit().status())
+}
+
+pub(crate) fn complete_quit_with<R: Runtime>(
+    app: &AppHandle<R>,
+    revision: u32,
+    exit: impl FnOnce(),
+) -> QuitStatus {
+    let storage = app.state::<Storage>();
+    if !storage.quit().begin_completing(revision) {
+        return storage.quit().status();
+    }
+    let pending = crate::flush_before_quit(app, "CompleteQuit")
+        .err()
+        .unwrap_or_default();
+    let Some(status) = storage.quit().finish_drain(revision, &pending) else {
+        return storage.quit().status();
+    };
+    crate::publish_quit(app, &status);
+    if status.phase == QuitPhase::Confirmed {
+        println!("quit confirmed via=drain");
+        exit();
+    }
+    status
+}
+
+/// The webview could not deliver its edits to `doc_ids` during the drain at `revision`, so the
+/// user is asked. A stale `revision` changes nothing. Returns the decision after the call.
+#[tauri::command]
+#[specta::specta]
+pub fn quit_drain_failed(
+    app: tauri::AppHandle,
+    revision: u32,
+    doc_ids: Vec<String>,
+) -> Result<QuitStatus, StorageError> {
+    let docs = doc_ids
+        .into_iter()
+        .map(DocId::new)
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(quit_drain_failed_with(&app, revision, &docs))
+}
+
+pub(crate) fn quit_drain_failed_with<R: Runtime>(
+    app: &AppHandle<R>,
+    revision: u32,
+    docs: &[DocId],
+) -> QuitStatus {
+    let storage = app.state::<Storage>();
+    match storage.quit().drain_failed(revision, docs) {
+        Some(status) => {
+            println!("quit drain failed docs={docs:?}");
+            crate::publish_quit(app, &status);
+            status
+        }
+        None => storage.quit().status(),
+    }
+}
+
+/// Returns the doc's full state as base64. Loads off the main thread.
+#[tauri::command]
+#[specta::specta]
+pub async fn doc_load(storage: State<'_, Storage>, doc_id: String) -> Result<String, StorageError> {
+    let workspace = storage.workspace()?;
+    let doc = DocId::new(doc_id)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let started = Instant::now();
+        let state = BASE64.encode(workspace.load(&doc)?);
+        crate::trace::ipc(started, || IpcMeasurements::DocLoad {
+            base64_bytes: state.len(),
+        });
+        Ok(state)
+    })
+    .await
+    .map_err(|e| StorageError::Io(e.to_string()))?
 }
 
 /// Takes the update as base64. Returns its sequence number once it is queued, before it is
@@ -114,10 +207,14 @@ pub fn doc_append(
     doc_id: String,
     update: String,
 ) -> Result<f64, StorageError> {
+    let started = Instant::now();
     let update = BASE64
         .decode(update)
         .map_err(|_| StorageError::InvalidUpdate)?;
-    let seq = storage.store()?.append(&DocId::new(doc_id)?, &update)?;
+    let seq = storage.workspace()?.append(&DocId::new(doc_id)?, &update)?;
+    crate::trace::ipc(started, || IpcMeasurements::DocAppend {
+        delta_bytes: update.len(),
+    });
     Ok(seq.0 as f64)
 }
 
@@ -137,13 +234,22 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
             quit_status,
             keep_open,
             quit_anyway,
+            frontend_ready,
+            complete_quit,
+            quit_drain_failed,
             doc_load,
             doc_append,
+            index::index_status,
+            index::page_tree,
+            index::search,
+            index::backlinks,
             dev_probe_log,
         ])
         .events(tauri_specta::collect_events![
             StorageHealthChanged,
-            QuitStatusChanged
+            QuitStatusChanged,
+            IndexStatusChanged,
+            IndexChanged
         ])
 }
 

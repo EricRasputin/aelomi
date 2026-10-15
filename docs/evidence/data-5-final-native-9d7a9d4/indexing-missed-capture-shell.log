@@ -1,0 +1,27 @@
+storage status=Ready path=/private/tmp/aelomi-data5-final-native-MtjA/search-30k-aux-data
+storage open ms=4.123 t_ms=358.0
+index status=Rebuilding t_ms=362.1
+index cache=created t_ms=372.4
+ping seq=1
+quit frontend ready
+ipc page_tree ms=350.252 pages=29100 bytes=5385495
+ipc doc_load ms=0.908 bytes=512
+ipc page_tree ms=4.896 pages=29100 bytes=5385495
+ipc search ms=0.003 core_ms=0.003 dto_ms=0.000 hits=indexing bytes=10
+ipc search ms=0.007 core_ms=0.006 dto_ms=0.000 hits=indexing bytes=10
+ipc search ms=0.004 core_ms=0.004 dto_ms=0.000 hits=indexing bytes=10
+ipc search ms=0.010 core_ms=0.009 dto_ms=0.000 hits=indexing bytes=10
+ipc search ms=0.004 core_ms=0.004 dto_ms=0.000 hits=indexing bytes=10
+ipc search ms=0.005 core_ms=0.005 dto_ms=0.000 hits=indexing bytes=10
+ipc search ms=0.005 core_ms=0.004 dto_ms=0.000 hits=indexing bytes=10
+ipc search ms=0.017 core_ms=0.017 dto_ms=0.000 hits=indexing bytes=10
+ipc search ms=0.003 core_ms=0.003 dto_ms=0.000 hits=indexing bytes=10
+index status=Ready t_ms=12963.2
+index startup total_ms=12601.124 check_open_ms=10.201 schema_ms=- integrity_ms=- title_fts_ms=- block_fts_ms=- workspace_load_ms=220.817 workspace_decode_ms=214.073 workspace_forest_ms=97.110 workspace_sql_ms=730.069 pages=30000 loaded_bytes=16026669 page_load_ms=4321.692 page_decode_ms=199.642 page_project_ms=63.499 page_sql_ms=6680.535 publish_ms=0.187 t_ms=12963.4
+index main_peak_rss_bytes=480755712 t_ms=12963.4
+ipc search ms=1.079 core_ms=1.076 dto_ms=0.003 hits=20 bytes=6870
+quit draining via=ExitRequested revision=1
+quit flush via=CompleteQuit pending=[]
+quit confirmed via=drain
+quit allowed via=ExitRequested confirmed=true
+quit flush via=Exit pending=[]

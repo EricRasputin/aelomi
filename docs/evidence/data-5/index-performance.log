@@ -1,0 +1,186 @@
+measurement run 1
+   Compiling aelomi-core v0.1.0 (<checkout>/crates/core)
+    Finished `release` profile [optimized] target(s) in 14.23s
+────────────
+ Nextest run ID 981cc5f7-86b0-4cda-a300-35e4c3c68223 with nextest profile: default
+    Starting 3 tests across 1 binary (249 tests skipped)
+       START [         ] (1/3) aelomi-core index::tests::latency::a_linking_edit_on_a_5000_block_page_reaches_the_backlinks_within_250_ms
+
+running 1 test
+5,000-block page: linking edit to backlink, max 49.3335ms over 5 edits
+test index::tests::latency::a_linking_edit_on_a_5000_block_page_reaches_the_backlinks_within_250_ms ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 251 filtered out; finished in 0.46s
+
+        PASS [   0.473s] (1/3) aelomi-core index::tests::latency::a_linking_edit_on_a_5000_block_page_reaches_the_backlinks_within_250_ms
+       START [         ] (2/3) aelomi-core index::tests::latency::a_linking_edit_reaches_the_backlinks_within_250_ms_on_real_threads
+
+running 1 test
+200-block page: linking edit to backlink, max 36.446125ms over 20 edits
+test index::tests::latency::a_linking_edit_reaches_the_backlinks_within_250_ms_on_real_threads ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 251 filtered out; finished in 0.65s
+
+        PASS [   0.658s] (2/3) aelomi-core index::tests::latency::a_linking_edit_reaches_the_backlinks_within_250_ms_on_real_threads
+       START [         ] (3/3) aelomi-core index::tests::search_fixture::measure_content_query_p95_on_the_10k_fixture
+
+running 1 test
+indexed 10,000 pages from memory in 874.695959ms
+fixture queries: 1000 queries, p50 74.5µs, p95 148.75µs, max 189.834µs
+common words, 20 of thousands of hits: 200 queries, p50 25.88725ms, p95 63.8005ms, max 108.999791ms
+SQLite 3.53.2
+test index::tests::search_fixture::measure_content_query_p95_on_the_10k_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 251 filtered out; finished in 8.05s
+
+        PASS [   8.061s] (3/3) aelomi-core index::tests::search_fixture::measure_content_query_p95_on_the_10k_fixture
+────────────
+     Summary [   9.195s] 3 tests run: 3 passed, 249 skipped
+measurement run 2
+    Finished `release` profile [optimized] target(s) in 0.10s
+────────────
+ Nextest run ID 9ba22394-c343-485d-b261-d75d91da3aa7 with nextest profile: default
+    Starting 3 tests across 1 binary (249 tests skipped)
+       START [         ] (1/3) aelomi-core index::tests::latency::a_linking_edit_on_a_5000_block_page_reaches_the_backlinks_within_250_ms
+
+running 1 test
+5,000-block page: linking edit to backlink, max 48.188875ms over 5 edits
+test index::tests::latency::a_linking_edit_on_a_5000_block_page_reaches_the_backlinks_within_250_ms ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 251 filtered out; finished in 0.44s
+
+        PASS [   0.449s] (1/3) aelomi-core index::tests::latency::a_linking_edit_on_a_5000_block_page_reaches_the_backlinks_within_250_ms
+       START [         ] (2/3) aelomi-core index::tests::latency::a_linking_edit_reaches_the_backlinks_within_250_ms_on_real_threads
+
+running 1 test
+200-block page: linking edit to backlink, max 40.168167ms over 20 edits
+test index::tests::latency::a_linking_edit_reaches_the_backlinks_within_250_ms_on_real_threads ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 251 filtered out; finished in 0.73s
+
+        PASS [   0.745s] (2/3) aelomi-core index::tests::latency::a_linking_edit_reaches_the_backlinks_within_250_ms_on_real_threads
+       START [         ] (3/3) aelomi-core index::tests::search_fixture::measure_content_query_p95_on_the_10k_fixture
+
+running 1 test
+indexed 10,000 pages from memory in 882.263083ms
+fixture queries: 1000 queries, p50 87.958µs, p95 150.292µs, max 232.667µs
+common words, 20 of thousands of hits: 200 queries, p50 25.685833ms, p95 63.472667ms, max 66.722416ms
+SQLite 3.53.2
+test index::tests::search_fixture::measure_content_query_p95_on_the_10k_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 251 filtered out; finished in 7.96s
+
+        PASS [   7.974s] (3/3) aelomi-core index::tests::search_fixture::measure_content_query_p95_on_the_10k_fixture
+────────────
+     Summary [   9.170s] 3 tests run: 3 passed, 249 skipped
+measurement run 3
+    Finished `release` profile [optimized] target(s) in 0.08s
+────────────
+ Nextest run ID e634f6cc-a54a-489b-b031-0e4dc3606d20 with nextest profile: default
+    Starting 3 tests across 1 binary (249 tests skipped)
+       START [         ] (1/3) aelomi-core index::tests::latency::a_linking_edit_on_a_5000_block_page_reaches_the_backlinks_within_250_ms
+
+running 1 test
+5,000-block page: linking edit to backlink, max 51.225083ms over 5 edits
+test index::tests::latency::a_linking_edit_on_a_5000_block_page_reaches_the_backlinks_within_250_ms ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 251 filtered out; finished in 0.46s
+
+        PASS [   0.466s] (1/3) aelomi-core index::tests::latency::a_linking_edit_on_a_5000_block_page_reaches_the_backlinks_within_250_ms
+       START [         ] (2/3) aelomi-core index::tests::latency::a_linking_edit_reaches_the_backlinks_within_250_ms_on_real_threads
+
+running 1 test
+200-block page: linking edit to backlink, max 40.898458ms over 20 edits
+test index::tests::latency::a_linking_edit_reaches_the_backlinks_within_250_ms_on_real_threads ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 251 filtered out; finished in 0.73s
+
+        PASS [   0.745s] (2/3) aelomi-core index::tests::latency::a_linking_edit_reaches_the_backlinks_within_250_ms_on_real_threads
+       START [         ] (3/3) aelomi-core index::tests::search_fixture::measure_content_query_p95_on_the_10k_fixture
+
+running 1 test
+indexed 10,000 pages from memory in 879.991917ms
+fixture queries: 1000 queries, p50 83.667µs, p95 147.333µs, max 209.458µs
+common words, 20 of thousands of hits: 200 queries, p50 27.641916ms, p95 63.750167ms, max 94.0685ms
+SQLite 3.53.2
+test index::tests::search_fixture::measure_content_query_p95_on_the_10k_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 251 filtered out; finished in 8.05s
+
+        PASS [   8.063s] (3/3) aelomi-core index::tests::search_fixture::measure_content_query_p95_on_the_10k_fixture
+────────────
+     Summary [   9.274s] 3 tests run: 3 passed, 249 skipped
+measurement run 4
+    Finished `release` profile [optimized] target(s) in 0.08s
+────────────
+ Nextest run ID 3b5b058c-33e2-45f2-88e4-70ffe808ad6e with nextest profile: default
+    Starting 3 tests across 1 binary (249 tests skipped)
+       START [         ] (1/3) aelomi-core index::tests::latency::a_linking_edit_on_a_5000_block_page_reaches_the_backlinks_within_250_ms
+
+running 1 test
+5,000-block page: linking edit to backlink, max 51.013166ms over 5 edits
+test index::tests::latency::a_linking_edit_on_a_5000_block_page_reaches_the_backlinks_within_250_ms ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 251 filtered out; finished in 0.43s
+
+        PASS [   0.436s] (1/3) aelomi-core index::tests::latency::a_linking_edit_on_a_5000_block_page_reaches_the_backlinks_within_250_ms
+       START [         ] (2/3) aelomi-core index::tests::latency::a_linking_edit_reaches_the_backlinks_within_250_ms_on_real_threads
+
+running 1 test
+200-block page: linking edit to backlink, max 37.865083ms over 20 edits
+test index::tests::latency::a_linking_edit_reaches_the_backlinks_within_250_ms_on_real_threads ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 251 filtered out; finished in 0.70s
+
+        PASS [   0.707s] (2/3) aelomi-core index::tests::latency::a_linking_edit_reaches_the_backlinks_within_250_ms_on_real_threads
+       START [         ] (3/3) aelomi-core index::tests::search_fixture::measure_content_query_p95_on_the_10k_fixture
+
+running 1 test
+indexed 10,000 pages from memory in 974.626542ms
+fixture queries: 1000 queries, p50 53.208µs, p95 151.5µs, max 229.083µs
+common words, 20 of thousands of hits: 200 queries, p50 35.093958ms, p95 63.811041ms, max 79.795458ms
+SQLite 3.53.2
+test index::tests::search_fixture::measure_content_query_p95_on_the_10k_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 251 filtered out; finished in 8.15s
+
+        PASS [   8.161s] (3/3) aelomi-core index::tests::search_fixture::measure_content_query_p95_on_the_10k_fixture
+────────────
+     Summary [   9.306s] 3 tests run: 3 passed, 249 skipped
+measurement run 5
+    Finished `release` profile [optimized] target(s) in 0.08s
+────────────
+ Nextest run ID 104a2915-b5c7-4f37-9809-2e0e56d9b02a with nextest profile: default
+    Starting 3 tests across 1 binary (249 tests skipped)
+       START [         ] (1/3) aelomi-core index::tests::latency::a_linking_edit_on_a_5000_block_page_reaches_the_backlinks_within_250_ms
+
+running 1 test
+5,000-block page: linking edit to backlink, max 46.182416ms over 5 edits
+test index::tests::latency::a_linking_edit_on_a_5000_block_page_reaches_the_backlinks_within_250_ms ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 251 filtered out; finished in 0.43s
+
+        PASS [   0.434s] (1/3) aelomi-core index::tests::latency::a_linking_edit_on_a_5000_block_page_reaches_the_backlinks_within_250_ms
+       START [         ] (2/3) aelomi-core index::tests::latency::a_linking_edit_reaches_the_backlinks_within_250_ms_on_real_threads
+
+running 1 test
+200-block page: linking edit to backlink, max 39.097958ms over 20 edits
+test index::tests::latency::a_linking_edit_reaches_the_backlinks_within_250_ms_on_real_threads ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 251 filtered out; finished in 0.69s
+
+        PASS [   0.704s] (2/3) aelomi-core index::tests::latency::a_linking_edit_reaches_the_backlinks_within_250_ms_on_real_threads
+       START [         ] (3/3) aelomi-core index::tests::search_fixture::measure_content_query_p95_on_the_10k_fixture
+
+running 1 test
+indexed 10,000 pages from memory in 886.616667ms
+fixture queries: 1000 queries, p50 67.125µs, p95 148.625µs, max 209.25µs
+common words, 20 of thousands of hits: 200 queries, p50 25.654292ms, p95 63.672834ms, max 65.966792ms
+SQLite 3.53.2
+test index::tests::search_fixture::measure_content_query_p95_on_the_10k_fixture ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 251 filtered out; finished in 7.97s
+
+        PASS [   7.990s] (3/3) aelomi-core index::tests::search_fixture::measure_content_query_p95_on_the_10k_fixture
+────────────
+     Summary [   9.128s] 3 tests run: 3 passed, 249 skipped

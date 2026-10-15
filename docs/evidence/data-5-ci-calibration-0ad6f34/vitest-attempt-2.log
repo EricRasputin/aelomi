@@ -1,0 +1,473 @@
+2026-10-14T23:06:33.5379510Z Current runner version: '2.337.0'
+2026-10-14T23:06:33.5399780Z ##[group]Runner Image Provisioner
+2026-10-14T23:06:33.5400400Z Hosted Compute Agent
+2026-10-14T23:06:33.5400800Z Version: 20260828.587
+2026-10-14T23:06:33.5401230Z Commit: abac92662cab4cc7352de4f9f9d2e2419aad9c29
+2026-10-14T23:06:33.5401730Z Build Date: 2026-08-28T16:44:25Z
+2026-10-14T23:06:33.5402180Z Worker ID: {195cdff0-d317-412a-8413-299275016f65}
+2026-10-14T23:06:33.5402660Z Azure Region: westus
+2026-10-14T23:06:33.5403060Z ##[endgroup]
+2026-10-14T23:06:33.5404050Z ##[group]Operating System
+2026-10-14T23:06:33.5404530Z macOS
+2026-10-14T23:06:33.5404870Z 15.7.9
+2026-10-14T23:06:33.5405200Z 24G830
+2026-10-14T23:06:33.5405550Z ##[endgroup]
+2026-10-14T23:06:33.5405920Z ##[group]Runner Image
+2026-10-14T23:06:33.5406330Z Image: macos-15-arm64
+2026-10-14T23:06:33.5406720Z Version: 20260907.0337.1
+2026-10-14T23:06:33.5407650Z Included Software: https://github.com/actions/runner-images/blob/macos-15-arm64/20260907.0337/images/macos/macos-15-arm64-Readme.md
+2026-10-14T23:06:33.5408820Z Image Release: https://github.com/actions/runner-images/releases/tag/macos-15-arm64%2F20260907.0337
+2026-10-14T23:06:33.5409520Z ##[endgroup]
+2026-10-14T23:06:33.5410400Z ##[group]GITHUB_TOKEN Permissions
+2026-10-14T23:06:33.5411850Z Contents: read
+2026-10-14T23:06:33.5412220Z Metadata: read
+2026-10-14T23:06:33.5412600Z ##[endgroup]
+2026-10-14T23:06:33.5414140Z Secret source: Actions
+2026-10-14T23:06:33.5414750Z Cache mode: write
+2026-10-14T23:06:33.5415210Z Prepare workflow directory
+2026-10-14T23:06:33.5790300Z Prepare all required actions
+2026-10-14T23:06:33.5838610Z Getting action download info
+2026-10-14T23:06:33.8666920Z Download action repository 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1' (SHA:3d3c42e5aac5ba805825da76410c181273ba90b1)
+2026-10-14T23:06:34.1652230Z Download action repository 'actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1' (SHA:949feb2413d6458794dcd2491c4babbbce0c15c1)
+2026-10-14T23:06:34.7347430Z Download action repository 'pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413' (SHA:ea17c68df8912ef543352723c149a84f56e3d413)
+2026-10-14T23:06:35.1508470Z Complete job name: vitest
+2026-10-14T23:06:35.2204970Z ##[group]Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+2026-10-14T23:06:35.2205660Z with:
+2026-10-14T23:06:35.2205980Z   repository: aelomi/aelomi
+2026-10-14T23:06:35.2208960Z   token: ***
+2026-10-14T23:06:35.2209270Z   ssh-strict: true
+2026-10-14T23:06:35.2209590Z   ssh-user: git
+2026-10-14T23:06:35.2209920Z   persist-credentials: true
+2026-10-14T23:06:35.2210260Z   clean: true
+2026-10-14T23:06:35.2210600Z   sparse-checkout-cone-mode: true
+2026-10-14T23:06:35.2210970Z   fetch-depth: 1
+2026-10-14T23:06:35.2211290Z   fetch-tags: false
+2026-10-14T23:06:35.2211610Z   show-progress: true
+2026-10-14T23:06:35.2211940Z   lfs: false
+2026-10-14T23:06:35.2212250Z   submodules: false
+2026-10-14T23:06:35.2212580Z   set-safe-directory: true
+2026-10-14T23:06:35.2212940Z   allow-unsafe-pr-checkout: false
+2026-10-14T23:06:35.2213480Z env:
+2026-10-14T23:06:35.2213790Z   E2E_TELEMETRY_DISABLED: 1
+2026-10-14T23:06:35.2214140Z   DO_NOT_TRACK: 1
+2026-10-14T23:06:35.2214480Z ##[endgroup]
+2026-10-14T23:06:35.6013120Z Syncing repository: aelomi/aelomi
+2026-10-14T23:06:35.6018470Z ##[group]Getting Git version info
+2026-10-14T23:06:35.6020990Z Working directory is '/Users/runner/work/aelomi/aelomi'
+2026-10-14T23:06:35.6024250Z [command]/opt/homebrew/bin/git version
+2026-10-14T23:06:35.6517950Z git version 2.55.0
+2026-10-14T23:06:35.6658310Z ##[endgroup]
+2026-10-14T23:06:35.6686550Z Copying '/Users/runner/.gitconfig' to '/Users/runner/work/_temp/42afb734-bce5-4e29-9f0d-361bc7738daa/.gitconfig'
+2026-10-14T23:06:35.6693490Z Temporarily overriding HOME='/Users/runner/work/_temp/42afb734-bce5-4e29-9f0d-361bc7738daa' before making global git config changes
+2026-10-14T23:06:35.6697730Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-14T23:06:35.6722650Z [command]/opt/homebrew/bin/git config --global --add safe.directory /Users/runner/work/aelomi/aelomi
+2026-10-14T23:06:35.6853160Z Deleting the contents of '/Users/runner/work/aelomi/aelomi'
+2026-10-14T23:06:35.6858420Z ##[group]Determining repository object format
+2026-10-14T23:06:35.6859490Z ##[endgroup]
+2026-10-14T23:06:35.6860640Z ##[group]Initializing the repository
+2026-10-14T23:06:35.6862150Z [command]/opt/homebrew/bin/git init /Users/runner/work/aelomi/aelomi
+2026-10-14T23:06:35.6990510Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-10-14T23:06:35.6994320Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-10-14T23:06:35.6996560Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-10-14T23:06:35.6997820Z hint: call:
+2026-10-14T23:06:35.6998490Z hint:
+2026-10-14T23:06:35.6999270Z hint: 	git config --global init.defaultBranch <name>
+2026-10-14T23:06:35.7000610Z hint:
+2026-10-14T23:06:35.7001510Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-10-14T23:06:35.7003000Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-10-14T23:06:35.7004170Z hint:
+2026-10-14T23:06:35.7039960Z hint: 	git branch -m <name>
+2026-10-14T23:06:35.7040990Z hint:
+2026-10-14T23:06:35.7042160Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-10-14T23:06:35.7043810Z Initialized empty Git repository in /Users/runner/work/aelomi/aelomi/.git/
+2026-10-14T23:06:35.7047280Z [command]/opt/homebrew/bin/git remote add origin https://github.com/aelomi/aelomi
+2026-10-14T23:06:35.7088030Z ##[endgroup]
+2026-10-14T23:06:35.7089260Z ##[group]Disabling automatic garbage collection
+2026-10-14T23:06:35.7090580Z [command]/opt/homebrew/bin/git config --local gc.auto 0
+2026-10-14T23:06:35.7148500Z ##[endgroup]
+2026-10-14T23:06:35.7149400Z ##[group]Setting up auth
+2026-10-14T23:06:35.7150170Z Removing SSH command configuration
+2026-10-14T23:06:35.7151190Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-14T23:06:35.7223100Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-14T23:06:35.8323220Z Removing HTTP extra header
+2026-10-14T23:06:35.8324630Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-14T23:06:35.8472910Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-14T23:06:35.9405260Z Removing includeIf entries pointing to credentials config files
+2026-10-14T23:06:35.9406900Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-14T23:06:35.9533240Z [command]/opt/homebrew/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-14T23:06:36.0450020Z [command]/opt/homebrew/bin/git config --file /Users/runner/work/_temp/git-credentials-ffd2bd93-b341-4d1e-a17d-2aa6657258ff.config http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-10-14T23:06:36.0644060Z [command]/opt/homebrew/bin/git config --local includeIf.gitdir:/Users/runner/work/aelomi/aelomi/.git.path /Users/runner/work/_temp/git-credentials-ffd2bd93-b341-4d1e-a17d-2aa6657258ff.config
+2026-10-14T23:06:36.0764810Z [command]/opt/homebrew/bin/git config --local includeIf.gitdir:/Users/runner/work/aelomi/aelomi/.git/worktrees/*.path /Users/runner/work/_temp/git-credentials-ffd2bd93-b341-4d1e-a17d-2aa6657258ff.config
+2026-10-14T23:06:36.0942480Z [command]/opt/homebrew/bin/git config --local includeIf.gitdir:/github/workspace/.git.path /github/runner_temp/git-credentials-ffd2bd93-b341-4d1e-a17d-2aa6657258ff.config
+2026-10-14T23:06:36.1073690Z [command]/opt/homebrew/bin/git config --local includeIf.gitdir:/github/workspace/.git/worktrees/*.path /github/runner_temp/git-credentials-ffd2bd93-b341-4d1e-a17d-2aa6657258ff.config
+2026-10-14T23:06:36.1142760Z ##[endgroup]
+2026-10-14T23:06:36.1145340Z ##[group]Fetching the repository
+2026-10-14T23:06:36.1147280Z [command]/opt/homebrew/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin +64be23dac9baaf6f3d9e84fab7b02c03db6b664e:refs/remotes/pull/68/merge
+2026-10-14T23:06:37.0794600Z From https://github.com/aelomi/aelomi
+2026-10-14T23:06:37.0797700Z  * [new ref]         64be23dac9baaf6f3d9e84fab7b02c03db6b664e -> pull/68/merge
+2026-10-14T23:06:37.0865650Z ##[endgroup]
+2026-10-14T23:06:37.0868290Z ##[group]Determining the checkout info
+2026-10-14T23:06:37.0871000Z ##[endgroup]
+2026-10-14T23:06:37.0872770Z [command]/opt/homebrew/bin/git sparse-checkout disable
+2026-10-14T23:06:37.1208930Z [command]/opt/homebrew/bin/git config --local --unset-all extensions.worktreeConfig
+2026-10-14T23:06:37.1340770Z ##[group]Checking out the ref
+2026-10-14T23:06:37.1342580Z [command]/opt/homebrew/bin/git checkout --progress --force refs/remotes/pull/68/merge
+2026-10-14T23:06:37.2209760Z HEAD is now at 64be23d Merge 0ad6f34dd1b931715e4a086bf3b43e2cde85e582 into 0c5bb572adc87c5f551b59692f842b9b2c5ace3e
+2026-10-14T23:06:37.2247310Z ##[endgroup]
+2026-10-14T23:06:37.2331920Z [command]/opt/homebrew/bin/git log -1 --format=%H
+2026-10-14T23:06:37.2400650Z 64be23dac9baaf6f3d9e84fab7b02c03db6b664e
+2026-10-14T23:06:37.2710450Z ##[group]Run actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+2026-10-14T23:06:37.2711510Z with:
+2026-10-14T23:06:37.2712260Z   node-version-file: .node-version
+2026-10-14T23:06:37.2713090Z   check-latest: false
+2026-10-14T23:06:37.2720140Z   token: ***
+2026-10-14T23:06:37.2720940Z   package-manager-cache: true
+2026-10-14T23:06:37.2721740Z env:
+2026-10-14T23:06:37.2722760Z   E2E_TELEMETRY_DISABLED: 1
+2026-10-14T23:06:37.2723620Z   DO_NOT_TRACK: 1
+2026-10-14T23:06:37.2724340Z ##[endgroup]
+2026-10-14T23:06:37.3856010Z Node version file is not TOML file
+2026-10-14T23:06:37.3856970Z Resolved .node-version as 24
+2026-10-14T23:06:37.3942590Z Found in cache @ /Users/runner/hostedtoolcache/node/24.20.0/arm64
+2026-10-14T23:06:37.5363550Z ##[group]Environment details
+2026-10-14T23:06:38.0207130Z node: v24.20.0
+2026-10-14T23:06:38.0259920Z npm: 11.19.0
+2026-10-14T23:06:38.0288660Z yarn: 1.22.22
+2026-10-14T23:06:38.0289550Z ##[endgroup]
+2026-10-14T23:06:38.0400630Z ##[group]Run pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413
+2026-10-14T23:06:38.0400960Z with:
+2026-10-14T23:06:38.0401130Z   cache: true
+2026-10-14T23:06:38.0401280Z   dest: ~/setup-pnpm
+2026-10-14T23:06:38.0401440Z   run_install: null
+2026-10-14T23:06:38.0401610Z   cache_dependency_path: pnpm-lock.yaml
+2026-10-14T23:06:38.0401850Z   package_json_file: package.json
+2026-10-14T23:06:38.0402040Z   standalone: false
+2026-10-14T23:06:38.0402210Z env:
+2026-10-14T23:06:38.0402360Z   E2E_TELEMETRY_DISABLED: 1
+2026-10-14T23:06:38.0402550Z   DO_NOT_TRACK: 1
+2026-10-14T23:06:38.0402760Z ##[endgroup]
+2026-10-14T23:06:38.2453990Z ##[group]Running self-installer...
+2026-10-14T23:06:39.6030790Z
+2026-10-14T23:06:39.6073830Z added 2 packages, and audited 3 packages in 1s
+2026-10-14T23:06:39.6102390Z
+2026-10-14T23:06:39.6104200Z found 0 vulnerabilities
+2026-10-14T23:06:39.7230340Z Checking for updates...
+2026-10-14T23:06:39.9578540Z Switching pnpm from v12.3.4 to v12.11.2...
+2026-10-14T23:06:41.0972820Z .../global/v11/4bf-18de87f805dbfb10-0    | Progress: resolved 1, reused 0, downloaded 0, added 0
+2026-10-14T23:06:41.1728230Z Downloading @pnpm/exe.darwin-arm64@12.11.2: 0.00 B/20.85 MB
+2026-10-14T23:06:41.3989910Z Packages are cloned from the content-addressable store to the virtual store.
+2026-10-14T23:06:41.3994500Z   Content-addressable store is at: /Users/runner/setup-pnpm/node_modules/.bin/store/v11
+2026-10-14T23:06:41.4010760Z   Virtual store is at:             node_modules/.bin/global/v11/4bf-18de87f805dbfb10-0/node_modules/.pnpm
+2026-10-14T23:06:41.4358120Z .../global/v11/4bf-18de87f805dbfb10-0    | Progress: resolved 2, reused 0, downloaded 2, added 2, done
+2026-10-14T23:06:41.4919040Z Successfully updated pnpm to v12.11.2
+2026-10-14T23:06:41.4935760Z ##[endgroup]
+2026-10-14T23:06:41.4936170Z Installation Completed!
+2026-10-14T23:06:41.4941420Z ##[group]Restoring cache...
+2026-10-14T23:06:41.4969340Z [command]/Users/runner/setup-pnpm/node_modules/.bin/bin/pnpm store path --silent
+2026-10-14T23:06:41.5239920Z /Users/runner/setup-pnpm/node_modules/.bin/store/v11
+2026-10-14T23:06:41.7085180Z Cache hit for: pnpm-cache-macOS-arm64-3bb176a720971a6ec5b2ea79dc0080247970779862e65f722d5ab7a295247736
+2026-10-14T23:06:42.8870320Z Received 58720256 of 204062597 (28.8%), 55.9 MBs/sec
+2026-10-14T23:06:43.8886040Z Received 163577856 of 204062597 (80.2%), 77.8 MBs/sec
+2026-10-14T23:06:44.2124010Z Received 204062597 of 204062597 (100.0%), 84.0 MBs/sec
+2026-10-14T23:06:44.2204060Z Cache Size: ~195 MB (204062597 B)
+2026-10-14T23:06:44.2206770Z [command]/opt/homebrew/bin/gtar -xf /Users/runner/work/_temp/b2dde5ad-ff4f-46a2-b30a-91d3fd68b5c3/cache.tzst -P -C /Users/runner/work/aelomi/aelomi --delay-directory-restore --use-compress-program unzstd
+2026-10-14T23:06:50.7882590Z Cache restored successfully
+2026-10-14T23:06:50.7945270Z Cache restored from key: pnpm-cache-macOS-arm64-3bb176a720971a6ec5b2ea79dc0080247970779862e65f722d5ab7a295247736
+2026-10-14T23:06:50.7949520Z ##[endgroup]
+2026-10-14T23:06:50.8378960Z ##[group]Run pnpm install --frozen-lockfile
+2026-10-14T23:06:50.8379570Z pnpm install --frozen-lockfile
+2026-10-14T23:06:50.8998180Z shell: /bin/bash -e {0}
+2026-10-14T23:06:50.8998450Z env:
+2026-10-14T23:06:50.8998680Z   E2E_TELEMETRY_DISABLED: 1
+2026-10-14T23:06:50.8999000Z   DO_NOT_TRACK: 1
+2026-10-14T23:06:50.8999300Z   PNPM_HOME: /Users/runner/setup-pnpm/node_modules/.bin
+2026-10-14T23:06:50.8999630Z ##[endgroup]
+2026-10-14T23:06:51.2155930Z ? Verifying lockfile against supply-chain policies (288 entries)...
+2026-10-14T23:06:51.4120690Z Packages are cloned from the content-addressable store to the virtual store.
+2026-10-14T23:06:51.4160190Z   Content-addressable store is at: /Users/runner/setup-pnpm/node_modules/.bin/store/v11
+2026-10-14T23:06:51.4236850Z   Virtual store is at:             node_modules/.pnpm
+2026-10-14T23:06:52.7306990Z ✓ Lockfile passes supply-chain policies (288 entries in 1.5s)
+2026-10-14T23:06:52.7325380Z Lockfile is up to date, resolution step is skipped
+2026-10-14T23:06:52.7367690Z Packages: +171
+2026-10-14T23:06:52.7381140Z ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+2026-10-14T23:06:52.7888500Z Progress: resolved 171, reused 171, downloaded 0, added 171, done
+2026-10-14T23:06:52.8424540Z Agent skills awaiting approval: e2e.
+2026-10-14T23:06:52.8426330Z Run "pnpm approve" to review them.
+2026-10-14T23:06:52.8447800Z
+2026-10-14T23:06:52.8448670Z dependencies:
+2026-10-14T23:06:52.8452240Z + @base-ui/react 1.9.0
+2026-10-14T23:06:52.8454110Z + @blocknote/core 0.55.0
+2026-10-14T23:06:52.8454710Z + @tanstack/react-router 1.170.41
+2026-10-14T23:06:52.8455090Z + @tanstack/react-virtual 3.14.13
+2026-10-14T23:06:52.8455410Z + @tauri-apps/api 2.12.2
+2026-10-14T23:06:52.8455820Z + react 19.3.0
+2026-10-14T23:06:52.8456160Z + react-dom 19.3.0
+2026-10-14T23:06:52.8456530Z + y-prosemirror 1.3.7
+2026-10-14T23:06:52.8456880Z + yjs 13.6.33
+2026-10-14T23:06:52.8457100Z + zustand 5.0.15
+2026-10-14T23:06:52.8457350Z
+2026-10-14T23:06:52.8457580Z devDependencies:
+2026-10-14T23:06:52.8461150Z + @biomejs/biome 2.5.15
+2026-10-14T23:06:52.8461490Z + @e2e-dev/web 0.14.0
+2026-10-14T23:06:52.8461870Z + @playwright/test 1.63.0
+2026-10-14T23:06:52.8462260Z + @tailwindcss/vite 4.3.3
+2026-10-14T23:06:52.8462590Z + @tauri-apps/cli 2.12.1
+2026-10-14T23:06:52.8463000Z + @types/node 26.6.5
+2026-10-14T23:06:52.8463380Z + @types/react 19.3.0
+2026-10-14T23:06:52.8463820Z + @types/react-dom 19.3.0
+2026-10-14T23:06:52.8464180Z + @vitejs/plugin-react 6.1.2
+2026-10-14T23:06:52.8464500Z + e2e 0.19.0
+2026-10-14T23:06:52.8464740Z + happy-dom 20.14.6
+2026-10-14T23:06:52.8477520Z + prosemirror-model 1.25.12
+2026-10-14T23:06:52.8478060Z + prosemirror-state 1.4.4
+2026-10-14T23:06:52.8491520Z + prosemirror-view 1.42.6
+2026-10-14T23:06:52.8492150Z + tailwindcss 4.3.3
+2026-10-14T23:06:52.8492740Z + typescript 7.0.2
+2026-10-14T23:06:52.8492970Z + vite 8.3.4
+2026-10-14T23:06:52.8493210Z + vitest 5.0.3
+2026-10-14T23:06:52.8493450Z
+2026-10-14T23:06:52.8493920Z Done in 1.8s using pnpm v12.11.2
+2026-10-14T23:06:52.8574510Z ##[group]Run pnpm test
+2026-10-14T23:06:52.8574790Z pnpm test
+2026-10-14T23:06:52.8608660Z shell: /bin/bash -e {0}
+2026-10-14T23:06:52.8608870Z env:
+2026-10-14T23:06:52.8609160Z   E2E_TELEMETRY_DISABLED: 1
+2026-10-14T23:06:52.8609440Z   DO_NOT_TRACK: 1
+2026-10-14T23:06:52.8609810Z   PNPM_HOME: /Users/runner/setup-pnpm/node_modules/.bin
+2026-10-14T23:06:52.8610130Z ##[endgroup]
+2026-10-14T23:06:52.9173870Z $ vitest run
+2026-10-14T23:06:53.3169450Z
+2026-10-14T23:06:53.3171520Z  RUN  v5.0.3 /Users/runner/work/aelomi/aelomi
+2026-10-14T23:06:53.3172450Z
+2026-10-14T23:06:53.9031620Z  ✓ src/stores/storage-events.test.ts (26 tests) 231ms
+2026-10-14T23:06:54.2173100Z  ✓ src/editor/body-guard.test.ts (8 tests) 32ms
+2026-10-14T23:06:54.8080650Z  ✓ src/editor/quit-drain.test.ts (6 tests) 412ms
+2026-10-14T23:06:55.2979980Z  ✓ src/stores/palette.test.ts (4 tests) 293ms
+2026-10-14T23:06:55.6331370Z  ✓ src/editor/page-sync.test.ts (6 tests) 96ms
+2026-10-14T23:06:57.5132030Z  ✓ fixtures/generator.test.ts (7 tests) 1298ms
+2026-10-14T23:06:57.5161690Z    ✓ search pages form a tree of 10,000 pages with parents before children 468ms
+2026-10-14T23:06:57.5210380Z    ✓ expected query results are active pages that contain the token 555ms
+2026-10-14T23:06:57.7513150Z  ✓ src/ipc/mock-workspace.test.ts (6 tests) 13ms
+2026-10-14T23:07:00.6565840Z  ✓ src/editor/prosemirror-view-patch.test.ts (2 tests) 2567ms
+2026-10-14T23:07:00.6700720Z    ✓ child decoration lookups match the scan on the 5,000-block page 1534ms
+2026-10-14T23:07:00.6805260Z    ✓ child decoration lookups match the scan after edits map the set 923ms
+2026-10-14T23:07:00.7001910Z stderr | src/editor/y-binding-oracle.test.ts > every edit kind with undo and redo matches upstream on a rich body
+2026-10-14T23:07:00.7004070Z TextSelection endpoint not pointing into a node with inline content (blockContainer)
+2026-10-14T23:07:00.7004830Z
+2026-10-14T23:07:01.0216940Z  ✓ src/ipc/mock-body.test.ts (1 test) 35ms
+2026-10-14T23:07:01.2811740Z  ✓ src/stores/index-status.test.ts (5 tests) 62ms
+2026-10-14T23:07:01.4821450Z  ✓ src/editor/body-reader.test.ts (4 tests) 9ms
+2026-10-14T23:07:01.6848200Z  ✓ src/ipc/index-status.test.ts (4 tests) 16ms
+2026-10-14T23:07:05.6004430Z  ✓ scripts/check-all.test.ts (3 tests) 3644ms
+2026-10-14T23:07:05.6007290Z    ✓ the workflow is valid YAML 3638ms
+2026-10-14T23:07:05.8179930Z  ✓ src/ipc/mock-search.test.ts (5 tests) 6ms
+2026-10-14T23:07:05.9966040Z  ✓ src/palette/title-match.test.ts (4 tests) 7ms
+2026-10-14T23:07:06.1883710Z  ✓ src/palette/content.test.ts (3 tests) 3ms
+2026-10-14T23:07:06.3909290Z  ✓ perf/stats.test.ts (3 tests) 11ms
+2026-10-14T23:07:06.8007180Z  ✓ perf/native-process.test.ts (2 tests) 203ms
+2026-10-14T23:07:07.2874180Z  ✓ perf/keystroke.test.ts (4 tests) 9ms
+2026-10-14T23:07:07.4406890Z  ✓ perf/noise.test.ts (5 tests) 2ms
+2026-10-14T23:07:07.6546570Z  ✓ src/perf/fixture-text.test.ts (2 tests) 13ms
+2026-10-14T23:07:07.8344590Z  ✓ src/shortcuts.test.ts (2 tests) 3ms
+2026-10-14T23:07:14.3568520Z  ❯ src/ipc/base64.test.ts (3 tests | 1 failed) 6361ms
+2026-10-14T23:07:14.3571190Z    ✓ matches the standard base64 alphabet and padding 2ms
+2026-10-14T23:07:14.3572480Z    × round-trips random bytes across chunk boundaries 6357ms
+2026-10-14T23:07:14.3573650Z    ✓ rejects text that is not base64 1ms
+2026-10-14T23:07:14.6388980Z  ✓ src/storage-copy.test.ts (5 tests) 3ms
+2026-10-14T23:07:14.9990730Z  ✓ tests/is-local-url.test.ts (11 tests) 3ms
+2026-10-14T23:07:15.2874950Z  ✓ tests/contrast.test.ts (4 tests) 11ms
+2026-10-14T23:07:15.5323110Z  ✓ src/ipc/format-ping.test.ts (1 test) 2ms
+2026-10-14T23:07:26.2166620Z
+2026-10-14T23:07:26.2305440Z <--- Last few GCs --->
+2026-10-14T23:07:26.2438660Z
+2026-10-14T23:07:26.2570100Z [1422:0x138008000]    32076 ms: Mark-Compact (reduce) 2044.6 (2052.9) -> 2043.3 (2048.9) MB, pooled: 0 MB, 295.29 / 0.00 ms  (+ 91.7 ms in 50 steps since start of marking, biggest step 9.7 ms, walltime since start of marking 406 ms) (average mu = 0.364, c[1422:0x138008000]    32826 ms: Mark-Compact 2044.3 (2048.9) -> 2043.8 (2052.6) MB, pooled: 0 MB, 747.79 / 0.00 ms  (average mu = 0.173, current mu = 0.004) allocation failure; scavenge might not succeed
+2026-10-14T23:07:26.2632070Z
+2026-10-14T23:07:26.2634660Z FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap out of memory
+2026-10-14T23:07:26.2636340Z ----- Native stack trace -----
+2026-10-14T23:07:26.2642780Z
+2026-10-14T23:07:26.2646290Z  1: 0x1007fde58 node::OOMErrorHandler(char const*, v8::OOMDetails const&) [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.2649270Z  2: 0x100a7c8e0 v8::internal::V8::FatalProcessOutOfMemory(v8::internal::Isolate*, char const*, v8::OOMDetails const&) [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.2684270Z  3: 0x100cdbd94 v8::internal::Heap::stack() [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.2690260Z  4: 0x100cd9c7c v8::internal::Heap::CollectGarbage(v8::internal::AllocationSpace, v8::internal::GarbageCollectionReason, v8::GCCallbackFlags) [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.2693040Z  5: 0x100cce7a4 v8::internal::HeapAllocator::AllocateRawWithRetryOrFailSlowPath(int, v8::internal::AllocationType, v8::internal::AllocationOrigin, v8::internal::AllocationAlignment) [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.2696270Z  6: 0x100cafe84 v8::internal::Factory::NewFillerObject(int, v8::internal::AllocationAlignment, v8::internal::AllocationType, v8::internal::AllocationOrigin) [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.2705300Z  7: 0x10113f2e8 v8::internal::Runtime_AllocateInYoungGeneration(int, unsigned long*, v8::internal::Isolate*) [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.2738240Z  8: 0x1017a6234 Builtins_CEntry_Return1_ArgvOnStack_NoBuiltinExit [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.2742210Z  9: 0x10176cc60 Builtins_MapConstructor [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.2760160Z 10: 0x101705b8c Builtins_JSBuiltinsConstructStub [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.2764900Z 11: 0x1203fd030
+2026-10-14T23:07:26.2770450Z 12: 0x101705978 Builtins_JSConstructStubGeneric [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.2776260Z 13: 0x120011eb0
+2026-10-14T23:07:26.2784690Z 14: 0x1200d09f0
+2026-10-14T23:07:26.2785150Z 15: 0x1204402d0
+2026-10-14T23:07:26.2791380Z 16: 0x12044859c
+2026-10-14T23:07:26.2791740Z 17: 0x12012f48c
+2026-10-14T23:07:26.2792210Z 18: 0x12044b01c
+2026-10-14T23:07:26.2796670Z 19: 0x1203806e0
+2026-10-14T23:07:26.2797300Z 20: 0x12012f584
+2026-10-14T23:07:26.2797890Z 21: 0x12044b254
+2026-10-14T23:07:26.2798850Z 22: 0x1203806e0
+2026-10-14T23:07:26.2800940Z 23: 0x12012f584
+2026-10-14T23:07:26.2804670Z 24: 0x12044b254
+2026-10-14T23:07:26.2805760Z 25: 0x11ffdbc0c
+2026-10-14T23:07:26.2806530Z 26: 0x11fffc85c
+2026-10-14T23:07:26.2807500Z 27: 0x1203ae498
+2026-10-14T23:07:26.2808300Z 28: 0x11ffd8dc8
+2026-10-14T23:07:26.2809060Z 29: 0x11ffda91c
+2026-10-14T23:07:26.2810150Z 30: 0x12044b01c
+2026-10-14T23:07:26.2811930Z 31: 0x11ffdbc0c
+2026-10-14T23:07:26.2813900Z 32: 0x11fffc85c
+2026-10-14T23:07:26.2816640Z 33: 0x1203ae498
+2026-10-14T23:07:26.2817280Z 34: 0x12005ed20
+2026-10-14T23:07:26.2818250Z 35: 0x120016a38
+2026-10-14T23:07:26.2818950Z 36: 0x12005f968
+2026-10-14T23:07:26.2822680Z 37: 0x1203df19c
+2026-10-14T23:07:26.2823110Z 38: 0x1203a2908
+2026-10-14T23:07:26.2823480Z 39: 0x1203df490
+2026-10-14T23:07:26.2827660Z 40: 0x1203df70c
+2026-10-14T23:07:26.2829630Z 41: 0x1203fe268
+2026-10-14T23:07:26.2928130Z 42: 0x12049ed78
+2026-10-14T23:07:26.2933040Z 43: 0x101705978 Builtins_JSConstructStubGeneric [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.2934960Z 44: 0x12049f488
+2026-10-14T23:07:26.2935570Z 45: 0x11fee7610
+2026-10-14T23:07:26.2938250Z 46: 0x101708bec Builtins_InterpreterEntryTrampoline [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.2947130Z 47: 0x101708bec Builtins_InterpreterEntryTrampoline [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.2948840Z 48: 0x101708bec Builtins_InterpreterEntryTrampoline [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.2950870Z 49: 0x101708bec Builtins_InterpreterEntryTrampoline [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.2955680Z 50: 0x10181b3dc Builtins_PromiseConstructor [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.2958510Z 51: 0x101709550 Builtins_InterpreterPushArgsThenFastConstructFunction [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.2999880Z 52: 0x101899628 Builtins_ConstructHandler [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.3000990Z 53: 0x101708bec Builtins_InterpreterEntryTrampoline [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.3002080Z 54: 0x101708bec Builtins_InterpreterEntryTrampoline [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.3003110Z 55: 0x10181b3dc Builtins_PromiseConstructor [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.3004190Z 56: 0x101709550 Builtins_InterpreterPushArgsThenFastConstructFunction [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.3005130Z 57: 0x101899628 Builtins_ConstructHandler [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.3011290Z 58: 0x101708bec Builtins_InterpreterEntryTrampoline [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.3017530Z 59: 0x101708bec Builtins_InterpreterEntryTrampoline [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.3018640Z 60: 0x101708bec Builtins_InterpreterEntryTrampoline [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.3019140Z 61: 0x120108798
+2026-10-14T23:07:26.3020610Z 62: 0x101708bec Builtins_InterpreterEntryTrampoline [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.3021700Z 63: 0x11ff1e04c
+2026-10-14T23:07:26.3022030Z 64: 0x11ffb27f8
+2026-10-14T23:07:26.3022630Z 65: 0x101708bec Builtins_InterpreterEntryTrampoline [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.3024550Z 66: 0x1017477e8 Builtins_AsyncFunctionAwaitResolveClosure [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.3025570Z 67: 0x10181ce58 Builtins_PromiseFulfillReactionJob [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.3029880Z 68: 0x101736bd0 Builtins_RunMicrotasks [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.3031430Z 69: 0x1017067b0 Builtins_JSRunMicrotasksEntry [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.3032920Z 70: 0x100c1ff70 v8::internal::(anonymous namespace)::Invoke(v8::internal::Isolate*, v8::internal::(anonymous namespace)::InvokeParams const&) [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.3041090Z 71: 0x100c207e4 v8::internal::(anonymous namespace)::InvokeWithTryCatch(v8::internal::Isolate*, v8::internal::(anonymous namespace)::InvokeParams const&) [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.3042680Z 72: 0x100c20920 v8::internal::Execution::TryRunMicrotasks(v8::internal::Isolate*, v8::internal::MicrotaskQueue*) [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.3043880Z 73: 0x100c4f6c4 v8::internal::MicrotaskQueue::RunMicrotasks(v8::internal::Isolate*) [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.3045170Z 74: 0x100c50024 v8::internal::MicrotaskQueue::PerformCheckpoint(v8::Isolate*) [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.3046190Z 75: 0x10170a818 Builtins_CallApiCallbackGeneric [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.3046760Z 76: 0x1200f9f14
+2026-10-14T23:07:26.3047530Z 77: 0x1017068cc Builtins_JSEntryTrampoline [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.3048360Z 78: 0x101706570 Builtins_JSEntry [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.3049590Z 79: 0x100c1ffb8 v8::internal::(anonymous namespace)::Invoke(v8::internal::Isolate*, v8::internal::(anonymous namespace)::InvokeParams const&) [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.3051550Z 80: 0x100c1f91c v8::internal::Execution::Call(v8::internal::Isolate*, v8::internal::DirectHandle<v8::internal::Object>, v8::internal::DirectHandle<v8::internal::Object>, v8::base::Vector<v8::internal::DirectHandle<v8::internal::Object> const>) [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.3053380Z 81: 0x100a942a0 v8::Function::Call(v8::Isolate*, v8::Local<v8::Context>, v8::Local<v8::Value>, int, v8::Local<v8::Value>*) [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.3054360Z 82: 0x1006db180 node::InternalCallbackScope::Close() [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.3055970Z 83: 0x1006db3b0 node::InternalMakeCallback(node::Environment*, v8::Local<v8::Object>, v8::Local<v8::Object>, v8::Local<v8::Function>, int, v8::Local<v8::Value>*, node::async_context, v8::Local<v8::Value>) [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.3057520Z 84: 0x1006f3f80 node::AsyncWrap::MakeCallback(v8::Local<v8::Function>, int, v8::Local<v8::Value>*) [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.3059700Z 85: 0x10095cd84 node::StreamBase::CallJSOnreadMethod(long, v8::Local<v8::ArrayBuffer>, unsigned long, node::StreamBase::StreamBaseJSChecks) [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.3060990Z 86: 0x10095e518 node::EmitToJSStreamListener::OnStreamRead(long, uv_buf_t const&) [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.3062420Z 87: 0x100963de8 node::LibuvStreamWrap::OnUvRead(long, uv_buf_t const*) [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.3063600Z 88: 0x100964518 node::LibuvStreamWrap::ReadStart()::$_1::__invoke(uv_stream_s*, long, uv_buf_t const*) [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.3064480Z 89: 0x1016f2c94 uv__stream_io [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.3065160Z 90: 0x1016fa4c8 uv__io_poll [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.3065910Z 91: 0x1016e66fc uv_run [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.3066750Z 92: 0x1006dc6a8 node::SpinEventLoopInternal(node::Environment*) [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.3067630Z 93: 0x1008590b0 node::NodeMainInstance::Run() [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.3068480Z 94: 0x1007aa538 node::Start(int, char**) [/Users/runner/hostedtoolcache/node/24.20.0/arm64/bin/node]
+2026-10-14T23:07:26.3068970Z 95: 0x180886b98 start [/usr/lib/dyld]
+2026-10-14T23:07:26.3070160Z
+2026-10-14T23:07:26.3092680Z ⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+2026-10-14T23:07:26.3093620Z
+2026-10-14T23:07:26.3094530Z  FAIL  src/ipc/base64.test.ts > round-trips random bytes across chunk boundaries
+2026-10-14T23:07:26.3096860Z Error: Test timed out in 5000ms.
+2026-10-14T23:07:26.3097900Z If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+2026-10-14T23:07:26.3099040Z  ❯ src/ipc/base64.test.ts:11:1
+2026-10-14T23:07:26.3102260Z       9| });
+2026-10-14T23:07:26.3151630Z      10|
+2026-10-14T23:07:26.3171710Z      11| test("round-trips random bytes across chunk boundaries", () => {
+2026-10-14T23:07:26.3183990Z        | ^
+2026-10-14T23:07:26.3184720Z      12|   for (const length of [1, 2, 3, 0x7fff, 0x8000, 0x8001, 1_000_000]) {
+2026-10-14T23:07:26.3185430Z      13|     const bytes = new Uint8Array(length);
+2026-10-14T23:07:26.3185710Z
+2026-10-14T23:07:26.3186090Z ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+2026-10-14T23:07:26.3186370Z
+2026-10-14T23:07:26.3186820Z ⎯⎯⎯⎯⎯⎯ Unhandled Errors ⎯⎯⎯⎯⎯⎯
+2026-10-14T23:07:26.3187250Z
+2026-10-14T23:07:26.3187830Z Vitest caught 1 unhandled error during the test run.
+2026-10-14T23:07:26.3188830Z This might cause false positive tests. Resolve unhandled errors to make sure your tests are not affected.
+2026-10-14T23:07:26.3238560Z
+2026-10-14T23:07:26.3240540Z ⎯⎯⎯⎯⎯⎯ Unhandled Error ⎯⎯⎯⎯⎯⎯⎯
+2026-10-14T23:07:26.3241480Z Error: [vitest-pool]: Worker forks emitted error.
+2026-10-14T23:07:26.3246710Z  ❯ EventEmitter.onTaskError node_modules/.pnpm/vitest@5.0.3_@types+node@26.6.5_happy-dom@20.14.6_vite@8.3.4_@types+node@26.6.5_jiti@2.7.0_/node_modules/vitest/dist/chunks/index.DpLw24bj.js:11532:21
+2026-10-14T23:07:26.3247860Z  ❯ EventEmitter.emit node:events:514:28
+2026-10-14T23:07:26.3249180Z  ❯ ChildProcess.emitUnexpectedExit node_modules/.pnpm/vitest@5.0.3_@types+node@26.6.5_happy-dom@20.14.6_vite@8.3.4_@types+node@26.6.5_jiti@2.7.0_/node_modules/vitest/dist/chunks/index.DpLw24bj.js:11007:22
+2026-10-14T23:07:26.3250320Z  ❯ ChildProcess.emit node:events:514:28
+2026-10-14T23:07:26.3251790Z  ❯ ChildProcess._handle.onexit node:internal/child_process:295:12
+2026-10-14T23:07:26.3252150Z
+2026-10-14T23:07:26.3253520Z Caused by: Error: Worker exited unexpectedly with signal SIGABRT during started state while running test file /Users/runner/work/aelomi/aelomi/src/editor/y-binding-oracle.test.ts
+2026-10-14T23:07:26.3255230Z  ❯ ChildProcess.emitUnexpectedExit node_modules/.pnpm/vitest@5.0.3_@types+node@26.6.5_happy-dom@20.14.6_vite@8.3.4_@types+node@26.6.5_jiti@2.7.0_/node_modules/vitest/dist/chunks/index.DpLw24bj.js:11005:33
+2026-10-14T23:07:26.3265070Z  ❯ ChildProcess.emit node:events:514:28
+2026-10-14T23:07:26.3279040Z  ❯ ChildProcess._handle.onexit node:internal/child_process:295:12
+2026-10-14T23:07:26.3279580Z
+2026-10-14T23:07:26.3280540Z
+2026-10-14T23:07:26.3280920Z ⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+2026-10-14T23:07:26.3281260Z
+2026-10-14T23:07:26.3283170Z  Test Files  1 failed | 26 passed (28)
+2026-10-14T23:07:26.3284130Z       Tests  1 failed | 141 passed (144)
+2026-10-14T23:07:26.3284830Z      Errors  1 error
+2026-10-14T23:07:26.3285700Z    Start at  23:06:53
+2026-10-14T23:07:26.3307520Z    Duration  32.96s (tests 83%, import 9%, transform 4%, environment 2%, worker 1%)
+2026-10-14T23:07:26.3338060Z
+2026-10-14T23:07:26.3340930Z     Isolate  28 workers spawned · ~164ms startup each (spawn + environment, per file)
+2026-10-14T23:07:26.3342240Z              at least ~2.14s faster with isolate: false — reuses workers across files instead of one per file
+2026-10-14T23:07:26.3342740Z
+2026-10-14T23:07:26.3354800Z
+2026-10-14T23:07:26.3471020Z ##[error]Error: Test timed out in 5000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ src/ipc/base64.test.ts:11:1
+
+
+2026-10-14T23:07:26.4262710Z [ELIFECYCLE] Test failed. See above for more details.
+2026-10-14T23:07:26.4313630Z ##[error]Process completed with exit code 1.
+2026-10-14T23:07:26.4678850Z Post job cleanup.
+2026-10-14T23:07:27.2035690Z Pruning is unnecessary.
+2026-10-14T23:07:27.2130670Z Cache hit occurred on the primary key pnpm-cache-macOS-arm64-3bb176a720971a6ec5b2ea79dc0080247970779862e65f722d5ab7a295247736, not saving cache.
+2026-10-14T23:07:27.2338270Z Post job cleanup.
+2026-10-14T23:07:27.3938570Z [command]/opt/homebrew/bin/git version
+2026-10-14T23:07:27.5472580Z git version 2.55.0
+2026-10-14T23:07:27.5492660Z Copying '/Users/runner/.gitconfig' to '/Users/runner/work/_temp/b9fdd198-b831-4dc0-a069-a3cba83a3042/.gitconfig'
+2026-10-14T23:07:27.5613870Z Temporarily overriding HOME='/Users/runner/work/_temp/b9fdd198-b831-4dc0-a069-a3cba83a3042' before making global git config changes
+2026-10-14T23:07:27.5614940Z Adding repository directory to the temporary git global config as a safe directory
+2026-10-14T23:07:27.5619320Z [command]/opt/homebrew/bin/git config --global --add safe.directory /Users/runner/work/aelomi/aelomi
+2026-10-14T23:07:27.5993630Z Removing SSH command configuration
+2026-10-14T23:07:27.5999830Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-10-14T23:07:27.6074400Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-10-14T23:07:27.8413350Z Removing HTTP extra header
+2026-10-14T23:07:27.8417950Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-10-14T23:07:27.8485820Z [command]/opt/homebrew/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-10-14T23:07:27.9326850Z Removing includeIf entries pointing to credentials config files
+2026-10-14T23:07:27.9330100Z [command]/opt/homebrew/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-10-14T23:07:27.9415480Z includeif.gitdir:/Users/runner/work/aelomi/aelomi/.git.path
+2026-10-14T23:07:27.9416170Z includeif.gitdir:/Users/runner/work/aelomi/aelomi/.git/worktrees/*.path
+2026-10-14T23:07:27.9416670Z includeif.gitdir:/github/workspace/.git.path
+2026-10-14T23:07:27.9417140Z includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-10-14T23:07:27.9420800Z [command]/opt/homebrew/bin/git config --local --get-all includeif.gitdir:/Users/runner/work/aelomi/aelomi/.git.path
+2026-10-14T23:07:27.9490690Z /Users/runner/work/_temp/git-credentials-ffd2bd93-b341-4d1e-a17d-2aa6657258ff.config
+2026-10-14T23:07:27.9500870Z [command]/opt/homebrew/bin/git config --local --unset includeif.gitdir:/Users/runner/work/aelomi/aelomi/.git.path \/Users\/runner\/work\/_temp\/git\-credentials\-ffd2bd93\-b341\-4d1e\-a17d\-2aa6657258ff\.config
+2026-10-14T23:07:27.9743970Z [command]/opt/homebrew/bin/git config --local --get-all includeif.gitdir:/Users/runner/work/aelomi/aelomi/.git/worktrees/*.path
+2026-10-14T23:07:27.9809650Z /Users/runner/work/_temp/git-credentials-ffd2bd93-b341-4d1e-a17d-2aa6657258ff.config
+2026-10-14T23:07:27.9815910Z [command]/opt/homebrew/bin/git config --local --unset includeif.gitdir:/Users/runner/work/aelomi/aelomi/.git/worktrees/*.path \/Users\/runner\/work\/_temp\/git\-credentials\-ffd2bd93\-b341\-4d1e\-a17d\-2aa6657258ff\.config
+2026-10-14T23:07:27.9960170Z [command]/opt/homebrew/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git.path
+2026-10-14T23:07:28.0013190Z /github/runner_temp/git-credentials-ffd2bd93-b341-4d1e-a17d-2aa6657258ff.config
+2026-10-14T23:07:28.0019470Z [command]/opt/homebrew/bin/git config --local --unset includeif.gitdir:/github/workspace/.git.path \/github\/runner_temp\/git\-credentials\-ffd2bd93\-b341\-4d1e\-a17d\-2aa6657258ff\.config
+2026-10-14T23:07:28.0082770Z [command]/opt/homebrew/bin/git config --local --get-all includeif.gitdir:/github/workspace/.git/worktrees/*.path
+2026-10-14T23:07:28.0145900Z /github/runner_temp/git-credentials-ffd2bd93-b341-4d1e-a17d-2aa6657258ff.config
+2026-10-14T23:07:28.0152000Z [command]/opt/homebrew/bin/git config --local --unset includeif.gitdir:/github/workspace/.git/worktrees/*.path \/github\/runner_temp\/git\-credentials\-ffd2bd93\-b341\-4d1e\-a17d\-2aa6657258ff\.config
+2026-10-14T23:07:28.0283750Z [command]/opt/homebrew/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-10-14T23:07:28.1061910Z Removing credentials config '/Users/runner/work/_temp/git-credentials-ffd2bd93-b341-4d1e-a17d-2aa6657258ff.config'
+2026-10-14T23:07:28.1170050Z Cleaning up orphan processes

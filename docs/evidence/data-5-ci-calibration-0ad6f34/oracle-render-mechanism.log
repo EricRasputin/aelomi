@@ -1,0 +1,34 @@
+
+ RUN  v5.0.3 <worktree>
+
+stdout | src/editor/zz-oom-probe.test.ts > retain mechanism
+PROBE-T start "retain mechanism" heap=31
+
+stdout | src/editor/zz-oom-probe.test.ts > retain mechanism
+PROBE-M
+toDOM keys=dom,destroy destroy=function
+rich toDOM: perIterKB=922 liveSubscriptionsAdded=80
+rich nodeView: perIterKB=0 liveSubscriptionsAdded=0
+real toDOM: perIterKB=819 liveSubscriptionsAdded=200
+real nodeView: perIterKB=0 liveSubscriptionsAdded=0
+
+ ↓ src/editor/zz-oom-probe.test.ts > the rebuilt upstream source is the pinned tarball's file
+ ↓ src/editor/zz-oom-probe.test.ts > audit repro: type over a cross-block range, undo, redo, type keeps upstream's caret
+ ↓ src/editor/zz-oom-probe.test.ts > audit repro: undoing a deleted image selects the image again, not the divider
+ ↓ src/editor/zz-oom-probe.test.ts > every edit kind with undo and redo matches upstream on a rich body
+ ↓ src/editor/zz-oom-probe.test.ts > every edit kind with undo and redo matches upstream on the real BlockNote body
+ ↓ src/editor/zz-oom-probe.test.ts > seeded random sessions match upstream step by step
+ ↓ src/editor/zz-oom-probe.test.ts > the 5,000-block page matches upstream at its first, nested, middle, and last blocks
+ ↓ src/editor/zz-oom-probe.test.ts > on synced states every position encodes as upstream encodes it
+ ↓ src/editor/zz-oom-probe.test.ts > retain bisect
+ ↓ src/editor/zz-oom-probe.test.ts > retain bisect open
+ ↓ src/editor/zz-oom-probe.test.ts > retain bisect blocks
+stdout | src/editor/zz-oom-probe.test.ts > retain mechanism
+PROBE-T end "retain mechanism" heap=98 afterYield=98 afterBodyClear=98 domChildren=0
+
+ ✓ src/editor/zz-oom-probe.test.ts > retain mechanism 727ms
+
+ Test Files  1 passed (1)
+      Tests  1 passed | 11 skipped (12)
+   Start at  04:45:34
+   Duration  1.16s (tests 71%, environment 13%, import 9%, transform 7%)
