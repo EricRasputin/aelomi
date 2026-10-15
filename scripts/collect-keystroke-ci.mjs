@@ -22,6 +22,15 @@ async function gh(path, json = true) {
 }
 const number = (match, index = 1) => (match ? Number(match[index]) : null);
 function measurements(log) {
+  const summaryErrors = new Set();
+  function requireSummary(name, present, values) {
+    if (!present) return undefined;
+    if (Object.values(values).some((value) => value === null)) {
+      summaryErrors.add(name);
+      return undefined;
+    }
+    return values;
+  }
   const lines = stripVTControlCharacters(log).split("\n");
   const waits = [...log.matchAll(/t\+(\d+)s load1 ([\d.]+)/g)];
   const first = waits.at(0);
@@ -32,21 +41,60 @@ function measurements(log) {
       /\b(editor-empty|editor-page-5000-blocks|empty|page-5000-blocks|layout-delay): full key-to-paint p95/,
     );
     if (surface) {
-      const block = lines.slice(i, i + 12).join("\n");
-      typing[surface[1]] = {
+      const end = lines.findIndex(
+        (next, j) =>
+          j > i && /(?:\[perf\].*›|: full key-to-paint p95)/.test(next),
+      );
+      const block = lines.slice(i, end < 0 ? undefined : end).join("\n");
+      typing[surface[1]] = requireSummary(surface[1], true, {
         p95: number(block.match(/app-owned p95 ([\d.]+) ms/)),
-        samples: number(block.match(/over (\d+) samples from 3 loads/)),
+        samples: number(block.match(/over (\d+) samples from \d+ loads/)),
         load1: number(block.match(/load average ([\d.]+)/)),
-      };
+      });
     }
   }
+  for (const match of log.matchAll(
+    /keystroke-to-paint on the ([\w-]+) surface/g,
+  ))
+    if (!typing[match[1]]) summaryErrors.add(match[1]);
   const paletteLine =
     lines.find((line) => line.includes("palette results p50")) ?? "";
   const scrollIndex = lines.findIndex((line) =>
     /scroll frames \d+, rendering work/.test(line),
   );
+  const scrollEnd = lines.findIndex(
+    (line, i) => i > scrollIndex && /\[perf\].*›/.test(line),
+  );
   const scroll =
-    scrollIndex < 0 ? "" : lines.slice(scrollIndex, scrollIndex + 6).join("\n");
+    scrollIndex < 0
+      ? ""
+      : lines
+          .slice(scrollIndex, scrollEnd < 0 ? undefined : scrollEnd)
+          .join("\n");
+  const scrollValues = requireSummary(
+    "scroll",
+    /scroll frames|the 5,000-block editor page scrolls smoothly/.test(log),
+    {
+      p95: number(scroll.match(/rendering work p50 [\d.]+ ms p95 ([\d.]+) ms/)),
+      workMax: number(scroll.match(/\) max ([\d.]+) ms/)),
+      longest: number(scroll.match(/longest interval ([\d.]+) ms/)),
+      frames: number(scroll.match(/scroll frames (\d+)/)),
+      load1: number(scroll.match(/load average ([\d.]+)/)),
+      ...(/intervals over 33 ms/.test(scroll)
+        ? { over33: number(scroll.match(/intervals over 33 ms (\d+)/)) }
+        : {}),
+    },
+  );
+  const palette = requireSummary(
+    "palette",
+    /palette results p50|the palette shows results within one frame/.test(log),
+    {
+      p50: number(paletteLine.match(/p50 ([\d.]+) ms/)),
+      p95: number(paletteLine.match(/p95 ([\d.]+) ms/)),
+      keys: number(paletteLine.match(/over (\d+) keys/)),
+      load1: number(paletteLine.match(/load average ([\d.]+)/)),
+    },
+  );
   return {
     checkout:
       log.match(/git log -1 --format=%H\r?\n\S+ ([0-9a-f]{40})/)?.[1] ?? null,
@@ -59,23 +107,17 @@ function measurements(log) {
             seconds: number(last),
           }
         : null,
-    palette: {
-      p95: number(paletteLine.match(/p95 ([\d.]+) ms/)),
-      keys: number(paletteLine.match(/over (\d+) keys/)),
-      load1: number(paletteLine.match(/load average ([\d.]+)/)),
-    },
-    scroll: {
-      p95: number(scroll.match(/rendering work p50 [\d.]+ ms p95 ([\d.]+) ms/)),
-      longest: number(scroll.match(/longest interval ([\d.]+) ms/)),
-      frames: number(scroll.match(/scroll frames (\d+)/)),
+    palette,
+    scroll: scrollValues && {
+      ...scrollValues,
       previousWork: number(scroll.match(/previous frame's work ([\d.-]+) ms/)),
       betweenFrames: number(
         scroll.match(/then ([\d.-]+) ms to the next stamp/),
       ),
       over33: number(scroll.match(/intervals over 33 ms (\d+)/)),
-      load1: number(scroll.match(/load average ([\d.]+)/)),
     },
     typing,
+    ...(summaryErrors.size ? { summaryErrors: [...summaryErrors] } : {}),
     passed: number(log.match(/\b(\d+) passed \(/)),
     failed: number(log.match(/\b(\d+) failed\b/)),
   };
@@ -121,7 +163,7 @@ await Promise.all(
       if (jobs.length === 0)
         rows.push({ ...base, job: null, status: "no-keystroke-job" });
       for (const job of jobs) {
-        if (job.started_at > until) continue;
+        if (Date.parse(job.started_at) > Date.parse(until)) continue;
         const row = {
           ...base,
           job: job.id,
@@ -140,7 +182,11 @@ await Promise.all(
           );
           rows.push({ ...row, log: "read", ...measurements(log) });
         } catch (error) {
-          if (!/HTTP (404|410)/.test(error.message)) throw error;
+          if (!/HTTP (404|410)/.test(error.message))
+            throw new Error(
+              `Run ${run.id} attempt ${attempt}, job ${job.id}: ${error.message}`,
+              { cause: error },
+            );
           rows.push({ ...row, log: "unavailable" });
         }
       }
@@ -148,10 +194,24 @@ await Promise.all(
   }),
 );
 rows.sort((a, b) => a.run - b.run || a.attempt - b.attempt);
+for (const row of rows)
+  for (const name of row.summaryErrors ?? []) {
+    console.error(
+      `Run ${row.run} attempt ${row.attempt}, job ${row.job}: Unparseable ${name} perf summary`,
+    );
+    process.exitCode = 1;
+  }
+const seen = new Map();
+for (const row of rows) {
+  if (!row.job) continue;
+  const key = `${row.run}:${Date.parse(row.started)}`;
+  if (seen.has(key)) row.carriedFrom = seen.get(key);
+  else seen.set(key, row.attempt);
+}
 writeFileSync(
   output,
   `${JSON.stringify({ repository, from, until, runs: runs.length, rows }, null, 2)}\n`,
 );
 console.log(
-  `${runs.length} runs, ${rows.length} attempts written to ${output}`,
+  `${runs.length} runs, ${rows.length} attempts, ${rows.filter((row) => row.carriedFrom !== undefined).length} carried rows written to ${output}`,
 );

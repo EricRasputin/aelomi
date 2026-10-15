@@ -27,10 +27,12 @@ export type Budgets = {
   };
   palette: {
     p95Ms: Budget;
+    hostedAppOwnedP50Ms: Budget;
     hostedAppOwnedP95Ms: Budget;
   };
   scroll: {
     p95FrameMs: Budget;
+    hostedWorkP95Ms: Budget;
     maxFrameMs: Budget;
     hostedMaxFrameMs: Budget;
   };
@@ -107,6 +109,11 @@ export function readBudgets(): Budgets {
     },
     palette: {
       p95Ms: budget(palette, "palette.p95Ms", isNumber),
+      hostedAppOwnedP50Ms: budget(
+        palette,
+        "palette.hostedAppOwnedP50Ms",
+        isNumber,
+      ),
       hostedAppOwnedP95Ms: budget(
         palette,
         "palette.hostedAppOwnedP95Ms",
@@ -115,6 +122,7 @@ export function readBudgets(): Budgets {
     },
     scroll: {
       p95FrameMs: budget(scroll, "scroll.p95FrameMs", isNumber),
+      hostedWorkP95Ms: budget(scroll, "scroll.hostedWorkP95Ms", isNumber),
       maxFrameMs: budget(scroll, "scroll.maxFrameMs", isNumber),
       hostedMaxFrameMs: budget(scroll, "scroll.hostedMaxFrameMs", isNumber),
     },

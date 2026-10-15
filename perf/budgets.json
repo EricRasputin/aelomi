@@ -28,7 +28,7 @@
     },
     "hostedAppOwnedP95Ms": {
       "value": 45,
-      "why": "Provisional hosted macos-15 calibration from the unchanged 0ad6f34 head: the real 5,000-block editor measured 33 ms pooled app-owned p95 across three fresh loads, whose p95 values were 31, 30 and 41 ms. This ceiling rounds the worst measured load up by 4 ms. The second hosted attempt failed its 5-second fixture setup before collecting this surface, so it supplies no second typing series. Both jobs were noisy on three-core hosts. docs/evidence/data-5-ci-calibration-0ad6f34 summarizes the limits and links the full logs at the commit before the evidence trim. The local ceiling stays 19 ms and the product goal stays 16 ms. The clock adds key-to-input work and rendering work from the rAF timestamp to the following MessageChannel task. It excludes initial layout before that timestamp, scheduler and IPC delay, frame wait, and presentation. Source delivery stays inside input. Issue #72 tracks broader hosted calibration and complete presentation timing."
+      "why": "Provisional hosted macos-15 typing gate from unchanged 0ad6f34. Three fresh large-editor loads measured app-owned p95 of 31, 30 and 41 ms, pooled 33 ms; 45 ms rounds the worst load up by 4 ms. docs/evidence/data-5-ci-calibration-0ad6f34 records that method and the second attempt's fixture timeout. Recollection of CI runs created 2026-10-13T00:00:00Z through 2026-10-15T21:30:00Z across main and every PR branch, counting carried jobs once, spans 13 to 56 ms, median 34 ms. One of 44 large-editor jobs exceeds 45 ms, previously one of 43, about 2.3%. Job 116394063809 measured 56 ms on unchanged c4d2a7f; #86 later reported 47 ms outside the window. Keep 45 ms because ceil(1.5 * 56) = 84 ms would weaken sensitivity. At the median, an increase above 11 ms fails; the first whole-ms failure is 46 ms, +12 ms or 1.35x. docs/evidence/hosted-keystroke-calibration/README.md records the remaining false-failure risk; issue #87 tracks typing-specific calibration. The clock adds key-to-input and post-rAF rendering work, excluding layout before the stamp, scheduler and IPC delay, frame wait and presentation. Source delivery stays inside input. Local stays 19 ms with the 16 ms goal recorded; issue #72 retains complete presentation timing."
     },
     "pageLoads": {
       "value": 3,
@@ -52,15 +52,23 @@
       "value": 16,
       "why": "SPEC section 5: a query keystroke to the first frame showing current results over the 10,000-page mock fixture, one frame at 60 Hz."
     },
+    "hostedAppOwnedP50Ms": {
+      "value": 33,
+      "why": "Hosted macos-15 palette p50 gate from CI runs created 2026-10-13T00:00:00Z through 2026-10-15T21:30:00Z across main and every PR branch, with carried jobs counted once. The 40 measured jobs ranged 12 to 22 ms, median 18 ms. ceil(1.5 * worst observed 22) = 33 ms. At that median, an increase above 15 ms fails; the first whole-ms failure is 34 ms, +16 ms or 1.89x. Palette p95 remains an 87 ms backstop because p50 cannot catch regressions confined to a few keys. docs/evidence/hosted-keystroke-calibration/README.md records the table and replay. The local p95 ceiling stays 16 ms. This recorder ends at the settled-frame task, not compositor presentation."
+    },
     "hostedAppOwnedP95Ms": {
       "value": 87,
-      "why": "Hosted macos-15 calibration from CI runs created 2026-10-13 through 2026-10-15T21:30Z, across main and every PR branch. Palette p95 ranged from 25 to 58 ms over 55 keys per measured job. The ceiling is ceil(1.5 * 58) = 87 ms. Identical 838f056 heads measured 29, 58 and 25 ms, so the former 40 ms ceiling flips without a code change. docs/evidence/hosted-keystroke-calibration/README.md records every attempt, deduplicates carried-forward jobs, and separates load associations from code effects. The local ceiling remains 16 ms. The clock is keydown to the recorder's settled-frame task, not compositor presentation. Issue #72 retains the presentation-timing gap."
+      "why": "Hosted macos-15 palette p95 backstop from CI runs created 2026-10-13T00:00:00Z through 2026-10-15T21:30:00Z across main and every PR branch, with carried jobs counted once. The 40 measured jobs ranged 25 to 58 ms, median 32 ms. ceil(1.5 * worst observed 58) = 87 ms. At that median, an increase above 55 ms fails; the first whole-ms failure is 88 ms, +56 ms or 2.75x. The separate 33 ms p50 gate detects steadier shifts. Identical 838f056 heads measured p95 29, 58 and 25 ms, unexplained hosted run-to-run variance. docs/evidence/hosted-keystroke-calibration/README.md records signed load associations without a causal load claim. The local ceiling stays 16 ms. The clock excludes compositor presentation; issue #72 retains that gap."
     }
   },
   "scroll": {
     "p95FrameMs": {
       "value": 16.7,
-      "why": "SPEC section 3 requires per-frame rendering work p95 under 16.7 ms. The untraced WebKit recorder measures its rAF timestamp to the following MessageChannel task. Whole-millisecond stamps must read at most 16 ms; the comparison is strict. Local mode gates this value and the unchanged 50 ms raw maximum. Hosted CI reports work p95 without gating (issue #72) and gates hostedMaxFrameMs instead. In the 2026-10-13 through 2026-10-15T21:30Z collection, hosted work p95 ranged from 9 to 23 ms, including 12 to 23 ms on main. docs/evidence/hosted-keystroke-calibration/README.md records the data and its load associations. This clock excludes pending layout before the rAF timestamp, scheduler and IPC delay, and presentation."
+      "why": "SPEC section 3 requires per-frame rendering work p95 under 16.7 ms. The untraced WebKit recorder measures its rAF timestamp to the following MessageChannel task. Whole-millisecond stamps must read at most 16 ms; the comparison is strict. Local mode gates this value and the unchanged 50 ms raw maximum. Hosted CI gates hostedWorkP95Ms and hostedMaxFrameMs. This clock excludes pending layout before the rAF timestamp, scheduler and IPC delay, and presentation."
+    },
+    "hostedWorkP95Ms": {
+      "value": 35,
+      "why": "Hosted macos-15 scroll rendering-work p95 gate from CI runs created 2026-10-13T00:00:00Z through 2026-10-15T21:30:00Z across main and every PR branch, with carried jobs counted once. The 40 measured jobs ranged 9 to 23 ms, median 15 ms. ceil(1.5 * worst observed 23) = 35 ms. At that median, an increase above 20 ms fails; the first whole-ms failure is 36 ms, +21 ms or 2.40x. docs/evidence/hosted-keystroke-calibration/README.md records the table and replay. The 83 ms rAF interval maximum is a backstop. Work max is information, so isolated long work can still pass. The local work-p95 gate stays strictly below 16.7 ms and the local interval maximum stays 50 ms. This clock omits work before the rAF timestamp and presentation."
     },
     "maxFrameMs": {
       "value": 50,
@@ -68,7 +76,7 @@
     },
     "hostedMaxFrameMs": {
       "value": 83,
-      "why": "Hosted macos-15 calibration from CI runs created 2026-10-13 through 2026-10-15T21:30Z, across main and every PR branch. The longest raw scroll interval ranged from 20 to 55 ms. The ceiling is ceil(1.5 * 55) = 83 ms. Identical 838f056 heads measured 51, 28 and 55 ms, while main ranged from 22 to 44 ms. docs/evidence/hosted-keystroke-calibration/README.md compares repeated checkouts and load. Keep a maximum because existing logs do not count over-50 ms frames, so they cannot calibrate an allowance for a bounded number of slow frames. The local maximum stays 50 ms and local rendering-work p95 stays below 16.7 ms. This hosted tolerance is a regression gate, not a SPEC pass or a native presentation claim."
+      "why": "Hosted macos-15 rAF timestamp-spacing backstop from CI runs created 2026-10-13T00:00:00Z through 2026-10-15T21:30:00Z across main and every PR branch, with carried jobs counted once. The 40 measured jobs ranged 20 to 55 ms, median 33.5 ms. ceil(1.5 * worst observed 55) = 83 ms. At that median, an increase above 49.5 ms fails; the first whole-ms failure is 84 ms, +50.5 ms or 2.51x. The separate 35 ms work-p95 gate detects steadier shifts. This maximum bounds timestamp spacing, not all work or presentation stalls. Job 116673405096 measured work max 115 ms with a 55 ms interval and would pass these gates. docs/evidence/hosted-keystroke-calibration/README.md links that job and records the replay. The local interval maximum stays 50 ms. Existing logs count over-33 ms intervals but cannot calibrate an exact over-50 ms allowance."
     }
   },
   "search": {

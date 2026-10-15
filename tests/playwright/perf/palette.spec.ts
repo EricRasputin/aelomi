@@ -105,6 +105,7 @@ test("CMD-4 and CMD-5 the palette shows results within one frame of each keystro
     "did-it-happen guard: one settled frame per key",
   ).toHaveLength(keys);
   const times = samples.map((s) => s.shown - s.down);
+  const p50 = median(times);
   const p95 = percentile95(times);
   const slowest = [...samples]
     .sort((a, b) => b.shown - b.down - (a.shown - a.down))
@@ -112,13 +113,18 @@ test("CMD-4 and CMD-5 the palette shows results within one frame of each keystro
     .map((s) => `${JSON.stringify(s.query)} ${s.shown - s.down} ms`)
     .join(", ");
   const summary = withNoise(
-    `palette results p50 ${median(times)} ms p95 ${p95} ms (${mode} budget ${budget} ms) over ${times.length} keys, slowest ${slowest}, load average ${loadavg()
+    `palette results p50 ${p50} ms p95 ${p95} ms (${mode} p95 budget ${budget} ms${mode === "ci" ? `, p50 budget ${budgets.hostedAppOwnedP50Ms.value} ms` : ""}) over ${times.length} keys, slowest ${slowest}, load average ${loadavg()
       .map((x) => x.toFixed(2))
       .join(" ")}`,
     noise,
   );
   console.log(summary);
   testInfo.annotations.push({ type: "palette", description: summary });
+  if (mode === "ci")
+    expect(
+      p50,
+      withNoise("CMD palette results p50 (ci mode)", noise),
+    ).toBeLessThanOrEqual(budgets.hostedAppOwnedP50Ms.value);
   expect(
     p95,
     withNoise(`CMD palette results p95 (${mode} mode)`, noise),
