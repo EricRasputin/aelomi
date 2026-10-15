@@ -35,6 +35,18 @@ export default function SettingsProbe() {
     setBusy(false);
   }
 
+  async function rename() {
+    const result = await commands.pageRename(
+      "getting-started",
+      "Settings and rename quit proof",
+    );
+    if (result.status === "error") setError(JSON.stringify(result.error));
+    else
+      await commands.devProbeLog(
+        "page rename accepted title=Settings and rename quit proof",
+      );
+  }
+
   return (
     <section className="max-w-2xl space-y-4" data-probe={marker}>
       <h1>Settings probe</h1>
@@ -47,6 +59,9 @@ export default function SettingsProbe() {
         onClick={() => void update()}
       >
         Write session settings
+      </button>
+      <button type="button" onClick={() => void rename()}>
+        Rename Getting started
       </button>
     </section>
   );

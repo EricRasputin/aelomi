@@ -60,6 +60,7 @@ test("create rename and subtree trash refresh the source tree while the index re
     Failing: {
       reason: { Io: "mock write failure" },
       pending_docs: ["workspace"],
+      pending_settings: false,
     },
   });
   const reply = await commands.pageTrash(parent);

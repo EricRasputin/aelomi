@@ -8,6 +8,7 @@ A fresh data folder opens one page titled **Getting started** with three editabl
 - `seed-editable` accepts typing in **Page body**.
 - `seed-deferred` keeps the app open without a first page when its first body write fails, with the normal save-failure banner and retry. Corrupt workspace history never creates a first page.
 - `record-quit-retry` keeps a rename delivered during a second quit drain after the first quit was refused.
+- `record-settings-quit` keeps a rename and a settings probe write issued together before ⌘Q after relaunch.
 - `record-quit` keeps a page rename issued just before ⌘Q after relaunch.
 - `seed-relaunch` opens the same page with the typed text after a normal quit and relaunch.
 
@@ -29,6 +30,7 @@ Preconditions:
 - **Relaunch.** Quit with `$S/app.sh keys "$RUN" q command`. Require the quit log to show `pending=[]`, then clean up the run. Launch again with `AELOMI_DATA_DIR="$RUN/data" $S/app.sh launch dev`. Run doctor and capture `relaunch`. Expect the same title, instructions, and typed text.
 - **Rename and quit.** In a dev build, open **Storage probe**, press **Rename Getting started**, then immediately send `$S/app.sh keys "$RUN" q command`. Relaunch on that data folder. Expect **Quit rename proof**, the same page ID, and the typed body. The quit log must show `pending=[]`.
 - **Retried quit.** On the dev Storage probe, press **Rename during second quit**. Make the isolated `data/docs` unwritable before the first **Run probe**, then press it and send ⌘Q. Expect **Quit with unsaved changes?**. Restore write permission and send a second ⌘Q directly from that dialog. Relaunch on the same data folder. Expect **Retried quit rename proof** and the same typed body. The log must show two drain revisions, one accepted rename, then `CompleteQuit pending=[]`.
+- **Settings and rename.** Open **Settings probe** from the dev header. In one accessibility script press **Write session settings**, press **Rename Getting started**, and send ⌘Q without waiting for either reply. Relaunch on the same synthetic folder. Expect **Settings and rename quit proof**, the same typed body, and settings.json with theme Dark, open page probe-page, anchor probe-block, recent pages probe-page and older-page, and expanded rows parent-page and probe-page.
 - **Page identity.** The page route in the second run must name the same ID as the first. The core test for two opens also asserts exactly one stored page and reads the three lines from its body.
 
 ## Gotchas

@@ -168,3 +168,67 @@ test("SHELL-9 settings writes are refused with Quitting once completion starts a
     stop();
   }
 });
+
+test("SHELL-9 one command drain waits for both a rename and settings before both land at quit", async () => {
+  let acceptRename = () => {};
+  let acceptSettings = () => {};
+  let title = "Before";
+  let settings: Settings = { ...snapshot, theme: "System" };
+  transport.invoke.mockImplementation((command) => {
+    if (command === "page_rename")
+      return new Promise((done) => {
+        acceptRename = () => {
+          title = "At quit";
+          done(null);
+        };
+      });
+    if (command === "settings_update")
+      return new Promise((done) => {
+        acceptSettings = () => {
+          settings = snapshot;
+          done(settings);
+        };
+      });
+    if (command === "complete_quit")
+      return Promise.resolve({ revision: 2, phase: "Confirmed" });
+    return Promise.reject(new Error(`unexpected command ${command}`));
+  });
+  const stop = connectQuitDrain();
+  try {
+    const rename = commands.pageRename("page-a", "At quit");
+    const update = commands.settingsUpdate({ theme: "Dark" });
+    let drained = false;
+    const drain = drainCommands().then((failed) => {
+      drained = true;
+      return failed;
+    });
+    useQuitStore.getState().receiveQuit({ revision: 1, phase: "Draining" });
+    acceptSettings();
+    expect(await update).toEqual({ status: "ok", data: snapshot });
+    await new Promise((done) => setTimeout(done, 10));
+    expect(drained).toBe(false);
+    expect(transport.invoke.mock.calls.map(([name]) => name)).toEqual([
+      "page_rename",
+      "settings_update",
+    ]);
+    acceptRename();
+    expect(await rename).toEqual({ status: "ok", data: null });
+    expect(await drain).toEqual([]);
+    await vi.waitFor(() =>
+      expect(useQuitStore.getState().decision.kind).toBe("quitting"),
+    );
+    expect({ title, settings }).toEqual({
+      title: "At quit",
+      settings: snapshot,
+    });
+    expect(transport.invoke.mock.calls.map(([name]) => name)).toEqual([
+      "page_rename",
+      "settings_update",
+      "complete_quit",
+    ]);
+  } finally {
+    acceptRename();
+    acceptSettings();
+    stop();
+  }
+});

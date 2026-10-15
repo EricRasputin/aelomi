@@ -75,7 +75,10 @@ fn concurrent_record_edits_use_the_latest_base_and_survive_reopen() {
             .collect::<BTreeSet<_>>(),
         (0..24).map(|i| format!("page {i}")).collect()
     );
-    assert_eq!(w.flush(Instant::now() + Duration::from_secs(5)), []);
+    assert_eq!(
+        w.flush(Instant::now() + Duration::from_secs(5)),
+        crate::storage::Pending::default()
+    );
     drop(w);
     assert_eq!(records(&empty(dir.path())), before);
 }
@@ -331,13 +334,19 @@ fn pending_independent_record_fields_win_after_rename_in_both_client_orders() {
                 record.insert(txn, key, value.clone());
             });
             w.append(&id, &pending).unwrap();
-            assert_eq!(w.flush(Instant::now() + Duration::from_secs(5)), []);
+            assert_eq!(
+                w.flush(Instant::now() + Duration::from_secs(5)),
+                crate::storage::Pending::default()
+            );
             w.edit_page(PageEdit::Rename {
                 page: page.clone(),
                 title: "After".into(),
             })
             .unwrap_or_else(|e| panic!("{key}, client {client}: {e}; {:?}", records(&w)));
-            assert_eq!(w.flush(Instant::now() + Duration::from_secs(5)), []);
+            assert_eq!(
+                w.flush(Instant::now() + Duration::from_secs(5)),
+                crate::storage::Pending::default()
+            );
             drop(w);
             let w = empty(dir.path());
             w.append(&id, &dependency).unwrap();
@@ -693,7 +702,10 @@ fn record_edits_add_one_client_per_launch_and_resume_its_clock() {
         .transact()
         .state_vector();
     assert_eq!(first.len(), 1);
-    assert_eq!(w.flush(Instant::now() + Duration::from_secs(5)), []);
+    assert_eq!(
+        w.flush(Instant::now() + Duration::from_secs(5)),
+        crate::storage::Pending::default()
+    );
     drop(w);
     let w = empty(dir.path());
     for i in 0..20 {

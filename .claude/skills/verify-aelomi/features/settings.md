@@ -11,7 +11,7 @@ The dev Settings probe shows the cached session settings and writes a synthetic 
 
 ## How to get to it (user POV)
 
-- In a dev build on an empty synthetic folder, click **Settings probe** on the start screen.
+- In a dev build on a fresh synthetic folder, click **Settings probe** in the dev header.
 - Click **Write session settings** to save the synthetic session.
 
 ## Driving it with app.sh and mock-drive

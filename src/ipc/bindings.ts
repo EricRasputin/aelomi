@@ -68,7 +68,6 @@ export const events = {
 	indexChanged: makeEvent<IndexChanged>("index-changed"),
 	indexStatusChanged: makeEvent<IndexStatusChanged>("index-status-changed"),
 	menuCommand: makeEvent<MenuCommand>("menu-command"),
-
 	pageRecordsChanged: makeEvent<PageRecordsChanged>("page-records-changed"),
 	quitStatusChanged: makeEvent<QuitStatusChanged>("quit-status-changed"),
 	storageHealthChanged: makeEvent<StorageHealthChanged>("storage-health-changed"),

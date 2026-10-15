@@ -19,6 +19,7 @@ fn a_failed_first_body_flush_keeps_the_workspace_open_unseeded_and_retries_on_re
     assert_eq!(
         w.health(),
         Health::Failing {
+            pending_settings: false,
             reason: crate::storage::FailReason::DiskFull,
             since: std::time::Duration::ZERO,
             pending_docs: vec![DocId::new("getting-started").unwrap()],
@@ -31,7 +32,7 @@ fn a_failed_first_body_flush_keeps_the_workspace_open_unseeded_and_retries_on_re
     prepared.seed_getting_started(soon());
     let w = prepared.start(|_| {});
     assert_eq!(w.tree().unwrap().pages[0].title, "Getting started");
-    assert_eq!(w.flush(soon()), []);
+    assert_eq!(w.flush(soon()), crate::storage::Pending::default());
 }
 
 #[test]
@@ -39,7 +40,7 @@ fn an_unreadable_workspace_log_skips_seed_without_refusing_the_workspace() {
     let env = Env::manual();
     let store = env.open();
     store.append(&DocId::workspace(), &[0, 0]).unwrap();
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()), crate::storage::Pending::default());
     drop(store);
     env.fs.fail(OpKind::Read, "docs/workspace/", libc::EACCES);
     let dir = tempfile::tempdir().unwrap();
@@ -49,7 +50,7 @@ fn an_unreadable_workspace_log_skips_seed_without_refusing_the_workspace() {
     assert!(w.tree().is_err());
     w.append(&DocId::new("healthy-page").unwrap(), &[0, 0])
         .unwrap();
-    assert_eq!(w.flush(soon()), []);
+    assert_eq!(w.flush(soon()), crate::storage::Pending::default());
     env.fs.clear_faults();
     assert_eq!(w.tree().unwrap().pages, []);
 }
@@ -108,7 +109,7 @@ fn a_slow_first_flush_opens_unseeded_and_a_later_launch_reuses_the_body() {
     prepared.seed_getting_started(Instant::now() + Duration::from_millis(5));
     let w = prepared.start(|_| {});
     assert_eq!(w.tree().unwrap().pages, []);
-    assert_eq!(w.flush(soon()), []);
+    assert_eq!(w.flush(soon()), crate::storage::Pending::default());
     let body = w.load(&DocId::new("getting-started").unwrap()).unwrap();
     drop(w);
     env.fs.set_latency(OpKind::FullSync, Duration::ZERO);

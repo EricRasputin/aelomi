@@ -47,7 +47,7 @@ fn a_record_edit_never_reencodes_pending_foreign_operations_and_they_survive_reo
             title: "After".into(),
         })
         .unwrap();
-    assert_eq!(workspace.flush(soon()), []);
+    assert_eq!(workspace.flush(soon()), crate::storage::Pending::default());
     let stored = stored_updates(&*env.fs, &Layout::new(env.root()), &id).unwrap();
     let accepted = Update::decode_v1(stored.updates.last().unwrap()).unwrap();
     assert_eq!(
@@ -59,7 +59,7 @@ fn a_record_edit_never_reencodes_pending_foreign_operations_and_they_survive_reo
     env.fs.crash(Crash::DropUnsynced);
     let store = env.open();
     store.append(&id, &dependency).unwrap();
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()), crate::storage::Pending::default());
     let doc = doc_from([store.load(&id).unwrap().as_slice()]);
     let txn = doc.transact();
     assert_eq!(read_pages(&txn).unwrap()[&page].title, "After");

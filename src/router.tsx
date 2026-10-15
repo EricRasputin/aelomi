@@ -67,6 +67,9 @@ function WorkspaceLayout() {
         <header className="shrink-0 border-b border-[var(--border)] px-8 py-5 text-sm font-medium">
           Aelomi
           {import.meta.env.DEV && (
+            <Link to="/dev/settings">Settings probe</Link>
+          )}
+          {import.meta.env.DEV && (
             <Link
               to="/dev/storage"
               className="ml-4 text-xs text-[var(--muted)] underline"
@@ -162,7 +165,6 @@ function IndexScreen() {
           <p className="workspace-alert-reason">{source.message}</p>
         </div>
       )}
-      {import.meta.env.DEV && <Link to="/dev/settings">Settings probe</Link>}
     </section>
   );
 }

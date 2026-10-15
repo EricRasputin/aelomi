@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use aelomi_core::index::IndexEvent;
-use aelomi_core::storage::{self as core, DataPathError, OpenError, Pending};
+use aelomi_core::storage::{self as core, DataPathError, DocId, OpenError, Pending};
 use aelomi_core::workspace::Workspace;
 use serde::Serialize;
 use specta::Type;
@@ -275,7 +275,10 @@ impl Storage {
     pub fn flush_before_quit(&self, timeout: Duration) -> Result<(), Pending> {
         let deadline = Instant::now() + timeout;
         if !self.quit.wait_for_record_edits(deadline) {
-            return Err(Pending { docs: vec![DocId::workspace()], settings: self.pending_at_quit().settings });
+            return Err(Pending {
+                docs: vec![DocId::workspace()],
+                settings: self.pending_edits().settings,
+            });
         }
         let Ok(workspace) = &self.opened else {
             return Ok(());

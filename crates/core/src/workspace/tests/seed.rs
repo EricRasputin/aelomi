@@ -14,7 +14,10 @@ fn open_seeded(path: &std::path::Path) -> Workspace {
 }
 
 fn flush(w: &Workspace) {
-    assert_eq!(w.flush(Instant::now() + Duration::from_secs(5)), []);
+    assert_eq!(
+        w.flush(Instant::now() + Duration::from_secs(5)),
+        crate::storage::Pending::default()
+    );
 }
 fn assert_seed(w: &Workspace) -> String {
     let tree = w.tree().unwrap();
@@ -119,7 +122,10 @@ fn a_crash_after_the_seed_body_but_before_the_record_reuses_the_body_and_page_id
             &body::paragraphs_update(&paragraphs),
         )
         .unwrap();
-    assert_eq!(store.flush(Instant::now() + Duration::from_secs(5)), []);
+    assert_eq!(
+        store.flush(Instant::now() + Duration::from_secs(5)),
+        crate::storage::Pending::default()
+    );
     let before = store.load(&DocId::new("getting-started").unwrap()).unwrap();
     drop(store);
     let w = open_seeded(dir.path());
@@ -137,7 +143,10 @@ fn even_an_empty_stored_workspace_update_prevents_seeding() {
     let dir = tempfile::tempdir().unwrap();
     let store = Store::open(dir.path()).unwrap();
     store.append(&DocId::workspace(), &[0, 0]).unwrap();
-    assert_eq!(store.flush(Instant::now() + Duration::from_secs(5)), []);
+    assert_eq!(
+        store.flush(Instant::now() + Duration::from_secs(5)),
+        crate::storage::Pending::default()
+    );
     drop(store);
     let w = open_seeded(dir.path());
     assert_eq!(w.tree().unwrap().pages, []);

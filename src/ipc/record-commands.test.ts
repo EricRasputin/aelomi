@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { installMock, commands as mockTransport } from "./mock";
-import { drainRecordCommands, withRecordCommands } from "./record-commands";
+import { drainCommands, setCommandAdmission } from "./pending-commands";
+import { withRecordCommands } from "./record-commands";
 
 const transport: typeof import("./bindings").commands = mockTransport;
 
@@ -13,6 +14,7 @@ function deferred<T>() {
 }
 
 beforeEach(() => {
+  setCommandAdmission("open");
   vi.stubGlobal("window", {});
   installMock();
 });
@@ -34,7 +36,7 @@ test("the IPC boundary drains create rename and trash promises before reporting 
   const renamed = commands.pageRename("page-a", "Title");
   const trashed = commands.pageTrash("page-b");
   let drained = false;
-  const drain = drainRecordCommands().then((docs) => {
+  const drain = drainCommands().then((docs) => {
     drained = true;
     return docs;
   });
@@ -58,7 +60,7 @@ test("a refused in-flight record command reports the workspace to the quit drain
   const rename = deferred<Awaited<ReturnType<typeof transport.pageRename>>>();
   vi.spyOn(transport, "pageRename").mockReturnValueOnce(rename.promise);
   const command = withRecordCommands(transport).pageRename("page-a", "Title");
-  const drain = drainRecordCommands();
+  const drain = drainCommands();
   rename.resolve({ status: "error", error: { Io: "read failed" } });
   expect(await command).toEqual({
     status: "error",
@@ -82,7 +84,7 @@ test("back-to-back renames retain submission order even when the native schedule
   const first = commands.pageRename("a", "a");
   const last = commands.pageRename("a", "ab");
   let drained = false;
-  const drain = drainRecordCommands().then((docs) => {
+  const drain = drainCommands().then((docs) => {
     drained = true;
     return docs;
   });
@@ -117,7 +119,7 @@ test("queued consecutive renames coalesce but never cross another record command
     commands.pageTrash("b"),
     commands.pageRename("a", "abc"),
   ];
-  const drain = drainRecordCommands();
+  const drain = drainCommands();
   try {
     expect(rename.mock.calls).toEqual([]);
   } finally {
@@ -142,7 +144,7 @@ test.each(["Quitting", "NotActive", "InvalidPageId", "Cycle"] as const)(
     const rename = deferred<Awaited<ReturnType<typeof transport.pageRename>>>();
     vi.spyOn(transport, "pageRename").mockReturnValueOnce(rename.promise);
     const command = withRecordCommands(transport).pageRename("a", "Title");
-    const drain = drainRecordCommands();
+    const drain = drainCommands();
     rename.resolve({ status: "error", error });
     expect(await command).toEqual({ status: "error", error });
     expect(await drain).toEqual([]);

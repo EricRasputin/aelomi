@@ -106,7 +106,7 @@ fn page_commands_accept_pending_edits_and_publish_source_changes_before_durabili
     assert_eq!(json!(tree.trash[0].batch_id), batch);
     assert_eq!(*shell.events.lock().unwrap(), 4);
     assert_eq!(
-        shell.app.state::<Storage>().pending_docs(),
+        shell.app.state::<Storage>().pending_edits().docs,
         [aelomi_core::storage::DocId::workspace()]
     );
     assert_eq!(
@@ -190,7 +190,11 @@ fn complete_quit_waits_for_a_rename_held_on_the_record_lock_and_reopens_with_its
         .unwrap()
         .created_page()
         .unwrap();
-    assert_eq!(workspace.flush(Instant::now() + Duration::from_secs(5)), []);
+    assert!(
+        workspace
+            .flush(Instant::now() + Duration::from_secs(5))
+            .is_empty()
+    );
     let handle = shell.app.handle();
     let held = workspace.hold_record_edits();
     let mut rename = Box::pin(page_rename(
@@ -261,7 +265,7 @@ fn a_second_quit_drain_accepts_a_rename_and_reopens_with_its_title() {
     storage.flush_before_quit(Duration::from_secs(1)).unwrap();
     storage
         .quit()
-        .finish_drain(first.revision, &[DocId::workspace()])
+        .finish_drain(first.revision, &[DocId::workspace()], false)
         .unwrap();
     let crate::quit::QuitRequest::StartDrain(second) = storage.quit().request() else {
         panic!()
@@ -281,7 +285,7 @@ fn a_second_quit_drain_accepts_a_rename_and_reopens_with_its_title() {
             .workspace()
             .unwrap()
             .flush(Instant::now() + Duration::from_secs(1)),
-        []
+        aelomi_core::storage::Pending::default()
     );
     disk.crash();
     let reopened = disk.open(std::path::Path::new("/data")).unwrap();
@@ -294,5 +298,112 @@ fn a_second_quit_drain_accepts_a_rename_and_reopens_with_its_title() {
             [&aelomi_core::workspace::records::PageId::new(id).unwrap()]
             .title,
         "Second drain title"
+    );
+}
+
+#[test]
+fn complete_quit_waits_for_a_rename_and_settings_and_reopens_with_both() {
+    use aelomi_core::storage::DocId;
+    use aelomi_core::workspace::PageEdit;
+    use aelomi_core::workspace::records::read_pages;
+    use std::future::Future;
+    use std::sync::mpsc;
+    use std::task::{Context, Poll, Waker};
+    use std::time::{Duration, Instant};
+    use yrs::updates::decoder::Decode;
+    use yrs::{Doc, Transact, Update};
+
+    let disk = SimDisk::default();
+    let shell = shell(crate::storage::tests::open_on(&disk));
+    let workspace = shell.app.state::<Storage>().workspace().unwrap();
+    let id = workspace
+        .edit_page(PageEdit::Create {
+            parent: None,
+            title: "Before".into(),
+        })
+        .unwrap()
+        .created_page()
+        .unwrap();
+    assert!(
+        workspace
+            .flush(Instant::now() + Duration::from_secs(5))
+            .is_empty()
+    );
+    let handle = shell.app.handle();
+    let held = workspace.hold_record_edits();
+    let mut rename = Box::pin(page_rename(
+        handle.clone(),
+        handle.state(),
+        id.to_string(),
+        "Just before quit".into(),
+    ));
+    assert!(matches!(
+        rename
+            .as_mut()
+            .poll(&mut Context::from_waker(Waker::noop())),
+        Poll::Pending
+    ));
+    let settings_hold = disk.hold_settings_write();
+    let mut settings = Box::pin(super::settings_update(
+        handle.state(),
+        crate::settings::SettingsPatch {
+            theme: Some(crate::settings::ThemeChoice::Dark),
+            ..Default::default()
+        },
+    ));
+    assert!(matches!(
+        settings
+            .as_mut()
+            .poll(&mut Context::from_waker(Waker::noop())),
+        Poll::Pending
+    ));
+    settings_hold.wait_until_reached();
+    let storage = handle.state::<Storage>();
+    storage.quit().register_frontend();
+    let crate::quit::QuitRequest::StartDrain(status) = storage.quit().request() else {
+        panic!()
+    };
+    let (send, receive) = mpsc::channel();
+    let waited = std::thread::scope(|scope| {
+        let quit = scope.spawn(|| {
+            let result =
+                super::complete_quit_with(handle, status.revision, || send.send(()).unwrap());
+            assert_eq!(result.phase, crate::quit::QuitPhase::Confirmed);
+        });
+        let waited = matches!(
+            receive.recv_timeout(Duration::from_millis(100)),
+            Err(mpsc::RecvTimeoutError::Timeout)
+        );
+        drop(held);
+        assert!(tauri::async_runtime::block_on(rename).is_ok());
+        assert_eq!(
+            receive.recv_timeout(Duration::from_millis(100)),
+            Err(mpsc::RecvTimeoutError::Timeout)
+        );
+        settings_hold.release();
+        assert_eq!(
+            tauri::async_runtime::block_on(settings).unwrap().theme,
+            crate::settings::Theme::Dark
+        );
+        quit.join().unwrap();
+        waited
+    });
+    assert!(
+        waited,
+        "quit confirmed before the blocked page command appended"
+    );
+    disk.crash();
+    let reopened = disk.open(std::path::Path::new("/data")).unwrap();
+    assert_eq!(
+        reopened.load_settings().unwrap().theme,
+        aelomi_core::settings::Theme::Dark
+    );
+    let doc = Doc::new();
+    doc.transact_mut()
+        .apply_update(Update::decode_v1(&reopened.load(&DocId::workspace()).unwrap()).unwrap())
+        .unwrap();
+    assert_eq!(
+        read_pages(&doc.transact()).unwrap()[&id].title,
+        "Just before quit"
     );
 }

@@ -310,7 +310,7 @@ mod tests {
         };
         assert!(gate.begin_completing(first.revision));
         gate.wait_for_record_edits(Instant::now() + Duration::from_secs(2));
-        gate.finish_drain(first.revision, &docs(&["workspace"]))
+        gate.finish_drain(first.revision, &docs(&["workspace"]), false)
             .unwrap();
         let QuitRequest::StartDrain(second) = gate.request() else {
             panic!()
@@ -323,7 +323,9 @@ mod tests {
         assert!(gate.begin_completing(second.revision));
         gate.wait_for_record_edits(Instant::now() + Duration::from_secs(2));
         assert_eq!(
-            gate.finish_drain(second.revision, &[]).unwrap().phase,
+            gate.finish_drain(second.revision, &[], false)
+                .unwrap()
+                .phase,
             QuitPhase::Confirmed
         );
     }
@@ -336,10 +338,10 @@ mod tests {
             panic!()
         };
         assert!(gate.awaiting_drain(first.revision));
-        let asked = gate.drain_failed(first.revision, &[]).unwrap();
+        let asked = gate.drain_failed(first.revision, &[], false).unwrap();
         gate.keep_open(asked.revision).unwrap();
         gate.wait_for_record_edits(Instant::now() + Duration::from_secs(2));
-        assert_eq!(gate.drain_timed_out(first.revision, &[]), None);
+        assert_eq!(gate.drain_timed_out(first.revision, &[], false), None);
         assert_eq!(gate.status().phase, QuitPhase::Open);
         let rename = gate
             .record_edit()
@@ -360,12 +362,13 @@ mod tests {
         assert_eq!(gate.lock().record_edits, 1);
         assert!(gate.record_edit().is_none());
         let asked = gate
-            .finish_drain(status.revision, &docs(&["workspace"]))
+            .finish_drain(status.revision, &docs(&["workspace"]), false)
             .unwrap();
         assert_eq!(
             asked.phase,
             QuitPhase::Asking {
-                pending_docs: vec!["workspace".into()]
+                pending_docs: vec!["workspace".into()],
+                pending_settings: false,
             }
         );
         gate.keep_open(asked.revision).unwrap();
@@ -464,7 +467,7 @@ mod tests {
         assert_eq!(gate.request(), QuitRequest::FlushStore);
         gate.wait_for_record_edits(Instant::now() + Duration::from_secs(2));
         assert!(gate.record_edit().is_none());
-        let asked = gate.refuse(&docs(&["workspace"])).unwrap();
+        let asked = gate.refuse(&docs(&["workspace"]), false).unwrap();
         assert_eq!(
             gate.keep_open(asked.revision).unwrap().phase,
             QuitPhase::Open

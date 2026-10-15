@@ -4,7 +4,6 @@ import {
   hasPendingCommands,
   setCommandAdmission,
 } from "../ipc/pending-commands";
-import { drainRecordCommands } from "../ipc/record-commands";
 import { useQuitStore } from "../stores/quit";
 import { drainDeliveries, hasOutstandingDeliveries } from "./delivery";
 
@@ -31,9 +30,14 @@ async function drain(revision: number) {
   await new Promise((done) => setTimeout(done, 0));
   for (const editor of editors) editor.freeze();
   let failed: string[];
+  const commandFailures = new Set<string>();
   do {
-    const failures = await Promise.all([drainDeliveries(), drainCommands(), drainRecordCommands()]);
-    failed = [...new Set(failures.flat())];
+    const [deliveries, commands] = await Promise.all([
+      drainDeliveries(),
+      drainCommands(),
+    ]);
+    for (const doc of commands) commandFailures.add(doc);
+    failed = [...new Set([...deliveries, ...commandFailures])];
   } while (hasOutstandingDeliveries() || hasPendingCommands());
   const quit = useQuitStore.getState();
   if (quit.decision.kind !== "draining" || quit.decision.revision !== revision)
@@ -58,6 +62,7 @@ export function connectQuitDrain(): () => void {
     const { decision } = useQuitStore.getState();
     if (decision.kind === "open") setCommandAdmission("open");
     if (decision.kind !== "draining" || decision.revision <= answered) return;
+    setCommandAdmission("open");
     answered = decision.revision;
     void drain(decision.revision).catch((error: unknown) => {
       console.error("Quit drain failed", error);

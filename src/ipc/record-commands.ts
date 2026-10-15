@@ -1,13 +1,15 @@
+import { commandsAccepted, trackCommand } from "./pending-commands";
+
 type Commands = typeof import("./bindings").commands;
 type RecordReply = Awaited<
   ReturnType<Commands["pageCreate" | "pageRename" | "pageTrash"]>
 >;
 
-const pending = new Set<Promise<boolean>>();
 const listeners = new Set<() => void>();
 
 function track<T extends RecordReply>(command: Promise<T>): Promise<T> {
-  const completion = command.then(
+  return trackCommand(
+    command,
     (reply) => {
       if (reply.status === "ok") {
         for (const listener of listeners) {
@@ -18,7 +20,7 @@ function track<T extends RecordReply>(command: Promise<T>): Promise<T> {
           }
         }
       }
-      return (
+      const succeeded =
         reply.status === "ok" ||
         (typeof reply.error === "string" &&
           [
@@ -29,14 +31,11 @@ function track<T extends RecordReply>(command: Promise<T>): Promise<T> {
             "Cycle",
             "OrderExhausted",
             "InvalidTime",
-          ].includes(reply.error))
-      );
+          ].includes(reply.error));
+      return succeeded ? [] : ["workspace"];
     },
-    () => false,
+    ["workspace"],
   );
-  pending.add(completion);
-  void completion.then(() => pending.delete(completion));
-  return command;
 }
 
 type RenameReply = Awaited<ReturnType<Commands["pageRename"]>>;
@@ -87,8 +86,13 @@ export function withRecordCommands(transport: Commands): Commands {
   };
   return {
     ...transport,
-    pageCreate: (parentId) => submit(() => transport.pageCreate(parentId)),
+    pageCreate: (parentId) =>
+      commandsAccepted()
+        ? submit(() => transport.pageCreate(parentId))
+        : Promise.resolve({ status: "error", error: "Quitting" }),
     pageRename: (pageId, title) => {
+      if (!commandsAccepted())
+        return Promise.resolve({ status: "error", error: "Quitting" });
       const last = queue.at(-1);
       if (last?.kind === "rename" && last.pageId === pageId) {
         last.title = title;
@@ -103,7 +107,10 @@ export function withRecordCommands(transport: Commands): Commands {
       enqueue(job);
       return job.promise;
     },
-    pageTrash: (pageId) => submit(() => transport.pageTrash(pageId)),
+    pageTrash: (pageId) =>
+      commandsAccepted()
+        ? submit(() => transport.pageTrash(pageId))
+        : Promise.resolve({ status: "error", error: "Quitting" }),
   };
 }
 
@@ -112,13 +119,4 @@ export function onRecordCommand(listener: () => void): () => void {
   return () => {
     listeners.delete(listener);
   };
-}
-
-export async function drainRecordCommands(): Promise<string[]> {
-  let succeeded = true;
-  while (pending.size !== 0) {
-    const results = await Promise.all([...pending]);
-    succeeded = results.every(Boolean) && succeeded;
-  }
-  return succeeded ? [] : ["workspace"];
 }
