@@ -54,7 +54,7 @@ test("reads the immutable native startup status once", async () => {
   expect(read.mock.calls).toEqual([[]]);
   expect(useStorageStartupStore.getState().startup).toMatchObject({
     kind: "refused",
-    recovery: { configured: "/local/data", resolved: "/cloud/data" },
+    recovery: { resolved: "/cloud/data" },
   });
 });
 
