@@ -3,21 +3,23 @@ import { type StorageStartup, storageCopy } from "../storage-copy";
 
 function PathChip({ path, label }: { path: string; label: string }) {
   return (
-    <textarea
-      className="storage-refusal-path"
-      dir="ltr"
-      aria-label={label}
-      readOnly
-      rows={1}
-      value={path}
-      onPointerDown={(event) => event.preventDefault()}
-      onClick={(event) => {
-        event.preventDefault();
-        event.currentTarget.focus();
-        event.currentTarget.select();
-      }}
-      onFocus={(event) => event.currentTarget.select()}
-    />
+    <span className="storage-refusal-chip" data-path={path}>
+      <textarea
+        className="storage-refusal-path"
+        dir="ltr"
+        aria-label={label}
+        readOnly
+        rows={1}
+        value={path}
+        onPointerDown={(event) => event.preventDefault()}
+        onClick={(event) => {
+          event.preventDefault();
+          event.currentTarget.focus();
+          event.currentTarget.select();
+        }}
+        onFocus={(event) => event.currentTarget.select()}
+      />
+    </span>
   );
 }
 
