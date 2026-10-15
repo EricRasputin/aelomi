@@ -34,6 +34,7 @@ test("budgets.json holds every gate with a value and a why", () => {
     "coldStart.warmupRuns",
     "coldStart.timedRuns",
     "coldStart.hostedPageNavToPaintMs",
+    "coldStart.hostedPageCiMs",
     "keystroke.p95Ms",
     "keystroke.hostedAppOwnedP95Ms",
     "keystroke.pageLoads",
