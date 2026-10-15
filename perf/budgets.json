@@ -53,18 +53,22 @@
       "why": "SPEC section 5: a query keystroke to the first frame showing current results over the 10,000-page mock fixture, one frame at 60 Hz."
     },
     "hostedAppOwnedP95Ms": {
-      "value": 40,
-      "why": "Provisional hosted macos-15 calibration from two unchanged-head 0ad6f34 jobs: the 10,000-page palette measured 29 and 36 ms p95 over 55 query keys per job. This ceiling rounds the worse measured p95 up by 4 ms. Both jobs were noisy on three-core hosts. docs/evidence/data-5-ci-calibration-0ad6f34 summarizes the limits and links the full logs at the commit before the evidence trim. The local one-frame goal stays 16 ms. Issue #72 tracks broader hosted calibration and the recorder's presentation limits."
+      "value": 87,
+      "why": "Hosted macos-15 calibration from CI runs created 2026-10-13 through 2026-10-15T21:30Z, across main and every PR branch. Palette p95 ranged from 25 to 58 ms over 55 keys per measured job. The ceiling is ceil(1.5 * 58) = 87 ms. Identical 838f056 heads measured 29, 58 and 25 ms, so the former 40 ms ceiling flips without a code change. docs/evidence/hosted-keystroke-calibration/README.md records every attempt, deduplicates carried-forward jobs, and separates load associations from code effects. The local ceiling remains 16 ms. The clock is keydown to the recorder's settled-frame task, not compositor presentation. Issue #72 retains the presentation-timing gap."
     }
   },
   "scroll": {
     "p95FrameMs": {
       "value": 16.7,
-      "why": "SPEC section 3 requires per-frame rendering work p95 under 16.7 ms. The untraced WebKit recorder measures its rAF timestamp to the following MessageChannel task. Whole-millisecond stamps must read at most 16 ms; the comparison is strict. The raw maximum interval remains 50 ms. This work interval excludes pending layout before the rAF timestamp, scheduler and IPC delay, and presentation; report those limits and raw cadence separately. Local mode gates this value; hosted CI reports it without gating (issue #72). Five hosted macos-15 jobs measured work p95 of 14 ms (0ad6f34), 12 ms (1d08e9a), 12 ms (a217b48), 21 ms (9b44d57, main) and 14 ms (587e6db) at loads of 2.5 to 13.4 on 3 cores, so a 16.7 ms CI gate would fail unchanged main; hosted CI gates the 50 ms raw maximum instead."
+      "why": "SPEC section 3 requires per-frame rendering work p95 under 16.7 ms. The untraced WebKit recorder measures its rAF timestamp to the following MessageChannel task. Whole-millisecond stamps must read at most 16 ms; the comparison is strict. Local mode gates this value and the unchanged 50 ms raw maximum. Hosted CI reports work p95 without gating (issue #72) and gates hostedMaxFrameMs instead. In the 2026-10-13 through 2026-10-15T21:30Z collection, hosted work p95 ranged from 9 to 23 ms, including 12 to 23 ms on main. docs/evidence/hosted-keystroke-calibration/README.md records the data and its load associations. This clock excludes pending layout before the rAF timestamp, scheduler and IPC delay, and presentation."
     },
     "maxFrameMs": {
       "value": 50,
-      "why": "SPEC editor fixture: no frame gap over 50 ms while scrolling the 5,000-block page. Both local and hosted modes enforce this maximum."
+      "why": "SPEC editor fixture: no frame gap over 50 ms while scrolling the 5,000-block page. Local mode enforces this unchanged maximum. Hosted CI uses hostedMaxFrameMs."
+    },
+    "hostedMaxFrameMs": {
+      "value": 83,
+      "why": "Hosted macos-15 calibration from CI runs created 2026-10-13 through 2026-10-15T21:30Z, across main and every PR branch. The longest raw scroll interval ranged from 20 to 55 ms. The ceiling is ceil(1.5 * 55) = 83 ms. Identical 838f056 heads measured 51, 28 and 55 ms, while main ranged from 22 to 44 ms. docs/evidence/hosted-keystroke-calibration/README.md compares repeated checkouts and load. Keep a maximum because existing logs do not count over-50 ms frames, so they cannot calibrate an allowance for a bounded number of slow frames. The local maximum stays 50 ms and local rendering-work p95 stays below 16.7 ms. This hosted tolerance is a regression gate, not a SPEC pass or a native presentation claim."
     }
   },
   "search": {

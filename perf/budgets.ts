@@ -32,6 +32,7 @@ export type Budgets = {
   scroll: {
     p95FrameMs: Budget;
     maxFrameMs: Budget;
+    hostedMaxFrameMs: Budget;
   };
 };
 
@@ -115,6 +116,7 @@ export function readBudgets(): Budgets {
     scroll: {
       p95FrameMs: budget(scroll, "scroll.p95FrameMs", isNumber),
       maxFrameMs: budget(scroll, "scroll.maxFrameMs", isNumber),
+      hostedMaxFrameMs: budget(scroll, "scroll.hostedMaxFrameMs", isNumber),
     },
   };
 }

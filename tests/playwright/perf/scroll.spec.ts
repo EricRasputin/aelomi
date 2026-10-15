@@ -16,7 +16,7 @@ import { scrollFrames, scrollSummary } from "./scroll-frames";
  * after the frame's rendering update has sent its layer commit. That is a
  * lower bound on the whole frame. It leaves out layout that ran before the
  * timestamp, the scheduler and IPC that started the update, presentation,
- * and tasks between frames; only the longest raw interval, held to 50 ms,
+ * and tasks between frames; only the longest raw interval, gated per mode,
  * covers those. The idle cadence and raw intervals are reported, not gated:
  * WebKit stamps rAF when the update starts, so even a page that does no work
  * reads raw intervals of 14 to 19 ms at 60 Hz.
@@ -28,7 +28,8 @@ const mode = keystrokeMode(process.env);
 test.use({ trace: "off" });
 const budgets = readBudgets().scroll;
 const p95Budget = budgets.p95FrameMs.value;
-const maxBudget = budgets.maxFrameMs.value;
+const maxBudget =
+  mode === "ci" ? budgets.hostedMaxFrameMs.value : budgets.maxFrameMs.value;
 
 test("EDIT-14 the 5,000-block editor page scrolls smoothly for 5 seconds", async ({
   page,
@@ -66,7 +67,10 @@ test("EDIT-14 the 5,000-block editor page scrolls smoothly for 5 seconds", async
   ).toBe(run.frames);
   expect(
     run.rawMax,
-    withNoise("EDIT-14 no scroll frame over 50 ms", noise),
+    withNoise(
+      `EDIT-14 no scroll frame over ${maxBudget} ms (${mode} mode)`,
+      noise,
+    ),
   ).toBeLessThanOrEqual(maxBudget);
   if (mode === "local")
     expect(
