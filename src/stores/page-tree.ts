@@ -50,6 +50,7 @@ export const usePageTreeStore = create<PageTreeStore>((set, get) => ({
     };
     inFlight = read().finally(() => {
       inFlight = null;
+      if (dirty) void get().refresh();
     });
     return inFlight;
   },

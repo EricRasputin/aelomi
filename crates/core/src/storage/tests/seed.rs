@@ -189,3 +189,29 @@ fn an_unreadable_torn_first_log_defers_the_seed_until_the_next_launch() {
     let w = prepared.start(|_| {});
     assert_eq!(w.tree().unwrap().pages[0].title, "Getting started");
 }
+
+#[test]
+fn the_cold_start_empty_fixture_has_one_stored_empty_update_and_never_seeds() {
+    use crate::storage::log::{self, LogContents, LogEnd, LogFormat};
+    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../perf/fixtures/empty-workspace");
+    let file = "docs/workspace/log-0000000000-0000000000.ylog2";
+    let bytes = std::fs::read(fixture.join(file)).unwrap();
+    assert_eq!(
+        log::read(LogFormat::V2, &bytes),
+        LogContents {
+            records: vec![vec![0, 0]],
+            end: LogEnd::Clean
+        }
+    );
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(dir.path().join("docs/workspace")).unwrap();
+    std::fs::copy(fixture.join("format.json"), dir.path().join("format.json")).unwrap();
+    std::fs::write(dir.path().join(file), bytes).unwrap();
+    let mut prepared = Workspace::prepare(dir.path()).unwrap();
+    prepared.seed_getting_started(soon());
+    let w = prepared.start(|_| {});
+    assert_eq!(w.load(&DocId::workspace()).unwrap(), [0, 0]);
+    assert_eq!(w.tree().unwrap().pages, []);
+    assert!(!dir.path().join("docs/getting-started").exists());
+}

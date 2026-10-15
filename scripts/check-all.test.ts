@@ -55,8 +55,12 @@ const CI_ONLY = new Set([
 // CI launches the bundle it downloaded and unzipped; check:all launches the one it built.
 const LOCAL_FOR_CI = new Map([
   [
-    "node perf/cold-start.ts --ci --app app/Aelomi.app --out perf-results/cold-start",
-    "node perf/cold-start.ts --ci",
+    "node perf/cold-start.ts --ci --expected-variant index --app app/Aelomi.app --out perf-results/cold-start-index",
+    "node perf/cold-start.ts --ci --expected-variant index --out perf-results/cold-start-index",
+  ],
+  [
+    "node perf/cold-start.ts --ci --expected-variant page --app app/Aelomi.app --out perf-results/cold-start-page",
+    "node perf/cold-start.ts --ci --expected-variant page --out perf-results/cold-start-page",
   ],
 ]);
 
