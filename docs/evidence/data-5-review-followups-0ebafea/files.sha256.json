@@ -1,0 +1,27 @@
+[
+  {
+    "path": "check-all-25c204d-attempt1-tail.log",
+    "bytes": 1548,
+    "sha256": "a6c6deb06239afd923077764a7ff785e0784bcd0a64cb452537796c07c931997"
+  },
+  {
+    "path": "check-all-25c204d-attempt2-tail.log",
+    "bytes": 1548,
+    "sha256": "08ef6c7100f71a9206a2f17cea53ba0e22cd31fb94069063c5963e0ed202ba26"
+  },
+  {
+    "path": "check-all-25c204d-attempt3-keystroke-excerpt.log",
+    "bytes": 3390,
+    "sha256": "5d35aab506e93b1d715c566490d334a2e3e47b8852e2ab19d416cd2f4753af4e"
+  },
+  {
+    "path": "front-watch.sh.txt",
+    "bytes": 671,
+    "sha256": "893f07e0b1bc4b0c4be6387b8d8ca871538d530cc507f88359e7106d75509288"
+  },
+  {
+    "path": "layout-delay-calibrated.log",
+    "bytes": 2519,
+    "sha256": "b41636a27f2e207477193f9e58274c7b4704ef309c9ef8c652d4524491b24488"
+  }
+]

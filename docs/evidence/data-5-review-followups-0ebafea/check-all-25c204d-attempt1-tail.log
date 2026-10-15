@@ -1,0 +1,30 @@
+Signing with identity "-"
+Signing <worktree>/target/release/bundle/macos/Aelomi.app
+<worktree>/target/release/bundle/macos/Aelomi.app: replacing existing signature
+        Warn skipping app notarization, no APPLE_ID & APPLE_PASSWORD & APPLE_TEAM_ID or APPLE_API_KEY & APPLE_API_ISSUER & APPLE_API_KEY_PATH environment variables found
+    Finished 1 bundle at:
+        <worktree>/target/release/bundle/macos/Aelomi.app (14.02 MiB)
+
+
+$ pnpm check:no-mock
+$ node scripts/check-no-mock.mjs
+Checked 6 production files. No dev or mock marker found.
+
+== cold-start
+load 6.20, waiting for under 4
+load 5.04, waiting for under 4
+load 4.15, waiting for under 4
+load 3.88, waiting for under 4
+
+$ node perf/cold-start.ts --ci
+cold-start harness (--ci, gates hosted budgets). node v24.13.1, 8 cpus (Apple M1), load 3.88 4.50 4.45, 2026-10-15T06:27:43.942Z
+app <worktree>/target/release/bundle/macos/Aelomi.app/Contents/MacOS/aelomi
+data folder /var/folders/m2/kvd1y03j1fxc_ym_gc6jkfbc0000gn/T/aelomi-cold-start-mjNL7x
+expected first content variant index; supplied data folder is never removed
+plan: 1 discarded warm-up, then 10 timed runs. T0 is the wall clock (Date.now, 1 ms resolution) read just before spawn, the same clock as the kernel's process start stamp. Marks are ms after T0. First content frame = min(rAF+MessageChannel, double rAF). 10 s timeout per run.
+warmup-1: FAIL no paint marker in 10 s (window not visible?)
+    | 
+
+check:all failed: cold-start: node perf/cold-start.ts --ci
+[ELIFECYCLE] Command failed with exit code 1.
+check:all exit 1

@@ -1,0 +1,52 @@
+  idle rAF cadence per load 17.0, 17.0, 17.0 ms, load average 2.41 3.36 4.22
+  ✓  4 [perf] › tests/playwright/perf/keystroke.spec.ts:146:3 › EDIT-14 keystroke-to-paint on the page-5000-blocks surface (1.4m)
+layout-delay: load 1 editable after 109 ms
+layout-delay: load 2 editable after 96 ms
+layout-delay: load 3 editable after 105 ms
+layout-delay: full key-to-paint p95 23 ms > 19 ms FAIL (local budget, information)
+  app-owned p95 6 ms <= 45 ms PASS (hosted budget, information)
+  tick wait p50 10 ms p95 18 ms, key-to-input p50 1 ms p95 2 ms, render p50 3 ms p95 5 ms, frame start to the recorder's rAF p50 0 ms p95 0 ms
+  full key-to-paint p50 14 ms, range 12.0 to 28.0 ms, per-load appOwned p95 5, 6, 6, double rAF p95 35 ms
+  split check: max |app-owned + tick wait - full| 0.000 ms over 405 samples from 3 loads
+  engine Event Timing (key event to next paint, 8 ms rounding, reported at 16 ms or more): 173 of 405 keys reported, max 24 ms, median of reported 16 ms
+  idle rAF cadence per load 17.0, 17.0, 17.0 ms, load average 4.31 3.82 4.32
+  ✘  5 [perf] › tests/playwright/perf/keystroke.spec.ts:146:3 › EDIT-14 keystroke-to-paint on the layout-delay surface (1.4m)
+palette results p50 9 ms p95 17 ms (ci budget 40 ms) over 55 keys, slowest "zit" 25 ms, "z" 20 ms, "z" 17 ms, "da" 17 ms, "rehada go" 16 ms, load average 4.93 3.99 4.37
+  ✓  6 [perf] › tests/playwright/perf/palette.spec.ts:65:1 › CMD-4 and CMD-5 the palette shows results within one frame of each keystroke on the 10,000-page fixture (11.3s)
+scroll frames 300, rendering work p50 1 ms p95 12 ms (budget < 16.7) max 21 ms, longest interval 23 ms (budget 50)
+  raw intervals p50 17 ms p95 17 ms and idle cadence 17 ms (information)
+  longest interval at frame 74: previous frame's work 1 ms, then 22 ms to the next stamp; intervals over 33 ms 0 (information)
+  load average 4.56 3.94 4.35
+  ✓  7 [perf] › tests/playwright/perf/scroll.spec.ts:33:1 › EDIT-14 the 5,000-block editor page scrolls smoothly for 5 seconds (9.9s)
+
+
+  1) [perf] › tests/playwright/perf/keystroke.spec.ts:146:3 › EDIT-14 keystroke-to-paint on the layout-delay surface 
+
+    Error: layout-delay: the engine clock reports the layout that runs before the rAF stamp
+
+    expect(received).toBeGreaterThanOrEqual(expected)
+
+    Expected: >= 202.5
+    Received:    173
+
+      298 |         engineReported.length,
+      299 |         `${surface}: the engine clock reports the layout that runs before the rAF stamp`,
+    > 300 |       ).toBeGreaterThanOrEqual(kept.length / 2);
+          |         ^
+      301 |       expect(
+      302 |         median(column("appOwned")),
+      303 |         `${surface}: the app-owned split leaves that layout out`,
+        at <worktree>/tests/playwright/perf/keystroke.spec.ts:300:9
+
+    Error Context: test-results/perf-keystroke-EDIT-14-key-d8f92-on-the-layout-delay-surface-perf/error-context.md
+
+  Slow test file: [perf] › tests/playwright/perf/keystroke.spec.ts (7.1m)
+  Consider running tests from slow files in parallel. See: https://playwright.dev/docs/test-parallel
+  1 failed
+    [perf] › tests/playwright/perf/keystroke.spec.ts:146:3 › EDIT-14 keystroke-to-paint on the layout-delay surface 
+  6 passed (7.4m)
+[ELIFECYCLE] Command failed with exit code 1.
+
+check:all failed: keystroke: pnpm perf:keystroke
+[ELIFECYCLE] Command failed with exit code 1.
+check:all exit 1
