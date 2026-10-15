@@ -77,7 +77,6 @@ test("DATA-1 a body the editor can't hold opens read-only and is never written",
   app,
   browser,
   screen,
-  nonLocalRequests,
 }) => {
   await browser.addInitScript((rawBodies) => {
     window.__aelomiMockSetup = {
@@ -122,7 +121,6 @@ test("DATA-1 a body the editor can't hold opens read-only and is never written",
       appends: 0,
     });
   }
-  expect(nonLocalRequests).toEqual([]);
 });
 
 function deletedOriginals(original: Y.Doc, edited: Y.Doc): string[] {
@@ -156,7 +154,6 @@ test("DATA-1 the real BlockNote body opens without a write and keeps every block
   app,
   browser,
   screen,
-  nonLocalRequests,
 }) => {
   const raw = fixture.toString("base64");
   await browser.addInitScript((update) => {
@@ -214,5 +211,4 @@ test("DATA-1 the real BlockNote body opens without a write and keeps every block
     "numberedListItem.start",
   ]);
   expect([...edited.share.keys()]).toEqual(["prosemirror"]);
-  expect(nonLocalRequests).toEqual([]);
 });

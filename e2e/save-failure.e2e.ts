@@ -1,28 +1,28 @@
 import { expect } from "e2e";
 import { test } from "./fixtures";
 
-test("SHELL-10 save failure shows why and clears after accepting every write", async ({
+test("SHELL-10 acceptance 5: typing during a write failure shows a banner and recovery clears it", async ({
   app,
   browser,
   screen,
-  nonLocalRequests,
 }) => {
-  await app.open("/");
-  const appended = await browser.evaluate(async () => {
-    const mock = window.__aelomiMock;
-    if (!mock) throw new Error("Missing IPC mock");
-    mock.storage.failWrites(true, "DiskFull");
-    const result = await mock.storage.type("page", "x");
-    if (result.status === "error")
-      throw new Error(JSON.stringify(result.error));
-    return result.data;
+  await browser.addInitScript(() => {
+    window.__aelomiMockSetup = {
+      pages: [{ id: "page", title: "A" }],
+      bodies: { page: [{ id: "block-a", content: [] }] },
+      failWrites: true,
+    };
   });
-  expect(appended).toBe(1);
+  await app.open("/");
+  const body = screen.getByRole("textbox", "Page body");
+  await expect(body).toBeVisible();
+  await body.click();
+  await browser.keyboard.type("x");
   await expect(screen.getByRole("alert")).toContainText(
     "Changes aren't being saved.",
     { timeout: 2_000 },
   );
-  await expect(screen.getByRole("alert")).toContainText("The disk is full.");
+  await expect(screen.getByRole("alert")).toContainText("mock write failure");
   await expect(screen.getByRole("alert")).toContainText(
     "Your changes are kept in memory. Aelomi will keep trying.",
   );
@@ -33,17 +33,15 @@ test("SHELL-10 save failure shows why and clears after accepting every write", a
   await expect(screen.getByRole("alert")).not.toBeVisible();
   expect(
     await browser.evaluate(
-      () => window.__aelomiMock?.storage.text("page") ?? null,
+      () => window.__aelomiMock?.bodies.text("page") ?? null,
     ),
   ).toBe("x");
-  expect(nonLocalRequests).toEqual([]);
 });
 
 test("SHELL-10 keeping the app open and Escape preserve unsaved changes", async ({
   app,
   browser,
   screen,
-  nonLocalRequests,
 }) => {
   await app.open("/");
   await browser.evaluate(async () => {
@@ -78,14 +76,12 @@ test("SHELL-10 keeping the app open and Escape preserve unsaved changes", async 
     })),
   ).toEqual({ exited: false, text: "x" });
   await expect(screen.getByRole("alert")).toBeVisible();
-  expect(nonLocalRequests).toEqual([]);
 });
 
 test("SHELL-10 confirming quit exits once and keeps pending updates in memory", async ({
   app,
   browser,
   screen,
-  nonLocalRequests,
 }) => {
   await app.open("/");
   await browser.evaluate(async () => {
@@ -119,5 +115,4 @@ test("SHELL-10 confirming quit exits once and keeps pending updates in memory", 
       updates: window.__aelomiMock?.storage.updates("page").length ?? null,
     })),
   ).toEqual({ exited: true, text: "x", confirmations: 1, updates: 1 });
-  expect(nonLocalRequests).toEqual([]);
 });

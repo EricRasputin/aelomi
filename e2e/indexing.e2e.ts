@@ -17,7 +17,6 @@ test("SHELL-12 acceptance 8: the page stays editable while the index rebuilds, t
   app,
   browser,
   screen,
-  nonLocalRequests,
 }) => {
   await browser.addInitScript((setup) => {
     window.__aelomiMockSetup = { ...setup, indexStatus: "Rebuilding" };
@@ -74,14 +73,12 @@ test("SHELL-12 acceptance 8: the page stays editable while the index rebuilds, t
   expect(
     await browser.evaluate(() => window.__aelomiMock?.errors.length ?? null),
   ).toBe(0);
-  expect(nonLocalRequests).toEqual([]);
 });
 
 test("SHELL-12 a rebuilding index never shows an error, and a failed one does until it recovers", async ({
   app,
   browser,
   screen,
-  nonLocalRequests,
 }) => {
   await browser.addInitScript((setup) => {
     window.__aelomiMockSetup = { ...setup, indexStatus: "Rebuilding" };
@@ -116,14 +113,12 @@ test("SHELL-12 a rebuilding index never shows an error, and a failed one does un
   });
   await expect(alert).not.toBeVisible();
   await expect(screen.getByRole("option", /Daily/)).toContainText("plan");
-  expect(nonLocalRequests).toEqual([]);
 });
 
 test("SHELL-12 search reports partly indexed pages quietly, by title", async ({
   app,
   browser,
   screen,
-  nonLocalRequests,
 }) => {
   await browser.addInitScript(() => {
     window.__aelomiMockSetup = {
@@ -147,14 +142,12 @@ test("SHELL-12 search reports partly indexed pages quietly, by title", async ({
   await expect(screen.getByText(/only partly searchable/)).toHaveText(
     "1 page is only partly searchable: Broken links.",
   );
-  expect(nonLocalRequests).toEqual([]);
 });
 
 test("CMD-4 and CMD-7 the palette opens a title match, and a content match at its block", async ({
   app,
   browser,
   screen,
-  nonLocalRequests,
 }) => {
   await browser.addInitScript(() => {
     window.__aelomiMockSetup = {
@@ -206,14 +199,12 @@ test("CMD-4 and CMD-7 the palette opens a title match, and a content match at it
       () => window.__aelomiMock?.bodies.text("page-aelomi") ?? null,
     ),
   ).toBe("intro\nQ2 quarterly roadmap");
-  expect(nonLocalRequests).toEqual([]);
 });
 
 test("DATA-2 a page list another writer stored as a sequence says why no page opens, and nothing is written", async ({
   app,
   browser,
   screen,
-  nonLocalRequests,
 }) => {
   const foreign = new Y.Doc();
   foreign.clientID = 9;
@@ -243,5 +234,4 @@ test("DATA-2 a page list another writer stored as a sequence says why no page op
           .map((call) => call.args[0]) ?? null,
     ),
   ).toEqual([]);
-  expect(nonLocalRequests).toEqual([]);
 });

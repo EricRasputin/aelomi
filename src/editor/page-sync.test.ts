@@ -177,3 +177,92 @@ test("a drain waits for every invoke still in flight, on pages already closed to
   expect(await drain).toEqual([]);
   expect(stored("page-f")).toBe("z");
 });
+
+test("refused edits retry without more typing, back off to 5 seconds, and survive closing the page", async () => {
+  vi.useFakeTimers();
+  const { ydoc } = loaded("page-auto", "plan");
+  const stop = syncPage({
+    docId: "page-auto",
+    ydoc,
+    hasUserInput: () => true,
+    onTrip: () => {},
+  });
+  const append = commands.docAppend;
+  let acceptWrites = false;
+  const attemptedAt: number[] = [];
+  const started = Date.now();
+  vi.spyOn(commands, "docAppend").mockImplementation(async (docId, update) => {
+    if (docId !== "page-auto") return append(docId, update);
+    attemptedAt.push(Date.now() - started);
+    return acceptWrites
+      ? append(docId, update)
+      : { status: "error", error: { Io: "Rebuild read failed" } };
+  });
+  ydoc.getText("t").insert(4, " x");
+  stop();
+  ydoc.destroy();
+  await vi.advanceTimersByTimeAsync(0);
+  expect([...useDeliveryStore.getState().failing]).toEqual([
+    ["page-auto", { Io: "Rebuild read failed" }],
+  ]);
+  await vi.advanceTimersByTimeAsync(99);
+  expect(attemptedAt).toEqual([0]);
+  for (const delay of [1, 200, 400, 800, 1600, 3200, 5000])
+    await vi.advanceTimersByTimeAsync(delay);
+  expect(attemptedAt).toEqual([0, 100, 300, 700, 1500, 3100, 6300, 11300]);
+  expect(stored("page-auto")).toBe("plan");
+  acceptWrites = true;
+  await vi.advanceTimersByTimeAsync(5000);
+  expect(attemptedAt).toEqual([
+    0, 100, 300, 700, 1500, 3100, 6300, 11300, 16300,
+  ]);
+  expect(stored("page-auto")).toBe("plan x");
+  expect([...useDeliveryStore.getState().failing]).toEqual([]);
+  await vi.advanceTimersByTimeAsync(10000);
+  expect(attemptedAt).toHaveLength(9);
+});
+
+test("the delivery banner stays until an in-flight retry is accepted and the next failure starts at 100 ms", async () => {
+  vi.useFakeTimers();
+  const { ydoc } = loaded("page-retry-banner", "");
+  const stop = syncPage({
+    docId: "page-retry-banner",
+    ydoc,
+    hasUserInput: () => true,
+    onTrip: () => {},
+  });
+  const append = commands.docAppend;
+  let release = () => {};
+  vi.spyOn(commands, "docAppend")
+    .mockResolvedValueOnce({ status: "error", error: { Io: "Read failed" } })
+    .mockImplementationOnce(
+      (docId, update) =>
+        new Promise((done) => {
+          release = () => void append(docId, update).then(done);
+        }),
+    );
+  ydoc.getText("t").insert(0, "x");
+  await vi.advanceTimersByTimeAsync(100);
+  expect([...useDeliveryStore.getState().failing]).toEqual([
+    ["page-retry-banner", { Io: "Read failed" }],
+  ]);
+  release();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(stored("page-retry-banner")).toBe("x");
+  expect([...useDeliveryStore.getState().failing]).toEqual([]);
+  const next = vi
+    .spyOn(commands, "docAppend")
+    .mockResolvedValueOnce({ status: "error", error: "Unavailable" })
+    .mockClear();
+  ydoc.getText("t").insert(1, "y");
+  await vi.advanceTimersByTimeAsync(99);
+  expect(stored("page-retry-banner")).toBe("x");
+  expect(next.mock.calls.map(([docId]) => docId)).toEqual([
+    "page-retry-banner",
+  ]);
+  await vi.advanceTimersByTimeAsync(1);
+  expect(stored("page-retry-banner")).toBe("xy");
+  expect([...useDeliveryStore.getState().failing]).toEqual([]);
+  stop();
+  ydoc.destroy();
+});

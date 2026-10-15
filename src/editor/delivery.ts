@@ -6,6 +6,8 @@ type DocDelivery = {
   outstanding: Set<Promise<void>>;
   failed: Uint8Array[];
   error: StorageError | null;
+  retryTimer: ReturnType<typeof setTimeout> | undefined;
+  retryDelayMs: number;
 };
 
 type DeliveryStore = {
@@ -41,7 +43,13 @@ export function trackLoad<T>(load: Promise<T>): Promise<T> {
 function deliveryFor(docId: string): DocDelivery {
   let delivery = deliveries.get(docId);
   if (!delivery) {
-    delivery = { outstanding: new Set(), failed: [], error: null };
+    delivery = {
+      outstanding: new Set(),
+      failed: [],
+      error: null,
+      retryTimer: undefined,
+      retryDelayMs: 100,
+    };
     deliveries.set(docId, delivery);
   }
   return delivery;
@@ -50,8 +58,7 @@ function deliveryFor(docId: string): DocDelivery {
 function publish() {
   const failing = new Map<string, StorageError>();
   for (const [docId, delivery] of deliveries) {
-    if (delivery.failed.length > 0 && delivery.error)
-      failing.set(docId, delivery.error);
+    if (delivery.error) failing.set(docId, delivery.error);
   }
   useDeliveryStore.setState({ failing });
 }
@@ -73,15 +80,32 @@ function invoke(docId: string, delivery: DocDelivery, update: Uint8Array) {
     )
     .finally(() => {
       delivery.outstanding.delete(sent);
+      if (delivery.outstanding.size === 0 && delivery.failed.length === 0) {
+        const recovered = delivery.error !== null;
+        delivery.error = null;
+        delivery.retryDelayMs = 100;
+        clearTimeout(delivery.retryTimer);
+        delivery.retryTimer = undefined;
+        if (recovered) publish();
+      } else if (
+        delivery.failed.length > 0 &&
+        delivery.retryTimer === undefined
+      ) {
+        delivery.retryTimer = setTimeout(() => {
+          delivery.retryTimer = undefined;
+          delivery.retryDelayMs = Math.min(delivery.retryDelayMs * 2, 5_000);
+          retry(docId, delivery);
+        }, delivery.retryDelayMs);
+      }
     });
   delivery.outstanding.add(sent);
 }
 
 function retry(docId: string, delivery: DocDelivery) {
   if (delivery.failed.length === 0) return;
+  clearTimeout(delivery.retryTimer);
+  delivery.retryTimer = undefined;
   const failed = delivery.failed.splice(0);
-  delivery.error = null;
-  publish();
   for (const update of failed) invoke(docId, delivery, update);
 }
 
@@ -128,8 +152,4 @@ export async function drainDeliveries(): Promise<string[]> {
     .filter(([, delivery]) => delivery.failed.length > 0)
     .map(([docId]) => docId)
     .sort();
-}
-
-export function retryDeliveries() {
-  for (const [docId, delivery] of deliveries) retry(docId, delivery);
 }
