@@ -1,0 +1,20 @@
+#!/bin/bash
+set -euo pipefail
+S=.claude/skills/verify-aelomi/scripts
+D1_DATA=$(mktemp -d "$HOME/.local/state/aelomi-verify/d1-empty-frame-XXXX")
+cp -R perf/fixtures/empty-workspace "$D1_DATA/data"
+D1_RUN=$(AELOMI_DATA_DIR="$D1_DATA/data" "$S/app.sh" launch app)
+trap 'python3 /tmp/aelomi-d1-lock.py release; "$S/app.sh" cleanup "$D1_RUN"' EXIT
+python3 /tmp/aelomi-d1-lock.py
+"$S/app.sh" doctor "$D1_RUN"
+"$S/app.sh" tree "$D1_RUN" > "$D1_RUN/empty-first-launch.txt"
+python3 - "$D1_RUN/empty-first-launch.txt" <<'PY'
+import pathlib,sys
+s=pathlib.Path(sys.argv[1]).read_text()
+assert 'AXGroup/AXLandmarkRegion "No page open"' in s
+assert 'AXButton "New page"' in s
+assert 'Getting started' not in s
+print('PASS stored empty workspace opens the empty state')
+PY
+"$S/app.sh" screenshot "$D1_RUN" empty-first-launch
+"$S/app.sh" keys "$D1_RUN" q command
