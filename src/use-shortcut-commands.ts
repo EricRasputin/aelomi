@@ -15,9 +15,18 @@ export function useShortcutCommands() {
       commandDispatcher.register("undo", historyCommand("undo")),
       commandDispatcher.register("redo", historyCommand("redo")),
     ];
+    let composing = false;
+    const compositionstart = () => {
+      composing = true;
+    };
+    const compositionend = () => {
+      composing = false;
+    };
     const keydown = (event: KeyboardEvent) =>
-      commandDispatcher.keydown(event, document.activeElement);
+      commandDispatcher.keydown(event, document.activeElement, composing);
     window.addEventListener("keydown", keydown, true);
+    window.addEventListener("compositionstart", compositionstart, true);
+    window.addEventListener("compositionend", compositionend, true);
     let disposed = false;
     let unlisten: (() => void) | undefined;
     void events.menuCommand
@@ -26,6 +35,7 @@ export function useShortcutCommands() {
           commandDispatcher.dispatch(payload.command, {
             source: "menu",
             target: document.activeElement,
+            isComposing: composing,
           });
       })
       .then((stop) => {
@@ -39,6 +49,8 @@ export function useShortcutCommands() {
       disposed = true;
       unlisten?.();
       window.removeEventListener("keydown", keydown, true);
+      window.removeEventListener("compositionstart", compositionstart, true);
+      window.removeEventListener("compositionend", compositionend, true);
       for (const stop of unregister) stop();
     };
   }, []);

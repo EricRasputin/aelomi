@@ -4,8 +4,7 @@ use std::sync::OnceLock;
 use objc2::encode::{Encode, EncodeArguments, EncodeReturn};
 use objc2::runtime::{AnyClass, AnyObject, Imp, MethodImplementation, Sel};
 use objc2::{MainThreadMarker, sel};
-use objc2_app_kit::{NSApplication, NSApplicationTerminateReply, NSEventModifierFlags};
-use objc2_foundation::NSString;
+use objc2_app_kit::{NSApplication, NSApplicationTerminateReply};
 use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Runtime};
 use tauri_specta::Event;
@@ -40,7 +39,7 @@ enum MenuAction {
     Native { role: NativeRole },
 }
 
-#[derive(serde::Deserialize)]
+#[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 enum NativeRole {
     About,
@@ -84,13 +83,21 @@ fn menu_rows(definition: &MenuDefinition) -> Vec<MenuRow<'_>> {
     rows
 }
 
+fn submenu_id(id: &str) -> &str {
+    match id {
+        "window" => tauri::menu::WINDOW_SUBMENU_ID,
+        "help" => tauri::menu::HELP_SUBMENU_ID,
+        _ => id,
+    }
+}
+
 fn build_menu<R: Runtime>(
     app: &AppHandle<R>,
     definitions: &[MenuDefinition],
 ) -> tauri::Result<Menu<R>> {
     let menu = Menu::new(app)?;
     for definition in definitions {
-        let submenu = Submenu::with_id(app, &definition.id, &definition.label, true)?;
+        let submenu = Submenu::with_id(app, submenu_id(&definition.id), &definition.label, true)?;
         for row in menu_rows(definition) {
             match row {
                 MenuRow::Separator => submenu.append(&PredefinedMenuItem::separator(app)?)?,
@@ -144,63 +151,13 @@ fn build_menu<R: Runtime>(
             }
         }
         menu.append(&submenu)?;
-        if definition.id == "window" {
-            submenu.set_as_windows_menu_for_nsapp()?;
-        } else if definition.id == "help" {
-            submenu.set_as_help_menu_for_nsapp()?;
-        }
     }
     Ok(menu)
-}
-
-fn key_equivalent(accelerator: Option<&str>) -> (String, NSEventModifierFlags) {
-    let mut key = String::new();
-    let mut modifiers = NSEventModifierFlags::empty();
-    for part in accelerator.unwrap_or_default().split('+') {
-        match part {
-            "Super" => modifiers |= NSEventModifierFlags::Command,
-            "Control" => modifiers |= NSEventModifierFlags::Control,
-            "Alt" => modifiers |= NSEventModifierFlags::Option,
-            "Shift" => modifiers |= NSEventModifierFlags::Shift,
-            "Backslash" => key = "\\".into(),
-            "Comma" => key = ",".into(),
-            value => key = value.to_lowercase(),
-        }
-    }
-    (key, modifiers)
-}
-
-// Tauri's predefined roles have fixed accelerators and expose no setter. Apply the table's
-// equivalents to AppKit too, so those roles do not become a second shortcut source.
-fn apply_native_accelerators(definitions: &[MenuDefinition]) {
-    let mtm = MainThreadMarker::new().expect("setup runs on the main thread");
-    let menu = NSApplication::sharedApplication(mtm)
-        .mainMenu()
-        .expect("the app menu is installed");
-    for definition in definitions {
-        let submenu = menu
-            .itemArray()
-            .iter()
-            .filter_map(|item| item.submenu())
-            .find(|submenu| submenu.title().to_string() == definition.label)
-            .expect("every generated submenu is installed");
-        let items = submenu.itemArray();
-        for entry in &definition.items {
-            let item = items
-                .iter()
-                .find(|item| item.title().to_string() == entry.label)
-                .expect("every generated menu item is installed");
-            let (key, modifiers) = key_equivalent(entry.accelerator.as_deref());
-            item.setKeyEquivalent(&NSString::from_str(&key));
-            item.setKeyEquivalentModifierMask(modifiers);
-        }
-    }
 }
 
 pub fn setup(app: &tauri::App) -> tauri::Result<()> {
     let definitions = menu_definitions()?;
     app.set_menu(build_menu(app.handle(), &definitions)?)?;
-    apply_native_accelerators(&definitions);
     app.on_menu_event(move |app, event| {
         let Some(entry) = definitions
             .iter()
@@ -350,147 +307,89 @@ mod tests {
     use super::*;
 
     #[test]
-    fn generated_menu_build_preserves_items_groups_and_accelerators() {
-        let definitions = menu_definitions().unwrap();
-        let built: Vec<_> = definitions
-            .iter()
-            .map(|menu| {
-                let rows: Vec<_> = menu_rows(menu)
-                    .into_iter()
-                    .map(|row| match row {
-                        MenuRow::Separator => "---".to_owned(),
-                        MenuRow::Command(entry) => format!(
-                            "{}|{}|{}",
-                            entry.command,
-                            entry.label,
-                            entry.accelerator.as_deref().unwrap_or("")
-                        ),
-                    })
-                    .collect();
-                (menu.label.as_str(), rows)
-            })
-            .collect();
-        assert_eq!(
-            built,
-            vec![
-                (
-                    "Aelomi",
-                    vec![
-                        "about|About Aelomi|",
-                        "---",
-                        "openSettings|Settings…|Super+Comma",
-                        "---",
-                        "services|Services|",
-                        "---",
-                        "hide|Hide Aelomi|Super+H",
-                        "hideOthers|Hide Others|Super+Alt+H",
-                        "showAll|Show All|",
-                        "---",
-                        "quit|Quit Aelomi|Super+Q"
-                    ]
-                ),
-                ("File", vec!["closeWindow|Close Window|Super+W"]),
-                (
-                    "Edit",
-                    vec![
-                        "undo|Undo|Super+Z",
-                        "redo|Redo|Super+Shift+Z",
-                        "---",
-                        "cut|Cut|Super+X",
-                        "copy|Copy|Super+C",
-                        "paste|Paste|Super+V",
-                        "selectAll|Select All|Super+A"
-                    ]
-                ),
-                (
-                    "View",
-                    vec![
-                        "openPalette|Search and commands|Super+K",
-                        "toggleSidebar|Toggle Sidebar|Super+Backslash",
-                        "---",
-                        "fullscreen|Enter Full Screen|Super+Control+F"
-                    ]
-                ),
-                (
-                    "Window",
-                    vec![
-                        "minimize|Minimize|Super+M",
-                        "zoom|Zoom|",
-                        "---",
-                        "bringAllToFront|Bring All to Front|"
-                    ]
-                ),
-                ("Help", vec![]),
-            ]
-            .into_iter()
-            .map(|(label, rows)| (
-                label,
-                rows.into_iter().map(str::to_owned).collect::<Vec<_>>()
-            ))
-            .collect::<Vec<_>>()
-        );
-        let custom: Vec<_> = definitions
-            .iter()
-            .flat_map(|menu| &menu.items)
-            .filter(|entry| {
-                matches!(
-                    entry.action,
-                    MenuAction::Webview
-                        | MenuAction::Native {
-                            role: NativeRole::Quit
-                        }
-                )
-            })
-            .map(|entry| entry.command.as_str())
-            .collect();
-        assert_eq!(
-            custom,
-            [
-                "openSettings",
-                "quit",
-                "undo",
-                "redo",
-                "openPalette",
-                "toggleSidebar"
-            ]
-        );
+    fn window_and_help_use_tauri_installation_ids() {
+        assert_eq!(submenu_id("window"), tauri::menu::WINDOW_SUBMENU_ID);
+        assert_eq!(submenu_id("help"), tauri::menu::HELP_SUBMENU_ID);
+        assert_eq!(submenu_id("edit"), "edit");
     }
 
     #[test]
-    fn generated_accelerators_reach_appkit_with_every_modifier() {
-        assert_eq!(
-            key_equivalent(Some("Super+Shift+Z")),
-            (
-                "z".into(),
-                NSEventModifierFlags::Command | NSEventModifierFlags::Shift
-            )
-        );
-        assert_eq!(
-            key_equivalent(Some("Super+Alt+H")),
-            (
-                "h".into(),
-                NSEventModifierFlags::Command | NSEventModifierFlags::Option
-            )
-        );
-        assert_eq!(
-            key_equivalent(Some("Super+Control+F")),
-            (
-                "f".into(),
-                NSEventModifierFlags::Command | NSEventModifierFlags::Control
-            )
-        );
-        assert_eq!(
-            key_equivalent(Some("Super+Backslash")),
-            ("\\".into(), NSEventModifierFlags::Command)
-        );
-        assert_eq!(
-            key_equivalent(Some("Super+Comma")),
-            (",".into(), NSEventModifierFlags::Command)
-        );
-        assert_eq!(
-            key_equivalent(None),
-            (String::new(), NSEventModifierFlags::empty())
-        );
+    fn menu_rows_insert_only_group_separators_in_input_order() {
+        let definition = serde_json::from_str(
+            r#"{
+            "id":"test", "label":"Test", "items":[
+                {"command":"first", "label":"First", "group":0,
+                 "accelerator":"Super+K", "action":{"owner":"webview"}},
+                {"command":"second", "label":"Second", "group":0,
+                 "accelerator":null, "action":{"owner":"native","role":"copy"}},
+                {"command":"third", "label":"Third", "group":1,
+                 "accelerator":null, "action":{"owner":"webview"}}
+            ]
+        }"#,
+        )
+        .unwrap();
+        let rows: Vec<_> = menu_rows(&definition)
+            .into_iter()
+            .map(|row| match row {
+                MenuRow::Separator => "---",
+                MenuRow::Command(entry) => entry.command.as_str(),
+            })
+            .collect();
+        assert_eq!(rows, ["first", "second", "---", "third"]);
+    }
+
+    #[test]
+    fn every_generated_accelerator_parses_with_muda() {
+        for entry in menu_definitions()
+            .unwrap()
+            .iter()
+            .flat_map(|menu| &menu.items)
+        {
+            if let Some(accelerator) = &entry.accelerator {
+                assert!(
+                    accelerator
+                        .parse::<muda::accelerator::Accelerator>()
+                        .is_ok(),
+                    "{} has an unsupported accelerator: {accelerator}",
+                    entry.command
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn native_role_accelerators_match_muda_defaults() {
+        for entry in menu_definitions()
+            .unwrap()
+            .iter()
+            .flat_map(|menu| &menu.items)
+        {
+            let MenuAction::Native { role } = &entry.action else {
+                continue;
+            };
+            let expected = match role {
+                NativeRole::About
+                | NativeRole::Services
+                | NativeRole::ShowAll
+                | NativeRole::Zoom
+                | NativeRole::BringAllToFront => None,
+                NativeRole::Hide => Some("Super+H"),
+                NativeRole::HideOthers => Some("Super+Alt+H"),
+                NativeRole::Quit => Some("Super+Q"),
+                NativeRole::CloseWindow => Some("Super+W"),
+                NativeRole::Cut => Some("Super+X"),
+                NativeRole::Copy => Some("Super+C"),
+                NativeRole::Paste => Some("Super+V"),
+                NativeRole::SelectAll => Some("Super+A"),
+                NativeRole::Fullscreen => Some("Super+Control+F"),
+                NativeRole::Minimize => Some("Super+M"),
+            };
+            assert_eq!(
+                entry.accelerator.as_deref(),
+                expected,
+                "{role:?} must retain muda's default accelerator"
+            );
+        }
     }
 
     #[test]

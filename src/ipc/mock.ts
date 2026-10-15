@@ -687,6 +687,11 @@ function pageWrite(update: () => void) {
 }
 
 const control = {
+  menu: {
+    activate(command: MenuCommand["command"]) {
+      return events.menuCommand.emit({ command });
+    },
+  },
   get calls(): readonly MockCall[] {
     return calls;
   },

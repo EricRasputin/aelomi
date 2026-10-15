@@ -91,7 +91,7 @@ The workspace has two crates. Both use the version, edition, and license from `[
 
 ## macOS-specific code lives in one module
 
-`src-tauri/src/macos.rs` holds all code that works only on macOS. `src-tauri/src/lib.rs` declares it with `#[cfg(target_os = "macos")] mod macos;` and calls `macos::setup(app)` under the same `cfg`. `setup` builds the native menu from the embedded generated `menu.json`, applies its accelerators to AppKit, preserves native edit and window roles, and forwards webview-owned items through `MenuCommand`. It keeps the drain-aware custom Quit item and adds `applicationShouldTerminate:` to tao's app delegate, `data_location` supplies the data folder and the cloud folders it must not resolve into, and `process_start_us` reads the kernel's process start time for the cold-start probe. A port to another platform replaces this one module. The `bundle.macOS` block in `src-tauri/tauri.conf.json` sets the macOS 14 minimum and ad-hoc signing.
+`src-tauri/src/macos.rs` holds all code that works only on macOS. `src-tauri/src/lib.rs` declares it with `#[cfg(target_os = "macos")] mod macos;` and calls `macos::setup(app)` under the same `cfg`. `setup` builds the native menu from the embedded generated `menu.json`, preserves native edit and window roles, and forwards webview-owned items through `MenuCommand`. It keeps the drain-aware custom Quit item and adds `applicationShouldTerminate:` to tao's app delegate, `data_location` supplies the data folder and the cloud folders it must not resolve into, and `process_start_us` reads the kernel's process start time for the cold-start probe. A port to another platform replaces this one module. The `bundle.macOS` block in `src-tauri/tauri.conf.json` sets the macOS 14 minimum and ad-hoc signing.
 
 ## A command call goes from a store to the shell and back
 
@@ -129,13 +129,15 @@ To add a command:
 
 `pnpm menu:generate` serializes the table into `src-tauri/menu.json`. Vitest compares the committed file with the serializer, checks every modifier in duplicate combinations, and checks that the webview matcher binds only webview entries. Groups produce native separators. Menu titles and order also live beside the table, so the shell does not maintain a second list.
 
-`macos.rs` builds the menu during setup with `include_str!`, before the webview loads. Webview entries and Quit are custom items with real accelerators. Other native entries use predefined roles. Tauri exposes no accelerator setter for predefined items, so the shell applies the generated key equivalents and modifier masks to AppKit after installation. `objc2-foundation` supplies NSString for that adapter and was already in the locked dependency graph.
+`macos.rs` builds the menu during setup with `include_str!`, before the webview loads. Webview entries and Quit are custom items with real accelerators. Other native entries use predefined roles. Rust tests pin their table shortcuts to muda's fixed defaults and parse every generated accelerator with muda, so unsupported bindings fail CI. Window and Help use Tauri's reserved submenu IDs, which register the installed submenus with AppKit during `set_menu`. AppKit then supplies the open-window list and Help search field.
 
 `command-dispatcher.ts` holds a Map of webview command IDs to handlers with optional enabled predicates. `use-shortcut-commands.ts` registers palette and history commands, installs one capture-phase key listener, and listens to the generated `MenuCommand` event. Both paths use the same dispatch operation. Only a matched, registered, enabled webview shortcut cancels the key. Teardown removes the listener and registrations, including late native-listener setup during StrictMode cleanup.
 
 To add a webview command, add its table entry and register its handler with `commandDispatcher.register`, then run `pnpm menu:generate`. Native roles have no webview handler. Sidebar and Settings entries reserve their shortcuts and menu positions until their follow-up PRs register handlers.
 
-History commands call the active BlockNote editor's `undo` and `redo` only while it is editable. Keyboard history in a plain input or textarea falls through to WebKit. Native menu history for a focused field calls WebKit's `execCommand`, preserving that field's native undo stack. Workspace record edits never enter the page editor's undo manager (TREE-15).
+`CommandContext` carries the focus target, activation source, and composition state. Capture-phase composition events keep that state available to native menu activations too. Both command routes stop during composition and while quit drains, asks, or exits. The handler Map remains independent of the native event listener's connection.
+
+History commands call the active BlockNote editor's `undo` and `redo` only when the target belongs to its editable DOM, the editor has no inert ancestor, and no modal is open. A focused plain input or textarea uses WebKit's `execCommand` on both routes. The keyboard route cancels the key before it runs field history, so it cannot require or trigger a native menu round trip. Field history remains available in the palette. Workspace record edits never enter the page editor's undo manager (TREE-15).
 
 
 ## Frontend layout

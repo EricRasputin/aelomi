@@ -18,10 +18,17 @@ export function historyCommand(action: "undo" | "redo"): CommandHandler {
     isPlainTextField(target) ? target : null;
   return {
     enabled(context) {
+      const { target } = context;
+      if (!target || target.closest("[inert]")) return false;
       const input = field(context);
-      if (input)
-        return context.source === "menu" && !input.disabled && !input.readOnly;
-      return getActiveEditor()?.isEditable() === true;
+      if (input) return !input.disabled && !input.readOnly;
+      const editor = getActiveEditor();
+      return (
+        editor?.isEditable() === true &&
+        editor.dom.contains(target) &&
+        !editor.dom.closest("[inert]") &&
+        !document.querySelector('[aria-modal="true"], dialog[open]')
+      );
     },
     run(context) {
       if (field(context)) {
