@@ -1,6 +1,5 @@
 import { create } from "zustand";
 import { commands, events, type IndexStatus } from "../ipc";
-import { listenForPageEdits, usePageTreeStore } from "./page-tree";
 
 type IndexStatusStore = {
   status: IndexStatus | null;
@@ -41,7 +40,6 @@ export function connectIndexEvents() {
   };
   const ready = (async () => {
     const registrations = await Promise.allSettled([
-      listenForPageEdits().then(keep),
       events.indexStatusChanged
         .listen(({ payload }) => {
           if (disposed) return;
@@ -50,10 +48,9 @@ export function connectIndexEvents() {
         })
         .then(keep),
       events.indexChanged
-        .listen(({ payload }) => {
+        .listen(() => {
           if (disposed) return;
           useIndexStatusStore.getState().receiveChange();
-          if (payload.workspace) void usePageTreeStore.getState().refresh();
         })
         .then(keep),
     ]);

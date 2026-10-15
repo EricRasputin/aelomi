@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { commands, events, type PageTree, type TreePage } from "../ipc";
+import { onRecordCommand } from "../ipc/record-commands";
 
 export type SourceTree =
   | { kind: "loading" }
@@ -11,40 +12,83 @@ type PageTreeStore = {
   refresh: () => Promise<SourceTree>;
 };
 
-let latest = 0;
+let inFlight: Promise<SourceTree> | null = null;
+let dirty = false;
 
 export const usePageTreeStore = create<PageTreeStore>((set, get) => ({
   source: { kind: "loading" },
-  refresh: async () => {
-    latest += 1;
-    const request = latest;
-    let next: SourceTree;
-    try {
-      const reply = await commands.pageTree();
-      next =
-        reply.status === "ok"
-          ? {
-              kind: "ready",
-              tree: reply.data,
-              byId: new Map(reply.data.pages.map((page) => [page.id, page])),
-            }
-          : { kind: "error", message: queryErrorText(reply.error) };
-    } catch (error: unknown) {
-      next = {
-        kind: "error",
-        message: error instanceof Error ? error.message : String(error),
-      };
+  refresh: () => {
+    if (inFlight) {
+      dirty = true;
+      return inFlight;
     }
-    if (request !== latest) return get().source;
-    set({ source: next });
-    return next;
+    const read = async () => {
+      do {
+        dirty = false;
+        let next: SourceTree;
+        try {
+          const reply = await commands.pageTree();
+          next =
+            reply.status === "ok"
+              ? {
+                  kind: "ready",
+                  tree: reply.data,
+                  byId: new Map(
+                    reply.data.pages.map((page) => [page.id, page]),
+                  ),
+                }
+              : { kind: "error", message: queryErrorText(reply.error) };
+        } catch (error: unknown) {
+          next = {
+            kind: "error",
+            message: error instanceof Error ? error.message : String(error),
+          };
+        }
+        set({ source: next });
+      } while (dirty);
+      return get().source;
+    };
+    inFlight = read().finally(() => {
+      inFlight = null;
+    });
+    return inFlight;
   },
 }));
 
-export function listenForPageEdits() {
-  return events.pageRecordsChanged.listen(() => {
-    void usePageTreeStore.getState().refresh();
-  });
+export function connectPageTreeEvents() {
+  let disposed = false;
+  const refresh = () => {
+    if (!disposed) void usePageTreeStore.getState().refresh();
+  };
+  const stops = [onRecordCommand(refresh)];
+  const keep = (stop: () => void) => {
+    if (disposed) stop();
+    else stops.push(stop);
+  };
+  const ready = (async () => {
+    const registrations = await Promise.allSettled([
+      events.pageRecordsChanged.listen(refresh).then(keep),
+      events.indexChanged
+        .listen(({ payload }) => {
+          if (payload.workspace) refresh();
+        })
+        .then(keep),
+    ]);
+    if (disposed) return;
+    const errors = registrations.flatMap((result) =>
+      result.status === "rejected" ? [result.reason] : [],
+    );
+    if (errors.length)
+      throw new AggregateError(errors, "Page tree event connection failed");
+    await usePageTreeStore.getState().refresh();
+  })();
+  return {
+    ready,
+    dispose: () => {
+      disposed = true;
+      for (const stop of stops.splice(0)) stop();
+    },
+  };
 }
 
 export const untitled = "Untitled";

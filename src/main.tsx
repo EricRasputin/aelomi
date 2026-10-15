@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 import { connectQuitDrain } from "./editor/quit-drain";
 import { router } from "./router";
 import { connectIndexEvents } from "./stores/index-status";
-import { usePageTreeStore } from "./stores/page-tree";
+import { connectPageTreeEvents } from "./stores/page-tree";
 import { connectPalette } from "./stores/palette";
 import { connectStorageEvents } from "./stores/storage-events";
 import { connectStorageStartup } from "./stores/storage-startup";
@@ -15,7 +15,6 @@ if (!root) throw new Error("Missing app root");
 const stopDrain = connectQuitDrain();
 const storageEvents = connectStorageEvents();
 const storageStartup = connectStorageStartup();
-void usePageTreeStore.getState().refresh();
 void storageEvents.ready.catch((error: unknown) => {
   console.error("Storage event connection failed", error);
 });
@@ -24,10 +23,15 @@ void indexEvents.ready.catch((error: unknown) => {
   console.error("Index event connection failed", error);
 });
 const stopPalette = connectPalette();
+const pageTreeEvents = connectPageTreeEvents();
+void pageTreeEvents.ready.catch((error: unknown) => {
+  console.error("Page tree event connection failed", error);
+});
 import.meta.hot?.dispose(() => {
   storageEvents.dispose();
   storageStartup.dispose();
   indexEvents.dispose();
+  pageTreeEvents.dispose();
   stopPalette();
   stopDrain();
 });

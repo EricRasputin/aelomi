@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import * as Y from "yjs";
-import { commands } from "../ipc";
+import { commands, events } from "../ipc";
 import { fromBase64, toBase64 } from "../ipc/base64";
 import { installMock } from "../ipc/mock";
-import { connectIndexEvents } from "./index-status";
-import { usePageTreeStore } from "./page-tree";
+import { withRecordCommands } from "../ipc/record-commands";
+import { connectPageTreeEvents, usePageTreeStore } from "./page-tree";
 
 vi.mock("../ipc", async (importOriginal) => {
   const mock = await import("../ipc/mock");
@@ -15,7 +15,7 @@ vi.mock("../ipc", async (importOriginal) => {
   };
 });
 
-const connections: ReturnType<typeof connectIndexEvents>[] = [];
+const connections: ReturnType<typeof connectPageTreeEvents>[] = [];
 beforeEach(() => {
   vi.stubGlobal("window", {});
   installMock();
@@ -43,7 +43,7 @@ function shown() {
 test("create rename and subtree trash refresh the source tree while the index rebuilds and writes fail", async () => {
   window.__aelomiMock?.index.setStatus("Rebuilding");
   window.__aelomiMock?.storage.failWrites(true);
-  const connection = connectIndexEvents();
+  const connection = connectPageTreeEvents();
   connections.push(connection);
   await connection.ready;
   await usePageTreeStore.getState().refresh();
@@ -131,7 +131,7 @@ test("page commands reject invalid inactive and unavailable targets without addi
 });
 
 test("a source event overtakes a stale tree snapshot", async () => {
-  const connection = connectIndexEvents();
+  const connection = connectPageTreeEvents();
   connections.push(connection);
   await connection.ready;
   let finish = (_reply: Awaited<ReturnType<typeof commands.pageTree>>) => {};
@@ -146,7 +146,6 @@ test("a source event overtakes a stale tree snapshot", async () => {
     .mockImplementation(original);
   const pending = usePageTreeStore.getState().refresh();
   const id = await create();
-  await vi.waitFor(() => expect(shown().pages.map((p) => p.id)).toEqual([id]));
   finish({ status: "ok", data: { pages: [], favorites: [], trash: [] } });
   await pending;
   expect(shown().pages.map((p) => p.id)).toEqual([id]);
@@ -160,7 +159,7 @@ test("mock record edits store their transaction delta without pending foreign st
   const foreign = new Y.Doc();
   foreign.clientID = 9;
   Y.applyUpdate(foreign, fromBase64(loaded.data));
-  let delta = new Uint8Array();
+  let delta: Uint8Array = new Uint8Array();
   foreign.on("update", (update: Uint8Array) => {
     delta = update;
   });
@@ -187,4 +186,83 @@ test("mock record edits store their transaction delta without pending foreign st
   );
   foreign.destroy();
   doc.destroy();
+});
+
+test("a burst keeps one tree request in flight and installs its reply before the next finishes", async () => {
+  type Reply = Awaited<ReturnType<typeof commands.pageTree>>;
+  let first = (_reply: Reply) => {};
+  let last = (_reply: Reply) => {};
+  const initial = new Promise<Reply>((done) => {
+    first = done;
+  });
+  const followup = new Promise<Reply>((done) => {
+    last = done;
+  });
+  const spy = vi
+    .spyOn(commands, "pageTree")
+    .mockReturnValueOnce(initial)
+    .mockReturnValueOnce(followup);
+  const pending = usePageTreeStore.getState().refresh();
+  for (let i = 0; i < 20; i++) void usePageTreeStore.getState().refresh();
+  const reply = (title: string): Reply => ({
+    status: "ok",
+    data: {
+      pages: [
+        { id: "a", title, parent_id: null, created_at: 1, updated_at: 1 },
+      ],
+      favorites: [],
+      trash: [],
+    },
+  });
+  try {
+    expect(spy.mock.calls).toEqual([[]]);
+    first(reply("first"));
+    await vi.waitFor(() =>
+      expect(shown().pages.map((page) => page.title)).toEqual(["first"]),
+    );
+    expect(spy.mock.calls).toEqual([[], []]);
+  } finally {
+    first(reply("first"));
+    last(reply("last"));
+    await pending;
+  }
+  expect(shown().pages.map((page) => page.title)).toEqual(["last"]);
+});
+
+test("tree subscriptions finish before the initial snapshot is requested", async () => {
+  let release = () => {};
+  const registration = new Promise<void>((done) => {
+    release = done;
+  });
+  const original = events.pageRecordsChanged.listen;
+  vi.spyOn(events.pageRecordsChanged, "listen").mockImplementationOnce(
+    async (...args) => {
+      await registration;
+      return original(...args);
+    },
+  );
+  const read = vi.spyOn(commands, "pageTree");
+  const connection = connectPageTreeEvents();
+  connections.push(connection);
+  await new Promise((done) => setTimeout(done, 0));
+  expect(read.mock.calls).toEqual([]);
+  release();
+  await connection.ready;
+  const id = await create();
+  await vi.waitFor(() =>
+    expect(shown().pages.map((page) => page.id)).toEqual([id]),
+  );
+});
+
+test("an accepted command refreshes the source tree even when its native event is lost", async () => {
+  window.__aelomiMock?.index.setStatus("Rebuilding");
+  const connection = connectPageTreeEvents();
+  connections.push(connection);
+  await connection.ready;
+  vi.spyOn(events.pageRecordsChanged, "emit").mockResolvedValueOnce(undefined);
+  const reply = await withRecordCommands(commands).pageCreate(null);
+  if (reply.status === "error") throw new Error(JSON.stringify(reply.error));
+  await vi.waitFor(() =>
+    expect(shown().pages.map((page) => page.id)).toEqual([reply.data]),
+  );
 });

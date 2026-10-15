@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { installMock, commands as transport } from "./mock";
+import { installMock, commands as mockTransport } from "./mock";
 import { drainRecordCommands, withRecordCommands } from "./record-commands";
+
+const transport: typeof import("./bindings").commands = mockTransport;
 
 function deferred<T>() {
   let resolve = (_value: T) => {};
