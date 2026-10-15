@@ -10,7 +10,7 @@ PSTACK_UNHIDE="how why"
 
 EMIL_URL=https://github.com/emilkowalski/skill
 EMIL_REF=2d228630ba1446365f614a108cb8252f1feda202
-# Not used in Aelomi (see CLAUDE.md > Workflow).
+# Not used in Aelomi.
 EMIL_EXCLUDE="animate-expo mobile-native write-swift"
 
 # pen.dev's skill ships as SKILL.md inside its CLI package, under a license
