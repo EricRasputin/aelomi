@@ -43,6 +43,7 @@ test("budgets.json holds every gate with a value and a why", () => {
     "palette.hostedAppOwnedP95Ms",
     "scroll.p95FrameMs",
     "scroll.maxFrameMs",
+    "scroll.hostedMaxFrameMs",
     "search.p95Ms",
     "search.hostedP95Ms",
     "search.firstSamples",
