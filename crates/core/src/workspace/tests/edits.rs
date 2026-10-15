@@ -391,6 +391,110 @@ fn projected_ids(w: &Workspace) -> Vec<String> {
 }
 
 #[test]
+fn restoring_tied_siblings_preserves_order_without_writing_the_untouched_sibling() {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use yrs::updates::decoder::Decode;
+    use yrs::{Observable, Update};
+
+    for subtree in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let w = empty(dir.path());
+        let pages = if subtree {
+            vec![
+                ("p", None, 20),
+                ("a", Some("p"), 10),
+                ("b", Some("p"), 10),
+                ("c", Some("p"), 10),
+                ("untouched", None, 30),
+            ]
+        } else {
+            vec![("a", None, 10), ("b", None, 10)]
+        };
+        crafted(&w, &pages);
+        let before = records(&w);
+        let expected = if subtree {
+            vec!["p", "a", "b", "c", "untouched"]
+        } else {
+            vec!["a", "b"]
+        };
+        assert_eq!(projected_ids(&w), expected);
+        let observer = doc_of(&w.load(&DocId::workspace()).unwrap());
+        let untouched = if subtree { "untouched" } else { "a" };
+        let yrs::Out::YMap(record) = observer
+            .transact()
+            .get_map("pages")
+            .unwrap()
+            .get(&observer.transact(), untouched)
+            .unwrap()
+        else {
+            panic!()
+        };
+        let writes = Arc::new(AtomicUsize::new(0));
+        let seen = writes.clone();
+        record.observe("untouched-writes", move |txn, event| {
+            seen.fetch_add(event.keys(txn).len(), Ordering::SeqCst);
+        });
+        let batch = w
+            .edit_page(PageEdit::Trash {
+                page: page(if subtree { "p" } else { "b" }),
+            })
+            .unwrap()
+            .trash_batch()
+            .unwrap();
+        w.edit_page(PageEdit::Restore { batch }).unwrap();
+        observer
+            .transact_mut()
+            .apply_update(Update::decode_v1(&w.load(&DocId::workspace()).unwrap()).unwrap())
+            .unwrap();
+        assert_eq!(projected_ids(&w), expected);
+        let mut after = records(&w);
+        assert_eq!(after[&page(untouched)], before[&page(untouched)]);
+        for (id, record) in &mut after {
+            record.updated_at = before[id].updated_at;
+            record.placement.order = before[id].placement.order;
+        }
+        assert_eq!(after, before);
+        assert_eq!(writes.load(Ordering::SeqCst), 0);
+    }
+}
+
+#[test]
+fn moving_out_of_a_repaired_cycle_keeps_both_pages_roots_and_trashes_only_the_moved_page() {
+    let dir = tempfile::tempdir().unwrap();
+    let w = empty(dir.path());
+    crafted(&w, &[("a", Some("b"), 10), ("b", Some("a"), 20)]);
+    assert_eq!(
+        w.tree()
+            .unwrap()
+            .pages
+            .iter()
+            .map(|p| (p.id.as_str(), p.parent.as_ref().map(PageId::as_str)))
+            .collect::<Vec<_>>(),
+        [("a", None), ("b", Some("a"))]
+    );
+    w.edit_page(PageEdit::Move {
+        page: page("b"),
+        parent: None,
+        position: 1,
+    })
+    .unwrap();
+    assert_eq!(
+        w.tree()
+            .unwrap()
+            .pages
+            .iter()
+            .map(|p| (p.id.as_str(), p.parent.as_ref().map(PageId::as_str)))
+            .collect::<Vec<_>>(),
+        [("a", None), ("b", None)]
+    );
+    assert_eq!(records(&w)[&page("a")].placement.parent, None);
+    w.edit_page(PageEdit::Trash { page: page("b") }).unwrap();
+    assert_eq!(projected_ids(&w), ["a"]);
+    assert_eq!(records(&w)[&page("a")].trash, None);
+}
+
+#[test]
 fn moving_before_tied_siblings_keeps_every_sibling_in_projected_order() {
     for order in [10, 0] {
         let dir = tempfile::tempdir().unwrap();

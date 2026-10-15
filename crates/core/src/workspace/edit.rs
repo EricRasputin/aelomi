@@ -167,7 +167,7 @@ fn plan(
                     break candidate;
                 }
             };
-            let order = end_order(&records, parent.as_ref())?;
+            let order = last_order(&records, &siblings(&records, &forest, parent.as_ref()))?;
             records.insert(
                 page.clone(),
                 PageRecord {
@@ -201,7 +201,7 @@ fn plan(
                 active(id)?;
                 ancestor = forest.parent[id].as_ref();
             }
-            let siblings = siblings(&records, parent.as_ref(), None);
+            let siblings = siblings(&records, &forest, parent.as_ref());
             let current = siblings.iter().position(|id| id == &page);
             let position = position.min(
                 siblings
@@ -209,6 +209,22 @@ fn plan(
                     .saturating_sub(usize::from(current.is_some())),
             );
             if forest.parent[&page] != parent || current != Some(position) {
+                let mut cycle = BTreeSet::new();
+                let mut next = Some(&page);
+                while let Some(id) = next {
+                    if !cycle.insert(id.clone()) {
+                        if id == &page {
+                            let cut = cycle.first().expect("cycle member");
+                            if cut != &page {
+                                records.get_mut(cut).expect("cycle member").placement.parent = None;
+                            }
+                        }
+                        break;
+                    }
+                    next = prior
+                        .get(id)
+                        .and_then(|record| record.placement.parent.as_ref());
+                }
                 let siblings: Vec<_> = siblings.into_iter().filter(|id| id != &page).collect();
                 let order = insertion_order(&mut records, &siblings, position)?;
                 let record = records.get_mut(&page).expect("active page exists");
@@ -260,18 +276,35 @@ fn plan(
             }
             let planned = tree::forest(&restored);
             let mut active = forest.active.clone();
-            let mut pending: Vec<_> = restoring.iter().cloned().collect();
-            while !pending.is_empty() {
-                let at = pending
-                    .iter()
-                    .position(|id| {
-                        let parent = &planned.parent[id];
-                        parent
-                            .as_ref()
-                            .is_none_or(|p| !restoring.contains(p) || active.contains(p))
-                    })
-                    .ok_or(PageEditError::Cycle)?;
-                let id = pending.remove(at);
+            let mut positions: BTreeMap<_, _> = forest
+                .active
+                .iter()
+                .map(|id| (id.clone(), records[id].placement.order))
+                .collect();
+            let mut children: BTreeMap<Option<PageId>, Vec<PageId>> = BTreeMap::new();
+            let mut groups: BTreeMap<Option<PageId>, Vec<PageId>> = BTreeMap::new();
+            for id in &forest.active {
+                groups
+                    .entry(forest.parent[id].clone())
+                    .or_default()
+                    .push(id.clone());
+            }
+            for siblings in groups.values_mut() {
+                siblings.sort_by_key(|id| (records[id].placement.order, id.clone()));
+            }
+            for id in &restoring {
+                let parent = planned.parent[id].clone().filter(|p| restoring.contains(p));
+                children.entry(parent).or_default().push(id.clone());
+            }
+            for siblings in children.values_mut() {
+                siblings.sort_by_key(|id| (restored[id].placement.order, id.clone()));
+            }
+            let mut pending = children.remove(&None).unwrap_or_default();
+            pending.reverse();
+            while let Some(id) = pending.pop() {
+                if let Some(children) = children.remove(&Some(id.clone())) {
+                    pending.extend(children.into_iter().rev());
+                }
                 let trash = records[&id].trash.clone().expect("batch member");
                 let parent = planned.parent[&id].clone().filter(|p| active.contains(p));
                 let cut_root = planned.parent[&id].is_none()
@@ -279,20 +312,38 @@ fn plan(
                         .original_parent
                         .as_ref()
                         .is_some_and(|p| restoring.contains(p));
-                let order = if parent.is_none() && trash.original_parent.is_some() && !cut_root {
-                    end_order(&records, None)?
+                let siblings = groups.entry(parent.clone()).or_default();
+                let (position, order) =
+                    if parent.is_none() && trash.original_parent.is_some() && !cut_root {
+                        (siblings.len(), last_order(&records, siblings)?)
+                    } else {
+                        let position = siblings.partition_point(|sibling| {
+                            (positions[sibling], sibling) < (trash.original_order, &id)
+                        });
+                        let order = match position
+                            .checked_sub(1)
+                            .map(|at| records[&siblings[at]].placement.order)
+                        {
+                            Some(previous) if previous >= trash.original_order => {
+                                next_order(previous, 1)?
+                            }
+                            _ => trash.original_order,
+                        };
+                        make_room(&mut records, &siblings[position..], order)?;
+                        (position, order)
+                    };
+                let sort_order = if parent.is_none() && trash.original_parent.is_some() && !cut_root
+                {
+                    order
                 } else {
-                    let siblings: Vec<_> = siblings(&records, parent.as_ref(), None)
-                        .into_iter()
-                        .filter(|id| records[id].placement.order >= trash.original_order)
-                        .collect();
-                    make_room(&mut records, &siblings, trash.original_order)?;
                     trash.original_order
                 };
+                positions.insert(id.clone(), sort_order);
                 let record = records.get_mut(&id).expect("batch member");
                 record.placement = Placement { parent, order };
                 record.trash = None;
                 record.updated_at = now;
+                siblings.insert(position, id.clone());
                 active.insert(id);
             }
             change = PageChange::Restored(batch);
@@ -305,14 +356,14 @@ pub(crate) const ORDER_STEP: u64 = 1 << 20;
 
 fn siblings(
     records: &BTreeMap<PageId, PageRecord>,
+    forest: &tree::Forest,
     parent: Option<&PageId>,
-    excluding: Option<&PageId>,
 ) -> Vec<PageId> {
-    let forest = tree::forest(records);
     let mut siblings: Vec<_> = forest
         .active
-        .into_iter()
-        .filter(|id| Some(id) != excluding && forest.parent[id].as_ref() == parent)
+        .iter()
+        .filter(|id| forest.parent[*id].as_ref() == parent)
+        .cloned()
         .collect();
     siblings.sort_by_key(|id| (records[id].placement.order, id.clone()));
     siblings
@@ -323,13 +374,6 @@ fn next_order(order: u64, step: u64) -> Result<u64, PageEditError> {
         .checked_add(step)
         .filter(|n| *n <= MAX_SAFE_INTEGER)
         .ok_or(PageEditError::OrderExhausted)
-}
-
-fn end_order(
-    records: &BTreeMap<PageId, PageRecord>,
-    parent: Option<&PageId>,
-) -> Result<u64, PageEditError> {
-    last_order(records, &siblings(records, parent, None))
 }
 
 fn last_order(
