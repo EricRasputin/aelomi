@@ -3,6 +3,8 @@ use std::io::{self, Write};
 use std::os::fd::AsRawFd;
 use std::path::Path;
 
+use super::layout::{Layout, RootFile};
+
 pub(crate) trait Fs: Send + Sync {
     fn create_dir(&self, path: &Path) -> io::Result<()>;
     fn create_new(&self, path: &Path) -> io::Result<()>;
@@ -12,8 +14,11 @@ pub(crate) trait Fs: Send + Sync {
     /// `F_FULLFSYNC`: `fsync`, then the drive flushes its whole cache to permanent storage.
     fn full_sync(&self, path: &Path) -> io::Result<()>;
     fn rename(&self, from: &Path, to: &Path) -> io::Result<()>;
-    fn replace_format(&self, root: &Path) -> io::Result<()>;
-    fn replace_settings(&self, root: &Path) -> io::Result<()>;
+    fn replace(&self, root: &Path, file: RootFile) -> io::Result<()>;
+    #[cfg(test)]
+    fn replace_format(&self, root: &Path) -> io::Result<()> {
+        self.replace(root, RootFile::Format)
+    }
     fn remove(&self, path: &Path) -> io::Result<()>;
     fn list(&self, dir: &Path) -> io::Result<Vec<String>>;
     fn read(&self, path: &Path) -> io::Result<Vec<u8>>;
@@ -111,16 +116,15 @@ impl Fs for OsFs {
         std::fs::rename(from, to)
     }
 
-    fn replace_format(&self, root: &Path) -> io::Result<()> {
-        let from = root.join("format.json.tmp");
-        validate_format_marker(&self.read(&from)?)?;
+    fn replace(&self, root: &Path, file: RootFile) -> io::Result<()> {
+        let layout = Layout::new(root);
+        let from = layout.temp_file(file);
+        if file == RootFile::Format {
+            validate_format_marker(&self.read(&from)?)?;
+        }
         // The OS cannot report prior durability, so establish it before publishing the name.
         self.full_sync(&from)?;
-        std::fs::rename(from, root.join("format.json"))
-    }
-
-    fn replace_settings(&self, root: &Path) -> io::Result<()> {
-        std::fs::rename(root.join("settings.json.tmp"), root.join("settings.json"))
+        std::fs::rename(from, layout.file(file))
     }
 
     fn remove(&self, path: &Path) -> io::Result<()> {

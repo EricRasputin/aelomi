@@ -8,7 +8,7 @@ use super::clock::Clock;
 use super::decode;
 use super::format::parse_format;
 use super::fs::{Fs, FsLock, LockError, validate_format_marker};
-use super::layout::DocFile;
+use super::layout::{DocFile, Layout, RootFile};
 use super::log::{self, LogEnd};
 use super::snapshot::{self, Condition};
 use super::testkit::SplitMix64;
@@ -160,8 +160,7 @@ struct DirNode {
     live: BTreeMap<String, usize>,
     synced: BTreeMap<String, usize>,
     durable: BTreeMap<String, usize>,
-    format_replacements: Vec<usize>,
-    settings_replacements: Vec<usize>,
+    replacements: BTreeMap<String, Vec<usize>>,
 }
 
 const ROOT: usize = 0;
@@ -262,20 +261,15 @@ impl SimFs {
         for node in &mut sim.nodes {
             match node {
                 Node::Dir(dir) => {
-                    for &id in &dir.format_replacements {
-                        if rng.as_mut().is_some_and(|rng| rng.below(2) == 1) {
-                            dir.durable.remove("format.json.tmp");
-                            dir.durable.insert("format.json".into(), id);
+                    for (name, replacements) in &dir.replacements {
+                        for &id in replacements {
+                            if rng.as_mut().is_some_and(|rng| rng.below(2) == 1) {
+                                dir.durable.remove(&format!("{name}.tmp"));
+                                dir.durable.insert(name.clone(), id);
+                            }
                         }
                     }
-                    for &id in &dir.settings_replacements {
-                        if rng.as_mut().is_some_and(|rng| rng.below(2) == 1) {
-                            dir.durable.remove("settings.json.tmp");
-                            dir.durable.insert("settings.json".into(), id);
-                        }
-                    }
-                    dir.settings_replacements.clear();
-                    dir.format_replacements.clear();
+                    dir.replacements.clear();
                     dir.live = dir.durable.clone();
                     dir.synced = dir.durable.clone();
                 }
@@ -682,19 +676,13 @@ impl Fs for SimFs {
                     Node::File(file) => file.durable = file.synced,
                     Node::Dir(dir) => {
                         dir.durable = dir.synced.clone();
-                        if let Some(published) = dir
-                            .settings_replacements
-                            .iter()
-                            .rposition(|id| dir.durable.get("settings.json") == Some(id))
-                        {
-                            dir.settings_replacements.drain(..=published);
-                        }
-                        if let Some(published) = dir
-                            .format_replacements
-                            .iter()
-                            .rposition(|id| dir.durable.get("format.json") == Some(id))
-                        {
-                            dir.format_replacements.drain(..=published);
+                        for (name, replacements) in &mut dir.replacements {
+                            if let Some(published) = replacements
+                                .iter()
+                                .rposition(|id| dir.durable.get(name) == Some(id))
+                            {
+                                replacements.drain(..=published);
+                            }
                         }
                     }
                 }
@@ -718,43 +706,33 @@ impl Fs for SimFs {
         })
     }
 
-    fn replace_format(&self, root: &Path) -> io::Result<()> {
-        let from = root.join("format.json.tmp");
-        let to = root.join("format.json");
-        self.run(OpKind::ReplaceFormat, &from, Some(&to), &[], |sim| {
-            let (id, file) = sim.file(&from)?;
-            validate_format_marker(&file.data)?;
-            if file.durable != file.data.len() {
+    fn replace(&self, root: &Path, file: RootFile) -> io::Result<()> {
+        let layout = Layout::new(root);
+        let from = layout.temp_file(file);
+        let to = layout.file(file);
+        let kind = match file {
+            RootFile::Format => OpKind::ReplaceFormat,
+            RootFile::Settings => OpKind::ReplaceSettings,
+        };
+        self.run(kind, &from, Some(&to), &[], |sim| {
+            let (id, source) = sim.file(&from)?;
+            if file == RootFile::Format {
+                validate_format_marker(&source.data)?;
+            }
+            if source.durable != source.data.len() {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
-                    "format marker is not durable",
+                    "replacement source is not durable",
                 ));
             }
             let (dir, name) = sim.parent(&from)?;
             let dir = sim.dir_mut(dir);
             dir.live.remove(&name);
-            dir.live.insert("format.json".into(), id);
-            dir.format_replacements.push(id);
-            Ok(())
-        })
-    }
-
-    fn replace_settings(&self, root: &Path) -> io::Result<()> {
-        let from = root.join("settings.json.tmp");
-        let to = root.join("settings.json");
-        self.run(OpKind::ReplaceSettings, &from, Some(&to), &[], |sim| {
-            let (id, file) = sim.file(&from)?;
-            if file.durable != file.data.len() {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    "settings are not durable",
-                ));
-            }
-            let (dir, name) = sim.parent(&from)?;
-            let dir = sim.dir_mut(dir);
-            dir.live.remove(&name);
-            dir.live.insert("settings.json".into(), id);
-            dir.settings_replacements.push(id);
+            dir.live.insert(file.name().into(), id);
+            dir.replacements
+                .entry(file.name().into())
+                .or_default()
+                .push(id);
             Ok(())
         })
     }

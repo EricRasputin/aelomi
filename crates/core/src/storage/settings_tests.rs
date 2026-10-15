@@ -2,6 +2,18 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use super::*;
+use crate::settings::*;
+use crate::workspace::records::PageId;
+use serde_json::{Value, json};
+use std::collections::BTreeSet;
+use std::path::Path;
+
+fn write(fs: &dyn Fs, root: &Path, value: &Settings) -> io::Result<()> {
+    super::write(fs, &Layout::new(root), value)
+}
+fn load(fs: &dyn Fs, root: &Path) -> Settings {
+    super::load(fs, &Layout::new(root))
+}
 use crate::storage::clock::{Clock, ManualClock};
 use crate::storage::sim_fs::{Crash, OpKind, SimFs};
 
@@ -113,12 +125,7 @@ fn data_4_unknown_keys_and_theme_survive_read_modify_write() {
 fn data_4_missing_corrupt_and_unreadable_settings_use_defaults_and_can_be_replaced() {
     let fs = disk();
     assert_eq!(load(&*fs, Path::new("/data")), Settings::default());
-    for bytes in [
-        &b"{broken"[..],
-        b"[]",
-        br#"{"theme":42}"#,
-        br#"{"recentPages":["workspace"]}"#,
-    ] {
+    for bytes in [&b"{broken"[..], b"[]"] {
         fs.put_durable(Path::new("/data/settings.json"), bytes);
         assert_eq!(load(&*fs, Path::new("/data")), Settings::default());
         write(&*fs, Path::new("/data"), &session()).unwrap();
@@ -177,9 +184,40 @@ fn data_4_settings_replace_refuses_an_unsynced_source() {
     )
     .unwrap();
     assert_eq!(
-        fs.replace_settings(root).unwrap_err().kind(),
+        fs.replace(root, RootFile::Settings).unwrap_err().kind(),
         io::ErrorKind::InvalidInput
     );
     fs.crash(Crash::DropUnsynced);
     assert_eq!(load(&*fs, root), Settings::default());
+}
+
+#[test]
+fn data_4_invalid_known_fields_preserve_other_fields_and_raw_values() {
+    let mut settings = Settings::from_json(br#"{"theme":{"name":"Dark"},"openPage":{"futurePage":42},"recentPages":["page-a","workspace",42,"page-b","page-a"],"expandedRows":[false,"page-c","page-c"],"export":{"schedule":"nightly"}}"#).unwrap();
+    settings.apply(SettingsPatch {
+        expanded_rows: Some(BTreeSet::from([PageId::new("page-d").unwrap()])),
+        ..Default::default()
+    });
+    assert_eq!(
+        settings.to_json(),
+        json!({"theme":{"name":"Dark"},"openPage":{"futurePage":42},"recentPages":["page-a","page-b"],"expandedRows":["page-d"],"export":{"schedule":"nightly"}})
+    );
+}
+
+#[test]
+fn data_4_open_page_extensions_do_not_move_to_another_page() {
+    let mut settings =
+        Settings::from_json(br#"{"openPage":{"pageId":"page-a","futureAnchor":42}}"#).unwrap();
+    settings.apply(SettingsPatch {
+        open_page: Some(Some(OpenPage {
+            page_id: PageId::new("page-b").unwrap(),
+            top_visible_block_id: Some("b2".into()),
+            extra: Default::default(),
+        })),
+        ..Default::default()
+    });
+    assert_eq!(
+        settings.to_json()["openPage"],
+        json!({"pageId":"page-b","topVisibleBlockId":"b2"})
+    );
 }

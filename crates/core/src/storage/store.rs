@@ -91,11 +91,11 @@ struct Signal {
 
 impl Store {
     pub fn load_settings(&self) -> crate::settings::Settings {
-        crate::settings::load(&*self.shared.fs, self.shared.layout.root())
+        super::settings::load(&*self.shared.fs, &self.shared.layout)
     }
 
     pub fn write_settings(&self, settings: &crate::settings::Settings) -> io::Result<()> {
-        crate::settings::write(&*self.shared.fs, self.shared.layout.root(), settings)
+        super::settings::write(&*self.shared.fs, &self.shared.layout, settings)
     }
 
     pub fn open(root: impl AsRef<Path>) -> Result<Self, OpenError> {

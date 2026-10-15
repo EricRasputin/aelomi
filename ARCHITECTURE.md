@@ -7,9 +7,10 @@ This file maps the code. `SPEC.md` has the behaviors and the budgets, and `READM
 | Path | Contents |
 |---|---|
 | `Cargo.toml` | Cargo workspace with members `crates/core` and `src-tauri`, edition 2024 |
-| `crates/core/src/settings.rs` | DATA-4 settings model, typed patch, additive JSON and atomic persistence |
-| `crates/core/src/settings/tests.rs` | Settings crash steps, session round-trip, compatibility, recovery and SHELL-9 clock tests |
 | `crates/core/` | `aelomi-core`, the Rust core |
+| `crates/core/src/settings.rs` | DATA-4 settings model, typed patch and additive JSON codec |
+| `crates/core/src/storage/settings.rs` | Settings file loading and atomic persistence through Layout and Fs |
+| `crates/core/src/storage/settings_tests.rs` | Settings crash steps, session round-trip, compatibility, recovery and SHELL-9 clock tests |
 | `crates/core/src/storage/` | The append-only Y.Doc store. `mod.rs` lists the public API |
 | `crates/core/src/storage/store.rs` | `Store`: open the data folder, `load`, `append`, `flush`, `health`, `close` |
 | `crates/core/src/storage/writer.rs` | The writer thread and its group commit |
@@ -183,7 +184,7 @@ To add a job, add its ID to `CHECKS` in `scripts/protect-main.sh` and rerun the 
 
 ## Settings and session state
 
-`crates/core/src/settings.rs` owns the DATA-4 model and file encoding. `Settings` holds a theme, an optional open page and block anchor, recent page IDs in newest-first order, and a sorted set of expanded page IDs. Recent pages keep their first occurrence and at most 50 IDs. This bounds file size while retaining navigation history. Root and open-page extension maps preserve future JSON keys. An unknown theme retains its original string.
+`crates/core/src/settings.rs` owns the DATA-4 model and file encoding. `Settings` holds a theme, an optional open page and block anchor, recent page IDs in newest-first order, and a sorted set of expanded page IDs. Recent pages keep their first occurrence and at most 50 IDs. This bounds file size while retaining navigation history. Root and open-page extension maps preserve future JSON keys. Unparsable known fields remain raw JSON until a patch replaces that field. Invalid list entries are dropped independently. Open-page extensions merge only when the page ID stays the same. An unknown theme retains its original string, while patches accept only System, Light, or Dark.
 
 `settings.json` sits beside `format.json`. A missing file loads defaults. Invalid or unreadable configuration logs a failure and loads defaults. The next write replaces it. Each write removes a stale `settings.json.tmp`, creates a new temporary file, fully syncs it, replaces only `settings.json`, then syncs and fully syncs the root directory. Both OS and simulated filesystems expose this narrow replace through `Fs`; document publication and retirement rules remain append-only.
 

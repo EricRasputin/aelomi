@@ -3,7 +3,7 @@ use std::path::Path;
 use std::sync::Mutex;
 
 use super::fs::{Fs, create_durable};
-use super::layout::Layout;
+use super::layout::{Layout, RootFile};
 use super::state::lock_ignoring_poison;
 
 pub(crate) const FORMAT_VERSION: u64 = 2;
@@ -97,7 +97,7 @@ fn publish(fs: &dyn Fs, layout: &Layout) -> io::Result<()> {
         }
         result => result?,
     }
-    fs.replace_format(layout.root())
+    fs.replace(layout.root(), RootFile::Format)
 }
 
 fn sync_folder(fs: &dyn Fs, layout: &Layout) -> io::Result<()> {

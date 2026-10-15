@@ -7,11 +7,12 @@ mod decode;
 mod doc_id;
 mod equality;
 mod format;
-pub(crate) mod fs;
+mod fs;
 mod health;
 mod layout;
 mod log;
 mod recover;
+mod settings;
 mod snapshot;
 mod state;
 mod store;
@@ -19,7 +20,7 @@ mod writer;
 
 #[cfg(any(test, feature = "test-support"))]
 #[cfg_attr(not(test), allow(dead_code))]
-pub(crate) mod sim_fs;
+mod sim_fs;
 #[cfg(feature = "test-support")]
 pub mod test_support;
 #[cfg(any(test, feature = "test-support"))]

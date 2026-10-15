@@ -1,10 +1,8 @@
 use std::collections::{BTreeSet, HashSet};
 use std::io;
-use std::path::Path;
 
 use serde_json::{Map, Value, json};
 
-use crate::storage::fs::{Fs, create_durable};
 use crate::workspace::records::PageId;
 
 pub const RECENT_PAGES_LIMIT: usize = 50;
@@ -16,6 +14,23 @@ pub enum Theme {
     Light,
     Dark,
     Unknown(String),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ThemeChoice {
+    System,
+    Light,
+    Dark,
+}
+
+impl From<ThemeChoice> for Theme {
+    fn from(theme: ThemeChoice) -> Self {
+        match theme {
+            ThemeChoice::System => Self::System,
+            ThemeChoice::Light => Self::Light,
+            ThemeChoice::Dark => Self::Dark,
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -36,7 +51,7 @@ pub struct Settings {
 
 #[derive(Clone, Debug, Default)]
 pub struct SettingsPatch {
-    pub theme: Option<Theme>,
+    pub theme: Option<ThemeChoice>,
     pub open_page: Option<Option<OpenPage>>,
     pub recent_pages: Option<Vec<PageId>>,
     pub expanded_rows: Option<BTreeSet<PageId>>,
@@ -45,10 +60,14 @@ pub struct SettingsPatch {
 impl Settings {
     pub fn apply(&mut self, patch: SettingsPatch) {
         if let Some(theme) = patch.theme {
-            self.theme = theme;
+            self.extra.remove("theme");
+            self.theme = theme.into();
         }
         if let Some(mut open_page) = patch.open_page {
-            if let (Some(current), Some(next)) = (&self.open_page, &mut open_page) {
+            self.extra.remove("openPage");
+            if let (Some(current), Some(next)) = (&self.open_page, &mut open_page)
+                && current.page_id == next.page_id
+            {
                 let mut extra = current.extra.clone();
                 extra.extend(std::mem::take(&mut next.extra));
                 next.extra = extra;
@@ -56,9 +75,11 @@ impl Settings {
             self.open_page = open_page;
         }
         if let Some(recent_pages) = patch.recent_pages {
+            self.extra.remove("recentPages");
             self.recent_pages = recent_pages;
         }
         if let Some(expanded_rows) = patch.expanded_rows {
+            self.extra.remove("expandedRows");
             self.expanded_rows = expanded_rows;
         }
         self.normalize();
@@ -73,42 +94,44 @@ impl Settings {
     pub fn from_json(bytes: &[u8]) -> io::Result<Self> {
         let value: Value = serde_json::from_slice(bytes)?;
         let mut extra = value.as_object().cloned().ok_or_else(invalid)?;
-        let theme = match extra.remove("theme") {
-            None => Theme::System,
-            Some(Value::String(theme)) => match theme.as_str() {
+        let theme = take_field(&mut extra, "theme", |value| {
+            let theme = value.as_str()?;
+            Some(match theme {
                 "System" => Theme::System,
                 "Light" => Theme::Light,
                 "Dark" => Theme::Dark,
-                _ => Theme::Unknown(theme),
-            },
-            Some(_) => return Err(invalid()),
-        };
-        let open_page = match extra.remove("openPage") {
-            None | Some(Value::Null) => None,
-            Some(Value::Object(mut page)) => {
-                let page_id = page.remove("pageId").ok_or_else(invalid)?;
-                let page_id = page_id.as_str().ok_or_else(invalid)?;
-                let page_id = PageId::new(page_id).map_err(|_| invalid())?;
-                let top_visible_block_id = match page.remove("topVisibleBlockId") {
-                    None | Some(Value::Null) => None,
-                    Some(Value::String(id)) => Some(id),
-                    Some(_) => return Err(invalid()),
-                };
-                Some(OpenPage {
-                    page_id,
-                    top_visible_block_id,
-                    extra: page,
-                })
+                _ => Theme::Unknown(theme.into()),
+            })
+        })
+        .unwrap_or_default();
+        let open_page = take_field(&mut extra, "openPage", |value| {
+            if value.is_null() {
+                return Some(None);
             }
-            Some(_) => return Err(invalid()),
-        };
+            let mut page = value.as_object()?.clone();
+            let page_id = PageId::new(page.remove("pageId")?.as_str()?).ok()?;
+            let top_visible_block_id = match page.remove("topVisibleBlockId") {
+                None | Some(Value::Null) => None,
+                Some(Value::String(id)) => Some(id),
+                Some(_) => return None,
+            };
+            Some(Some(OpenPage {
+                page_id,
+                top_visible_block_id,
+                extra: page,
+            }))
+        })
+        .flatten();
+        let recent_pages = take_field(&mut extra, "recentPages", page_ids).unwrap_or_default();
+        let expanded_rows = take_field(&mut extra, "expandedRows", page_ids)
+            .unwrap_or_default()
+            .into_iter()
+            .collect();
         let mut settings = Self {
             theme,
             open_page,
-            recent_pages: page_ids(extra.remove("recentPages"))?,
-            expanded_rows: page_ids(extra.remove("expandedRows"))?
-                .into_iter()
-                .collect(),
+            recent_pages,
+            expanded_rows,
             extra,
         };
         settings.normalize();
@@ -123,34 +146,31 @@ impl Settings {
             Theme::Dark => "Dark",
             Theme::Unknown(value) => value,
         };
-        object.insert("theme".into(), json!(theme));
-        object.insert(
-            "openPage".into(),
+        object.entry("theme").or_insert_with(|| json!(theme));
+        object.entry("openPage").or_insert_with(|| {
             self.open_page.as_ref().map_or(Value::Null, |page| {
                 let mut object = page.extra.clone();
                 object.insert("pageId".into(), json!(page.page_id.as_str()));
                 object.insert("topVisibleBlockId".into(), json!(page.top_visible_block_id));
                 Value::Object(object)
-            }),
-        );
-        object.insert(
-            "recentPages".into(),
+            })
+        });
+        object.entry("recentPages").or_insert_with(|| {
             json!(
                 self.recent_pages
                     .iter()
                     .map(PageId::as_str)
                     .collect::<Vec<_>>()
-            ),
-        );
-        object.insert(
-            "expandedRows".into(),
+            )
+        });
+        object.entry("expandedRows").or_insert_with(|| {
             json!(
                 self.expanded_rows
                     .iter()
                     .map(PageId::as_str)
                     .collect::<Vec<_>>()
-            ),
-        );
+            )
+        });
         Value::Object(object)
     }
 }
@@ -159,44 +179,22 @@ fn invalid() -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, "invalid settings.json")
 }
 
-fn page_ids(value: Option<Value>) -> io::Result<Vec<PageId>> {
-    match value {
-        None => Ok(Vec::new()),
-        Some(Value::Array(ids)) => ids
-            .into_iter()
-            .map(|id| PageId::new(id.as_str().ok_or_else(invalid)?).map_err(|_| invalid()))
+fn take_field<T>(
+    extra: &mut Map<String, Value>,
+    key: &str,
+    parse: impl FnOnce(&Value) -> Option<T>,
+) -> Option<T> {
+    let parsed = parse(extra.get(key)?)?;
+    extra.remove(key);
+    Some(parsed)
+}
+
+fn page_ids(value: &Value) -> Option<Vec<PageId>> {
+    Some(
+        value
+            .as_array()?
+            .iter()
+            .filter_map(|id| PageId::new(id.as_str()?).ok())
             .collect(),
-        Some(_) => Err(invalid()),
-    }
+    )
 }
-
-pub(crate) fn load(fs: &dyn Fs, root: &Path) -> Settings {
-    let result = fs.read(&root.join("settings.json"));
-    if matches!(&result, Err(error) if error.kind() == io::ErrorKind::NotFound) {
-        return Settings::default();
-    }
-    match result.and_then(|bytes| Settings::from_json(&bytes)) {
-        Ok(settings) => settings,
-        Err(error) => {
-            eprintln!("settings load failed, using defaults: {error}");
-            Settings::default()
-        }
-    }
-}
-
-pub(crate) fn write(fs: &dyn Fs, root: &Path, settings: &Settings) -> io::Result<()> {
-    let temp = root.join("settings.json.tmp");
-    match fs.remove(&temp) {
-        Ok(()) => {}
-        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-        Err(error) => return Err(error),
-    }
-    let bytes = serde_json::to_vec_pretty(&settings.to_json())?;
-    create_durable(fs, &temp, &bytes)?;
-    fs.replace_settings(root)?;
-    fs.fsync(root)?;
-    fs.full_sync(root)
-}
-
-#[cfg(test)]
-mod tests;
