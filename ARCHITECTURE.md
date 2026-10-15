@@ -169,7 +169,7 @@ Zustand components use selectors. `index-status.ts` subscribes before its status
 
 `src/ipc/` owns generated bindings, the mock switch and base64 helpers. The mock boot configuration seeds DATA-2 workspace records and actual prosemirror bodies before commands run. `mock-workspace.ts` projects its own tree, including missing parents, cycles, favorites and ancestor trash. `mock-body.ts` builds canonical Yjs bodies, and `mock-search.ts` implements the typed scopes, fixed ordering, exclusions and partial diagnostics. Status and quit controls emit the same generated event types. Raw-body fixtures prove read-only preservation and source delivery through actual editor tests.
 
-Mock builds alone register real editor routes `editor-empty` and `editor-page-5000-blocks`, with the original synthetic routes retained for diagnostics. Dev builds retain `/dev/storage`. `pnpm build:mock` writes dist-mock for the browser suites. Production builds omit the mock and dev routes; `check:no-mock` verifies that boundary.
+Mock builds alone register real editor routes `editor-empty` and `editor-page-5000-blocks`, with the original synthetic routes retained for diagnostics. Dev builds retain `/dev/storage`, reachable from the shared header, with a Getting started rename button for quit proof. `pnpm build:mock` writes dist-mock for the browser suites. Production builds omit the mock and dev routes; `check:no-mock` verifies that boundary.
 
 ## Tests by layer
 

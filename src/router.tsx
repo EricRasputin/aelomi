@@ -66,6 +66,14 @@ function WorkspaceLayout() {
       <div className="flex h-screen flex-col">
         <header className="shrink-0 border-b border-[var(--border)] px-8 py-5 text-sm font-medium">
           Aelomi
+          {import.meta.env.DEV && (
+            <Link
+              to="/dev/storage"
+              className="ml-4 text-xs text-[var(--muted)] underline"
+            >
+              Storage probe
+            </Link>
+          )}
         </header>
         <ShellStatus landmark={!onIndex} />
         <SaveFailureBanner />
@@ -155,14 +163,6 @@ function IndexScreen() {
         </div>
       )}
       {import.meta.env.DEV && <Link to="/dev/settings">Settings probe</Link>}
-      {import.meta.env.DEV && (
-        <Link
-          to="/dev/storage"
-          className="mt-4 block text-sm text-[var(--muted)] underline"
-        >
-          Storage probe
-        </Link>
-      )}
     </section>
   );
 }

@@ -7,7 +7,7 @@ Aelomi opens one window titled `Aelomi` with standard macOS window controls and 
 - `window-open` opens exactly one window titled `Aelomi`, 960 by 640 points by default.
 - `window-controls` shows the close, minimize, and full screen buttons.
 - `window-menu` shows the native menu bar with `Aelomi`, `File`, `Edit`, `View`, `Window`, and `Help`.
-- `window-content` shows the `Aelomi` header, the status line, and **Ping again**. Dev builds also show a **Storage probe** link to the dev-only `/dev/storage` route.
+- `window-content` shows the `Aelomi` header, the status line, and **Ping again**. Dev builds also keep a **Storage probe** link in the shared header to the dev-only `/dev/storage` route.
 
 ## How to get to it (user POV)
 
