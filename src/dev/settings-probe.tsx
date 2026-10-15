@@ -37,7 +37,7 @@ export default function SettingsProbe() {
   return (
     <section className="max-w-2xl space-y-4" data-probe={marker}>
       <h1>Settings probe</h1>
-      <pre role="status">
+      <pre role="status" className="whitespace-pre-wrap break-all">
         {error ?? (settings ? JSON.stringify(settings) : "Loading settings")}
       </pre>
       <button

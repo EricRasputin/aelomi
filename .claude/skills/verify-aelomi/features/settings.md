@@ -30,3 +30,5 @@ Preconditions: Use a fresh dev launch and pass doctor. This probe does not exist
 - The probe stores synthetic page IDs. It does not create or open pages.
 - A relaunch creates a new run directory while the explicit data override still points at the first run's folder.
 - Settings commands return Unavailable for a refused folder. Never use a real data directory for this proof.
+
+- `app.sh status` reads the shell status first on this route. Use `app.sh tree` to inspect the probe snapshot.
