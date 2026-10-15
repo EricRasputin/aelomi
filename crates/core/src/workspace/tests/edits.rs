@@ -5,10 +5,10 @@ use std::time::{Duration, Instant};
 use proptest::prelude::*;
 use yrs::{Any, Map, ReadTxn, Transact, WriteTxn};
 
-use super::doc_of;
+use super::{doc_of, page};
 use crate::storage::{DocId, Store};
 use crate::workspace::fixture::{Editor, put_page};
-use crate::workspace::records::{PageId, PageRecord, read_pages};
+use crate::workspace::records::{PageId, PageRecord, Placement, read_pages};
 use crate::workspace::{PageEdit, PageEditError, Workspace};
 
 fn empty(dir: &std::path::Path) -> Workspace {
@@ -242,7 +242,8 @@ proptest! {
                 1 if !active.is_empty() => {
                     let id = active[a % active.len()].clone();
                     let parent = active.get(b % (active.len() + 1)).cloned();
-                    let _ = w.edit_page(PageEdit::Move { page: id, parent, position: a % (active.len() + 1) });
+                    let result = w.edit_page(PageEdit::Move { page: id, parent, position: a % (active.len() + 1) });
+                    prop_assert!(matches!(result, Ok(_) | Err(PageEditError::Cycle)));
                 }
                 2 if !active.is_empty() => { w.edit_page(PageEdit::Trash { page: active[a % active.len()].clone() }).unwrap(); }
                 3 if !ids.is_empty() => {
@@ -351,4 +352,124 @@ fn pending_independent_record_fields_win_after_rename_in_both_client_orders() {
             );
         }
     }
+}
+
+fn crafted(w: &Workspace, pages: &[(&str, Option<&str>, u64)]) {
+    let mut editor = Editor::new(125);
+    let update = editor.edit(&DocId::workspace(), |txn| {
+        for (id, parent, order) in pages {
+            put_page(
+                txn,
+                &page(id),
+                &PageRecord {
+                    title: (*id).into(),
+                    placement: Placement {
+                        parent: parent.map(page),
+                        order: *order,
+                    },
+                    favorite: None,
+                    trash: None,
+                    created_at: 1,
+                    updated_at: 2,
+                },
+            );
+        }
+    });
+    w.append(&DocId::workspace(), &update).unwrap();
+}
+
+fn projected_ids(w: &Workspace) -> Vec<String> {
+    w.tree()
+        .unwrap()
+        .pages
+        .iter()
+        .map(|p| p.id.to_string())
+        .collect()
+}
+
+#[test]
+fn moving_before_tied_siblings_keeps_every_sibling_in_projected_order() {
+    for order in [10, 0] {
+        let dir = tempfile::tempdir().unwrap();
+        let w = empty(dir.path());
+        crafted(
+            &w,
+            &[("a", None, order), ("b", None, order), ("z", None, 20)],
+        );
+        w.edit_page(PageEdit::Move {
+            page: page("z"),
+            parent: None,
+            position: 0,
+        })
+        .unwrap();
+        assert_eq!(projected_ids(&w), ["z", "a", "b"]);
+        let after = records(&w);
+        assert_eq!(after[&page("a")].updated_at, 2);
+        assert_eq!(after[&page("b")].updated_at, 2);
+    }
+}
+
+#[test]
+fn end_append_and_collision_shifts_include_projected_orphan_roots() {
+    let dir = tempfile::tempdir().unwrap();
+    let w = empty(dir.path());
+    crafted(
+        &w,
+        &[
+            ("orphan", Some("missing"), 10 << 20),
+            ("root", None, 1 << 20),
+        ],
+    );
+    let new = create(&w, None, "new");
+    assert_eq!(projected_ids(&w), ["root", "orphan", new.as_str()]);
+    w.edit_page(PageEdit::Move {
+        page: new.clone(),
+        parent: None,
+        position: 1,
+    })
+    .unwrap();
+    assert_eq!(projected_ids(&w), ["root", new.as_str(), "orphan"]);
+    let dir = tempfile::tempdir().unwrap();
+    let w = empty(dir.path());
+    crafted(&w, &[("a", Some("missing"), 0), ("z", None, 20)]);
+    w.edit_page(PageEdit::Move {
+        page: page("z"),
+        parent: None,
+        position: 0,
+    })
+    .unwrap();
+    assert_eq!(projected_ids(&w), ["z", "a"]);
+    assert_eq!(records(&w)[&page("a")].placement.order, 1);
+}
+
+#[test]
+fn inserting_into_an_order_gap_and_noop_moves_leave_other_records_unchanged() {
+    let dir = tempfile::tempdir().unwrap();
+    let w = empty(dir.path());
+    crafted(
+        &w,
+        &[
+            ("a", None, 1 << 20),
+            ("b", None, 2 << 20),
+            ("z", None, 3 << 20),
+        ],
+    );
+    let before = records(&w);
+    w.edit_page(PageEdit::Move {
+        page: page("z"),
+        parent: None,
+        position: 1,
+    })
+    .unwrap();
+    assert_eq!(projected_ids(&w), ["a", "z", "b"]);
+    let after = records(&w);
+    assert_eq!(after[&page("a")], before[&page("a")]);
+    assert_eq!(after[&page("b")], before[&page("b")]);
+    w.edit_page(PageEdit::Move {
+        page: page("z"),
+        parent: None,
+        position: 1,
+    })
+    .unwrap();
+    assert_eq!(records(&w), after);
 }

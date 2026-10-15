@@ -196,31 +196,20 @@ impl Workspace {
                     active(id)?;
                     ancestor = forest.parent[id].as_ref();
                 }
-                let mut siblings: Vec<_> = forest
-                    .active
-                    .iter()
-                    .filter(|id| **id != page && forest.parent[*id].as_ref() == parent.as_ref())
-                    .cloned()
-                    .collect();
-                siblings.sort_by_key(|id| (records[id].placement.order, id.clone()));
-                let order = match siblings.get(position) {
-                    Some(next) => {
-                        let order = records[next].placement.order;
-                        make_room(
-                            &mut records,
-                            &forest.active,
-                            parent.as_ref(),
-                            order,
-                            Some(&page),
-                            now,
-                        )?;
-                        order
-                    }
-                    None => end_order(&records, parent.as_ref())?,
-                };
-                let record = records.get_mut(&page).expect("active page exists");
-                record.placement = Placement { parent, order };
-                record.updated_at = now;
+                let siblings = siblings(&records, parent.as_ref(), None);
+                let current = siblings.iter().position(|id| id == &page);
+                let position = position.min(
+                    siblings
+                        .len()
+                        .saturating_sub(usize::from(current.is_some())),
+                );
+                if forest.parent[&page] != parent || current != Some(position) {
+                    let siblings: Vec<_> = siblings.into_iter().filter(|id| id != &page).collect();
+                    let order = insertion_order(&mut records, &siblings, position)?;
+                    let record = records.get_mut(&page).expect("active page exists");
+                    record.placement = Placement { parent, order };
+                    record.updated_at = now;
+                }
             }
             PageEdit::Trash { page } => {
                 active(&page)?;
@@ -284,14 +273,11 @@ impl Workspace {
                     {
                         end_order(&records, None)?
                     } else {
-                        make_room(
-                            &mut records,
-                            &active,
-                            parent.as_ref(),
-                            trash.original_order,
-                            None,
-                            now,
-                        )?;
+                        let siblings: Vec<_> = siblings(&records, parent.as_ref(), None)
+                            .into_iter()
+                            .filter(|id| records[id].placement.order >= trash.original_order)
+                            .collect();
+                        make_room(&mut records, &siblings, trash.original_order)?;
                         trash.original_order
                     };
                     let record = records.get_mut(&id).expect("batch member");
@@ -318,49 +304,81 @@ impl Workspace {
 }
 
 const ORDER_STEP: u64 = 1 << 20;
+
+fn siblings(
+    records: &BTreeMap<PageId, PageRecord>,
+    parent: Option<&PageId>,
+    excluding: Option<&PageId>,
+) -> Vec<PageId> {
+    let forest = tree::forest(records);
+    let mut siblings: Vec<_> = forest
+        .active
+        .into_iter()
+        .filter(|id| Some(id) != excluding && forest.parent[id].as_ref() == parent)
+        .collect();
+    siblings.sort_by_key(|id| (records[id].placement.order, id.clone()));
+    siblings
+}
+
+fn next_order(order: u64, step: u64) -> Result<u64, PageEditError> {
+    order
+        .checked_add(step)
+        .filter(|n| *n <= MAX_SAFE_INTEGER)
+        .ok_or(PageEditError::OrderExhausted)
+}
+
 fn end_order(
     records: &BTreeMap<PageId, PageRecord>,
     parent: Option<&PageId>,
 ) -> Result<u64, PageEditError> {
-    records
-        .values()
-        .filter(|r| r.placement.parent.as_ref() == parent)
-        .map(|r| r.placement.order)
-        .max()
-        .map_or(Ok(ORDER_STEP), |last| {
-            last.checked_add(ORDER_STEP)
-                .filter(|n| *n <= MAX_SAFE_INTEGER)
-                .ok_or(PageEditError::OrderExhausted)
-        })
+    last_order(records, &siblings(records, parent, None))
+}
+
+fn last_order(
+    records: &BTreeMap<PageId, PageRecord>,
+    siblings: &[PageId],
+) -> Result<u64, PageEditError> {
+    siblings.last().map_or(Ok(ORDER_STEP), |id| {
+        next_order(records[id].placement.order, ORDER_STEP)
+    })
+}
+
+fn insertion_order(
+    records: &mut BTreeMap<PageId, PageRecord>,
+    siblings: &[PageId],
+    position: usize,
+) -> Result<u64, PageEditError> {
+    let Some(next) = siblings.get(position) else {
+        return last_order(records, siblings);
+    };
+    let next = records[next].placement.order;
+    let order = if position == 0 {
+        next.saturating_sub(ORDER_STEP)
+    } else {
+        let previous = records[&siblings[position - 1]].placement.order;
+        if next.saturating_sub(previous) > 1 {
+            previous + (next - previous) / 2
+        } else {
+            next_order(previous, 1)?
+        }
+    };
+    make_room(records, &siblings[position..], order)?;
+    Ok(order)
 }
 
 fn make_room(
     records: &mut BTreeMap<PageId, PageRecord>,
-    active: &BTreeSet<PageId>,
-    parent: Option<&PageId>,
+    siblings: &[PageId],
     order: u64,
-    excluding: Option<&PageId>,
-    now: u64,
 ) -> Result<(), PageEditError> {
-    let mut occupied: BTreeMap<u64, PageId> = active
-        .iter()
-        .filter(|id| Some(*id) != excluding)
-        .filter(|id| records[*id].placement.parent.as_ref() == parent)
-        .map(|id| (records[id].placement.order, id.clone()))
-        .collect();
-    let mut free = order;
-    while occupied.contains_key(&free) {
-        free = free
-            .checked_add(1)
-            .filter(|n| *n <= MAX_SAFE_INTEGER)
-            .ok_or(PageEditError::OrderExhausted)?;
-    }
-    while free > order {
-        let id = occupied.remove(&(free - 1)).expect("occupied range");
-        let record = records.get_mut(&id).expect("sibling exists");
-        record.placement.order = free;
-        record.updated_at = now;
-        free -= 1;
+    let mut occupied = order;
+    for id in siblings {
+        let record = records.get_mut(id).expect("sibling exists");
+        if record.placement.order > occupied {
+            break;
+        }
+        occupied = next_order(occupied, 1)?;
+        record.placement.order = occupied;
     }
     Ok(())
 }
