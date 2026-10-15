@@ -201,8 +201,12 @@ fn a_pages_root_holding_a_sequence_fails_without_erasing_the_cache() {
     use yrs::{Array, Map, Out, ReadTxn, Transact};
     let dir = tempfile::tempdir().unwrap();
     let opened = open(dir.path());
-    opened.append(&index_fixture());
-    opened.settle();
+    // The fixture ends by erasing a page. Settling after each update indexes that page first,
+    // so setup replaces the cache, as a slow worker can; only what follows the sequence counts.
+    for update in index_fixture() {
+        opened.append(&[update]);
+        opened.settle();
+    }
     let before = snapshot(&opened.workspace);
     let workspace = DocId::workspace();
     let mut foreign = crate::workspace::fixture::Editor::new(42);
@@ -262,8 +266,7 @@ fn a_pages_root_holding_a_sequence_fails_without_erasing_the_cache() {
     assert_eq!(opened.workspace.index_status(), IndexStatus::Ready);
     assert_eq!(snapshot(&opened.workspace), before);
     assert!(
-        !opened
-            .events()
+        !opened.events()[events..]
             .iter()
             .any(|event| matches!(event, IndexEvent::Cache(CacheState::Replaced(_)))),
         "{:?}",
