@@ -60,7 +60,7 @@
   "scroll": {
     "p95FrameMs": {
       "value": 16.7,
-      "why": "SPEC section 3 requires per-frame rendering work p95 under 16.7 ms. The untraced WebKit recorder measures its rAF timestamp to the following MessageChannel task. Whole-millisecond stamps must read at most 16 ms; the comparison is strict. The raw maximum interval remains 50 ms. This work interval excludes pending layout before the rAF timestamp, scheduler and IPC delay, and presentation; report those limits and raw cadence separately."
+      "why": "SPEC section 3 requires per-frame rendering work p95 under 16.7 ms. The untraced WebKit recorder measures its rAF timestamp to the following MessageChannel task. Whole-millisecond stamps must read at most 16 ms; the comparison is strict. The raw maximum interval remains 50 ms. This work interval excludes pending layout before the rAF timestamp, scheduler and IPC delay, and presentation; report those limits and raw cadence separately. Local mode gates this value; hosted CI reports it without gating (issue #72). Five hosted macos-15 jobs measured work p95 of 14 ms (0ad6f34), 12 ms (1d08e9a), 12 ms (a217b48), 21 ms (9b44d57, main) and 14 ms (587e6db) at loads of 2.5 to 13.4 on 3 cores, so a 16.7 ms CI gate would fail unchanged main; hosted CI gates the 50 ms raw maximum instead."
     },
     "maxFrameMs": {
       "value": 50,
