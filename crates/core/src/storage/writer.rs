@@ -33,12 +33,27 @@ pub(crate) fn run(shared: &Shared) {
 
 pub(crate) fn run_once(shared: &Shared) -> Step {
     let retry_failing = shared.take_retry_failing();
-    let docs = panic::catch_unwind(AssertUnwindSafe(|| write_documents(shared, retry_failing)))
-        .unwrap_or_else(|_| Step::Idle {
-            retry_at: fail_every_queued_doc(shared),
-        });
+    let (docs, latest_failure) =
+        panic::catch_unwind(AssertUnwindSafe(|| write_documents(shared, retry_failing)))
+            .unwrap_or_else(|_| {
+                (
+                    Step::Idle {
+                        retry_at: fail_every_queued_doc(shared),
+                    },
+                    Some(FailReason::Internal),
+                )
+            });
     let settings = super::settings::write_queued(shared, retry_failing);
-    shared.refresh_health(None);
+    if matches!(docs, Step::Wrote)
+        || matches!(settings, super::settings::Attempt::Finished(_))
+        || latest_failure.is_some()
+    {
+        let settings_failure = match &settings {
+            super::settings::Attempt::Finished(failure) => failure.clone(),
+            super::settings::Attempt::Idle(_) => None,
+        };
+        shared.refresh_health(settings_failure.or(latest_failure));
+    }
     shared.batch_finished();
     match (docs, settings) {
         (Step::Idle { retry_at }, super::settings::Attempt::Idle(settings_retry)) => Step::Idle {
@@ -62,20 +77,18 @@ fn fail_every_queued_doc(shared: &Shared) -> Option<Duration> {
         retry_at = Some(retry_at.map_or(at, |r| r.min(at)));
     }
     shared.batch_finished();
-    shared.refresh_health(Some(FailReason::Internal));
     retry_at
 }
 
-fn write_documents(shared: &Shared, retry_failing: bool) -> Step {
+fn write_documents(shared: &Shared, retry_failing: bool) -> (Step, Option<FailReason>) {
     let slots = shared.slots();
     let (queued, retry_at) = collect(&slots, shared.clock.now(), retry_failing);
     if queued.is_empty() {
-        return Step::Idle { retry_at };
+        return (Step::Idle { retry_at }, None);
     }
     let latest_failure = write(shared, queued);
-    shared.refresh_health(latest_failure);
     shared.batch_finished();
-    Step::Wrote
+    (Step::Wrote, latest_failure)
 }
 
 struct Queued<'a> {

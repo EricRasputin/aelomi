@@ -93,7 +93,7 @@ impl Slot {
 }
 
 pub(crate) enum Attempt {
-    Finished,
+    Finished(Option<FailReason>),
     Idle(Option<Duration>),
 }
 
@@ -131,9 +131,12 @@ pub(crate) fn write_queued(shared: &Shared, retry_failing: bool) -> Attempt {
             }
             slot.changed.notify_all();
         }
-        Err(reason) => slot.failed(seq, reason, shared.clock.now()),
+        Err(reason) => {
+            slot.failed(seq, reason.clone(), shared.clock.now());
+            return Attempt::Finished(Some(reason));
+        }
     }
-    Attempt::Finished
+    Attempt::Finished(None)
 }
 
 pub(crate) fn load(fs: &dyn Fs, layout: &Layout) -> io::Result<Settings> {

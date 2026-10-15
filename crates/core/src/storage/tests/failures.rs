@@ -35,6 +35,47 @@ fn record_health(store: &Store) -> Arc<Mutex<Vec<Health>>> {
 }
 
 #[test]
+fn shell_10_a_writer_pass_publishes_only_its_latest_failure_reason() {
+    let env = Env::manual();
+    let store = env.open();
+    let seen = record_health(&store);
+    let (a, b) = (doc("a"), doc("b"));
+    env.fs.fail(OpKind::Append, "/docs/a/", libc::EACCES);
+    store.append(&a, &typed(1, 3)).unwrap();
+    write_batch(&store);
+    seen.lock().unwrap().clear();
+
+    env.fs.fail(OpKind::Append, "/docs/b/", libc::ENOSPC);
+    store.append(&b, &typed(2, 3)).unwrap();
+    write_batch(&store);
+    let latest = Health::Failing {
+        reason: FailReason::DiskFull,
+        since: Duration::ZERO,
+        pending_docs: vec![a.clone(), b.clone()],
+        pending_settings: false,
+    };
+    assert_eq!(*seen.lock().unwrap(), [latest.clone()]);
+    store.run_writer_once();
+    assert_eq!(*seen.lock().unwrap(), [latest.clone()]);
+    assert_eq!(store.health(), latest);
+
+    seen.lock().unwrap().clear();
+    env.clock.advance(ms(100));
+    env.fs
+        .fail(OpKind::Append, "settings.json.tmp", libc::EROFS);
+    store.queue_settings(crate::settings::Settings::default());
+    write_batch(&store);
+    let settings_latest = Health::Failing {
+        reason: FailReason::ReadOnlyVolume,
+        since: Duration::ZERO,
+        pending_docs: vec![a, b],
+        pending_settings: true,
+    };
+    assert_eq!(*seen.lock().unwrap(), [settings_latest.clone()]);
+    assert_eq!(store.health(), settings_latest);
+}
+
+#[test]
 fn a_failing_doc_stays_pending_while_other_docs_are_acknowledged() {
     let env = Env::manual();
     let store = env.open();
