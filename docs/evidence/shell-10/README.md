@@ -1,5 +1,7 @@
 # SHELL-10 native evidence
 
+This folder keeps only this README and its scripts, under the [evidence policy](../../native-verification-evidence.md). Every file it names is in the [complete record at 9b44d57](https://github.com/aelomi/aelomi/tree/9b44d575e43efa1170b743cc54b019b5faf7a8cf/docs/evidence/shell-10).
+
 These screenshots come from the real Tauri WKWebView, driven with `verify-aelomi` through macOS accessibility. Each run used its own `AELOMI_DATA_DIR` under `/tmp/aelomi-verify`; no normal app data was touched. The app source was unchanged from `6ef389f` during verification. Later commits changed tests, verification helpers, and docs.
 
 ## Save failure and recovery
@@ -17,16 +19,16 @@ The original dark appearance was restored after the light-theme captures. The te
 
 | State | Screenshot | Accessibility tree |
 | --- | --- | --- |
-| Healthy | [healthy-dark.png](healthy-dark.png) | [tree](healthy-dark.ax.txt) |
-| Failed save, dark | [failure-dark.png](failure-dark.png) | [tree](failure-dark.ax.txt) |
-| Failed save, light, after Keep app open | [failure-light.png](failure-light.png) | [tree](failure-light.ax.txt) |
-| Quit dialog, dark | [dialog-dark.png](dialog-dark.png) | [tree](dialog-dark.ax.txt) |
-| Quit dialog, light | [dialog-light.png](dialog-light.png) | [tree](dialog-light.ax.txt) |
-| Recovered | [recovered-light.png](recovered-light.png) | [tree](recovered-light.ax.txt) |
+| Healthy | [healthy-dark.png](https://github.com/aelomi/aelomi/blob/03776cd6846b4deb5bc8a68b94c8018c0cb91e7d/docs/evidence/shell-10/healthy-dark.png) | [tree](https://github.com/aelomi/aelomi/blob/03776cd6846b4deb5bc8a68b94c8018c0cb91e7d/docs/evidence/shell-10/healthy-dark.ax.txt) |
+| Failed save, dark | [failure-dark.png](https://github.com/aelomi/aelomi/blob/03776cd6846b4deb5bc8a68b94c8018c0cb91e7d/docs/evidence/shell-10/failure-dark.png) | [tree](https://github.com/aelomi/aelomi/blob/03776cd6846b4deb5bc8a68b94c8018c0cb91e7d/docs/evidence/shell-10/failure-dark.ax.txt) |
+| Failed save, light, after Keep app open | [failure-light.png](https://github.com/aelomi/aelomi/blob/03776cd6846b4deb5bc8a68b94c8018c0cb91e7d/docs/evidence/shell-10/failure-light.png) | [tree](https://github.com/aelomi/aelomi/blob/03776cd6846b4deb5bc8a68b94c8018c0cb91e7d/docs/evidence/shell-10/failure-light.ax.txt) |
+| Quit dialog, dark | [dialog-dark.png](https://github.com/aelomi/aelomi/blob/03776cd6846b4deb5bc8a68b94c8018c0cb91e7d/docs/evidence/shell-10/dialog-dark.png) | [tree](https://github.com/aelomi/aelomi/blob/03776cd6846b4deb5bc8a68b94c8018c0cb91e7d/docs/evidence/shell-10/dialog-dark.ax.txt) |
+| Quit dialog, light | [dialog-light.png](https://github.com/aelomi/aelomi/blob/03776cd6846b4deb5bc8a68b94c8018c0cb91e7d/docs/evidence/shell-10/dialog-light.png) | [tree](https://github.com/aelomi/aelomi/blob/03776cd6846b4deb5bc8a68b94c8018c0cb91e7d/docs/evidence/shell-10/dialog-light.ax.txt) |
+| Recovered | [recovered-light.png](https://github.com/aelomi/aelomi/blob/03776cd6846b4deb5bc8a68b94c8018c0cb91e7d/docs/evidence/shell-10/recovered-light.png) | [tree](https://github.com/aelomi/aelomi/blob/03776cd6846b4deb5bc8a68b94c8018c0cb91e7d/docs/evidence/shell-10/recovered-light.ax.txt) |
 
 Each image was inspected. The banner sits below the header and above the existing probe page. Both dialogs show the loss warning and a focus ring on **Keep app open**. The recovered view has neither a banner nor a dialog.
 
-Evidence: [complete shell log](recovery-shell.log), [actions](recovery-actions.log), [doctor](recovery-doctor.txt).
+Evidence: [complete shell log](https://github.com/aelomi/aelomi/blob/03776cd6846b4deb5bc8a68b94c8018c0cb91e7d/docs/evidence/shell-10/recovery-shell.log), [actions](https://github.com/aelomi/aelomi/blob/03776cd6846b4deb5bc8a68b94c8018c0cb91e7d/docs/evidence/shell-10/recovery-actions.log), [doctor](https://github.com/aelomi/aelomi/blob/03776cd6846b4deb5bc8a68b94c8018c0cb91e7d/docs/evidence/shell-10/recovery-doctor.txt).
 
 ## Window close, termination, and confirmed quit
 
@@ -38,20 +40,20 @@ Choose **Quit anyway** from that last dialog. The app process exits. The log has
 
 | State | Screenshot | Accessibility tree |
 | --- | --- | --- |
-| Fresh launch | [run3-start.png](run3-start.png) | [tree](run3-start.ax.txt) |
-| Probe before edit | [run3-probe-idle.png](run3-probe-idle.png) | [tree](run3-probe-idle.ax.txt) |
-| Failed save | [run3-failing.png](run3-failing.png) | [tree](run3-failing.ax.txt) |
-| Command-W dialog | [run3-close-dialog.png](run3-close-dialog.png) | [tree](run3-close-dialog.ax.txt) |
-| Keep app open after close | [run3-close-kept.png](run3-close-kept.png) | [tree](run3-close-kept.ax.txt) |
-| Quit AppleEvent dialog | [run3-terminate-dialog.png](run3-terminate-dialog.png) | [tree](run3-terminate-dialog.ax.txt) |
-| Keep app open after termination | [run3-terminate-kept.png](run3-terminate-kept.png) | [tree](run3-terminate-kept.ax.txt) |
-| Logout-reason dialog before Quit anyway | [run3-logout-dialog.png](run3-logout-dialog.png) | [tree](run3-logout-dialog.ax.txt) |
+| Fresh launch | [run3-start.png](https://github.com/aelomi/aelomi/blob/03776cd6846b4deb5bc8a68b94c8018c0cb91e7d/docs/evidence/shell-10/run3-start.png) | [tree](https://github.com/aelomi/aelomi/blob/03776cd6846b4deb5bc8a68b94c8018c0cb91e7d/docs/evidence/shell-10/run3-start.ax.txt) |
+| Probe before edit | [run3-probe-idle.png](https://github.com/aelomi/aelomi/blob/03776cd6846b4deb5bc8a68b94c8018c0cb91e7d/docs/evidence/shell-10/run3-probe-idle.png) | [tree](https://github.com/aelomi/aelomi/blob/03776cd6846b4deb5bc8a68b94c8018c0cb91e7d/docs/evidence/shell-10/run3-probe-idle.ax.txt) |
+| Failed save | [run3-failing.png](https://github.com/aelomi/aelomi/blob/03776cd6846b4deb5bc8a68b94c8018c0cb91e7d/docs/evidence/shell-10/run3-failing.png) | [tree](https://github.com/aelomi/aelomi/blob/03776cd6846b4deb5bc8a68b94c8018c0cb91e7d/docs/evidence/shell-10/run3-failing.ax.txt) |
+| Command-W dialog | [run3-close-dialog.png](https://github.com/aelomi/aelomi/blob/03776cd6846b4deb5bc8a68b94c8018c0cb91e7d/docs/evidence/shell-10/run3-close-dialog.png) | [tree](https://github.com/aelomi/aelomi/blob/03776cd6846b4deb5bc8a68b94c8018c0cb91e7d/docs/evidence/shell-10/run3-close-dialog.ax.txt) |
+| Keep app open after close | [run3-close-kept.png](https://github.com/aelomi/aelomi/blob/03776cd6846b4deb5bc8a68b94c8018c0cb91e7d/docs/evidence/shell-10/run3-close-kept.png) | [tree](https://github.com/aelomi/aelomi/blob/03776cd6846b4deb5bc8a68b94c8018c0cb91e7d/docs/evidence/shell-10/run3-close-kept.ax.txt) |
+| Quit AppleEvent dialog | [run3-terminate-dialog.png](https://github.com/aelomi/aelomi/blob/03776cd6846b4deb5bc8a68b94c8018c0cb91e7d/docs/evidence/shell-10/run3-terminate-dialog.png) | [tree](https://github.com/aelomi/aelomi/blob/03776cd6846b4deb5bc8a68b94c8018c0cb91e7d/docs/evidence/shell-10/run3-terminate-dialog.ax.txt) |
+| Keep app open after termination | [run3-terminate-kept.png](https://github.com/aelomi/aelomi/blob/03776cd6846b4deb5bc8a68b94c8018c0cb91e7d/docs/evidence/shell-10/run3-terminate-kept.png) | [tree](https://github.com/aelomi/aelomi/blob/03776cd6846b4deb5bc8a68b94c8018c0cb91e7d/docs/evidence/shell-10/run3-terminate-kept.ax.txt) |
+| Logout-reason dialog before Quit anyway | [run3-logout-dialog.png](https://github.com/aelomi/aelomi/blob/03776cd6846b4deb5bc8a68b94c8018c0cb91e7d/docs/evidence/shell-10/run3-logout-dialog.png) | [tree](https://github.com/aelomi/aelomi/blob/03776cd6846b4deb5bc8a68b94c8018c0cb91e7d/docs/evidence/shell-10/run3-logout-dialog.ax.txt) |
 
 Each image was inspected. The dialog warnings and safe focus are visible; the kept states show the banner with no dialog.
 
-Evidence: [complete shell log](quit-shell.log), [actions](quit-actions.log), [doctor](quit-doctor.txt), [AppleEvent replies and exit checks](termination-events.log).
+Evidence: [complete shell log](https://github.com/aelomi/aelomi/blob/03776cd6846b4deb5bc8a68b94c8018c0cb91e7d/docs/evidence/shell-10/quit-shell.log), [actions](https://github.com/aelomi/aelomi/blob/03776cd6846b4deb5bc8a68b94c8018c0cb91e7d/docs/evidence/shell-10/quit-actions.log), [doctor](https://github.com/aelomi/aelomi/blob/03776cd6846b4deb5bc8a68b94c8018c0cb91e7d/docs/evidence/shell-10/quit-doctor.txt), [AppleEvent replies and exit checks](https://github.com/aelomi/aelomi/blob/03776cd6846b4deb5bc8a68b94c8018c0cb91e7d/docs/evidence/shell-10/termination-events.log).
 
-The sender used only the supplied PID. Its source is preserved as a [text artifact](quit-event.swift.txt). To repeat the termination checks, copy it to a temporary `.swift` file, compile with `swiftc`, and run the resulting executable with your run's `APP_PID`, with or without the `logout` argument. This sends a quit event to Aelomi; it does not log out the computer. The Dock menu itself was not clicked. Its shared `applicationShouldTerminate:` path is covered by the AppleEvent proof and Rust tests.
+The sender used only the supplied PID. Its source is preserved as a [text artifact](https://github.com/aelomi/aelomi/blob/03776cd6846b4deb5bc8a68b94c8018c0cb91e7d/docs/evidence/shell-10/quit-event.swift.txt). To repeat the termination checks, copy it to a temporary `.swift` file, compile with `swiftc`, and run the resulting executable with your run's `APP_PID`, with or without the `logout` argument. This sends a quit event to Aelomi; it does not log out the computer. The Dock menu itself was not clicked. Its shared `applicationShouldTerminate:` path is covered by the AppleEvent proof and Rust tests.
 
 ## Reproduction limits
 

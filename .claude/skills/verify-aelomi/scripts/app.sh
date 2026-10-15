@@ -4,7 +4,7 @@ set -euo pipefail
 HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 REPO=$(cd "$HERE/../../../.." && pwd -P)
 AX="$HERE/ax.js"
-VERIFY_ROOT=${AELOMI_VERIFY_ROOT:-/tmp/aelomi-verify}
+VERIFY_ROOT=${AELOMI_VERIFY_ROOT:-${XDG_STATE_HOME:-$HOME/.local/state}/aelomi-verify}
 BUNDLE="$REPO/target/release/bundle/macos/Aelomi.app"
 
 usage() {

@@ -13,7 +13,7 @@ After changing a Rust command, run `pnpm bindings` and `pnpm typecheck`.
 Run `pnpm lint`, `pnpm typecheck`, `pnpm test`, `cargo nextest run --workspace`,
 `cargo deny check`, `pnpm audit --audit-level moderate`, and `pnpm check-licenses` before committing.
 
-For native screenshots and shell logs, follow [Publish native verification evidence](docs/native-verification-evidence.md) before requesting review. Future screenshots use PR attachments, with a committed text record and a verified committed-image fallback.
+For native screenshots and shell logs, follow [Native verification evidence](docs/native-verification-evidence.md) before requesting review. Evidence stays local by default, and screenshots go on the PR.
 
 The license policy allows Unicode-3.0 for the ICU and unicode-ident dependencies,
 Zlib for foldhash, and Unlicense for isbot. Each is scoped to the packages named in `deny.toml` or `scripts/check-licenses.mjs`.
@@ -79,8 +79,8 @@ The license policy selects BSD-3-Clause for `json-schema`'s
 ## Performance gates
 
 `perf/budgets.json` holds every number the gates use, each with a `why`.
-The CLAUDE.md budgets are the `specMs` and `p95Ms` entries. Do not edit the
-budgets in CLAUDE.md or SPEC.md to make a gate pass.
+The `specMs` and `p95Ms` entries are the local ceilings for the SPEC.md budgets.
+Do not edit them, or the budgets in SPEC.md, to make a gate pass.
 
 **Cold start.** `pnpm perf:cold` launches `target/release/bundle/macos/Aelomi.app`
 directly (build it with `pnpm tauri build --bundles app`), discards one warm-up,
@@ -113,7 +113,7 @@ the recorder's callback and counts as app-owned. The two parts must add up to
 the full key-to-paint, and the test prints that check. It repeats 150 times per
 page load with 100 ms between keys, over 3 loads, and keeps 135 samples per load.
 Local mode gates the full key-to-paint p95 of the surface named by
-`keystroke.gate` against `p95Ms`, the CLAUDE.md budget. With `AELOMI_PERF_CI=1`,
+`keystroke.gate` against `p95Ms`, the local ceiling. With `AELOMI_PERF_CI=1`,
 which the `keystroke` CI job sets, the test gates the app-owned p95 against
 `hostedAppOwnedP95Ms` instead and prints the full key-to-paint verdict as
 information, because on hosted `macos-15` the first rendering update after

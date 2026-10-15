@@ -1,7 +1,0 @@
-ok    launch process 92691 runs the command this run started
-ok    app process 92691 is running
-ok    System Events has Accessibility access (System Settings > Privacy & Security > Accessibility)
-ok    app window is on screen
-ok    web content has a status region or an alert dialog
-ok    built app is newer than the sources
-ok    shell log has 'ping seq=1'

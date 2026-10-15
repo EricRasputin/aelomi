@@ -1,54 +1,80 @@
-# Publish native verification evidence
+# Native verification evidence
 
-For future native runs, attach the required PNG screenshots to the pull request and commit the small text record under `docs/evidence/<behavior-or-issue>/`. Commit the text record before the branch goes public; attach the screenshots once the PR opens (see **Private until ready** in `CLAUDE.md`). Keep the screenshots at their captured resolution. Include the shell log, accessibility trees, actions, doctor result, and a README that connects each action to its visible result and native side effect.
+This policy follows pstack's **principle-prove-it-works**, **show-me-your-work** and `opening-a-pr` guidance:
 
-Use [verify-aelomi](../.claude/skills/verify-aelomi/SKILL.md) to capture the proof. Publish and check every required file before deleting the local run. A `/tmp` path, a T3 thread attachment, or an expiring Actions artifact alone does not complete verification.
+- **The proof.** It is the real app doing the thing, plus a script a reviewer can rerun.
+- **The evidence.** It is a working artifact, kept local by default.
+- **The pull request.** It is a short briefing that links the evidence. It is not the lab notebook.
 
-The existing [SHELL-10 proof](evidence/shell-10/README.md) stays in Git. Keep its fourteen PNGs, text files, and the immutable links in PR #43 unchanged. This policy applies to future evidence.
+## Where evidence goes
 
-## Prepare the record
+| What | Where |
+|---|---|
+| Screenshots and videos that prove a visible claim | Attached to a PR comment |
+| Proof that the change works | The PR body's `## Verification` section, in one to three bullets. Each bullet names the run path and its outcome. |
+| Shell logs, accessibility trees, doctor output, traces, raw exports, decision logs | Local only. `verify-aelomi` keeps each run under `~/.local/state/aelomi-verify/`, which survives a reboot and is never synced by iCloud. |
+| A record a later reader must audit | `docs/evidence/<topic>/`, committed, but only for the claims below |
 
-1. Squash the branch first (see **Private until ready** in `CLAUDE.md`), then record the source commit before the native run with `git rev-parse HEAD`. A SHA from before the squash never reaches GitHub. Commit the record on top as its own commit, and don't squash or rebase it into the code afterwards. Record the macOS version, app version, run mode, behavior IDs, commands, and observed results in the evidence README. Distinguish the tested source commit from later commits that only publish its evidence.
-2. Run the applicable verification recipe with isolated `AELOMI_DATA_DIR`. Capture each required before and after state and inspect every screenshot. Keep the matching `shell.log` lines and `.ax.txt` files. A mock screenshot does not prove native IPC.
-3. Quit or clean up that run before any build, browser suite, or report generator runs in the same checkout. Restore any theme or permissions the recipe changed. Stop only that run's recorded PIDs.
-4. Copy the relevant text files into the evidence directory. Inspect them for credentials and unrelated personal data before publication. Use synthetic test data. Keep the full relevant shell log, including failures and cleanup, rather than only a success excerpt. Strip terminal color escapes and redact personal path prefixes. Mark any redaction in the README and hash the published bytes.
-5. Record each screenshot's filename, byte size, and SHA-256 in the README. Run `shasum -a 256 "$RUN/before.png" "$RUN/after.png"` for a two-state recipe. Record hashes of the other published text files as well. Leave app data, databases, `run.env`, and PID files local.
+Keep the runs a PR names until it merges, then its owner deletes them. Delete every other run as soon as you no longer need it, because nothing purges `~/.local/state/aelomi-verify/` for you. Reviewers may read files and run read-only commands but change nothing, and their prompt carries the PR's `## Verification` bullets, the log lines those bullets rest on, and the output of any check a claim rests on.
+
+**Privacy.** Use synthetic data only, in an isolated `AELOMI_DATA_DIR`. Before anything leaves the machine (a quoted log line, a screenshot, a PR comment), remove credentials and personal paths. For example, write `~/` for a home directory.
+
+## When to commit a record
+
+Commit a record only when the trail has to be auditable after the PR merges:
+
+- a change that can destroy, move or migrate user data, whatever layer it lives in, including shell changes to storage, quit, trash or data paths;
+- a measured performance claim that a budget or a later decision cites.
+
+Other UI and shell changes need no committed record. Their screenshots and the PR's `## Verification` bullets are enough.
+
+### What a record contains
+
+A committed record holds only these files:
+
+- **`README.md`.** It names the source commit it proves, the paths the record proves (git pathspecs written from the repository root, chosen from the paths `git diff --name-only <merge base> <commit>` lists), the environment, the steps and the results. It quotes inline the few log lines each claim rests on, so the claim can be checked without the full log. It lists each attached screenshot's filename, byte size and SHA-256.
+- **Scripts.** These are the scripts that drive or summarize the run, saved as `*.sh.txt`, `*.py.txt`, `*.js.txt` or `*.mjs.txt` so no tool executes them.
+
+Never commit any of these:
+
+- full shell logs, accessibility trees or doctor output;
+- trace exports, build logs or hash manifests;
+- PNGs, except under the upload fallback below.
+
+Git already hashes every committed file.
+
+Commit the record as its own commit on top of the source commit it proves. A later product-code fix needs a new record for the behavior it touches. Earlier records stay as they are. The record names the commit it tested, the merge base it was tested against (`git merge-base <base> <commit>`, where `<base>` is the PR's base branch, `origin/main` unless the PR is stacked), and the patch-id of its change: the first field of `git diff --full-index --binary <merge base> <commit> | git patch-id --verbatim`. That is the review gate's command, pointed at the tested commit. A later rebase never edits the record. To audit a record after any merge method:
+
+1. Fetch the PR's final head, which GitHub keeps: `git fetch origin refs/pull/<number>/head`.
+2. Find the record's commit: `git log --diff-filter=A --format=%H FETCH_HEAD -- docs/evidence/<topic>/README.md`. Call its parent `P`.
+3. Pick a recorded merge base, never one computed from today's branch: the record's own if `P` is the commit it names, or, after a rebase, the merge base in the review gate's comment for the PR's final head.
+4. Rerun the patch-id command with that merge base and `P`, and compare it with the record's.
+5. From the repository root, check that each of the record's pathspecs matches at least one path in `git diff --name-only <merge base> P`, and that `git diff P FETCH_HEAD -- <the record's pathspecs>` is empty. A pathspec that matches nothing fails this step. For a record without pathspecs, use the files `git diff --name-only <merge base> P` lists, leaving out `docs/evidence/`.
+
+If step 4 or 5 fails, the record does not prove the landed change, and the change needs a new record. For a path that several records cover, audit the newest. When you can, write the record after the branch's last planned rebase.
 
 ## Attach the screenshots
 
-Check `gh pr comment --help` for `--attach`. An older CLI may lack the flag. Use an official GitHub CLI release that supports it, or the GitHub browser's attachment control. The [CLI attachment guide](https://docs.github.com/en/github-cli/github-cli/attaching-files-with-github-cli) requires push access and supports images and videos, so keep shell logs in the committed text record.
-
-Write a comment body to a local Markdown file. Describe each screenshot and reference its local path. For a two-state recipe, use this command after the PR exists. Replace `123`, the paths, and `$RUN` with the actual PR and run.
+Use a GitHub CLI release whose `gh pr comment` supports `--attach`. GitHub CLI 2.92.0 lacks it; 2.102.0 has it. If you download the CLI, verify the archive against its published checksums first. Write the comment body to a local Markdown file that references each image by its local path, then post it:
 
 ```bash
 gh pr comment 123 --repo aelomi/aelomi \
 	--body-file /tmp/native-evidence-comment.md \
-	--attach "$RUN/before.png#Native state before the action" \
-	--attach "$RUN/after.png#Native state after the action"
+	--attach "$RUN/before.png" \
+	--attach "$RUN/after.png"
 ```
 
-GitHub replaces matching local image paths in the comment with uploaded URLs. Read the posted comment back with `gh api --paginate repos/aelomi/aelomi/issues/123/comments`. Leave the URLs out of the evidence README. Its filename, byte size, and SHA-256 manifest already ties each attachment to the record, so the record needs no commit after the PR opens and the reviewed head stays put. Embed the images and link the text record from the PR body.
+Read the posted comment back. Download every attachment URL without a token, for example with `curl --disable --fail --location`, then open the file and compare its byte size and SHA-256 with what you recorded. Anything else is a failed publish: a login page, an HTML error, an expired signed URL, a file that isn't the image, or a size or hash mismatch.
 
-In an authenticated GitHub browser, use the comment box's attachment control for PNGs. Wait for the upload to produce Markdown URLs, then post the comment and read it back. GitHub documents a 10 MB image limit in [Attaching files](https://docs.github.com/en/get-started/writing-on-github/working-with-advanced-formatting/attaching-files). Split a large proof into the required states; preserve legibility rather than shrinking text to fit.
+**Upload fallback.** If no upload publishes cleanly and the claim needs a committed record, commit only the PNGs that prove it next to the record, with each file's size and SHA-256 and the reason the upload failed. That commit is a new head, so the review gate runs again. For any other claim, the screenshots stay local, and the PR's `## Verification` bullet says so.
 
-## Verify publication before review
+## Trimmed records
 
-1. Download every screenshot URL to a fresh directory without a GitHub token. For example, `curl --disable --fail --location --connect-timeout 10 --max-time 60 "$SCREENSHOT_URL" --output /tmp/downloaded-before.png`. Public-repository attachments should be readable without authentication. Reject a login page, HTML error, or expired signed URL.
-2. Compare each download's SHA-256 and byte size with the manifest. Open each downloaded image and confirm it shows the intended native window and state.
-3. The text record is already in the pushed head. Link it with `https://github.com/aelomi/aelomi/blob/<full-evidence-commit>/docs/evidence/<directory>/README.md`. Use the full SHA of the commit that added it, here and in every text-file link. Download the remote text files and compare their hashes with the manifest.
-4. Read the PR body back. Require every proof link to resolve to the expected bytes independently of the original run directory. Only then remove local copies if needed.
-5. After any product-code change, repeat the affected native proof and append a new evidence record. Keep previous published records and state which source commit each proves. Run the repository's CI and fresh-review gate on the final PR head.
+Records committed before 2026-10-15 kept full logs, accessibility trees and manifests. On that date they were trimmed to their READMEs and scripts:
 
-Attachments avoid adding PNG blobs to Git history, but GitHub does not promise permanent archival storage. Keep the posted evidence comment and its URLs. If a required attachment becomes inaccessible, restore it from a retained copy or rerun the proof and append a replacement record. Mark the gap until the replacement passes the download checks.
+- **Removed files.** A script turned each README link to a removed file into a full-SHA permalink to the last commit that held it.
+- **Prose mentions.** For files a README names without a link, a second step added a note under each title. The note links the complete folder as it stood before the trim.
 
-## Use the committed fallback when uploads fail
+Nothing was lost; it moved from the tree to history.
 
-If `--attach` is missing, permission fails, the browser is signed out, or attachment automation fails, commit the required PNGs alongside the text record. Keep only the states needed to prove the behavior, with all required native paths still covered. Omit duplicate captures, build reports, and raw app data. Explain the upload failure in the README and PR body. This fallback adds a commit after the PR opens, so the new head needs CI and a fresh review.
-
-Use full-commit `blob` links for the README and logs, and full-commit `raw` links for PNGs. Download and hash-check those remote files as above. Do not leave required proof only in `/tmp` while waiting for an upload preference. A successful later attachment upload does not justify rewriting history or removing an already approved record.
-
-If the raw-file host is unreachable, use GitHub's documented [Contents API](https://docs.github.com/en/rest/repos/contents#get-repository-content). Request `/repos/aelomi/aelomi/contents/<path>?ref=<full-evidence-commit>` with `Accept: application/vnd.github.raw+json`. Public files need no authorization header. Compare the returned bytes with the same manifest.
-
-Actions artifacts are useful additional diagnostics. This repository's CI uploads currently retain artifacts for seven days. GitHub allows at most 90 days for public-repository artifact retention, as documented in [Actions retention settings](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/enabling-features-for-your-repository/managing-github-actions-settings-for-a-repository). Publish required screenshots and logs through the attachment or committed workflow before those artifacts expire. Evidence publication needs no product release or app network change.
-
-The [native publication proof](evidence/native-publication-46/README.md) records the attachment upload, anonymous screenshot retrieval, and committed-file fallback check for issue #46.
+Those permalinks point at commits on `main`, except four older links to PR #43's head, which GitHub keeps as `refs/pull/43/head`. Both stay valid. A future record that links to its own branch's commits stays valid while those commits are reachable: from `main` after a merge commit, or from `refs/pull/<number>/head` while the PR's head still contains them.

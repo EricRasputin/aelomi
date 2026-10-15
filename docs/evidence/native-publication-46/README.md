@@ -1,5 +1,7 @@
 # Native evidence publication proof
 
+This folder keeps only this README and its scripts, under the [evidence policy](../../native-verification-evidence.md). Every file it names is in the [complete record at 9b44d57](https://github.com/aelomi/aelomi/tree/9b44d575e43efa1170b743cc54b019b5faf7a8cf/docs/evidence/native-publication-46).
+
 This record exercises the [future evidence policy](../../native-verification-evidence.md) for issue #46. It proves publication and retrieval, with no app behavior change. The PNGs are GitHub attachments; the five text files live beside this README.
 
 ## Capture
@@ -11,7 +13,7 @@ This record exercises the [future evidence policy](../../native-verification-evi
 
 The commands used `.claude/skills/verify-aelomi/scripts/app.sh` with the run directory. `doctor` passed all checks. `wait-status` confirmed `IPC ok · core 0.1.0 · seq 1`, then `screenshot before` captured it. `press "Ping again"` sent AXPress. `wait-status` confirmed `IPC ok · core 0.1.0 · seq 2`, then `screenshot after` captured it. `keys q command` requested a normal quit. `cleanup` reported that nothing from this run remained running, and port 53523 was free. Theme and privacy grants stayed unchanged.
 
-The [shell log](shell.log) records the native side effects:
+The [shell log](https://github.com/aelomi/aelomi/blob/6a9f35ce9eefbe21c7048e65efe6b6e99cef2276/docs/evidence/native-publication-46/shell.log) records the native side effects:
 
 ```text
 storage status=Ready path=/private/tmp/aelomi-verify/20261013-091400-dev-4yev/data
@@ -21,7 +23,7 @@ quit flush via=ExitRequested pending=[]
 quit flush via=Exit pending=[]
 ```
 
-[Actions](actions.log), [doctor](doctor.txt), [before accessibility tree](before.ax.txt), and [after accessibility tree](after.ax.txt) provide the matching text record. The published shell log strips ANSI color escapes, normalizes line endings, trims trailing spaces, and replaces the personal checkout path with `<checkout>`. All other content remains. Hashes below cover the published bytes. Raw app data, environment, and PID files were not published.
+[Actions](https://github.com/aelomi/aelomi/blob/6a9f35ce9eefbe21c7048e65efe6b6e99cef2276/docs/evidence/native-publication-46/actions.log), [doctor](https://github.com/aelomi/aelomi/blob/6a9f35ce9eefbe21c7048e65efe6b6e99cef2276/docs/evidence/native-publication-46/doctor.txt), [before accessibility tree](https://github.com/aelomi/aelomi/blob/6a9f35ce9eefbe21c7048e65efe6b6e99cef2276/docs/evidence/native-publication-46/before.ax.txt), and [after accessibility tree](https://github.com/aelomi/aelomi/blob/6a9f35ce9eefbe21c7048e65efe6b6e99cef2276/docs/evidence/native-publication-46/after.ax.txt) provide the matching text record. The published shell log strips ANSI color escapes, normalizes line endings, trims trailing spaces, and replaces the personal checkout path with `<checkout>`. All other content remains. Hashes below cover the published bytes. Raw app data, environment, and PID files were not published.
 
 ## Publication and retrieval
 

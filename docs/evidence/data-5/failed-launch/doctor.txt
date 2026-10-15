@@ -1,7 +1,0 @@
-FAIL  launch process 12600 runs the command this run started
-FAIL  app process 12600 is running
-ok    System Events has Accessibility access (System Settings > Privacy & Security > Accessibility)
-FAIL  app window is on screen
-FAIL  web content has a status region or an alert dialog
-ok    built app is newer than the sources
-ok    shell log has 'ping seq=1'

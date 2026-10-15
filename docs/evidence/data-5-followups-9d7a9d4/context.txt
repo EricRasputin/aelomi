@@ -1,4 +1,0 @@
-source_head=9d7a9d44acbe4a34d66bcf7f6c8edfb6fe6aa66c
-mode=release app, real Tauri IPC
-macOS=27.0.1 (26A434)
-No DYLD instrumentation for rebuild and cold-start evidence.
