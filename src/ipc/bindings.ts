@@ -42,7 +42,7 @@ export const commands = {
 	 *  below 2^53 exactly.
 	 */
 	docAppend: (docId: string, update: string) => typedError<number | null, StorageError>(__TAURI_INVOKE("doc_append", { docId, update })),
-	pageCreate: (parentId: string | null) => typedError<string, PageError>(__TAURI_INVOKE("page_create", { parentId })),
+	pageCreate: (parentId: string | null, pageId: string | null) => typedError<string, PageError>(__TAURI_INVOKE("page_create", { parentId, pageId })),
 	pageRename: (pageId: string, title: string) => typedError<null, PageError>(__TAURI_INVOKE("page_rename", { pageId, title })),
 	pageTrash: (pageId: string) => typedError<string, PageError>(__TAURI_INVOKE("page_trash", { pageId })),
 	/**  Never touches SQLite, so it answers at once on any thread. */

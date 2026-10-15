@@ -1,4 +1,5 @@
-const pending = new Set<Promise<string[]>>();
+const pending = new Set<Promise<void>>();
+const retained = new Map<object, () => void>();
 let admission: "open" | "completing" = "open";
 
 export function setCommandAdmission(next: typeof admission) {
@@ -13,19 +14,25 @@ export function hasPendingCommands(): boolean {
   return pending.size > 0;
 }
 
-export function trackCommand<T>(
-  command: Promise<T>,
-  failures: (reply: T) => string[] = () => [],
-  rejected: string[] = [],
-): Promise<T> {
+export function retainRecordCommand(operation: object, retry: () => void) {
+  retained.set(operation, retry);
+}
+
+export function forgetRecordCommand(operation: object) {
+  retained.delete(operation);
+}
+
+export function commandFailures(): string[] {
+  return retained.size > 0 ? ["workspace"] : [];
+}
+
+export function trackCommand<T>(command: Promise<T>): Promise<T> {
   const settled = command.then(
-    (reply) => {
+    () => {
       pending.delete(settled);
-      return failures(reply);
     },
     () => {
       pending.delete(settled);
-      return rejected;
     },
   );
   pending.add(settled);
@@ -33,11 +40,9 @@ export function trackCommand<T>(
 }
 
 export async function drainCommands(): Promise<string[]> {
-  const failed = new Set<string>();
+  for (const retry of [...retained.values()]) retry();
   while (pending.size > 0) {
-    for (const docs of await Promise.all([...pending])) {
-      for (const doc of docs) failed.add(doc);
-    }
+    await Promise.all([...pending]);
   }
-  return [...failed];
+  return commandFailures();
 }

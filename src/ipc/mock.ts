@@ -600,11 +600,13 @@ export const commands = {
     );
     return { status: "ok", data: storage.seq };
   },
-  pageCreate: async (parentId) => {
-    calls.push({ command: "pageCreate", args: [parentId] });
+  pageCreate: async (parentId, pageId = null) => {
+    calls.push({ command: "pageCreate", args: [parentId, pageId] });
     await setupReady;
     const error = recordFailure(parentId === null ? [] : [parentId]);
     if (error) return { status: "error", error };
+    if (pageId !== null && records().has(pageId))
+      return { status: "ok", data: pageId };
     if (
       parentId !== null &&
       !sourceTree().tree.pages.some((p) => p.id === parentId)
@@ -622,7 +624,7 @@ export const commands = {
         .reduce((max, [, record]) => Math.max(max, record.order), 0) + step;
     if (!Number.isSafeInteger(order))
       return { status: "error", error: "OrderExhausted" };
-    const id = crypto.randomUUID().replaceAll("-", "");
+    const id = pageId ?? crypto.randomUUID().replaceAll("-", "");
     const now = Date.now();
     acceptRecordEdit(() =>
       writeRecords(workspaceDoc(), [
@@ -645,6 +647,13 @@ export const commands = {
     if (error) return { status: "error", error };
     if (!sourceTree().tree.pages.some((p) => p.id === pageId))
       return { status: "error", error: "NotActive" };
+    if (
+      workspaceDoc()
+        .getMap<Y.Map<unknown>>("pages")
+        .get(pageId)
+        ?.get("title") === title
+    )
+      return { status: "ok", data: null };
     acceptRecordEdit(() => {
       const map = workspaceDoc().getMap<Y.Map<unknown>>("pages").get(pageId);
       const now = Date.now();
@@ -658,6 +667,8 @@ export const commands = {
     await setupReady;
     const error = recordFailure([pageId]);
     if (error) return { status: "error", error };
+    const existing = records().get(pageId)?.trash;
+    if (existing) return { status: "ok", data: existing.batchId };
     if (!sourceTree().tree.pages.some((p) => p.id === pageId))
       return { status: "error", error: "NotActive" };
     const batch = crypto.randomUUID().replaceAll("-", "");

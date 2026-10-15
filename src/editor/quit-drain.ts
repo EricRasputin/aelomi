@@ -1,5 +1,6 @@
 import { commands } from "../ipc";
 import {
+  commandFailures,
   drainCommands,
   hasPendingCommands,
   setCommandAdmission,
@@ -30,19 +31,18 @@ async function drain(revision: number) {
   await new Promise((done) => setTimeout(done, 0));
   for (const editor of editors) editor.freeze();
   let failed: string[];
-  const commandFailures = new Set<string>();
   do {
-    const [deliveries, commands] = await Promise.all([
+    const [deliveries] = await Promise.all([
       drainDeliveries(),
       drainCommands(),
     ]);
-    for (const doc of commands) commandFailures.add(doc);
-    failed = [...new Set([...deliveries, ...commandFailures])];
+    failed = deliveries;
   } while (hasOutstandingDeliveries() || hasPendingCommands());
   const quit = useQuitStore.getState();
   if (quit.decision.kind !== "draining" || quit.decision.revision !== revision)
     return;
   setCommandAdmission("completing");
+  failed = [...new Set([...failed, ...commandFailures()])];
   const reply =
     failed.length === 0
       ? await commands.completeQuit(revision)

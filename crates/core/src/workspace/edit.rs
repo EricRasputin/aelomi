@@ -16,6 +16,11 @@ pub enum PageEdit {
         parent: Option<PageId>,
         title: String,
     },
+    CreateWithId {
+        page: PageId,
+        parent: Option<PageId>,
+        title: String,
+    },
     Rename {
         page: PageId,
         title: String,
@@ -158,15 +163,33 @@ fn plan(
     let mut change = PageChange::Edited;
     match edit {
         PageEdit::Create { parent, title } => {
-            if let Some(parent) = &parent {
-                active(parent)?;
-            }
             let page = loop {
                 let candidate = PageId::new(random_id()?).expect("hex is a page ID");
                 if !records.contains_key(&candidate) {
                     break candidate;
                 }
             };
+            return plan(
+                PageEdit::CreateWithId {
+                    page,
+                    parent,
+                    title,
+                },
+                prior,
+                now,
+            );
+        }
+        PageEdit::CreateWithId {
+            page,
+            parent,
+            title,
+        } => {
+            if records.contains_key(&page) {
+                return Ok((records, PageChange::Created(page)));
+            }
+            if let Some(parent) = &parent {
+                active(parent)?;
+            }
             let order = last_order(&records, &siblings(&records, &forest, parent.as_ref()))?;
             records.insert(
                 page.clone(),
@@ -184,8 +207,10 @@ fn plan(
         PageEdit::Rename { page, title } => {
             active(&page)?;
             let record = records.get_mut(&page).expect("active page exists");
-            record.title = title;
-            record.updated_at = now;
+            if record.title != title {
+                record.title = title;
+                record.updated_at = now;
+            }
         }
         PageEdit::Move {
             page,
@@ -233,6 +258,10 @@ fn plan(
             }
         }
         PageEdit::Trash { page } => {
+            if let Some(trash) = records.get(&page).and_then(|record| record.trash.as_ref()) {
+                let batch = trash.batch_id.clone();
+                return Ok((records, PageChange::Trashed(batch)));
+            }
             active(&page)?;
             let batch = random_id()?;
             let mut children: BTreeMap<Option<&PageId>, Vec<&PageId>> = BTreeMap::new();
@@ -263,7 +292,7 @@ fn plan(
                 .map(|(id, _)| id.clone())
                 .collect();
             if restoring.is_empty() {
-                return Err(PageEditError::MissingBatch);
+                return Ok((records, PageChange::Restored(batch)));
             }
             let mut restored = records.clone();
             for id in &restoring {

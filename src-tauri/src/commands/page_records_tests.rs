@@ -71,6 +71,26 @@ fn created(shell: &Shell, parent: Option<&str>) -> String {
 }
 
 #[test]
+fn client_chosen_create_and_trash_replays_return_the_same_ids_and_records() {
+    let disk = SimDisk::default();
+    let shell = shell(crate::storage::tests::open_on(&disk));
+    let args = json!({"parentId": null, "pageId": "retry-page"});
+    assert_eq!(
+        invoke(&shell, "page_create", args.clone()),
+        Ok(json!("retry-page"))
+    );
+    let workspace = shell.app.state::<Storage>().workspace().unwrap();
+    let created = workspace.tree().unwrap();
+    assert_eq!(invoke(&shell, "page_create", args), Ok(json!("retry-page")));
+    assert_eq!(workspace.tree().unwrap(), created);
+    let args = json!({"pageId": "retry-page"});
+    let batch = invoke(&shell, "page_trash", args.clone()).unwrap();
+    let trashed = workspace.tree().unwrap();
+    assert_eq!(invoke(&shell, "page_trash", args), Ok(batch));
+    assert_eq!(workspace.tree().unwrap(), trashed);
+}
+
+#[test]
 fn page_commands_accept_pending_edits_and_publish_source_changes_before_durability() {
     let disk = SimDisk::default();
     let storage = crate::storage::tests::open_on(&disk);

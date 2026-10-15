@@ -134,3 +134,65 @@ fn typing_paste_drag_rename_move_trash_and_restore_are_flushed_within_100_ms() {
     assert_eq!(records[&page].title, "renamed");
     assert_eq!(records[&page].trash, None);
 }
+
+#[test]
+fn rename_move_trash_and_restore_replays_preserve_records_with_a_later_clock() {
+    let clock = Arc::new(ManualClock::default());
+    let fs = SimFs::new(clock.clone());
+    let dir = tempfile::tempdir().unwrap();
+    let store = Store::open_with(
+        std::path::Path::new("/data"),
+        fs,
+        clock.clone(),
+        Driver::Manual,
+        Limits::DATA_6,
+    )
+    .unwrap();
+    let w = Workspace::with_store(store, dir.path().join("index.sqlite"), |_| {});
+    let parent = w
+        .edit_page(PageEdit::Create {
+            parent: None,
+            title: "Parent".into(),
+        })
+        .unwrap()
+        .created_page()
+        .unwrap();
+    let page = w
+        .edit_page(PageEdit::Create {
+            parent: None,
+            title: "Before".into(),
+        })
+        .unwrap()
+        .created_page()
+        .unwrap();
+    let check = |edit: PageEdit| {
+        w.edit_page(edit.clone()).unwrap();
+        let before = crate::workspace::records::read_pages(
+            &doc_of(&w.load(&DocId::workspace()).unwrap()).transact(),
+        )
+        .unwrap();
+        clock.advance(Duration::from_secs(10));
+        w.edit_page(edit).unwrap();
+        let after = crate::workspace::records::read_pages(
+            &doc_of(&w.load(&DocId::workspace()).unwrap()).transact(),
+        )
+        .unwrap();
+        assert_eq!(after, before);
+    };
+    check(PageEdit::Rename {
+        page: page.clone(),
+        title: "After".into(),
+    });
+    check(PageEdit::Move {
+        page: page.clone(),
+        parent: Some(parent),
+        position: 0,
+    });
+    check(PageEdit::Trash { page: page.clone() });
+    let batch = w
+        .edit_page(PageEdit::Trash { page })
+        .unwrap()
+        .trash_batch()
+        .unwrap();
+    check(PageEdit::Restore { batch });
+}

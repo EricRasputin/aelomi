@@ -67,7 +67,12 @@ function WorkspaceLayout() {
         <header className="shrink-0 border-b border-[var(--border)] px-8 py-5 text-sm font-medium">
           Aelomi
           {import.meta.env.DEV && (
-            <Link to="/dev/settings">Settings probe</Link>
+            <Link
+              to="/dev/settings"
+              className="ml-4 text-xs text-[var(--muted)] underline"
+            >
+              Settings probe
+            </Link>
           )}
           {import.meta.env.DEV && (
             <Link

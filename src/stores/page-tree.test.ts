@@ -104,15 +104,12 @@ test("page commands reject invalid inactive and unavailable targets without addi
     status: "error",
     error: "NotActive",
   });
-  await commands.pageTrash(id);
+  const trash = await commands.pageTrash(id);
   expect(await commands.pageRename(id, "name")).toEqual({
     status: "error",
     error: "NotActive",
   });
-  expect(await commands.pageTrash(id)).toEqual({
-    status: "error",
-    error: "NotActive",
-  });
+  expect(await commands.pageTrash(id)).toEqual(trash);
   expect(window.__aelomiMock?.workspace.tree().trash.map((p) => p.id)).toEqual([
     id,
   ]);
@@ -280,19 +277,24 @@ test("mock end append follows projected orphan roots", async () => {
   ).toEqual(["root", "orphan", id]);
 });
 
-test("a mock rename whose typed fields are unchanged appends only an empty transaction delta", async () => {
+test("a repeated mock rename preserves its accepted delta and timestamp", async () => {
   window.__aelomiMock?.workspace.seed([{ id: "a", title: "A", updatedAt: 42 }]);
   vi.spyOn(Date, "now").mockReturnValue(42);
-  expect(await commands.pageRename("a", "A")).toEqual({
+  expect(await commands.pageRename("a", "Renamed")).toEqual({
     status: "ok",
     data: null,
   });
-  expect(window.__aelomiMock?.storage.updates("workspace")).toEqual([
-    Uint8Array.of(0, 0),
-  ]);
+  const accepted = window.__aelomiMock?.storage.updates("workspace");
+  expect(accepted).toHaveLength(1);
+  vi.spyOn(Date, "now").mockReturnValue(100);
+  expect(await commands.pageRename("a", "Renamed")).toEqual({
+    status: "ok",
+    data: null,
+  });
+  expect(window.__aelomiMock?.storage.updates("workspace")).toEqual(accepted);
   expect(
     window.__aelomiMock?.workspace.tree().pages.map((page) => page.title),
-  ).toEqual(["A"]);
+  ).toEqual(["Renamed"]);
 });
 
 test("a failed tree listener still reads the initial page and retries the subscription", async () => {

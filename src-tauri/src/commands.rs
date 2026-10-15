@@ -301,18 +301,22 @@ pub async fn page_create<R: Runtime>(
     app: tauri::AppHandle<R>,
     storage: State<'_, Storage>,
     parent_id: Option<String>,
+    page_id: Option<String>,
 ) -> Result<String, PageError> {
     let workspace = storage.workspace().map_err(|_| PageError::Unavailable)?;
-    let parent = parent_id.map(page_id).transpose()?;
-    let reply = apply_page_edit(
-        app,
-        workspace,
-        aelomi_core::workspace::PageEdit::Create {
+    let parent = parent_id.map(self::page_id).transpose()?;
+    let edit = match page_id {
+        Some(id) => aelomi_core::workspace::PageEdit::CreateWithId {
+            page: self::page_id(id)?,
             parent,
             title: String::new(),
         },
-    )
-    .await?;
+        None => aelomi_core::workspace::PageEdit::Create {
+            parent,
+            title: String::new(),
+        },
+    };
+    let reply = apply_page_edit(app, workspace, edit).await?;
     Ok(reply
         .created_page()
         .expect("create returns its page")

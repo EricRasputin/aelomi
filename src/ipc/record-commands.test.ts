@@ -18,7 +18,12 @@ beforeEach(() => {
   vi.stubGlobal("window", {});
   installMock();
 });
-afterEach(() => {
+afterEach(async () => {
+  vi.spyOn(transport, "pageRename").mockResolvedValue({
+    status: "ok",
+    data: null,
+  });
+  await drainCommands();
   vi.restoreAllMocks();
   window.__aelomiMock?.reset();
   vi.unstubAllGlobals();
@@ -150,3 +155,105 @@ test.each(["Quitting", "NotActive", "InvalidPageId", "Cycle"] as const)(
     expect(await drain).toEqual([]);
   },
 );
+
+test("failed operations retry before newer commands and keep each edit in FIFO order", async () => {
+  window.__aelomiMock?.workspace.seed([{ id: "a", title: "Before" }]);
+  const native = transport.pageRename;
+  const calls: string[] = [];
+  let failures = 1;
+  vi.spyOn(transport, "pageRename").mockImplementation(async (id, title) => {
+    calls.push(title);
+    return failures-- > 0
+      ? { status: "error", error: { Io: "read failed" } }
+      : native(id, title);
+  });
+  const commands = withRecordCommands(transport);
+  expect(await commands.pageRename("a", "First")).toEqual({
+    status: "error",
+    error: { Io: "read failed" },
+  });
+  const newer = commands.pageRename("a", "Second");
+  expect(await drainCommands()).toEqual([]);
+  expect(await newer).toEqual({ status: "ok", data: null });
+  expect(calls).toEqual(["First", "First", "Second"]);
+  expect(
+    window.__aelomiMock?.workspace.tree().pages.map((p) => p.title),
+  ).toEqual(["Second"]);
+});
+
+test("an uncertain create retries the same client ID and never creates a second page", async () => {
+  const native = transport.pageCreate;
+  const calls: (string | null)[] = [];
+  let first = true;
+  vi.spyOn(transport, "pageCreate").mockImplementation(async (parent, id) => {
+    calls.push(id);
+    const reply = await native(parent, id);
+    if (first) {
+      first = false;
+      throw new Error("reply lost after acceptance");
+    }
+    return reply;
+  });
+  await expect(withRecordCommands(transport).pageCreate(null)).rejects.toThrow(
+    "reply lost after acceptance",
+  );
+  expect(await drainCommands()).toEqual([]);
+  const tree = window.__aelomiMock?.workspace.tree();
+  expect(tree?.pages.map((p) => p.id)).toEqual([calls[0]]);
+  expect(calls).toEqual([tree?.pages[0]?.id, tree?.pages[0]?.id]);
+});
+
+test("an uncertain trash retries the original batch without changing its records", async () => {
+  window.__aelomiMock?.workspace.seed([{ id: "a", title: "A" }]);
+  const native = transport.pageTrash;
+  let first = true;
+  let accepted: unknown;
+  vi.spyOn(transport, "pageTrash").mockImplementation(async (id) => {
+    const reply = await native(id);
+    if (first) {
+      first = false;
+      accepted = window.__aelomiMock?.workspace.tree();
+      throw new Error("reply lost after acceptance");
+    }
+    return reply;
+  });
+  await expect(withRecordCommands(transport).pageTrash("a")).rejects.toThrow(
+    "reply lost after acceptance",
+  );
+  expect(await drainCommands()).toEqual([]);
+  expect(window.__aelomiMock?.workspace.tree()).toEqual(accepted);
+});
+
+test("failed record retries back off from 100 ms to a five second cap and recover without another command", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(0);
+  window.__aelomiMock?.workspace.seed([{ id: "a", title: "Before" }]);
+  const native = transport.pageRename;
+  const attempts: number[] = [];
+  let failing = true;
+  vi.spyOn(transport, "pageRename").mockImplementation(async (id, title) => {
+    attempts.push(Date.now());
+    return failing
+      ? { status: "error", error: { Io: "read failed" } }
+      : native(id, title);
+  });
+  try {
+    expect(
+      await withRecordCommands(transport).pageRename("a", "Recovered"),
+    ).toEqual({ status: "error", error: { Io: "read failed" } });
+    await vi.advanceTimersByTimeAsync(16300);
+    expect(attempts).toEqual([
+      0, 100, 300, 700, 1500, 3100, 6300, 11300, 16300,
+    ]);
+    failing = false;
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(
+      window.__aelomiMock?.workspace.tree().pages.map((p) => p.title),
+    ).toEqual(["Recovered"]);
+    expect(await drainCommands()).toEqual([]);
+  } finally {
+    failing = false;
+    await drainCommands();
+    vi.useRealTimers();
+  }
+});

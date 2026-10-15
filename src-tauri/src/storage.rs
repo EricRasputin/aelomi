@@ -275,10 +275,11 @@ impl Storage {
     pub fn flush_before_quit(&self, timeout: Duration) -> Result<(), Pending> {
         let deadline = Instant::now() + timeout;
         if !self.quit.wait_for_record_edits(deadline) {
-            return Err(Pending {
-                docs: vec![DocId::workspace()],
-                settings: self.pending_edits().settings,
-            });
+            let mut pending = self.pending_edits();
+            pending.docs.push(DocId::workspace());
+            pending.docs.sort();
+            pending.docs.dedup();
+            return Err(pending);
         }
         let Ok(workspace) = &self.opened else {
             return Ok(());
@@ -734,6 +735,46 @@ pub(crate) mod tests {
             start.elapsed()
         );
 
+        disk.clear_faults();
+        assert_eq!(storage.flush_before_quit(QUIT_FLUSH_TIMEOUT), Ok(()));
+    }
+
+    #[test]
+    fn record_wait_timeout_keeps_all_failing_documents_sorted_and_deduplicated() {
+        let disk = SimDisk::default();
+        let storage = open_on(&disk);
+        disk.fail_appends("docs/");
+        let workspace = storage.workspace().unwrap();
+        for id in ["z-page", "workspace", "a-page"] {
+            workspace
+                .append(&DocId::new(id).unwrap(), &update(id))
+                .unwrap();
+        }
+        let expected = vec![
+            DocId::new("a-page").unwrap(),
+            DocId::workspace(),
+            DocId::new("z-page").unwrap(),
+        ];
+        assert_eq!(
+            workspace
+                .flush(Instant::now() + Duration::from_millis(100))
+                .docs,
+            expected
+        );
+        let held = storage.quit.record_edit().unwrap();
+        storage.quit.register_frontend();
+        let crate::quit::QuitRequest::StartDrain(status) = storage.quit.request() else {
+            panic!("starts a drain")
+        };
+        assert!(storage.quit.begin_completing(status.revision));
+        assert_eq!(
+            storage.flush_before_quit(Duration::ZERO),
+            Err(Pending {
+                docs: expected,
+                settings: false
+            })
+        );
+        drop(held);
         disk.clear_faults();
         assert_eq!(storage.flush_before_quit(QUIT_FLUSH_TIMEOUT), Ok(()));
     }
