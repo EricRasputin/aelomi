@@ -155,6 +155,7 @@ fn edits_preserve_unknown_keys_and_coupled_object_fields() {
     let dir = tempfile::tempdir().unwrap();
     let w = empty(dir.path());
     let id = create(&w, None, "A");
+    let parent = create(&w, None, "parent");
     let mut editor = Editor::new(124);
     editor.apply(&DocId::workspace(), &w.load(&DocId::workspace()).unwrap());
     let update = editor.edit(&DocId::workspace(), |txn| {
@@ -178,7 +179,7 @@ fn edits_preserve_unknown_keys_and_coupled_object_fields() {
     .unwrap();
     w.edit_page(PageEdit::Move {
         page: id.clone(),
-        parent: None,
+        parent: Some(parent.clone()),
         position: 0,
     })
     .unwrap();
@@ -197,6 +198,7 @@ fn edits_preserve_unknown_keys_and_coupled_object_fields() {
     };
     assert_eq!(placement.get("future"), Some(&Any::from("also kept")));
     assert_eq!(records(&w)[&id].title, "renamed");
+    assert_eq!(records(&w)[&id].placement.parent, Some(parent));
 }
 
 #[test]
