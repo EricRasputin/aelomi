@@ -460,6 +460,69 @@ fn restoring_tied_siblings_preserves_order_without_writing_the_untouched_sibling
 }
 
 #[test]
+fn restore_orders_newly_visible_foreign_children_with_the_batch_siblings() {
+    for inactive_parent in [false, true] {
+        let dir = tempfile::tempdir().unwrap();
+        let w = empty(dir.path());
+        crafted(
+            &w,
+            &[
+                ("t", None, 1),
+                ("p", inactive_parent.then_some("t"), 20),
+                ("a", Some("p"), 10),
+                ("c", Some("p"), 10),
+                ("untouched", None, 40),
+            ],
+        );
+        let batch = w
+            .edit_page(PageEdit::Trash { page: page("p") })
+            .unwrap()
+            .trash_batch()
+            .unwrap();
+        w.edit_page(PageEdit::Trash { page: page("t") }).unwrap();
+        let mut foreign = Editor::new(126);
+        foreign.apply(&DocId::workspace(), &w.load(&DocId::workspace()).unwrap());
+        let update = foreign.edit(&DocId::workspace(), |txn| {
+            put_page(
+                txn,
+                &page("z"),
+                &PageRecord {
+                    title: "foreign child".into(),
+                    placement: Placement {
+                        parent: Some(page("p")),
+                        order: 10,
+                    },
+                    favorite: None,
+                    trash: None,
+                    created_at: 1,
+                    updated_at: 2,
+                },
+            )
+        });
+        w.append(&DocId::workspace(), &update).unwrap();
+        assert_eq!(projected_ids(&w), ["untouched"]);
+        let before = records(&w);
+        w.edit_page(PageEdit::Restore { batch }).unwrap();
+        let expected = if inactive_parent {
+            vec!["untouched", "p", "a", "c", "z"]
+        } else {
+            vec!["p", "a", "c", "z", "untouched"]
+        };
+        assert_eq!(projected_ids(&w), expected);
+        let after = records(&w);
+        assert_eq!(after[&page("untouched")], before[&page("untouched")]);
+        assert_eq!(
+            after[&page("z")].placement,
+            Placement {
+                parent: Some(page("p")),
+                order: 12
+            }
+        );
+        assert_eq!(after[&page("z")].updated_at, 2);
+    }
+}
+
+#[test]
 fn moving_out_of_a_repaired_cycle_keeps_both_pages_roots_and_trashes_only_the_moved_page() {
     let dir = tempfile::tempdir().unwrap();
     let w = empty(dir.path());

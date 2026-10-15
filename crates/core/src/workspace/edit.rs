@@ -275,17 +275,24 @@ fn plan(
                 };
             }
             let planned = tree::forest(&restored);
+            for id in &restoring {
+                restored.get_mut(id).expect("batch member").placement.parent = planned.parent[id]
+                    .clone()
+                    .filter(|parent| restoring.contains(parent) || forest.active.contains(parent));
+            }
+            let planned = tree::forest(&restored);
             let mut active = forest.active.clone();
-            let mut positions: BTreeMap<_, _> = forest
+            let mut positions: BTreeMap<_, _> = planned
                 .active
                 .iter()
+                .filter(|id| !restoring.contains(*id))
                 .map(|id| (id.clone(), records[id].placement.order))
                 .collect();
             let mut children: BTreeMap<Option<PageId>, Vec<PageId>> = BTreeMap::new();
             let mut groups: BTreeMap<Option<PageId>, Vec<PageId>> = BTreeMap::new();
-            for id in &forest.active {
+            for id in planned.active.iter().filter(|id| !restoring.contains(*id)) {
                 groups
-                    .entry(forest.parent[id].clone())
+                    .entry(planned.parent[id].clone())
                     .or_default()
                     .push(id.clone());
             }
