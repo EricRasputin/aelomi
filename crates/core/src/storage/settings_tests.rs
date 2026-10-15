@@ -12,7 +12,7 @@ fn write(fs: &dyn Fs, root: &Path, value: &Settings) -> io::Result<()> {
     super::write(fs, &Layout::new(root), value)
 }
 fn load(fs: &dyn Fs, root: &Path) -> Settings {
-    super::load(fs, &Layout::new(root))
+    super::load(fs, &Layout::new(root)).unwrap()
 }
 use crate::storage::clock::{Clock, ManualClock};
 use crate::storage::sim_fs::{Crash, OpKind, SimFs};
@@ -122,7 +122,7 @@ fn data_4_unknown_keys_and_theme_survive_read_modify_write() {
 }
 
 #[test]
-fn data_4_missing_corrupt_and_unreadable_settings_use_defaults_and_can_be_replaced() {
+fn data_4_missing_and_corrupt_settings_use_defaults_and_can_be_replaced() {
     let fs = disk();
     assert_eq!(load(&*fs, Path::new("/data")), Settings::default());
     for bytes in [&b"{broken"[..], b"[]"] {
@@ -132,7 +132,12 @@ fn data_4_missing_corrupt_and_unreadable_settings_use_defaults_and_can_be_replac
         assert_eq!(load(&*fs, Path::new("/data")), session());
     }
     fs.fail(OpKind::Read, "settings.json", libc::EACCES);
-    assert_eq!(load(&*fs, Path::new("/data")), Settings::default());
+    assert_eq!(
+        super::load(&*fs, &Layout::new(Path::new("/data")))
+            .unwrap_err()
+            .kind(),
+        io::ErrorKind::PermissionDenied
+    );
     fs.clear_faults();
     write(&*fs, Path::new("/data"), &session()).unwrap();
     assert_eq!(load(&*fs, Path::new("/data")), session());
@@ -220,4 +225,57 @@ fn data_4_open_page_extensions_do_not_move_to_another_page() {
         settings.to_json()["openPage"],
         json!({"pageId":"page-b","topVisibleBlockId":"b2"})
     );
+}
+
+#[test]
+fn data_4_each_unparsable_field_survives_an_unrelated_patch() {
+    for (key, invalid) in [
+        ("theme", json!({"name":"Dark"})),
+        ("openPage", json!({"pageId":"workspace","futureAnchor":42})),
+        ("recentPages", json!({"future":true})),
+        ("expandedRows", json!(42)),
+    ] {
+        let mut input = session().to_json();
+        input[key] = invalid.clone();
+        input["export"] = json!({"schedule":"nightly"});
+        let mut settings = Settings::from_json(&serde_json::to_vec(&input).unwrap()).unwrap();
+        settings.apply(SettingsPatch::default());
+        assert_eq!(settings.to_json(), input);
+        assert_eq!(
+            Settings::from_json(&serde_json::to_vec(&settings.to_json()).unwrap()).unwrap(),
+            settings
+        );
+    }
+}
+
+#[test]
+fn data_4_explicit_patches_replace_retained_raw_fields() {
+    let mut settings = Settings::from_json(br#"{"theme":{"name":"Dark"},"openPage":{"future":42},"recentPages":42,"expandedRows":42,"export":{"schedule":"nightly"}}"#).unwrap();
+    settings.apply(SettingsPatch {
+        theme: Some(ThemeChoice::Light),
+        open_page: Some(None),
+        recent_pages: Some(vec![PageId::new("page-a").unwrap()]),
+        expanded_rows: Some(BTreeSet::new()),
+    });
+    assert_eq!(
+        settings.to_json(),
+        json!({"theme":"Light","openPage":null,"recentPages":["page-a"],"expandedRows":[],"export":{"schedule":"nightly"}})
+    );
+}
+
+#[test]
+fn data_4_os_replace_publishes_a_complete_settings_source() {
+    use crate::storage::fs::OsFs;
+    let dir = tempfile::tempdir().unwrap();
+    let layout = Layout::new(dir.path());
+    write(&OsFs, dir.path(), &Settings::default()).unwrap();
+    std::fs::write(
+        layout.temp_file(RootFile::Settings),
+        serde_json::to_vec(&session().to_json()).unwrap(),
+    )
+    .unwrap();
+    OsFs.replace(dir.path(), RootFile::Settings).unwrap();
+    OsFs.fsync(dir.path()).unwrap();
+    OsFs.full_sync(dir.path()).unwrap();
+    assert_eq!(load(&OsFs, dir.path()), session());
 }

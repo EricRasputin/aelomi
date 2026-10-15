@@ -254,23 +254,23 @@ export type SearchScope =
 
 export type Settings = {
 	theme: Theme,
-	openPage: SettingsOpenPage | null,
-	recentPages: string[],
-	expandedRows: string[],
+	open_page: SettingsOpenPage | null,
+	recent_pages: string[],
+	expanded_rows: string[],
 };
 
 export type SettingsError = "Unavailable" | "InvalidPageId" | { Io: string } | "Internal";
 
 export type SettingsOpenPage = {
-	pageId: string,
-	topVisibleBlockId: string | null,
+	page_id: string,
+	top_visible_block_id: string | null,
 };
 
 export type SettingsPatch = {
-	theme?: Theme | null,
-	openPage?: OpenPagePatch | null,
-	recentPages?: string[] | null,
-	expandedRows?: string[] | null,
+	theme?: ThemeChoice | null,
+	open_page?: OpenPagePatch | null,
+	recent_pages?: string[] | null,
+	expanded_rows?: string[] | null,
 };
 
 export type StorageError = 
@@ -289,6 +289,8 @@ export type TextPart = {
 };
 
 export type Theme = "System" | "Light" | "Dark" | { Unknown: string };
+
+export type ThemeChoice = "System" | "Light" | "Dark";
 
 export type TrashedPage = {
 	id: string,

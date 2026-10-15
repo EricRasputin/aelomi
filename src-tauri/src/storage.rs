@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use aelomi_core::index::IndexEvent;
-use aelomi_core::storage::{self as core, DataPathError, DocId, OpenError};
+use aelomi_core::storage::{self as core, DataPathError, OpenError};
 use aelomi_core::workspace::Workspace;
 use serde::Serialize;
 use specta::Type;
@@ -162,18 +162,26 @@ impl Storage {
         )
     }
 
-    pub fn pending_docs(&self) -> Vec<DocId> {
-        match self.workspace().map(|workspace| workspace.health()) {
-            Ok(core::Health::Failing { pending_docs, .. }) => pending_docs,
-            _ => Vec::new(),
+    pub fn pending_docs(&self) -> Vec<String> {
+        match self.health() {
+            Health::Failing { pending_docs, .. } => pending_docs,
+            Health::Healthy => Vec::new(),
         }
     }
 
-    pub fn flush_before_quit(&self, timeout: Duration) -> Result<(), Vec<DocId>> {
+    pub fn flush_before_quit(&self, timeout: Duration) -> Result<(), Vec<String>> {
         let Ok(workspace) = &self.opened else {
             return Ok(());
         };
-        let pending = workspace.flush(Instant::now() + timeout);
+        let deadline = Instant::now() + timeout;
+        let mut pending: Vec<String> = workspace
+            .flush(deadline)
+            .iter()
+            .map(ToString::to_string)
+            .collect();
+        if !workspace.flush_settings(deadline) {
+            pending.push("settings.json".into());
+        }
         if pending.is_empty() {
             Ok(())
         } else {
@@ -200,6 +208,7 @@ impl From<&core::Health> for Health {
             core::Health::Failing {
                 reason,
                 pending_docs,
+                pending_settings,
                 ..
             } => Self::Failing {
                 reason: match reason {
@@ -209,7 +218,11 @@ impl From<&core::Health> for Health {
                     core::FailReason::Io(error) => FailReason::Io(error.clone()),
                     core::FailReason::Internal => FailReason::Internal,
                 },
-                pending_docs: pending_docs.iter().map(|doc| doc.to_string()).collect(),
+                pending_docs: pending_docs
+                    .iter()
+                    .map(ToString::to_string)
+                    .chain(pending_settings.then(|| "settings.json".to_string()))
+                    .collect(),
             },
         }
     }
@@ -249,7 +262,7 @@ pub struct StorageHealthChanged(pub Health);
 pub(crate) mod tests {
     use std::path::Path;
 
-    use aelomi_core::storage::test_support::SimDisk;
+    use aelomi_core::storage::{DocId, test_support::SimDisk};
 
     use super::*;
 
@@ -518,7 +531,7 @@ pub(crate) mod tests {
         let start = Instant::now();
         assert_eq!(
             storage.flush_before_quit(Duration::from_millis(300)),
-            Err(vec![doc.clone()])
+            Err(vec![doc.to_string()])
         );
         assert!(
             start.elapsed() >= Duration::from_millis(300),

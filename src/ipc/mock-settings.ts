@@ -9,9 +9,9 @@ import {
 export function defaultSettings(): Settings {
   return {
     theme: "System",
-    openPage: null,
-    recentPages: [],
-    expandedRows: [],
+    open_page: null,
+    recent_pages: [],
+    expanded_rows: [],
   };
 }
 
@@ -21,28 +21,42 @@ export function patchSettings(
 ):
   | { status: "ok"; data: Settings }
   | { status: "error"; error: SettingsError } {
-  const openPage = patch.openPage;
-  const pageIds = [
-    ...(patch.recentPages ?? []),
-    ...(patch.expandedRows ?? []),
-    ...(openPage && typeof openPage === "object" ? [openPage.Set.pageId] : []),
+  const open_page = patch.open_page;
+  const page_ids = [
+    ...(patch.recent_pages ?? []),
+    ...(patch.expanded_rows ?? []),
+    ...(open_page && typeof open_page === "object"
+      ? [open_page.Set.page_id]
+      : []),
   ];
-  if (pageIds.some((id) => !isPageId(id)))
+  if (page_ids.some((id) => !isPageId(id)))
     return { status: "error", error: "InvalidPageId" };
   return {
     status: "ok",
-    data: {
+    data: seedSettings({
       theme: structuredClone(patch.theme ?? settings.theme),
-      openPage:
-        openPage === "Clear"
+      open_page:
+        open_page === "Clear"
           ? null
-          : structuredClone(openPage?.Set ?? settings.openPage),
-      recentPages: [
-        ...new Set(patch.recentPages ?? settings.recentPages),
-      ].slice(0, RECENT_PAGES_LIMIT),
-      expandedRows: [
-        ...new Set(patch.expandedRows ?? settings.expandedRows),
-      ].sort(),
-    },
+          : structuredClone(open_page?.Set ?? settings.open_page),
+      recent_pages: patch.recent_pages ?? settings.recent_pages,
+      expanded_rows: patch.expanded_rows ?? settings.expanded_rows,
+    }),
+  };
+}
+
+export function seedSettings(seed: Partial<Settings>): Settings {
+  const settings = { ...defaultSettings(), ...structuredClone(seed) };
+  return {
+    theme: settings.theme,
+    open_page:
+      settings.open_page && isPageId(settings.open_page.page_id)
+        ? settings.open_page
+        : null,
+    recent_pages: [...new Set(settings.recent_pages.filter(isPageId))].slice(
+      0,
+      RECENT_PAGES_LIMIT,
+    ),
+    expanded_rows: [...new Set(settings.expanded_rows.filter(isPageId))].sort(),
   };
 }

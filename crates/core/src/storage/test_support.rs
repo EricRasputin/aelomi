@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use super::clock::SystemClock;
-use super::sim_fs::{Crash, OpKind, SimFs};
+use super::sim_fs::{Crash, Hold, OpKind, SimFs};
 use super::state::Limits;
 use super::store::{Driver, OpenError, Store};
 
@@ -34,6 +34,17 @@ impl SimDisk {
         self.0.fail(OpKind::Append, path_contains, libc::EIO);
     }
 
+    pub fn hold_settings_write(&self) -> WriteHold {
+        WriteHold(
+            self.0
+                .hold_once(OpKind::Append, "settings.json.tmp", Duration::ZERO),
+        )
+    }
+
+    pub fn fail_settings_reads(&self) {
+        self.0.fail(OpKind::Read, "settings.json", libc::EACCES);
+    }
+
     pub fn clear_faults(&self) {
         self.0.clear_faults();
     }
@@ -41,5 +52,22 @@ impl SimDisk {
     /// Drops everything not yet durable and releases every lock, as a power loss would.
     pub fn crash(&self) {
         self.0.crash(Crash::DropUnsynced);
+    }
+}
+
+pub struct WriteHold(Arc<Hold>);
+
+impl WriteHold {
+    pub fn wait_until_reached(&self) {
+        self.0.wait_until_reached();
+    }
+    pub fn release(&self) {
+        self.0.release();
+    }
+}
+
+impl Drop for WriteHold {
+    fn drop(&mut self) {
+        self.0.release();
     }
 }

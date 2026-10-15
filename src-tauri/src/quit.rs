@@ -1,7 +1,6 @@
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
-use aelomi_core::storage::DocId;
 use serde::Serialize;
 use specta::Type;
 
@@ -127,14 +126,12 @@ impl QuitGate {
         }
     }
 
-    pub fn refuse(&self, pending: &[DocId]) -> Option<QuitStatus> {
+    pub fn refuse(&self, pending: &[String]) -> Option<QuitStatus> {
         let mut gate = self.lock();
         if matches!(gate.phase, Phase::Confirmed) {
             return None;
         }
-        Some(gate.change(Phase::Asking(
-            pending.iter().map(DocId::to_string).collect(),
-        )))
+        Some(gate.change(Phase::Asking(pending.to_vec())))
     }
 
     pub fn status(&self) -> QuitStatus {
@@ -150,7 +147,7 @@ impl QuitGate {
         true
     }
 
-    pub fn finish_drain(&self, revision: u32, pending: &[DocId]) -> Option<QuitStatus> {
+    pub fn finish_drain(&self, revision: u32, pending: &[String]) -> Option<QuitStatus> {
         let mut gate = self.lock();
         if !gate.draining_at(revision) {
             return None;
@@ -158,32 +155,28 @@ impl QuitGate {
         Some(if pending.is_empty() {
             gate.change(Phase::Confirmed)
         } else {
-            gate.change(Phase::Asking(
-                pending.iter().map(DocId::to_string).collect(),
-            ))
+            gate.change(Phase::Asking(pending.to_vec()))
         })
     }
 
-    pub fn drain_failed(&self, revision: u32, docs: &[DocId]) -> Option<QuitStatus> {
+    pub fn drain_failed(&self, revision: u32, docs: &[String]) -> Option<QuitStatus> {
         let mut gate = self.lock();
         if !gate.draining_at(revision) {
             return None;
         }
-        Some(gate.change(Phase::Asking(docs.iter().map(DocId::to_string).collect())))
+        Some(gate.change(Phase::Asking(docs.to_vec())))
     }
 
     pub fn awaiting_drain(&self, revision: u32) -> bool {
         self.lock().awaiting_at(revision)
     }
 
-    pub fn drain_timed_out(&self, revision: u32, pending: &[DocId]) -> Option<QuitStatus> {
+    pub fn drain_timed_out(&self, revision: u32, pending: &[String]) -> Option<QuitStatus> {
         let mut gate = self.lock();
         if !gate.awaiting_at(revision) {
             return None;
         }
-        Some(gate.change(Phase::Asking(
-            pending.iter().map(DocId::to_string).collect(),
-        )))
+        Some(gate.change(Phase::Asking(pending.to_vec())))
     }
 
     /// Keep app open answers the question asked at `revision`, and no newer one.
@@ -210,8 +203,8 @@ impl QuitGate {
 mod tests {
     use super::*;
 
-    fn docs(ids: &[&str]) -> Vec<DocId> {
-        ids.iter().map(|id| DocId::new(*id).unwrap()).collect()
+    fn docs(ids: &[&str]) -> Vec<String> {
+        ids.iter().map(|id| id.to_string()).collect()
     }
 
     fn status(revision: u32, phase: QuitPhase) -> QuitStatus {

@@ -11,6 +11,7 @@ export const storageCopy = {
   quitTitle: "Quit with unsaved changes?",
   quitWarning:
     "Some changes haven't been saved to disk. If you quit now, unsaved changes will be lost. Keep Aelomi open to keep trying.",
+  settingsPending: "Settings changes have not been saved.",
   keepOpen: "Keep app open",
   quitAnyway: "Quit anyway",
   quitError: "Aelomi couldn't quit. Try again, or keep the app open.",

@@ -23,6 +23,7 @@ import {
   type QuitStatus,
   type SearchScope,
   type Settings,
+  type SettingsPatch,
   type StorageError,
   type StorageStatus,
 } from "./bindings";
@@ -35,7 +36,7 @@ import {
   type SearchablePage,
   searchPages,
 } from "./mock-search";
-import { defaultSettings, patchSettings } from "./mock-settings";
+import { defaultSettings, patchSettings, seedSettings } from "./mock-settings";
 import {
   type PageRecord,
   pagesRootProblem,
@@ -98,6 +99,7 @@ const storage: {
 let exited = false;
 let indexStatus: IndexStatus = "Ready";
 let settings = defaultSettings();
+let settingsPending = false;
 
 type FixturePage = { id: string; title: string; lines: string[] };
 const fixtureBodies = new Map<string, string[]>();
@@ -155,7 +157,10 @@ function changeQuit(phase: QuitPhase) {
 }
 
 function pendingDocs(): string[] {
-  return [...storage.docs].filter(([, doc]) => doc.pending).map(([id]) => id);
+  return [...storage.docs]
+    .filter(([, doc]) => doc.pending)
+    .map(([id]) => id)
+    .concat(settingsPending ? ["settings.json"] : []);
 }
 
 function flushThenQuit() {
@@ -167,9 +172,7 @@ function flushThenQuit() {
 }
 
 function refreshHealth() {
-  const pending = [...storage.docs]
-    .filter(([, doc]) => doc.pending)
-    .map(([id]) => id);
+  const pending = pendingDocs();
   const next: Health =
     pending.length === 0
       ? "Healthy"
@@ -384,7 +387,9 @@ export const commands = {
     const result = patchSettings(settings, patch);
     if (result.status === "error") return result;
     settings = result.data;
-    if (storage.failWrites)
+    settingsPending = storage.failWrites;
+    refreshHealth();
+    if (settingsPending)
       return { status: "error", error: { Io: "mock write failure" } };
     return structuredClone(result);
   },
@@ -605,8 +610,7 @@ async function loadSearchFixture() {
 
 async function applySetup(setup: MockSetup | undefined) {
   if (!setup) return;
-  if (setup.settings)
-    settings = { ...defaultSettings(), ...structuredClone(setup.settings) };
+  if (setup.settings) settings = seedSettings(setup.settings);
   if (setup.indexStatus) indexStatus = structuredClone(setup.indexStatus);
   if (setup.pages) {
     writeRecords(workspaceDoc(), setup.pages);
@@ -642,6 +646,7 @@ function resetState() {
   calls.length = 0;
   errors.length = 0;
   settings = defaultSettings();
+  settingsPending = false;
   storage.status = "Ready";
   storage.failWrites = false;
   storage.docs.clear();
@@ -749,12 +754,18 @@ const control = {
       return toBase64(Y.encodeStateAsUpdate(mockDoc(pageId).doc));
     },
   },
+  settings: {
+    update: (patch: SettingsPatch) => commands.settingsUpdate(patch),
+  },
   storage: {
     /** While on, appends stay pending and health reports the failure. */
     failWrites(on: boolean, reason: FailReason = { Io: "mock write failure" }) {
       storage.failWrites = on;
       storage.reason = reason;
-      if (!on) for (const doc of storage.docs.values()) doc.pending = false;
+      if (!on) {
+        for (const doc of storage.docs.values()) doc.pending = false;
+        settingsPending = false;
+      }
       refreshHealth();
     },
     async type(docId: string, text: string) {

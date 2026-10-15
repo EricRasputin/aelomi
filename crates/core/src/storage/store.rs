@@ -66,6 +66,7 @@ pub(crate) struct Shared {
     pub layout: Layout,
     pub limits: Limits,
     pub format: FormatGate,
+    pub settings: super::settings::Slot,
     driver: Driver,
     next_seq: AtomicU64,
     pub quarantine_exists: AtomicBool,
@@ -90,12 +91,29 @@ struct Signal {
 }
 
 impl Store {
-    pub fn load_settings(&self) -> crate::settings::Settings {
+    pub fn load_settings(&self) -> io::Result<crate::settings::Settings> {
         super::settings::load(&*self.shared.fs, &self.shared.layout)
     }
 
-    pub fn write_settings(&self, settings: &crate::settings::Settings) -> io::Result<()> {
-        super::settings::write(&*self.shared.fs, &self.shared.layout, settings)
+    pub(crate) fn queue_settings(&self, settings: crate::settings::Settings) -> Seq {
+        let seq = Seq(self.shared.next_seq.fetch_add(1, Ordering::SeqCst));
+        self.shared.settings.queue(seq, settings);
+        self.shared.notify_writer();
+        seq
+    }
+
+    pub(crate) fn wait_settings(&self, seq: Seq) -> io::Result<()> {
+        self.shared.settings.wait(seq)
+    }
+
+    pub(crate) fn flush_settings(&self, deadline: Instant) -> bool {
+        lock_ignoring_poison(&self.shared.signal).retry_failing = true;
+        self.shared.notify_writer();
+        #[cfg(test)]
+        if self.shared.driver == Driver::Manual {
+            writer::run_once(&self.shared);
+        }
+        self.shared.settings.flush(deadline)
     }
 
     pub fn open(root: impl AsRef<Path>) -> Result<Self, OpenError> {
@@ -119,6 +137,7 @@ impl Store {
             layout,
             limits,
             format: FormatGate::new(version),
+            settings: super::settings::Slot::default(),
             driver,
             next_seq: AtomicU64::new(1),
             quarantine_exists: AtomicBool::new(quarantine_exists),
@@ -471,20 +490,32 @@ impl Shared {
                 failing.push(id);
             }
         }
+        let settings = lock_ignoring_poison(&self.settings.state);
+        let pending_settings = settings.failure.is_some();
+        if let Some(failure) = &settings.failure {
+            reason.get_or_insert_with(|| failure.reason.clone());
+        }
+        drop(settings);
         let mut health = lock_ignoring_poison(&self.health);
         let next = match (reason, &*health) {
-            (Some(reason), Health::Failing { since, .. }) if !failing.is_empty() => {
+            (Some(reason), Health::Failing { since, .. })
+                if !failing.is_empty() || pending_settings =>
+            {
                 Health::Failing {
                     reason,
                     since: *since,
                     pending_docs: failing,
+                    pending_settings,
                 }
             }
-            (Some(reason), Health::Healthy) if !failing.is_empty() => Health::Failing {
-                reason,
-                since: self.clock.now(),
-                pending_docs: failing,
-            },
+            (Some(reason), Health::Healthy) if !failing.is_empty() || pending_settings => {
+                Health::Failing {
+                    reason,
+                    since: self.clock.now(),
+                    pending_docs: failing,
+                    pending_settings,
+                }
+            }
             _ => Health::Healthy,
         };
         if next == *health {

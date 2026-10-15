@@ -1,22 +1,22 @@
 import { expect, test } from "vitest";
-import { defaultSettings, patchSettings } from "./mock-settings";
+import { defaultSettings, patchSettings, seedSettings } from "./mock-settings";
 
 test("DATA-4 merges typed patches and keeps unrelated session fields", () => {
   const initial = patchSettings(defaultSettings(), {
     theme: "Dark",
-    openPage: {
-      Set: { pageId: "page-a", topVisibleBlockId: "block-7" },
+    open_page: {
+      Set: { page_id: "page-a", top_visible_block_id: "block-7" },
     },
-    recentPages: ["page-b", "page-a", "page-b"],
-    expandedRows: ["page-b", "page-a", "page-b"],
+    recent_pages: ["page-b", "page-a", "page-b"],
+    expanded_rows: ["page-b", "page-a", "page-b"],
   });
   expect(initial).toEqual({
     status: "ok",
     data: {
       theme: "Dark",
-      openPage: { pageId: "page-a", topVisibleBlockId: "block-7" },
-      recentPages: ["page-b", "page-a"],
-      expandedRows: ["page-a", "page-b"],
+      open_page: { page_id: "page-a", top_visible_block_id: "block-7" },
+      recent_pages: ["page-b", "page-a"],
+      expanded_rows: ["page-a", "page-b"],
     },
   });
   if (initial.status === "error") throw new Error(initial.error.toString());
@@ -24,29 +24,29 @@ test("DATA-4 merges typed patches and keeps unrelated session fields", () => {
     status: "ok",
     data: { ...initial.data, theme: "Light" },
   });
-  expect(patchSettings(initial.data, { openPage: "Clear" })).toEqual({
+  expect(patchSettings(initial.data, { open_page: "Clear" })).toEqual({
     status: "ok",
-    data: { ...initial.data, openPage: null },
+    data: { ...initial.data, open_page: null },
   });
 });
 
 test("DATA-4 recent pages retain newest-first input order and the first fifty distinct IDs", () => {
   const pages = Array.from({ length: 60 }, (_, i) => `page-${i}`);
   const result = patchSettings(defaultSettings(), {
-    recentPages: pages.flatMap((id) => [id, id]),
+    recent_pages: pages.flatMap((id) => [id, id]),
   });
   expect(result).toEqual({
     status: "ok",
-    data: { ...defaultSettings(), recentPages: pages.slice(0, 50) },
+    data: { ...defaultSettings(), recent_pages: pages.slice(0, 50) },
   });
 });
 
 test("DATA-4 refuses invalid page IDs before applying any patch", () => {
   const initial = defaultSettings();
   for (const patch of [
-    { theme: "Dark", recentPages: ["workspace"] },
-    { expandedRows: ["../page"] },
-    { openPage: { Set: { pageId: "", topVisibleBlockId: null } } },
+    { theme: "Dark", recent_pages: ["workspace"] },
+    { expanded_rows: ["../page"] },
+    { open_page: { Set: { page_id: "", top_visible_block_id: null } } },
   ] satisfies Parameters<typeof patchSettings>[1][]) {
     expect(patchSettings(initial, patch)).toEqual({
       status: "error",
@@ -55,9 +55,9 @@ test("DATA-4 refuses invalid page IDs before applying any patch", () => {
   }
   expect(initial).toEqual({
     theme: "System",
-    openPage: null,
-    recentPages: [],
-    expandedRows: [],
+    open_page: null,
+    recent_pages: [],
+    expanded_rows: [],
   });
 });
 
@@ -74,22 +74,44 @@ test("DATA-4 mock boot seeds settings and concurrent command patches preserve ea
       status: "ok",
       data: {
         theme: "Dark",
-        openPage: null,
-        recentPages: [],
-        expandedRows: [],
+        open_page: null,
+        recent_pages: [],
+        expanded_rows: [],
       },
     });
     await Promise.all([
       commands.settingsUpdate({ theme: "Light" }),
-      commands.settingsUpdate({ expandedRows: ["page-a"] }),
+      commands.settingsUpdate({ expanded_rows: ["page-a"] }),
     ]);
     expect(await commands.settingsGet()).toEqual({
       status: "ok",
       data: {
         theme: "Light",
-        openPage: null,
-        recentPages: [],
-        expandedRows: ["page-a"],
+        open_page: null,
+        recent_pages: [],
+        expanded_rows: ["page-a"],
+      },
+    });
+    window.__aelomiMock?.storage.failWrites(true);
+    expect(await commands.settingsUpdate({ theme: "Dark" })).toEqual({
+      status: "error",
+      error: { Io: "mock write failure" },
+    });
+    expect(await commands.storageHealth()).toEqual({
+      Failing: {
+        reason: { Io: "mock write failure" },
+        pending_docs: ["settings.json"],
+      },
+    });
+    window.__aelomiMock?.storage.failWrites(false);
+    expect(await commands.storageHealth()).toEqual("Healthy");
+    expect(await commands.settingsGet()).toEqual({
+      status: "ok",
+      data: {
+        theme: "Dark",
+        open_page: null,
+        recent_pages: [],
+        expanded_rows: ["page-a"],
       },
     });
     window.__aelomiMock?.storage.setStatus("Locked");
@@ -106,4 +128,21 @@ test("DATA-4 mock boot seeds settings and concurrent command patches preserve ea
     vi.unstubAllGlobals();
     await browser.happyDOM.close();
   }
+});
+
+test("DATA-4 seeded settings normalize IDs, sets, and the recent-page cap", () => {
+  const pages = Array.from({ length: 60 }, (_, i) => `page-${i}`);
+  expect(
+    seedSettings({
+      theme: "Dark",
+      open_page: { page_id: "workspace", top_visible_block_id: null },
+      recent_pages: ["workspace", ...pages, ...pages],
+      expanded_rows: ["page-b", "workspace", "page-a", "page-b"],
+    }),
+  ).toEqual({
+    theme: "Dark",
+    open_page: null,
+    recent_pages: pages.slice(0, 50),
+    expanded_rows: ["page-a", "page-b"],
+  });
 });

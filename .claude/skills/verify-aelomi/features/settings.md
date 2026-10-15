@@ -5,7 +5,8 @@ The dev Settings probe shows the cached session settings and writes a synthetic 
 ## Sub-features
 
 - DATA-4 stores the theme, open page and block anchor, recent pages, and expanded rows in settings.json.
-- SHELL-9 returns from the settings write after the snapshot is durable.
+- SHELL-9 returns from the settings write after the snapshot is durable. Normal quit drains settings writes.
+- SHELL-10 retries failed settings and names settings.json in quit confirmation.
 - DATA-4 defaults when configuration is missing and preserves a written session across launches.
 
 ## How to get to it (user POV)
@@ -22,6 +23,7 @@ Preconditions: Use a fresh dev launch and pass doctor. This probe does not exist
 - Read `$RUN/data/settings.json` and compare its JSON fields to the visible status. The shell log has an aelomi-dev-settings-probe updated line with the same snapshot.
 - Quit with `$S/app.sh keys "$RUN" q command`, wait for the owned app PID to exit, then run `$S/app.sh cleanup "$RUN"`.
 - Relaunch with `AELOMI_DATA_DIR="$RUN/data" $S/app.sh launch dev`. Run doctor on the new run. Open Settings probe and capture settings-reopened. Its status must equal the written snapshot without another write. Read the original settings.json again and require the same fields.
+- For a failure proof, remove write permission from the owned synthetic data directory, then write settings. Expect the save-failure banner. Quit and expect the confirmation to say Settings changes have not been saved. The shell quit status names settings.json. Choose Keep app open, restore permission, and expect the banner to clear without another update.
 - Cleanup both owned runs. Keep their paths and screenshots in the PR report.
 
 ## Gotchas
@@ -30,5 +32,4 @@ Preconditions: Use a fresh dev launch and pass doctor. This probe does not exist
 - The probe stores synthetic page IDs. It does not create or open pages.
 - A relaunch creates a new run directory while the explicit data override still points at the first run's folder.
 - Settings commands return Unavailable for a refused folder. Never use a real data directory for this proof.
-
 - `app.sh status` reads the shell status first on this route. Use `app.sh tree` to inspect the probe snapshot.

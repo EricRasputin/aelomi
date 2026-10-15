@@ -9,6 +9,7 @@ mod storage;
 mod trace;
 
 use aelomi_core::index::IndexEvent;
+#[cfg(test)]
 use aelomi_core::storage::DocId;
 use index::{IndexChanged, IndexStatusChanged};
 use quit::{QuitRequest, QuitStatus, QuitStatusChanged};
@@ -91,12 +92,11 @@ fn open_storage(app: &tauri::App) {
         trace::ms(started.elapsed()),
         trace::since_start_ms()
     );
-    let settings_owner = storage.workspace().ok().map(settings::SettingsOwner::new);
-    if let Some(owner) = settings_owner.clone() {
-        tauri::async_runtime::spawn_blocking(move || owner.initialize());
-    }
-    app.manage(settings::SettingsState(settings_owner));
     if let Ok(workspace) = storage.workspace() {
+        let settings_workspace = workspace.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            let _ = settings_workspace.settings();
+        });
         warm_tree(workspace.clone());
         let app = app.handle().clone();
         workspace.subscribe_health(move |health| {
@@ -222,7 +222,7 @@ fn start_drain<R: Runtime>(app: &AppHandle<R>, status: QuitStatus) {
     }
 }
 
-fn drain_timed_out<R: Runtime>(app: &AppHandle<R>, revision: u32, pending: &[DocId]) {
+fn drain_timed_out<R: Runtime>(app: &AppHandle<R>, revision: u32, pending: &[String]) {
     if let Some(status) = app
         .state::<Storage>()
         .quit()
@@ -233,7 +233,7 @@ fn drain_timed_out<R: Runtime>(app: &AppHandle<R>, revision: u32, pending: &[Doc
     }
 }
 
-fn flush_before_quit<R: Runtime>(app: &AppHandle<R>, via: &str) -> Result<(), Vec<DocId>> {
+fn flush_before_quit<R: Runtime>(app: &AppHandle<R>, via: &str) -> Result<(), Vec<String>> {
     let Some(storage) = app.try_state::<Storage>() else {
         return Ok(());
     };
@@ -327,6 +327,81 @@ pub(crate) mod tests {
                 pending_docs: docs.iter().map(|d| d.to_string()).collect(),
             },
         )
+    }
+
+    #[test]
+    fn shell_9_every_quit_route_defers_exit_for_a_held_settings_write() {
+        for via in ["CloseRequested", "ExitRequested", "Terminate", "PerfReport"] {
+            let disk = SimDisk::default();
+            let BlockedApp { app, .. } = app_with_webview(&disk, Duration::from_secs(60));
+            let workspace = app.state::<Storage>().workspace().unwrap();
+            let hold = disk.hold_settings_write();
+            thread::scope(|scope| {
+                let writing = scope.spawn(|| {
+                    workspace
+                        .update_settings(aelomi_core::settings::SettingsPatch {
+                            theme: Some(aelomi_core::settings::ThemeChoice::Dark),
+                            ..Default::default()
+                        })
+                        .unwrap()
+                });
+                hold.wait_until_reached();
+                assert!(!flush_then_allow_quit(app.handle(), via));
+                let handle = app.handle().clone();
+                let (exited, exit) = mpsc::channel();
+                let completing = scope.spawn(move || {
+                    commands::complete_quit_with(&handle, 1, || exited.send(()).unwrap())
+                });
+                let early = exit.recv_timeout(Duration::from_millis(100));
+                hold.release();
+                assert_eq!(early, Err(mpsc::RecvTimeoutError::Timeout), "{via}");
+                assert_eq!(completing.join().unwrap(), status(2, QuitPhase::Confirmed));
+                assert_eq!(exit.recv_timeout(Duration::from_secs(2)).unwrap(), ());
+                let expected = writing.join().unwrap();
+                disk.crash();
+                let reopened = disk.open(std::path::Path::new("/data")).unwrap();
+                assert_eq!(reopened.load_settings().unwrap(), expected);
+                assert_eq!(expected.theme, aelomi_core::settings::Theme::Dark);
+            });
+        }
+    }
+
+    #[test]
+    fn shell_10_every_quit_route_names_failed_settings_and_retries_them() {
+        for via in ["CloseRequested", "ExitRequested", "Terminate", "PerfReport"] {
+            let disk = SimDisk::default();
+            let BlockedApp { app, .. } = app_with_webview(&disk, Duration::from_secs(60));
+            let workspace = app.state::<Storage>().workspace().unwrap();
+            disk.fail_appends("settings.json.tmp");
+            assert!(
+                workspace
+                    .update_settings(aelomi_core::settings::SettingsPatch {
+                        theme: Some(aelomi_core::settings::ThemeChoice::Dark),
+                        ..Default::default()
+                    })
+                    .is_err()
+            );
+            assert!(!flush_then_allow_quit(app.handle(), via));
+            let mut exits = 0;
+            assert_eq!(
+                commands::complete_quit_with(app.handle(), 1, || exits += 1),
+                asking(2, &["settings.json"])
+            );
+            assert_eq!(exits, 0);
+            disk.clear_faults();
+            assert!(!flush_then_allow_quit(app.handle(), via));
+            assert_eq!(
+                commands::complete_quit_with(app.handle(), 3, || exits += 1),
+                status(4, QuitPhase::Confirmed)
+            );
+            assert_eq!(exits, 1);
+            disk.crash();
+            let reopened = disk.open(std::path::Path::new("/data")).unwrap();
+            assert_eq!(
+                reopened.load_settings().unwrap().theme,
+                aelomi_core::settings::Theme::Dark
+            );
+        }
     }
 
     #[test]

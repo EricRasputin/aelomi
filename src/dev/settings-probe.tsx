@@ -19,13 +19,14 @@ export default function SettingsProbe() {
     setBusy(true);
     const result = await commands.settingsUpdate({
       theme: "Dark",
-      openPage: {
-        Set: { pageId: "probe-page", topVisibleBlockId: "probe-block" },
+      open_page: {
+        Set: { page_id: "probe-page", top_visible_block_id: "probe-block" },
       },
-      recentPages: ["probe-page", "older-page", "probe-page"],
-      expandedRows: ["probe-page", "parent-page"],
+      recent_pages: ["probe-page", "older-page", "probe-page"],
+      expanded_rows: ["probe-page", "parent-page"],
     });
     if (result.status === "ok") {
+      setError(null);
       setSettings(result.data);
       await commands.devProbeLog(
         `${marker} updated ${JSON.stringify(result.data)}`,

@@ -31,6 +31,7 @@ pub struct Workspace {
     revision: AtomicU64,
     tree: Mutex<TreeMemo>,
     tree_projected: Condvar,
+    settings: Mutex<Option<crate::settings::Settings>>,
 }
 
 /// The newest tree and the revision being projected, so callers for that revision wait for
@@ -128,15 +129,36 @@ impl Workspace {
             revision: AtomicU64::new(0),
             tree: Mutex::default(),
             tree_projected: Condvar::new(),
+            settings: Mutex::default(),
         }
     }
 
-    pub fn load_settings(&self) -> crate::settings::Settings {
-        self.store.load_settings()
+    pub fn settings(&self) -> io::Result<crate::settings::Settings> {
+        let mut current = self.settings.lock().unwrap_or_else(PoisonError::into_inner);
+        if current.is_none() {
+            *current = Some(self.store.load_settings()?);
+        }
+        Ok(current.as_ref().expect("settings loaded").clone())
     }
 
-    pub fn write_settings(&self, settings: &crate::settings::Settings) -> io::Result<()> {
-        self.store.write_settings(settings)
+    pub fn update_settings(
+        &self,
+        patch: crate::settings::SettingsPatch,
+    ) -> io::Result<crate::settings::Settings> {
+        let mut current = self.settings.lock().unwrap_or_else(PoisonError::into_inner);
+        if current.is_none() {
+            *current = Some(self.store.load_settings()?);
+        }
+        let settings = current.as_mut().expect("settings loaded");
+        settings.apply(patch);
+        let snapshot = settings.clone();
+        let seq = self.store.queue_settings(snapshot.clone());
+        self.store.wait_settings(seq)?;
+        Ok(snapshot)
+    }
+
+    pub fn flush_settings(&self, deadline: Instant) -> bool {
+        self.store.flush_settings(deadline)
     }
 
     /// See [`Store::load`].

@@ -1,8 +1,7 @@
 use std::collections::BTreeSet;
-use std::sync::{Arc, Condvar, Mutex};
 
 use aelomi_core::settings as core;
-use aelomi_core::workspace::{Workspace, records::PageId};
+use aelomi_core::workspace::records::PageId;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
@@ -14,15 +13,20 @@ pub enum Theme {
     Unknown(String),
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Type)]
+pub enum ThemeChoice {
+    System,
+    Light,
+    Dark,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
-#[serde(rename_all = "camelCase")]
 pub struct SettingsOpenPage {
     pub page_id: String,
     pub top_visible_block_id: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Type)]
-#[serde(rename_all = "camelCase")]
 pub struct Settings {
     pub theme: Theme,
     pub open_page: Option<SettingsOpenPage>,
@@ -37,10 +41,9 @@ pub enum OpenPagePatch {
 }
 
 #[derive(Clone, Default, Deserialize, Type)]
-#[serde(rename_all = "camelCase")]
 pub struct SettingsPatch {
     #[specta(optional)]
-    pub theme: Option<Theme>,
+    pub theme: Option<ThemeChoice>,
     #[specta(optional)]
     pub open_page: Option<OpenPagePatch>,
     #[specta(optional)]
@@ -57,51 +60,15 @@ pub enum SettingsError {
     Internal,
 }
 
-pub struct SettingsState(pub Option<Arc<SettingsOwner>>);
-
-pub struct SettingsOwner {
-    workspace: Arc<Workspace>,
-    current: Mutex<Option<core::Settings>>,
-    loaded: Condvar,
+impl From<crate::storage::StorageError> for SettingsError {
+    fn from(_: crate::storage::StorageError) -> Self {
+        Self::Unavailable
+    }
 }
 
-impl SettingsOwner {
-    pub fn new(workspace: Arc<Workspace>) -> Arc<Self> {
-        Arc::new(Self {
-            workspace,
-            current: Mutex::new(None),
-            loaded: Condvar::new(),
-        })
-    }
-
-    pub fn initialize(&self) {
-        let settings = self.workspace.load_settings();
-        *self.current.lock().unwrap() = Some(settings);
-        self.loaded.notify_all();
-    }
-
-    pub fn get(&self) -> Settings {
-        let current = self.current.lock().unwrap();
-        let current = self
-            .loaded
-            .wait_while(current, |current| current.is_none())
-            .unwrap();
-        Settings::from(current.as_ref().unwrap())
-    }
-
-    pub fn update(&self, patch: SettingsPatch) -> Result<Settings, SettingsError> {
-        let patch = core::SettingsPatch::try_from(patch)?;
-        let current = self.current.lock().unwrap();
-        let mut current = self
-            .loaded
-            .wait_while(current, |current| current.is_none())
-            .unwrap();
-        let settings = current.as_mut().unwrap();
-        settings.apply(patch);
-        self.workspace
-            .write_settings(settings)
-            .map_err(|error| SettingsError::Io(error.to_string()))?;
-        Ok(Settings::from(&*settings))
+impl From<std::io::Error> for SettingsError {
+    fn from(error: std::io::Error) -> Self {
+        Self::Io(error.to_string())
     }
 }
 
@@ -143,15 +110,14 @@ impl TryFrom<SettingsPatch> for core::SettingsPatch {
         };
         Ok(Self {
             theme: patch.theme.map(|theme| match theme {
-                Theme::System => core::Theme::System,
-                Theme::Light => core::Theme::Light,
-                Theme::Dark => core::Theme::Dark,
-                Theme::Unknown(value) => core::Theme::Unknown(value),
+                ThemeChoice::System => core::ThemeChoice::System,
+                ThemeChoice::Light => core::ThemeChoice::Light,
+                ThemeChoice::Dark => core::ThemeChoice::Dark,
             }),
             open_page: patch
                 .open_page
                 .map(|page| match page {
-                    OpenPagePatch::Clear => Ok(None),
+                    OpenPagePatch::Clear => Ok::<_, SettingsError>(None),
                     OpenPagePatch::Set(page) => Ok(Some(core::OpenPage {
                         page_id: PageId::new(page.page_id)
                             .map_err(|_| SettingsError::InvalidPageId)?,

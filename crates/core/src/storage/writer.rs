@@ -50,16 +50,27 @@ fn fail_every_queued_doc(shared: &Shared) -> Option<Duration> {
         let at = state.fail(FailReason::Internal, now);
         retry_at = Some(retry_at.map_or(at, |r| r.min(at)));
     }
+    if let Some(at) = shared.settings.failed(FailReason::Internal, now) {
+        retry_at = Some(retry_at.map_or(at, |r| r.min(at)));
+    }
+    shared.batch_finished();
     shared.refresh_health(Some(FailReason::Internal));
     retry_at
 }
 
 fn write_queued(shared: &Shared) -> Step {
     let retry_failing = shared.take_retry_failing();
+    let settings = super::settings::write_queued(shared, retry_failing);
     let slots = shared.slots();
     let (queued, retry_at) = collect(&slots, shared.clock.now(), retry_failing);
-    if queued.is_empty() {
-        return Step::Idle { retry_at };
+    if queued.is_empty() && matches!(settings, Step::Idle { .. }) {
+        let settings_retry = match settings {
+            Step::Idle { retry_at } => retry_at,
+            Step::Wrote => None,
+        };
+        return Step::Idle {
+            retry_at: retry_at.into_iter().chain(settings_retry).min(),
+        };
     }
     let latest_failure = write(shared, queued);
     shared.refresh_health(latest_failure);

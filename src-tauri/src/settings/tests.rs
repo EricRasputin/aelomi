@@ -1,5 +1,5 @@
 use std::path::Path;
-use std::sync::Barrier;
+use std::sync::{Arc, Barrier};
 use std::thread;
 
 use aelomi_core::storage::test_support::SimDisk;
@@ -9,7 +9,7 @@ use crate::storage::{DataLocation, Storage};
 
 fn session_patch() -> SettingsPatch {
     SettingsPatch {
-        theme: Some(Theme::Dark),
+        theme: Some(ThemeChoice::Dark),
         open_page: Some(OpenPagePatch::Set(SettingsOpenPage {
             page_id: "page-a".into(),
             top_visible_block_id: Some("block-7".into()),
@@ -19,10 +19,17 @@ fn session_patch() -> SettingsPatch {
     }
 }
 
-fn owner(storage: &Storage) -> Arc<SettingsOwner> {
-    let owner = SettingsOwner::new(storage.workspace().unwrap());
-    owner.initialize();
-    owner
+struct Owner(Arc<aelomi_core::workspace::Workspace>);
+impl Owner {
+    fn get(&self) -> Settings {
+        Settings::from(&self.0.settings().unwrap())
+    }
+    fn update(&self, patch: SettingsPatch) -> Result<Settings, SettingsError> {
+        Ok(Settings::from(&self.0.update_settings(patch.try_into()?)?))
+    }
+}
+fn owner(storage: &Storage) -> Arc<Owner> {
+    Arc::new(Owner(storage.workspace().unwrap()))
 }
 
 #[test]
@@ -82,7 +89,7 @@ fn data_4_concurrent_patches_to_different_fields_both_land() {
         thread::scope(|scope| {
             for patch in [
                 SettingsPatch {
-                    theme: Some(Theme::Light),
+                    theme: Some(ThemeChoice::Light),
                     ..Default::default()
                 },
                 SettingsPatch {
@@ -111,7 +118,7 @@ fn data_4_concurrent_patches_to_different_fields_both_land() {
     disk.crash();
     let store = disk.open(Path::new("/data")).unwrap();
     assert_eq!(
-        Settings::from(&store.load_settings()),
+        Settings::from(&store.load_settings().unwrap()),
         Settings {
             theme: Theme::Light,
             open_page: None,
@@ -135,13 +142,13 @@ fn data_4_failed_write_keeps_the_patch_for_the_next_durable_update() {
     disk.clear_faults();
     let saved = owner
         .update(SettingsPatch {
-            theme: Some(Theme::Light),
+            theme: Some(ThemeChoice::Light),
             ..Default::default()
         })
         .unwrap();
     disk.crash();
     let reopened = disk.open(Path::new("/data")).unwrap();
-    assert_eq!(Settings::from(&reopened.load_settings()), saved);
+    assert_eq!(Settings::from(&reopened.load_settings().unwrap()), saved);
     assert_eq!(
         saved.open_page,
         Some(SettingsOpenPage {
@@ -158,7 +165,7 @@ fn data_4_invalid_patch_is_rejected_before_any_field_changes() {
     let owner = owner(&storage);
     let before = owner.get();
     let result = owner.update(SettingsPatch {
-        theme: Some(Theme::Dark),
+        theme: Some(ThemeChoice::Dark),
         recent_pages: Some(vec!["workspace".into()]),
         ..Default::default()
     });
@@ -172,7 +179,7 @@ fn data_4_commands_return_unavailable_when_storage_did_not_open() {
     let app = tauri::test::mock_builder()
         .build(tauri::test::mock_context(tauri::test::noop_assets()))
         .unwrap();
-    app.manage(SettingsState(None));
+    app.manage(Storage::not_open());
     tauri::async_runtime::block_on(async {
         assert_eq!(
             crate::commands::settings_get(app.state()).await,
@@ -190,11 +197,10 @@ fn data_4_commands_update_and_get_the_full_durable_snapshot() {
     use tauri::Manager;
     let disk = SimDisk::default();
     let storage = crate::storage::tests::open_on(&disk);
-    let owner = owner(&storage);
     let app = tauri::test::mock_builder()
         .build(tauri::test::mock_context(tauri::test::noop_assets()))
         .unwrap();
-    app.manage(SettingsState(Some(owner)));
+    app.manage(storage);
     tauri::async_runtime::block_on(async {
         let updated = crate::commands::settings_update(app.state(), session_patch())
             .await
@@ -206,6 +212,137 @@ fn data_4_commands_update_and_get_the_full_durable_snapshot() {
         );
         disk.crash();
         let reopened = disk.open(Path::new("/data")).unwrap();
-        assert_eq!(Settings::from(&reopened.load_settings()), updated);
+        assert_eq!(Settings::from(&reopened.load_settings().unwrap()), updated);
     });
+}
+
+#[test]
+fn shell_9_quit_defers_exit_until_a_held_settings_write_is_durable() {
+    use std::sync::mpsc;
+    use std::time::Duration;
+    let disk = SimDisk::default();
+    let storage = crate::storage::tests::open_on(&disk);
+    let owner = owner(&storage);
+    let hold = disk.hold_settings_write();
+    thread::scope(|scope| {
+        let writing = scope.spawn(|| owner.update(session_patch()).unwrap());
+        hold.wait_until_reached();
+        let (done, result) = mpsc::channel();
+        let storage_ref = &storage;
+        scope.spawn(move || {
+            done.send(storage_ref.flush_before_quit(Duration::from_secs(2)))
+                .unwrap()
+        });
+        let early = result.recv_timeout(Duration::from_millis(100));
+        hold.release();
+        assert_eq!(
+            early,
+            Err(mpsc::RecvTimeoutError::Timeout),
+            "quit must not confirm while settings are held"
+        );
+        assert_eq!(result.recv_timeout(Duration::from_secs(2)).unwrap(), Ok(()));
+        let expected = writing.join().unwrap();
+        disk.crash();
+        let reopened = disk.open(Path::new("/data")).unwrap();
+        assert_eq!(Settings::from(&reopened.load_settings().unwrap()), expected);
+    });
+}
+
+#[test]
+fn data_4_unreadable_settings_refuse_updates_until_a_read_succeeds() {
+    use tauri::Manager;
+    let disk = SimDisk::default();
+    let storage = crate::storage::tests::open_on(&disk);
+    let expected = owner(&storage).update(session_patch()).unwrap();
+    drop(storage);
+    disk.fail_settings_reads();
+    let storage = crate::storage::tests::open_on(&disk);
+    let app = tauri::test::mock_builder()
+        .build(tauri::test::mock_context(tauri::test::noop_assets()))
+        .unwrap();
+    app.manage(storage);
+    tauri::async_runtime::block_on(async {
+        assert!(matches!(
+            crate::commands::settings_update(
+                app.state(),
+                SettingsPatch {
+                    theme: Some(ThemeChoice::Light),
+                    ..Default::default()
+                }
+            )
+            .await,
+            Err(SettingsError::Io(_))
+        ));
+    });
+    disk.clear_faults();
+    tauri::async_runtime::block_on(async {
+        assert_eq!(
+            crate::commands::settings_get(app.state()).await.unwrap(),
+            expected
+        );
+    });
+    disk.crash();
+    let reopened = disk.open(Path::new("/data")).unwrap();
+    assert_eq!(Settings::from(&reopened.load_settings().unwrap()), expected);
+}
+
+#[test]
+fn data_4_unknown_theme_is_output_only() {
+    for theme in [r#"{"Unknown":"Dark"}"#, r#"{"Unknown":"Sepia"}"#] {
+        let input = format!("{{\"theme\":{theme}}}");
+        assert!(serde_json::from_str::<SettingsPatch>(&input).is_err());
+    }
+    assert_eq!(
+        serde_json::to_value(Settings::from(
+            &core::Settings::from_json(br#"{"theme":"Sepia"}"#).unwrap()
+        ))
+        .unwrap()["theme"],
+        serde_json::json!({"Unknown":"Sepia"})
+    );
+}
+
+#[test]
+fn shell_10_failed_settings_retry_without_another_patch_and_clear_health() {
+    use std::sync::mpsc;
+    use std::time::Duration;
+    let disk = SimDisk::default();
+    let storage = crate::storage::tests::open_on(&disk);
+    let workspace = storage.workspace().unwrap();
+    let (send, health) = mpsc::channel();
+    workspace.subscribe_health(move |value| {
+        send.send(value.clone()).unwrap();
+    });
+    disk.fail_appends("settings.json.tmp");
+    assert!(matches!(
+        owner(&storage).update(session_patch()),
+        Err(SettingsError::Io(_))
+    ));
+    let failed = health.recv_timeout(Duration::from_secs(2)).unwrap();
+    assert!(matches!(
+        failed,
+        aelomi_core::storage::Health::Failing {
+            pending_settings: true,
+            ..
+        }
+    ));
+    assert_eq!(storage.pending_docs(), ["settings.json"]);
+    disk.clear_faults();
+    assert_eq!(
+        health.recv_timeout(Duration::from_secs(2)).unwrap(),
+        aelomi_core::storage::Health::Healthy
+    );
+    disk.crash();
+    let reopened = disk.open(Path::new("/data")).unwrap();
+    assert_eq!(
+        Settings::from(&reopened.load_settings().unwrap()),
+        Settings {
+            theme: Theme::Dark,
+            open_page: Some(SettingsOpenPage {
+                page_id: "page-a".into(),
+                top_visible_block_id: Some("block-7".into())
+            }),
+            recent_pages: vec!["page-b".into(), "page-a".into()],
+            expanded_rows: vec!["page-a".into(), "page-b".into()]
+        }
+    );
 }

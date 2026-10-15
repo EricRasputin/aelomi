@@ -35,6 +35,7 @@ pub enum Health {
         since: Duration,
         /// Docs whose updates are waiting on a failed write.
         pending_docs: Vec<DocId>,
+        pending_settings: bool,
     },
 }
 

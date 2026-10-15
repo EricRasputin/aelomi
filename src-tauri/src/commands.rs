@@ -169,7 +169,10 @@ pub(crate) fn quit_drain_failed_with<R: Runtime>(
     docs: &[DocId],
 ) -> QuitStatus {
     let storage = app.state::<Storage>();
-    match storage.quit().drain_failed(revision, docs) {
+    match storage.quit().drain_failed(
+        revision,
+        &docs.iter().map(ToString::to_string).collect::<Vec<_>>(),
+    ) {
         Some(status) => {
             println!("quit drain failed docs={docs:?}");
             crate::publish_quit(app, &status);
@@ -227,30 +230,35 @@ pub fn dev_probe_log(line: String) {
 #[tauri::command]
 #[specta::specta]
 pub async fn settings_get(
-    state: State<'_, crate::settings::SettingsState>,
+    storage: State<'_, Storage>,
 ) -> Result<crate::settings::Settings, crate::settings::SettingsError> {
-    let owner = state
-        .0
-        .clone()
-        .ok_or(crate::settings::SettingsError::Unavailable)?;
-    tauri::async_runtime::spawn_blocking(move || owner.get())
-        .await
-        .map_err(|_| crate::settings::SettingsError::Internal)
+    let workspace = storage.workspace()?;
+    tauri::async_runtime::spawn_blocking(move || {
+        workspace
+            .settings()
+            .map(|settings| (&settings).into())
+            .map_err(Into::into)
+    })
+    .await
+    .map_err(|_| crate::settings::SettingsError::Internal)?
 }
 
 #[tauri::command]
 #[specta::specta]
 pub async fn settings_update(
-    state: State<'_, crate::settings::SettingsState>,
+    storage: State<'_, Storage>,
     patch: crate::settings::SettingsPatch,
 ) -> Result<crate::settings::Settings, crate::settings::SettingsError> {
-    let owner = state
-        .0
-        .clone()
-        .ok_or(crate::settings::SettingsError::Unavailable)?;
-    tauri::async_runtime::spawn_blocking(move || owner.update(patch))
-        .await
-        .map_err(|_| crate::settings::SettingsError::Internal)?
+    let workspace = storage.workspace()?;
+    let patch = aelomi_core::settings::SettingsPatch::try_from(patch)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        workspace
+            .update_settings(patch)
+            .map(|settings| (&settings).into())
+            .map_err(Into::into)
+    })
+    .await
+    .map_err(|_| crate::settings::SettingsError::Internal)?
 }
 
 pub fn builder() -> tauri_specta::Builder<tauri::Wry> {

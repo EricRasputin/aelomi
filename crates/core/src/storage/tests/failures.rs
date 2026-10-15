@@ -60,6 +60,7 @@ fn a_failing_doc_stays_pending_while_other_docs_are_acknowledged() {
         reason: FailReason::DiskFull,
         since: ms(1000),
         pending_docs: vec![a.clone()],
+        pending_settings: false,
     };
     assert_eq!(store.health(), failing);
 
@@ -394,6 +395,7 @@ fn a_panicking_health_subscriber_stops_neither_writes_nor_other_subscribers() {
         reason: FailReason::DiskFull,
         since: ms(1000),
         pending_docs: vec![doc("a")],
+        pending_settings: false,
     };
     assert_eq!(*seen.lock().unwrap(), [failing, Health::Healthy]);
     assert_eq!(calls.load(Ordering::SeqCst), 2);
@@ -428,6 +430,7 @@ fn a_panic_in_a_writer_step_leaves_every_update_queued_for_the_retry() {
         reason: FailReason::Internal,
         since: ms(1000),
         pending_docs: vec![a.clone(), b.clone()],
+        pending_settings: false,
     };
     assert_eq!(store.health(), failing);
 

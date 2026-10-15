@@ -59,6 +59,10 @@ export function QuitConfirmation() {
           </AlertDialog.Title>
           <AlertDialog.Description className="mt-3 text-sm leading-6 text-[var(--muted)]">
             {storageCopy.quitWarning}
+            {decision.kind === "asking" &&
+            decision.pendingDocs.includes("settings.json")
+              ? ` ${storageCopy.settingsPending}`
+              : null}
           </AlertDialog.Description>
           {decision.kind === "asking" && decision.error && (
             <p role="alert" className="mt-3 text-sm text-[var(--warning-text)]">
