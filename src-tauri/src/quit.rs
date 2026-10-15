@@ -145,7 +145,7 @@ impl QuitGate {
     pub fn wait_for_record_edits(&self) {
         let mut gate = self.lock();
         gate.records_closed = true;
-        while gate.record_edits != 0 {
+        while gate.record_edits != 0 && !matches!(gate.phase, Phase::Awaiting | Phase::Confirmed) {
             gate = self
                 .record_edits_done
                 .wait(gate)
@@ -265,7 +265,11 @@ impl QuitGate {
     pub fn confirm(&self) -> Option<QuitStatus> {
         let mut gate = self.lock();
         let first = !matches!(gate.phase, Phase::Confirmed);
-        first.then(|| gate.change(Phase::Confirmed))
+        let status = first.then(|| gate.change(Phase::Confirmed));
+        if status.is_some() {
+            self.record_edits_done.notify_all();
+        }
+        status
     }
 
     /// Never panics, because `macos::should_terminate` is `extern "C"`.
@@ -294,6 +298,71 @@ mod tests {
                 pending_settings: false,
             },
         )
+    }
+
+    #[test]
+    fn record_commands_do_not_block_a_drain_timeout_or_explicit_quit_confirmation() {
+        use std::sync::mpsc;
+        for confirmed in [false, true] {
+            let gate = QuitGate::default();
+            let edit = gate.record_edit().unwrap();
+            gate.register_frontend();
+            gate.request();
+            if confirmed {
+                gate.confirm();
+            }
+            let (send, receive) = mpsc::channel();
+            let finished_before_release = std::thread::scope(|scope| {
+                let waiting = scope.spawn(|| {
+                    gate.wait_for_record_edits();
+                    send.send(()).unwrap();
+                });
+                let finished = receive.recv_timeout(Duration::from_millis(100)).is_ok();
+                drop(edit);
+                waiting.join().unwrap();
+                finished
+            });
+            assert!(
+                finished_before_release,
+                "a non-confirming timeout or explicit confirmation cannot wait on a stalled command"
+            );
+            assert!(gate.record_edit().is_none());
+        }
+    }
+
+    #[test]
+    fn explicit_confirmation_releases_an_already_waiting_record_barrier() {
+        use std::sync::mpsc;
+        use std::time::Instant;
+        let gate = QuitGate::default();
+        let edit = gate.record_edit().unwrap();
+        gate.register_frontend();
+        let QuitRequest::StartDrain(status) = gate.request() else {
+            panic!()
+        };
+        assert!(gate.begin_completing(status.revision));
+        let (send, receive) = mpsc::channel();
+        let finished_before_release = std::thread::scope(|scope| {
+            let waiting = scope.spawn(|| {
+                gate.wait_for_record_edits();
+                send.send(()).unwrap();
+            });
+            let deadline = Instant::now() + Duration::from_secs(1);
+            while !gate.lock().records_closed {
+                assert!(Instant::now() < deadline);
+                std::thread::yield_now();
+            }
+            gate.confirm();
+            let finished = receive.recv_timeout(Duration::from_millis(100)).is_ok();
+            drop(edit);
+            waiting.join().unwrap();
+            finished
+        });
+        assert!(
+            finished_before_release,
+            "Quit anyway must release the normal drain wait"
+        );
+        assert_eq!(gate.status().phase, QuitPhase::Confirmed);
     }
 
     #[test]
