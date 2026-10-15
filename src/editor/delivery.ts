@@ -168,7 +168,7 @@ function retry(docId: string, delivery: DocDelivery) {
  */
 export function deliver(docId: string, update: Uint8Array) {
   const delivery = deliveryFor(docId);
-  retry(docId, delivery);
+  if (delivery.failed.length > 0) retry(docId, delivery);
   invoke(docId, delivery, update);
 }
 

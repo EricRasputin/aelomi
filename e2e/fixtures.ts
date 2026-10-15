@@ -19,7 +19,7 @@ export const test = base.extend<{ networkGuard: undefined }>({
     await use(undefined);
     if (acceptanceContext() !== context)
       throw new Error(
-        "SHELL-13 acceptance context was replaced. Reinstall the WebSocket guard after clearing or restoring browser state.",
+        "SHELL-13 acceptance context was replaced. Acceptance tests cannot clear or restore browser state. Use a separate test with fresh setup.",
       );
     if (requests.length > 0) {
       throw new Error(`SHELL-13 non-local requests:\n${requests.join("\n")}`);

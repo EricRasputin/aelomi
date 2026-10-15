@@ -347,3 +347,52 @@ test("an older successful flush cannot clear a newer refused edit", async () => 
   stop();
   ydoc.destroy();
 });
+
+test("new typing waits for its append before confirming a recovering delivery", async () => {
+  vi.useFakeTimers();
+  const { ydoc } = loaded("page-confirm-after-append", "");
+  const stop = syncPage({
+    docId: "page-confirm-after-append",
+    ydoc,
+    hasUserInput: () => true,
+    onTrip: () => {},
+  });
+  window.__aelomiMock?.storage.refuseAppends({ Io: "Read failed" });
+  ydoc.getText("t").insert(0, "x");
+  await vi.advanceTimersByTimeAsync(0);
+  window.__aelomiMock?.storage.refuseAppends(null);
+  const flush = vi
+    .spyOn(commands, "storageFlush")
+    .mockResolvedValueOnce({ status: "ok", data: false });
+  await vi.advanceTimersByTimeAsync(100);
+  expect(stored("page-confirm-after-append")).toBe("x");
+  expect([...useDeliveryStore.getState().failing]).toEqual([
+    ["page-confirm-after-append", { Io: "Read failed" }],
+  ]);
+  const append = commands.docAppend;
+  let release = () => {};
+  const held = new Promise<void>((done) => {
+    release = done;
+  });
+  vi.spyOn(commands, "docAppend").mockImplementationOnce(
+    async (docId, update) => {
+      await held;
+      return append(docId, update);
+    },
+  );
+  try {
+    ydoc.getText("t").insert(1, "y");
+    expect(flush.mock.calls).toEqual([[]]);
+    expect(stored("page-confirm-after-append")).toBe("x");
+    release();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(flush.mock.calls).toEqual([[], []]);
+    expect([...useDeliveryStore.getState().failing]).toEqual([]);
+    expect(stored("page-confirm-after-append")).toBe("xy");
+  } finally {
+    release();
+    await vi.advanceTimersByTimeAsync(0);
+    stop();
+    ydoc.destroy();
+  }
+});
