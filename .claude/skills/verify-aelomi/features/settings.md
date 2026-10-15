@@ -5,7 +5,7 @@ The dev Settings probe shows the cached session settings and writes a synthetic 
 ## Sub-features
 
 - DATA-4 stores the theme, open page and block anchor, recent pages, and expanded rows in settings.json.
-- SHELL-9 returns from the settings write after the snapshot is durable. Normal quit waits for settings invocations from dispatch through durability.
+- SHELL-9 returns from the settings write after the snapshot is durable. Normal quit waits for settings invocations from dispatch through durability, including calls started during document delivery. After completion starts, new settings writes return Quitting until Keep app open.
 - SHELL-10 retries failed settings and names settings.json in quit confirmation.
 - DATA-4 defaults when configuration is missing and preserves a written session across launches.
 

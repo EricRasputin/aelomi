@@ -55,6 +55,7 @@ pub struct SettingsPatch {
 #[derive(Debug, PartialEq, Eq, Serialize, Type)]
 pub enum SettingsError {
     Unavailable,
+    Quitting,
     InvalidPageId,
     Io(String),
     Write(crate::storage::FailReason),

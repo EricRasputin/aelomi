@@ -1,6 +1,6 @@
 import { commands as realCommands, events as realEvents } from "./bindings";
 import { installMock } from "./mock";
-import { trackCommand } from "./pending-commands";
+import { commandsAccepted, trackCommand } from "./pending-commands";
 
 export { MAX_EXCLUDED_PAGES, MAX_SEARCH_LIMIT } from "./bindings";
 
@@ -9,12 +9,17 @@ const boundary =
     ? installMock()
     : { commands: realCommands, events: realEvents };
 export const events = boundary.events;
-export const commands = {
-  ...boundary.commands,
-  settingsUpdate: (
-    ...args: Parameters<typeof boundary.commands.settingsUpdate>
-  ) => trackCommand(boundary.commands.settingsUpdate(...args)),
-};
+const quitTrackedCommands = ["settingsUpdate"] as const;
+export const commands = { ...boundary.commands };
+for (const name of quitTrackedCommands) {
+  commands[name] = (
+    ...args: Parameters<(typeof boundary.commands)[typeof name]>
+  ) =>
+    commandsAccepted()
+      ? trackCommand(boundary.commands[name](...args))
+      : Promise.resolve({ status: "error", error: "Quitting" });
+}
+
 export type {
   Backlink,
   BacklinkBlock,

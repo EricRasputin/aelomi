@@ -261,7 +261,7 @@ export type Settings = {
 	expanded_rows: string[],
 };
 
-export type SettingsError = "Unavailable" | "InvalidPageId" | ({ Io: string }) & { Write?: never } | ({ Write: FailReason }) & { Io?: never } | "Internal";
+export type SettingsError = "Unavailable" | "Quitting" | "InvalidPageId" | ({ Io: string }) & { Write?: never } | ({ Write: FailReason }) & { Io?: never } | "Internal";
 
 export type SettingsOpenPage = {
 	page_id: string,
