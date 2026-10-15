@@ -18,11 +18,18 @@ test("page and empty-workspace variants use separate hosted navigation calibrati
   });
 });
 
-test("page and index variants select their own hosted end-to-end ceiling", () => {
-  const budgets = readBudgets().coldStart;
+test("the page end-to-end ceiling stays separate when it is below the index ceiling", () => {
+  const budgets = {
+    ...readBudgets().coldStart,
+    hostedCiMs: { value: 900, why: "empty workspace series" },
+    hostedPageCiMs: { value: 700, why: "seeded page series" },
+  };
   expect(hostedEndToEndBudget(budgets, "page")).toEqual({
-    value: 2702,
-    why: expect.stringContaining("1726.5, 423, and 1801 ms"),
+    value: 700,
+    why: "seeded page series",
   });
-  expect(hostedEndToEndBudget(budgets, "index")).toEqual(budgets.hostedCiMs);
+  expect(hostedEndToEndBudget(budgets, "index")).toEqual({
+    value: 900,
+    why: "empty workspace series",
+  });
 });
