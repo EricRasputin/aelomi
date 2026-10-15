@@ -8,3 +8,10 @@ export function hostedNavBudget(
     ? budgets.hostedPageNavToPaintMs
     : budgets.hostedNavToPaintMs;
 }
+
+export function hostedEndToEndBudget(
+  budgets: Budgets["coldStart"],
+  variant: "index" | "page",
+): Budget {
+  return variant === "page" ? budgets.hostedPageCiMs : budgets.hostedCiMs;
+}
