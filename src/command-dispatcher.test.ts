@@ -64,7 +64,7 @@ test("SHELL-7 one enabled command runs once per key and once per menu activation
   expect(actions).toEqual(["keyboard", "menu"]);
 });
 
-test("SHELL-7 missing, disabled, and native commands leave keys uncancelled", () => {
+test("SHELL-7 declined webview keys are cancelled and native keys remain native", () => {
   const dispatcher = createCommandDispatcher();
   let count = 0;
   const missing = key(",");
@@ -81,8 +81,8 @@ test("SHELL-7 missing, disabled, and native commands leave keys uncancelled", ()
   expect(dispatcher.dispatch("quit", context)).toBe(false);
   expect(dispatcher.dispatch("unknown", context)).toBe(false);
   expect([missing.defaultPrevented, disabled.defaultPrevented, count]).toEqual([
-    false,
-    false,
+    true,
+    true,
     0,
   ]);
   dispatcher.register("toggleSidebar", {
@@ -90,7 +90,7 @@ test("SHELL-7 missing, disabled, and native commands leave keys uncancelled", ()
       count += 1;
     },
   });
-  expect(dispatcher.keydown(disabled, null)).toBe(true);
+  expect(dispatcher.keydown(key("\\"), null)).toBe(true);
   expect([disabled.defaultPrevented, count]).toEqual([true, 1]);
 });
 
@@ -279,11 +279,56 @@ test("SHELL-7 menu history targets the plain field and a read-only editor is dis
     });
     const event = key("z");
     expect(dispatcher.keydown(event, null)).toBe(false);
-    expect([event.defaultPrevented, actions]).toEqual([
-      false,
-      ["undo", "redo"],
-    ]);
+    expect([event.defaultPrevented, actions]).toEqual([true, ["undo", "redo"]]);
   } finally {
     document.execCommand = original;
+  }
+});
+
+test("SHELL-7 a modal-declined editor Undo cannot reach a downstream keymap", () => {
+  const dispatcher = createCommandDispatcher();
+  const dom = document.createElement("div");
+  const modal = document.createElement("div");
+  modal.setAttribute("aria-modal", "true");
+  document.body.append(dom, modal);
+  let text = "base token";
+  setActiveEditor({
+    dom,
+    focus: () => {},
+    isEditable: () => true,
+    undo: () => {
+      text = "base";
+      return true;
+    },
+    redo: () => false,
+  });
+  dispatcher.register("undo", historyCommand("undo"));
+  const capture = (event: KeyboardEvent) => dispatcher.keydown(event, dom);
+  const downstream = () => {
+    text = "BlockNote undo";
+  };
+  window.addEventListener("keydown", capture, true);
+  dom.addEventListener("keydown", downstream);
+  try {
+    const event = new KeyboardEvent("keydown", {
+      key: "z",
+      metaKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    dom.dispatchEvent(event);
+    expect([event.defaultPrevented, text]).toEqual([true, "base token"]);
+    modal.remove();
+    dom.dispatchEvent(
+      new KeyboardEvent("keydown", {
+        key: "z",
+        metaKey: true,
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    expect(text).toBe("base");
+  } finally {
+    window.removeEventListener("keydown", capture, true);
   }
 });

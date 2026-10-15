@@ -1,5 +1,5 @@
 import { shortcutFor, shortcuts, type WebviewCommand } from "./shortcuts";
-import { useQuitStore } from "./stores/quit";
+import { acceptsUserCommands, useQuitStore } from "./stores/quit";
 
 export type CommandContext = {
   source: "keyboard" | "menu";
@@ -13,17 +13,12 @@ export type CommandHandler = {
 
 export function createCommandDispatcher(available: () => boolean = () => true) {
   const handlers = new Map<WebviewCommand, CommandHandler>();
-  function dispatch(
-    command: string,
-    context: CommandContext,
-    beforeRun?: () => void,
-  ): boolean {
+  function dispatch(command: string, context: CommandContext): boolean {
     if (context.isComposing) return false;
     const entry = shortcuts.find((entry) => entry.command === command);
     if (entry?.owner !== "webview" || !available()) return false;
     const handler = handlers.get(entry.command);
     if (!handler || handler.enabled?.(context) === false) return false;
-    beforeRun?.();
     handler.run(context);
     return true;
   }
@@ -35,25 +30,20 @@ export function createCommandDispatcher(available: () => boolean = () => true) {
       };
     },
     dispatch,
-    keydown(event: KeyboardEvent, target: Element | null, composing = false) {
+    keydown(event: KeyboardEvent, target: Element | null) {
       const command = shortcutFor(event);
       if (event.defaultPrevented || !command) return false;
-      return dispatch(
-        command,
-        {
-          source: "keyboard",
-          target,
-          isComposing: composing || event.isComposing,
-        },
-        () => {
-          event.preventDefault();
-          event.stopPropagation();
-        },
-      );
+      event.preventDefault();
+      event.stopPropagation();
+      return dispatch(command, {
+        source: "keyboard",
+        target,
+        isComposing: event.isComposing,
+      });
     },
   };
 }
 
-export const commandDispatcher = createCommandDispatcher(
-  () => useQuitStore.getState().decision.kind === "open",
+export const commandDispatcher = createCommandDispatcher(() =>
+  acceptsUserCommands(useQuitStore.getState().decision),
 );

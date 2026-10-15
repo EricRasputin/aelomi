@@ -131,6 +131,11 @@ export function canEdit(state: Pick<QuitStore, "decision" | "registered">) {
   return state.registered && state.decision.kind === "open";
 }
 
+// Deliberately stricter than IPC admission, which stays open for in-flight work during Draining.
+export function acceptsUserCommands(decision: QuitDecision) {
+  return decision.kind === "open";
+}
+
 /** The quit dialog shows while the user is asked, and through the quit they chose. */
 export function quitDialogOpen(decision: QuitDecision) {
   return (
