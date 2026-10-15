@@ -194,7 +194,9 @@ export const workspaceCopy = {
 
 function IndexScreen() {
   const source = usePageTreeStore((state) => state.source);
-  useLayoutEffect(markIndexCommit, []);
+  useLayoutEffect(() => {
+    if (source.kind !== "loading") markIndexCommit();
+  }, [source.kind]);
   return (
     <section className="empty-state" aria-label="No page open">
       {source.kind === "error" ? (
