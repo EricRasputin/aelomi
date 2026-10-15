@@ -365,6 +365,22 @@ fn a_worker_panic_or_read_error_reports_failed_then_retries_to_ready() {
 }
 
 #[test]
+fn a_retry_wait_on_the_system_clock_sleeps_until_its_deadline() {
+    let dir = tempfile::tempdir().unwrap();
+    let (index, _) = flaky_index(dir.path(), vec!["error"]);
+    eventually(Duration::from_secs(10), || {
+        (index.status() == IndexStatus::Ready).then_some(())
+    });
+    let shared = index.shared();
+    assert_eq!(shared.waits(), [Duration::from_millis(100)]);
+    assert!(
+        shared.kept_waiting() <= 2,
+        "the 100 ms wait checked the clock {} times",
+        shared.kept_waiting()
+    );
+}
+
+#[test]
 fn a_valid_index_that_lacks_a_flushed_edit_is_repaired_at_startup() {
     let dir = tempfile::tempdir().unwrap();
     {

@@ -546,11 +546,18 @@ impl Shared {
             #[cfg(test)]
             {
                 state.kept_waiting_at = Some(now);
+                state.kept_waiting += 1;
             }
-            // A manual clock moves without notifying, so the wait polls it.
+            // A manual clock moves without notifying, so a wait on one polls it. The system
+            // clock sleeps until the deadline or a notification.
+            let remaining = deadline - now;
+            let step = match self.config.clock {
+                Some(_) => remaining.min(CLOCK_POLL),
+                None => remaining,
+            };
             state = self
                 .changed
-                .wait_timeout(state, (deadline - now).min(CLOCK_POLL))
+                .wait_timeout(state, step)
                 .unwrap_or_else(PoisonError::into_inner)
                 .0;
         }

@@ -272,6 +272,8 @@ struct State {
     waits: Vec<Duration>,
     #[cfg(test)]
     kept_waiting_at: Option<Duration>,
+    #[cfg(test)]
+    kept_waiting: u32,
 }
 
 struct Current {
@@ -307,6 +309,8 @@ impl Index {
                 waits: Vec::new(),
                 #[cfg(test)]
                 kept_waiting_at: None,
+                #[cfg(test)]
+                kept_waiting: 0,
             }),
             changed: Condvar::new(),
             reader: Mutex::new(None),
@@ -519,6 +523,12 @@ impl Shared {
     #[cfg(test)]
     pub fn kept_waiting_at(&self) -> Option<Duration> {
         self.lock().kept_waiting_at
+    }
+
+    /// How many times retry waits checked the clock and kept waiting.
+    #[cfg(test)]
+    pub fn kept_waiting(&self) -> u32 {
+        self.lock().kept_waiting
     }
 
     #[cfg(test)]
