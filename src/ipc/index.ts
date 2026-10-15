@@ -30,6 +30,7 @@ export type {
   IndexChanged,
   IndexStatus,
   InvalidQuery,
+  MenuCommand,
   OpenPagePatch,
   PageIssue,
   PageProblem,

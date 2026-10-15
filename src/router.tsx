@@ -10,7 +10,6 @@ import {
   useRouterState,
 } from "@tanstack/react-router";
 import { useEffect, useId, useLayoutEffect } from "react";
-import { flushSync } from "react-dom";
 import { CommandPalette } from "./components/command-palette";
 import {
   QuitConfirmation,
@@ -18,10 +17,9 @@ import {
 } from "./components/storage-notices";
 import { formatPingReply } from "./ipc/format-ping";
 import { markIndexCommit, resolveEntry } from "./perf/cold-start";
-import { shortcutFor } from "./shortcuts";
 import { usePageTreeStore } from "./stores/page-tree";
-import { usePaletteStore } from "./stores/palette";
 import { usePingStore } from "./stores/ping";
+import { useShortcutCommands } from "./use-shortcut-commands";
 
 function pingText(status: ReturnType<typeof usePingStore.getState>["status"]) {
   return status.kind === "ready"
@@ -44,24 +42,11 @@ function ShellStatus({ landmark }: { landmark: boolean }) {
   );
 }
 
-function useGlobalShortcuts() {
-  useEffect(() => {
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (shortcutFor(event) !== "openPalette") return;
-      event.preventDefault();
-      event.stopPropagation();
-      flushSync(() => usePaletteStore.getState().show(document.activeElement));
-    };
-    window.addEventListener("keydown", onKeyDown, true);
-    return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, []);
-}
-
 function RootLayout() {
   const onIndex = useRouterState({
     select: (state) => state.location.pathname === "/",
   });
-  useGlobalShortcuts();
+  useShortcutCommands();
   return (
     <Tooltip.Provider delay={700} timeout={300}>
       <div className="flex h-screen flex-col">

@@ -32,4 +32,4 @@ Preconditions:
 
 - `screenshot` fails with `No on-screen window for PID <pid>. Is it minimized?` while the window is minimized. Restore the window before you capture.
 - The window's close, minimize, and full screen buttons are in the accessibility tree of the window, not of the web content, so `tree` does not list them. Prove them from the screenshot.
-- `menus` lists the menu titles only. The menu is Tauri's default, except that **Quit Aelomi** (⌘Q) is the app's own item, so quitting flushes storage first.
+- `menus` lists the menu titles only. The menu is built from the shared shortcut table. **Quit Aelomi** (⌘Q) remains the app's drain-aware item. [Shortcuts and menu commands](./shortcut-menu.md) covers its items.

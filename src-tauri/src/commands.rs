@@ -12,6 +12,11 @@ use crate::quit::{QuitPhase, QuitStatus, QuitStatusChanged};
 use crate::storage::{Health, Storage, StorageError, StorageHealthChanged, StorageStatus};
 use crate::trace::IpcMeasurements;
 
+#[derive(Clone, Serialize, Type, tauri_specta::Event)]
+pub struct MenuCommand {
+    pub command: String,
+}
+
 #[derive(Deserialize, Type)]
 pub struct PingRequest {
     pub seq: u32,
@@ -296,7 +301,8 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
             StorageHealthChanged,
             QuitStatusChanged,
             IndexStatusChanged,
-            IndexChanged
+            IndexChanged,
+            MenuCommand
         ])
         .constant(
             "RECENT_PAGES_LIMIT",
