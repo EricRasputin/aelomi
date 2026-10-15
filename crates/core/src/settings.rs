@@ -47,7 +47,12 @@ impl Settings {
         if let Some(theme) = patch.theme {
             self.theme = theme;
         }
-        if let Some(open_page) = patch.open_page {
+        if let Some(mut open_page) = patch.open_page {
+            if let (Some(current), Some(next)) = (&self.open_page, &mut open_page) {
+                let mut extra = current.extra.clone();
+                extra.extend(std::mem::take(&mut next.extra));
+                next.extra = extra;
+            }
             self.open_page = open_page;
         }
         if let Some(recent_pages) = patch.recent_pages {

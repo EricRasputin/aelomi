@@ -4,6 +4,7 @@ mod index;
 mod macos;
 mod perf;
 mod quit;
+mod settings;
 mod storage;
 mod trace;
 
@@ -90,6 +91,11 @@ fn open_storage(app: &tauri::App) {
         trace::ms(started.elapsed()),
         trace::since_start_ms()
     );
+    let settings_owner = storage.workspace().ok().map(settings::SettingsOwner::new);
+    if let Some(owner) = settings_owner.clone() {
+        tauri::async_runtime::spawn_blocking(move || owner.initialize());
+    }
+    app.manage(settings::SettingsState(settings_owner));
     if let Ok(workspace) = storage.workspace() {
         warm_tree(workspace.clone());
         let app = app.handle().clone();

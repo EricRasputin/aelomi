@@ -155,6 +155,7 @@ function IndexScreen() {
           <p className="workspace-alert-reason">{source.message}</p>
         </div>
       )}
+      {import.meta.env.DEV && <Link to="/dev/settings">Settings probe</Link>}
       {import.meta.env.DEV && (
         <Link
           to="/dev/storage"
@@ -227,6 +228,11 @@ const mockRoutes =
 
 const devRoutes = import.meta.env.DEV
   ? [
+      createRoute({
+        getParentRoute: () => rootRoute,
+        path: "/dev/settings",
+        component: lazyRouteComponent(() => import("./dev/settings-probe")),
+      }),
       createRoute({
         getParentRoute: () => rootRoute,
         path: "/dev/storage",

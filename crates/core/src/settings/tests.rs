@@ -90,6 +90,11 @@ fn data_4_unknown_keys_and_theme_survive_read_modify_write() {
     );
     let mut settings = load(&*fs, Path::new("/data"));
     settings.apply(SettingsPatch {
+        open_page: Some(Some(OpenPage {
+            page_id: PageId::new("page-a").unwrap(),
+            top_visible_block_id: Some("b2".into()),
+            extra: Default::default(),
+        })),
         expanded_rows: Some(BTreeSet::from([PageId::new("page-c").unwrap()])),
         ..Default::default()
     });
@@ -99,7 +104,7 @@ fn data_4_unknown_keys_and_theme_survive_read_modify_write() {
         serde_json::from_slice(&fs.read(Path::new("/data/settings.json")).unwrap()).unwrap();
     assert_eq!(
         actual,
-        json!({"theme":"Sepia", "export":{"schedule":"nightly","future":null}, "openPage":{"pageId":"page-a","topVisibleBlockId":"b1","futureAnchor":42}, "recentPages":["page-b"], "expandedRows":["page-c"]})
+        json!({"theme":"Sepia", "export":{"schedule":"nightly","future":null}, "openPage":{"pageId":"page-a","topVisibleBlockId":"b2","futureAnchor":42}, "recentPages":["page-b"], "expandedRows":["page-c"]})
     );
     assert_eq!(load(&*fs, Path::new("/data")), settings);
 }
@@ -158,4 +163,23 @@ fn shell_9_settings_returns_durable_within_one_hundred_ms_on_the_controllable_cl
     assert_eq!(clock.now() - before, Duration::from_millis(14));
     fs.crash(Crash::DropUnsynced);
     assert_eq!(load(&*fs, Path::new("/data")), session());
+}
+
+#[test]
+fn data_4_settings_replace_refuses_an_unsynced_source() {
+    let fs = disk();
+    let root = Path::new("/data");
+    write(&*fs, root, &Settings::default()).unwrap();
+    fs.create_new(&root.join("settings.json.tmp")).unwrap();
+    fs.append(
+        &root.join("settings.json.tmp"),
+        &serde_json::to_vec(&session().to_json()).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(
+        fs.replace_settings(root).unwrap_err().kind(),
+        io::ErrorKind::InvalidInput
+    );
+    fs.crash(Crash::DropUnsynced);
+    assert_eq!(load(&*fs, root), Settings::default());
 }

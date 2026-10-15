@@ -46,3 +46,5 @@ Keep implementation details out of the map. Name only user paths, stable handles
 - [App window](./app-window.md) covers the single window, its macOS controls, the native menu bar, and the welcome content.
 - [IPC status line](./ipc-status.md) covers the status line, the **Ping again** round trip to the Rust core, and the button's tooltip.
 - [Save failure and quit confirmation](./save-failure.md) covers the banner for failing writes, its recovery, and the dialog that guards every quit path while an edit is pending.
+
+- [Settings persistence](./settings.md) covers the dev probe, durable session writes, and close-and-reopen equality.

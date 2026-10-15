@@ -54,6 +54,8 @@ export const commands = {
 	/**  Active pages linking to `page_id`, most recently updated first. */
 	backlinks: (pageId: string) => typedError<BacklinksReply, QueryError>(__TAURI_INVOKE("backlinks", { pageId })),
 	devProbeLog: (line: string) => __TAURI_INVOKE<void>("dev_probe_log", { line }),
+	settingsGet: () => typedError<Settings, SettingsError>(__TAURI_INVOKE("settings_get")),
+	settingsUpdate: (patch: SettingsPatch) => typedError<Settings, SettingsError>(__TAURI_INVOKE("settings_update", { patch })),
 };
 
 /** Events */
@@ -68,6 +70,8 @@ export const events = {
 export const MAX_EXCLUDED_PAGES = 200 as const;
 
 export const MAX_SEARCH_LIMIT = 200 as const;
+
+export const RECENT_PAGES_LIMIT = 50 as const;
 
 /* Types */
 export type Backlink = {
@@ -133,6 +137,8 @@ export type InvalidQuery =
 { TooManyExcluded: {
 	max: number,
 } };
+
+export type OpenPagePatch = { Set: SettingsOpenPage } | "Clear";
 
 /**  An active page whose body the index could read only in part. Its doc is unchanged. */
 export type PageIssue = {
@@ -246,6 +252,27 @@ export type SearchScope =
 	exclude: string[],
 } };
 
+export type Settings = {
+	theme: Theme,
+	openPage: SettingsOpenPage | null,
+	recentPages: string[],
+	expandedRows: string[],
+};
+
+export type SettingsError = "Unavailable" | "InvalidPageId" | { Io: string } | "Internal";
+
+export type SettingsOpenPage = {
+	pageId: string,
+	topVisibleBlockId: string | null,
+};
+
+export type SettingsPatch = {
+	theme?: Theme | null,
+	openPage?: OpenPagePatch | null,
+	recentPages?: string[] | null,
+	expandedRows?: string[] | null,
+};
+
 export type StorageError = 
 /**  The store is not open. `storage_status` says why. */
 "Unavailable" | "InvalidDocId" | "InvalidUpdate" | { Io: string };
@@ -260,6 +287,8 @@ export type TextPart = {
 	text: string,
 	highlighted: boolean,
 };
+
+export type Theme = "System" | "Light" | "Dark" | { Unknown: string };
 
 export type TrashedPage = {
 	id: string,

@@ -120,9 +120,7 @@ impl Fs for OsFs {
     }
 
     fn replace_settings(&self, root: &Path) -> io::Result<()> {
-        let from = root.join("settings.json.tmp");
-        self.full_sync(&from)?;
-        std::fs::rename(from, root.join("settings.json"))
+        std::fs::rename(root.join("settings.json.tmp"), root.join("settings.json"))
     }
 
     fn remove(&self, path: &Path) -> io::Result<()> {

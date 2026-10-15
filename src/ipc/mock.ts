@@ -22,6 +22,7 @@ import {
   type QuitPhase,
   type QuitStatus,
   type SearchScope,
+  type Settings,
   type StorageError,
   type StorageStatus,
 } from "./bindings";
@@ -34,6 +35,7 @@ import {
   type SearchablePage,
   searchPages,
 } from "./mock-search";
+import { defaultSettings, patchSettings } from "./mock-settings";
 import {
   type PageRecord,
   pagesRootProblem,
@@ -55,6 +57,7 @@ type MockCall = {
 }[keyof Commands];
 
 export type MockSetup = {
+  settings?: Partial<Settings>;
   indexStatus?: IndexStatus;
   pages?: SeedPage[];
   bodies?: Record<string, SeedBlock[]>;
@@ -94,6 +97,7 @@ const storage: {
 };
 let exited = false;
 let indexStatus: IndexStatus = "Ready";
+let settings = defaultSettings();
 
 type FixturePage = { id: string; title: string; lines: string[] };
 const fixtureBodies = new Map<string, string[]>();
@@ -365,6 +369,25 @@ function search(text: string, limit: number, scope: Scope): MockHit[] {
 }
 
 export const commands = {
+  settingsGet: async () => {
+    calls.push({ command: "settingsGet", args: [] });
+    await setupReady;
+    if (storage.status !== "Ready")
+      return { status: "error", error: "Unavailable" };
+    return { status: "ok", data: structuredClone(settings) };
+  },
+  settingsUpdate: async (patch) => {
+    calls.push({ command: "settingsUpdate", args: [structuredClone(patch)] });
+    await setupReady;
+    if (storage.status !== "Ready")
+      return { status: "error", error: "Unavailable" };
+    const result = patchSettings(settings, patch);
+    if (result.status === "error") return result;
+    settings = result.data;
+    if (storage.failWrites)
+      return { status: "error", error: { Io: "mock write failure" } };
+    return structuredClone(result);
+  },
   ping: async (request) => {
     calls.push({ command: "ping", args: [structuredClone(request)] });
     return { seq: request.seq, core_version: "0.1.0-mock" };
@@ -582,6 +605,8 @@ async function loadSearchFixture() {
 
 async function applySetup(setup: MockSetup | undefined) {
   if (!setup) return;
+  if (setup.settings)
+    settings = { ...defaultSettings(), ...structuredClone(setup.settings) };
   if (setup.indexStatus) indexStatus = structuredClone(setup.indexStatus);
   if (setup.pages) {
     writeRecords(workspaceDoc(), setup.pages);
@@ -616,6 +641,7 @@ function restoreKept(): boolean {
 function resetState() {
   calls.length = 0;
   errors.length = 0;
+  settings = defaultSettings();
   storage.status = "Ready";
   storage.failWrites = false;
   storage.docs.clear();

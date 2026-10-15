@@ -7,6 +7,8 @@ This file maps the code. `SPEC.md` has the behaviors and the budgets, and `READM
 | Path | Contents |
 |---|---|
 | `Cargo.toml` | Cargo workspace with members `crates/core` and `src-tauri`, edition 2024 |
+| `crates/core/src/settings.rs` | DATA-4 settings model, typed patch, additive JSON and atomic persistence |
+| `crates/core/src/settings/tests.rs` | Settings crash steps, session round-trip, compatibility, recovery and SHELL-9 clock tests |
 | `crates/core/` | `aelomi-core`, the Rust core |
 | `crates/core/src/storage/` | The append-only Y.Doc store. `mod.rs` lists the public API |
 | `crates/core/src/storage/store.rs` | `Store`: open the data folder, `load`, `append`, `flush`, `health`, `close` |
@@ -30,6 +32,7 @@ This file maps the code. `SPEC.md` has the behaviors and the budgets, and `READM
 | `src-tauri/` | `aelomi`, the Tauri 2 shell (library name `aelomi_lib`) |
 | `src-tauri/src/lib.rs` | `run()` builds the Tauri app, registers the commands and events, opens the workspace, logs and emits index events, and flushes the store before quitting |
 | `src-tauri/src/commands.rs` | Tauri commands, the tauri-specta `builder()`, and the `bindings_are_current` test |
+| `src-tauri/src/settings.rs` | Serialized settings owner and IPC types, with owner and command tests in `settings/tests.rs` |
 | `src-tauri/src/storage.rs` | `Storage`, the open workspace or why it did not open, the data folder overrides, the flush before quitting, and the storage IPC types |
 | `src-tauri/src/quit.rs` | `QuitGate`: revisioned frontend drain, Store flush, confirmation, and the quit IPC types |
 | `src-tauri/src/index.rs` | The index commands (`index_status`, `page_tree`, `search`, `backlinks`), the `IndexStatusChanged` and `IndexChanged` events, and their IPC types |
@@ -183,6 +186,11 @@ To add a job, add its ID to `CHECKS` in `scripts/protect-main.sh` and rerun the 
 `crates/core/src/settings.rs` owns the DATA-4 model and file encoding. `Settings` holds a theme, an optional open page and block anchor, recent page IDs in newest-first order, and a sorted set of expanded page IDs. Recent pages keep their first occurrence and at most 50 IDs. This bounds file size while retaining navigation history. Root and open-page extension maps preserve future JSON keys. An unknown theme retains its original string.
 
 `settings.json` sits beside `format.json`. A missing file loads defaults. Invalid or unreadable configuration logs a failure and loads defaults. The next write replaces it. Each write removes a stale `settings.json.tmp`, creates a new temporary file, fully syncs it, replaces only `settings.json`, then syncs and fully syncs the root directory. Both OS and simulated filesystems expose this narrow replace through `Fs`; document publication and retirement rules remain append-only.
+
+`src-tauri/src/settings.rs` owns one cached snapshot per open workspace. Setup starts its load on Tauri's blocking pool beside the page-tree projection. Reads wait for this load and clone the cache. Each typed patch validates page IDs before taking the owner's mutex, applies to the current snapshot, and holds the mutex through the durable write. Concurrent patches therefore keep each other's fields. A failed write returns `SettingsError::Io` and retains the patch in memory for the next update. Both `settings_get` and `settings_update` run on the blocking pool and return the full snapshot. Neither owner nor file access exists when storage refused the folder.
+
+The IPC patch has optional `theme`, `openPage`, `recentPages`, and `expandedRows` fields. `openPage` is `{ Set: { pageId, topVisibleBlockId } }` or `Clear`, so omission and clearing differ. Unknown theme strings appear as `{ Unknown: value }`. The mock implements the same patch rules in `src/ipc/mock-settings.ts`; `MockSetup.settings` seeds initial settings, including a theme. No frontend store is needed until a UI consumes these commands. `/dev/settings` offers a synthetic session write and displays the loaded snapshot for native proof. Production builds exclude it, checked by `check:no-mock`.
+
 
 ## Data model and storage
 

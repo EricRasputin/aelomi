@@ -224,6 +224,35 @@ pub fn dev_probe_log(line: String) {
     println!("{line}");
 }
 
+#[tauri::command]
+#[specta::specta]
+pub async fn settings_get(
+    state: State<'_, crate::settings::SettingsState>,
+) -> Result<crate::settings::Settings, crate::settings::SettingsError> {
+    let owner = state
+        .0
+        .clone()
+        .ok_or(crate::settings::SettingsError::Unavailable)?;
+    tauri::async_runtime::spawn_blocking(move || owner.get())
+        .await
+        .map_err(|_| crate::settings::SettingsError::Internal)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn settings_update(
+    state: State<'_, crate::settings::SettingsState>,
+    patch: crate::settings::SettingsPatch,
+) -> Result<crate::settings::Settings, crate::settings::SettingsError> {
+    let owner = state
+        .0
+        .clone()
+        .ok_or(crate::settings::SettingsError::Unavailable)?;
+    tauri::async_runtime::spawn_blocking(move || owner.update(patch))
+        .await
+        .map_err(|_| crate::settings::SettingsError::Internal)?
+}
+
 pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
     tauri_specta::Builder::new()
         .commands(tauri_specta::collect_commands![
@@ -244,6 +273,8 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
             index::search,
             index::backlinks,
             dev_probe_log,
+            settings_get,
+            settings_update,
         ])
         .events(tauri_specta::collect_events![
             StorageHealthChanged,
@@ -251,6 +282,10 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
             IndexStatusChanged,
             IndexChanged
         ])
+        .constant(
+            "RECENT_PAGES_LIMIT",
+            aelomi_core::settings::RECENT_PAGES_LIMIT,
+        )
         .constant("MAX_SEARCH_LIMIT", aelomi_core::index::MAX_LIMIT)
         .constant("MAX_EXCLUDED_PAGES", aelomi_core::index::MAX_EXCLUDED)
 }
