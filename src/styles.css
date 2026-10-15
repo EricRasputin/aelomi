@@ -207,11 +207,13 @@ body {
   position: static;
 }
 
-.page-link {
+.page-link,
+.page-body a[href] {
   color: var(--link);
   text-decoration: underline;
   text-decoration-color: color-mix(in srgb, var(--link) 35%, transparent);
   text-underline-offset: 3px;
+  overflow-wrap: anywhere;
 }
 
 .page-link[data-state="missing"] {

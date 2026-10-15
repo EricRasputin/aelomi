@@ -13,7 +13,7 @@ export function StorageRefusal({
       >
         <p className="storage-refusal-app">Aelomi</p>
         {startup.kind === "loading" ? (
-          <p>{storageCopy.opening}</p>
+          <p id="storage-refusal-title">{storageCopy.opening}</p>
         ) : (
           <>
             <h1 id="storage-refusal-title">{startup.title}</h1>
