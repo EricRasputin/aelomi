@@ -4,12 +4,12 @@
 set -euo pipefail
 
 PSTACK_URL=https://github.com/backnotprop/pstack
-PSTACK_REF=3a604672c46cd8187d2b19980eae0a34f9f91138
+PSTACK_REF=1f0f9c3bac03c4297f6fc8f7644fa412eda57085
 # Comment Sicko (.claude/agents/comment-sicko.md) invokes these two; every other pstack skill keeps pstack's flag.
 PSTACK_UNHIDE="how why"
 
 EMIL_URL=https://github.com/emilkowalski/skill
-EMIL_REF=e8a175de22ae1e49370fc144c1f3bb9aeedf988d
+EMIL_REF=2d228630ba1446365f614a108cb8252f1feda202
 # Not used in Aelomi (see CLAUDE.md > Workflow).
 EMIL_EXCLUDE="animate-expo mobile-native write-swift"
 
