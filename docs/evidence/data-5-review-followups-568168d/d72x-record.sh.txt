@@ -1,0 +1,25 @@
+#!/bin/zsh
+# One xctrace Animation Hitches recording of the release app while it types into and pages through the
+# 5,000-block page. The app is activated by bundle ID first, so its window is on screen and painting.
+N=/tmp/aelomi-f70-78/native
+RUN=$(cat $N/d72x-run.txt)
+PID=$(grep '^APP_PID=' $RUN/run.env | cut -d= -f2)
+L=$N/d72x-xctrace-record.log
+K=$N/d72x-keys.log
+kill -0 $PID || { echo "app $PID gone"; exit 1; }
+{ echo "df before: $(df -h / | tail -1)"; echo "load before: $(sysctl -n vm.loadavg)"; } > $K
+rm -rf $N/d72x-hitches.trace
+osascript -e 'tell application id "com.aelomi.app" to activate'
+sleep 0.5
+(xcrun xctrace record --template 'Animation Hitches' --attach $PID --output $N/d72x-hitches.trace --time-limit 40s > $L 2>&1; echo "record exit $?" >> $L) &
+sleep 5
+osascript -e 'tell application id "com.aelomi.app" to activate'
+steps=(); for i in $(seq 1 40); do steps+=(text:x wait:150); done
+echo "typing: $(osascript -l JavaScript $N/scripts/keys-pid.js $PID "${steps[@]}" 2>&1 | cut -c1-90)" >> $K
+psteps=(); for i in $(seq 1 25); do psteps+=(code:121 wait:200); done
+echo "page down: $(osascript -l JavaScript $N/scripts/keys-pid.js $PID "${psteps[@]}" 2>&1 | cut -c1-90)" >> $K
+echo "load after keys: $(sysctl -n vm.loadavg)" >> $K
+wait
+echo "trace size: $(du -sh $N/d72x-hitches.trace 2>&1)" >> $K
+echo "df after: $(df -h / | tail -1)" >> $K
+cat $L $K

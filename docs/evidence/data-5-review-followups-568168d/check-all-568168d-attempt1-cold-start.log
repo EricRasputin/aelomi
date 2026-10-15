@@ -1,0 +1,21 @@
+== cold-start
+load 8.05, waiting for under 4
+load 6.55, waiting for under 4
+load 5.53, waiting for under 4
+load 4.76, waiting for under 4
+load 4.39, waiting for under 4
+load 4.09, waiting for under 4
+load 3.79, waiting for under 4
+
+$ node perf/cold-start.ts --ci
+cold-start harness (--ci, gates hosted budgets). node v24.13.1, 8 cpus (Apple M1), load 3.79 3.70 3.79, 2026-10-15T07:19:42.900Z
+app <worktree>/target/release/bundle/macos/Aelomi.app/Contents/MacOS/aelomi
+data folder /var/folders/m2/kvd1y03j1fxc_ym_gc6jkfbc0000gn/T/aelomi-cold-start-BhCNSn
+expected first content variant index; supplied data folder is never removed
+plan: 1 discarded warm-up, then 10 timed runs. T0 is the wall clock (Date.now, 1 ms resolution) read just before spawn, the same clock as the kernel's process start stamp. Marks are ms after T0. First content frame = min(rAF+MessageChannel, double rAF). 10 s timeout per run.
+warmup-1: FAIL no paint marker in 10 s (window not visible?)
+    | 
+
+check:all failed: cold-start: node perf/cold-start.ts --ci
+[ELIFECYCLE] Command failed with exit code 1.
+check:all exit 1

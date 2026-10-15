@@ -42,7 +42,7 @@ Main and this commit matched in those alternating runs.
 ## Known limits
 
 - **Startup.** The 500 ms startup goal still fails on a populated workspace. The record keeps that failure.
-- **Native presentation.** Two `xctrace` Animation Hitches recordings were attempted on the native app. The first export was incomplete. In the second, the typed keys never reached the app because it lost the front, and xctrace reported a malformed transfer ([d72-xctrace-record.log](d72-xctrace-record.log)). Each recording also left a 6 to 7 GB kernel trace in the temporary folder, which filled this Mac's disk. Native compositor presentation therefore remains unmeasured. Event Timing covers event to paint inside WebKit.
+- **Native presentation.** Two `xctrace` Animation Hitches recordings were attempted on the native app. The first export was incomplete. In the second, the typed keys never reached the app because it lost the front, and xctrace reported a malformed transfer ([d72-xctrace-record.log](d72-xctrace-record.log)). Each recording also left a 6 to 7 GB kernel trace in the temporary folder, which filled this Mac's disk. Native compositor presentation therefore remains unmeasured. Event Timing covers event to paint inside WebKit. A later recording on the same product code measured it; see the [568168d record](../data-5-review-followups-568168d/README.md).
 - **⌘A.** ⌘A and Edit > Select All did not select editor text under automation, on main and on this commit alike ([base71-shell.log](base71-shell.log) is the main run). Shift+Arrow selection, ⌘C and ⌘V worked. The gap predates these issues.
 
 ## Screenshots

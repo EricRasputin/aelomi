@@ -1,0 +1,8 @@
+# The big page's source folder in the seed copy before launch (as copied from the d70 seed) and after the recording.
+## before (d70 seed, unchanged since 11:21 IST)
+Oct 15 11:21:30 2026 4244 log-0000000001-0000000000.ylog2
+Oct 15 11:13:25 2026 2523287 snapshot-0000000001.ysnap2
+## after (d72x copy, app quit)
+Oct 15 13:10:57 2026 4244 log-0000000001-0000000000.ylog2
+Oct 15 13:16:07 2026 2440 log-0000000001-0000000001.ylog2
+Oct 15 13:10:57 2026 2523287 snapshot-0000000001.ysnap2

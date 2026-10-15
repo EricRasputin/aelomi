@@ -1,0 +1,7 @@
+df before: /dev/disk3s1s1   460Gi    13Gi   104Gi    11%    484k  1.1G    0%   /
+load before: { 3.05 3.09 3.52 }
+typing: PID 9068: text:x wait:150 text:x wait:150 text:x wait:150 text:x wait:150 text:x wait:150 
+page down: PID 9068: code:121 wait:200 code:121 wait:200 code:121 wait:200 code:121 wait:200 code:121
+load after keys: { 4.22 3.36 3.60 }
+trace size: 731M	/tmp/aelomi-f70-78/native/d72x-hitches.trace
+df after: /dev/disk3s1s1   460Gi    13Gi    91Gi    13%    484k  949M    0%   /

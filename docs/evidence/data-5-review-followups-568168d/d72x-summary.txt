@@ -1,0 +1,16 @@
+app frames committed (hitches-updates rows for pid 9068): 350
+app commit duration: n=350 min=0.06 p50=0.12 p95=0.74 max=0.90 ms
+hitches-frame-lifetimes for app swaps: n=350 min=18.80 p50=40.09 p95=48.85 max=73.29 ms
+hitches-renders for app swaps: n=352 min=1.46 p50=2.87 p95=7.06 max=41.79 ms
+hitches-gpu for app swaps: n=350 min=0.05 p50=0.42 p95=1.80 max=2.12 ms
+hitches-framewait for app swaps: n=350 min=5.76 p50=12.74 p95=14.14 max=30.26 ms
+hitches, all processes: 35; this app: 35
+app hitch duration: n=35 min=16.67 p50=16.67 p95=33.33 max=33.33 ms
+app hitches by lateness: {'16.67 ms': 26, '33.33 ms': 9}
+app hitch time: 733 ms over the recording
+app frames and hitches per second of the recording (s: frames/hitches):
+  0:0/0 1:1/0 2:1/0 3:2/2 4:1/1 5:1/0 6:3/3 7:2/1 8:1/0 9:1/1
+  10:2/0 11:2/1 12:6/1 13:3/0 14:6/3 15:6/0 16:4/1 17:7/0 18:2/0 19:6/3
+  20:5/2 21:4/1 22:7/0 23:4/1 24:6/0 25:6/2 26:3/1 27:6/1 28:18/1 29:24/0
+  30:12/1 31:24/1 32:13/0 33:25/1 34:13/2 35:24/0 36:14/2 37:23/0 38:15/1 39:23/0
+  40:16/0 41:8/1

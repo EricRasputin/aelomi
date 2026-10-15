@@ -1,0 +1,84 @@
+"""Summarize the Animation Hitches tables exported from d72x-hitches.trace.
+
+usage: python3 -I d72x-summarize.py <dir with d72x-*.xml> <app pid>
+
+xctrace writes each value once with an id and later rows point at it with ref, so every row is
+resolved through that table before it is read. Swap IDs join the tables: hitches-updates names the
+process that committed each frame, and the other tables report the same frames by swap ID.
+"""
+
+import statistics
+import sys
+import xml.etree.ElementTree as ET
+
+folder, pid = sys.argv[1], sys.argv[2]
+
+
+def rows(table):
+    root = ET.parse(f"{folder}/d72x-{table}.xml").getroot()
+    names = [c.findtext("mnemonic") for c in root.iter("col")]
+    seen = {}
+    out = []
+    for row in root.iter("row"):
+        values = {}
+        for name, cell in zip(names, list(row)):
+            if "ref" in cell.attrib:
+                cell = seen[cell.attrib["ref"]]
+            for node in cell.iter():
+                if "id" in node.attrib:
+                    seen[node.attrib["id"]] = node
+            values[name] = cell
+        out.append(values)
+    return out
+
+
+def ms(cell):
+    return int(cell.text) / 1e6
+
+
+def pid_of(cell):
+    found = cell.find("pid")
+    return found.text if found is not None else None
+
+
+def spread(values):
+    values = sorted(values)
+    if not values:
+        return "none"
+    p95 = values[min(len(values) - 1, int(round(0.95 * (len(values) - 1))))]
+    return (
+        f"n={len(values)} min={values[0]:.2f} p50={statistics.median(values):.2f} "
+        f"p95={p95:.2f} max={values[-1]:.2f} ms"
+    )
+
+
+updates = [r for r in rows("hitches-updates") if pid_of(r["process"]) == pid]
+app_swaps = {r["swap-id"].text for r in updates}
+starts = sorted(int(r["start"].text) / 1e9 for r in updates)
+print(f"app frames committed (hitches-updates rows for pid {pid}): {len(updates)}")
+print(f"app commit duration: {spread([ms(r['duration']) for r in updates])}")
+
+for table in ["hitches-frame-lifetimes", "hitches-renders", "hitches-gpu", "hitches-framewait"]:
+    durations = [ms(r["duration"]) for r in rows(table) if r["swap-id"].text in app_swaps]
+    print(f"{table} for app swaps: {spread(durations)}")
+
+all_hitches = rows("hitches")
+app_hitches = [r for r in all_hitches if pid_of(r["process"]) == pid]
+print(f"hitches, all processes: {len(all_hitches)}; this app: {len(app_hitches)}")
+print(f"app hitch duration: {spread([ms(r['duration']) for r in app_hitches])}")
+by_lateness = {}
+for r in app_hitches:
+    by_lateness[r["duration"].attrib["fmt"]] = by_lateness.get(r["duration"].attrib["fmt"], 0) + 1
+print(f"app hitches by lateness: {dict(sorted(by_lateness.items()))}")
+print(f"app hitch time: {sum(ms(r['duration']) for r in app_hitches):.0f} ms over the recording")
+
+print("app frames and hitches per second of the recording (s: frames/hitches):")
+hitch_starts = [int(r["start"].text) / 1e9 for r in app_hitches]
+end = int(max(starts + hitch_starts)) + 1 if starts else 0
+line = []
+for second in range(end):
+    frames = sum(1 for s in starts if second <= s < second + 1)
+    late = sum(1 for s in hitch_starts if second <= s < second + 1)
+    line.append(f"{second}:{frames}/{late}")
+for i in range(0, len(line), 10):
+    print("  " + " ".join(line[i : i + 10]))
