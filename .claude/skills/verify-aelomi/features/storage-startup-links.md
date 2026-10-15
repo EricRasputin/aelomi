@@ -8,7 +8,7 @@ Aelomi opens pages only after its data folder is ready. A refused cloud folder s
 - `cloud-leaf-link` keeps the screen open while Finder steps open the link's parent, remove only the link, open the cloud folder's parent, and move the data folder into the first window. A different folder name gets an explicit rename. Quit and reopen comes last.
 - `cloud-shared-link` names the synced folder, says other apps and files may use it, and directs the user to turn off syncing in the cloud app's settings. It gives no removal or movement instruction.
 - `cloud-override` tells the user to set `AELOMI_DATA_DIR` outside cloud storage or unset it, then reopen.
-- `cloud-path-copy` selects a complete path chip with one click or keyboard focus for copying with ⌘C.
+- `cloud-path-copy` selects a complete path chip with one click or keyboard focus for copying with ⌘C. Native accessibility focus can require ⌘A first.
 - `storage-refusals` shows specific messages for a locked folder, a newer or unknown format, and a read error.
 
 - `url-browser` opens http, https, and mailto links in their default application.
@@ -33,7 +33,7 @@ Preconditions:
 - **Leaf refusal.** Run `$S/app.sh doctor "$RUN"`, then `$S/app.sh tree "$RUN"`. Expect the heading `Move your data folder out of cloud storage`, the resolved path under `Where your data really is`, and separate path chips for both Finder parent folders. The first step trashes only the `Aelomi` link. The second moves `Aelomi Notes` into the first window and renames it `Aelomi`. The last step is `Quit Aelomi and open it again.` The editor is absent.
 - **Shared refusal.** Expect the synthetic `Application Support` link, the warning that other apps and files may use it, and cloud-app settings guidance to make it a regular folder on this Mac. No step says to trash, move, or replace anything.
 - **Override refusal.** Expect only the override and restart steps, with no Finder movement instructions.
-- **Copy a path.** Click a parent-path chip, press ⌘C, and compare the clipboard with the exact displayed path. Focus another chip by keyboard and repeat. The whole path is selected, including spaces and non-Latin characters.
+- **Copy a path.** Click a parent-path chip, press ⌘C, and compare the clipboard with the exact displayed path. Focus another chip by keyboard and repeat. The whole path is selected, including spaces and non-Latin characters. `app.sh focus` sets native accessibility focus; if it does not establish text selection, use ⌘A then ⌘C and report that separately from automatic selection.
 - **Appearance.** For each of the three variants, capture `$S/app.sh screenshot "$RUN" cloud-dark` and `cloud-light` with the Mac in each appearance. Restore the original appearance. Both shots show the complete path and readable instructions.
 - **URL link.** Launch on a synthetic folder with one page and a URL link to `https://example.com`. Run `$S/app.sh tree "$RUN"` to find its link label. Capture `url-before`, press the link with `$S/app.sh press "$RUN" "Example"`, and capture `url-after`. Expect `url opener launched=true` in the shell log. This log proves the OS opener launched, not browser receipt. Observe the browser and confirm Aelomi still shows the same page.
 - **Pointer.** Click the link with native pointer input and expect exactly one new `url opener launched=true` line.
