@@ -49,7 +49,8 @@ fn a_body_root_of_another_type_is_an_issue_and_every_other_page_still_reads() {
     assert_eq!(
         opened
             .workspace
-            .flush(Instant::now() + Duration::from_secs(5)),
+            .flush(Instant::now() + Duration::from_secs(5))
+            .docs,
         []
     );
     let source = super::source_files(dir.path());

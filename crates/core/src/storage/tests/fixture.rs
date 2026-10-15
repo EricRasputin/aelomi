@@ -126,12 +126,12 @@ fn write_format_2_fixture(target: &Path) {
     append(&workspace, owner.set("pages", 1));
     append(&page, editor.paragraph("Storage keeps every edit."));
     append(&page, editor.paragraph("Snapshots replace old logs."));
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     store.compact(&page).unwrap();
 
     append(&page, editor.set("status", "draft"));
     append(&page, editor.extend_first_paragraph(" Even after a crash."));
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
 
     env.fs
         .fail(OpKind::Create, "snapshot-0000000002", libc::EIO);
@@ -142,7 +142,7 @@ fn write_format_2_fixture(target: &Path) {
     env.fs.clear_faults();
     append(&page, editor.paragraph("This line is in generation two."));
     append(&page, editor.set("status", "final"));
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
 
     env.fs
         .fail(OpKind::Append, "log-0000000002-0000000000", libc::EIO);
@@ -427,7 +427,7 @@ fn a_crash_anywhere_in_the_first_format_2_write_keeps_the_fixture_and_every_ackn
             let workspace = set_pages(&store.load(&DocId::workspace()).unwrap(), 4, 3);
             store.append(&doc("page-1"), &page).unwrap();
             store.append(&DocId::workspace(), &workspace).unwrap();
-            assert_eq!(store.flush(soon()), [], "{case}");
+            assert_eq!(store.flush(soon()).docs, [], "{case}");
             let durable = durable_tree(&env);
             assert_eq!(
                 (

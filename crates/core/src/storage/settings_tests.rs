@@ -1,5 +1,5 @@
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use super::*;
 use crate::settings::*;
@@ -168,10 +168,20 @@ fn shell_9_settings_returns_durable_within_one_hundred_ms_on_the_controllable_cl
     let clock = Arc::new(ManualClock::default());
     let fs = SimFs::new(clock.clone());
     fs.put_durable(Path::new("/data/format.json"), br#"{"format":1}"#);
+    let store = crate::storage::Store::open_with(
+        Path::new("/data"),
+        fs.clone(),
+        clock.clone(),
+        crate::storage::Driver::Manual,
+        crate::storage::Limits::DATA_6,
+    )
+    .unwrap();
     fs.set_latency(OpKind::FullSync, Duration::from_millis(6));
     fs.set_latency(OpKind::Fsync, Duration::from_millis(1));
     let before = clock.now();
-    write(&*fs, Path::new("/data"), &session()).unwrap();
+    let seq = store.queue_settings(session());
+    store.run_writer_once();
+    store.wait_settings(seq).unwrap();
     assert_eq!(clock.now() - before, Duration::from_millis(14));
     fs.crash(Crash::DropUnsynced);
     assert_eq!(load(&*fs, Path::new("/data")), session());
@@ -182,14 +192,16 @@ fn data_4_settings_replace_refuses_an_unsynced_source() {
     let fs = disk();
     let root = Path::new("/data");
     write(&*fs, root, &Settings::default()).unwrap();
-    fs.create_new(&root.join("settings.json.tmp")).unwrap();
+    let source = create_durable(&*fs, &root.join("settings.json.tmp"), b"").unwrap();
     fs.append(
         &root.join("settings.json.tmp"),
         &serde_json::to_vec(&session().to_json()).unwrap(),
     )
     .unwrap();
     assert_eq!(
-        fs.replace(root, RootFile::Settings).unwrap_err().kind(),
+        fs.replace(root, RootFile::Settings, source)
+            .unwrap_err()
+            .kind(),
         io::ErrorKind::InvalidInput
     );
     fs.crash(Crash::DropUnsynced);
@@ -205,7 +217,7 @@ fn data_4_invalid_known_fields_preserve_other_fields_and_raw_values() {
     });
     assert_eq!(
         settings.to_json(),
-        json!({"theme":{"name":"Dark"},"openPage":{"futurePage":42},"recentPages":["page-a","page-b"],"expandedRows":["page-d"],"export":{"schedule":"nightly"}})
+        json!({"theme":{"name":"Dark"},"openPage":{"futurePage":42},"recentPages":["page-a","workspace",42,"page-b","page-a"],"expandedRows":["page-d"],"export":{"schedule":"nightly"}})
     );
 }
 
@@ -234,6 +246,8 @@ fn data_4_each_unparsable_field_survives_an_unrelated_patch() {
         ("openPage", json!({"pageId":"workspace","futureAnchor":42})),
         ("recentPages", json!({"future":true})),
         ("expandedRows", json!(42)),
+        ("recentPages", json!(["page-a", {"id":"future-page"}])),
+        ("expandedRows", json!(["page-a", "workspace"])),
     ] {
         let mut input = session().to_json();
         input[key] = invalid.clone();
@@ -269,13 +283,165 @@ fn data_4_os_replace_publishes_a_complete_settings_source() {
     let dir = tempfile::tempdir().unwrap();
     let layout = Layout::new(dir.path());
     write(&OsFs, dir.path(), &Settings::default()).unwrap();
-    std::fs::write(
-        layout.temp_file(RootFile::Settings),
-        serde_json::to_vec(&session().to_json()).unwrap(),
+    let source = create_durable(
+        &OsFs,
+        &layout.temp_file(RootFile::Settings),
+        &serde_json::to_vec(&session().to_json()).unwrap(),
     )
     .unwrap();
-    OsFs.replace(dir.path(), RootFile::Settings).unwrap();
+    OsFs.replace(dir.path(), RootFile::Settings, source)
+        .unwrap();
     OsFs.fsync(dir.path()).unwrap();
     OsFs.full_sync(dir.path()).unwrap();
     assert_eq!(load(&OsFs, dir.path()), session());
+}
+
+#[test]
+fn shell_10_an_older_retry_cannot_fail_or_defer_a_newer_settings_patch() {
+    use crate::storage::tests::Env;
+    use std::sync::mpsc;
+    let env = Env::manual();
+    let store = env.open();
+    env.fs
+        .fail(OpKind::Append, "settings.json.tmp", libc::EACCES);
+    let a = store.queue_settings(Settings::default());
+    store.run_writer_once();
+    assert!(store.wait_settings(a).is_err());
+    env.clock.advance(Duration::from_millis(100));
+    env.fs.clear_faults();
+    let hold = env
+        .fs
+        .hold_once(OpKind::Append, "settings.json.tmp", Duration::ZERO);
+    env.fs
+        .fail(OpKind::Fsync, "settings.json.tmp", libc::EACCES);
+    std::thread::scope(|scope| {
+        let retry = scope.spawn(|| store.run_writer_once());
+        hold.wait_until_reached();
+        let b = store.queue_settings(session());
+        let (done, result) = mpsc::channel();
+        let store_ref = &store;
+        scope.spawn(move || done.send(store_ref.wait_settings(b)).unwrap());
+        hold.release();
+        retry.join().unwrap();
+        let early = result.recv_timeout(Duration::from_millis(50));
+        env.fs.clear_faults();
+        store.run_writer_once();
+        let saved = result.recv_timeout(Duration::from_secs(1));
+        assert!(
+            matches!(early, Err(mpsc::RecvTimeoutError::Timeout)),
+            "new patch received {early:?} from the older retry"
+        );
+        saved.unwrap().unwrap();
+    });
+    env.fs.crash(Crash::DropUnsynced);
+    assert_eq!(store.load_settings().unwrap(), session());
+}
+
+#[test]
+fn shell_9_a_document_is_acknowledged_before_a_held_settings_write_in_the_same_pass() {
+    use crate::storage::tests::{Env, doc, typed};
+    let env = Env::manual();
+    let store = env.open();
+    let page = doc("page-a");
+    let seq = store.append(&page, &typed(7, 3)).unwrap();
+    store.queue_settings(session());
+    let hold = env
+        .fs
+        .hold_once(OpKind::Append, "settings.json.tmp", Duration::ZERO);
+    let acknowledged = std::thread::scope(|scope| {
+        let writer = scope.spawn(|| store.run_writer_once());
+        hold.wait_until_reached();
+        let acknowledged = store.is_durable(&page, seq);
+        hold.release();
+        writer.join().unwrap();
+        acknowledged
+    });
+    assert!(
+        acknowledged,
+        "settings must not hold the document acknowledgement"
+    );
+    drop(store);
+    env.fs.crash(Crash::DropUnsynced);
+    let reopened = env.open();
+    crate::storage::tests::assert_doc(&reopened, &page, &[typed(7, 3)]);
+    assert_eq!(reopened.load_settings().unwrap(), session());
+}
+
+#[test]
+fn shell_10_close_returns_the_store_while_settings_are_pending() {
+    use crate::storage::tests::Env;
+    let env = Env::manual();
+    let store = env.open();
+    env.fs
+        .fail(OpKind::Append, "settings.json.tmp", libc::EACCES);
+    store.queue_settings(session());
+    let result = store.close(Instant::now() + Duration::from_millis(20));
+    assert!(
+        result.is_err(),
+        "close discarded a pending settings snapshot"
+    );
+    let (store, pending) = result.unwrap_err();
+    assert_eq!(
+        pending,
+        crate::storage::Pending {
+            docs: vec![],
+            settings: true
+        }
+    );
+    env.fs.clear_faults();
+    store
+        .close(Instant::now() + Duration::from_secs(1))
+        .unwrap();
+    env.fs.crash(Crash::DropUnsynced);
+    assert_eq!(env.open().load_settings().unwrap(), session());
+}
+
+#[test]
+fn shell_10_a_settings_panic_does_not_fail_documents_and_a_document_panic_does_not_fail_settings() {
+    use crate::storage::tests::{Env, doc, typed};
+    use crate::storage::{Health, Pending};
+    for panic_in_settings in [false, true] {
+        let env = Env::manual();
+        let store = env.open();
+        let page = doc("page-a");
+        store.append(&page, &typed(7, 3)).unwrap();
+        let settings = store.queue_settings(session());
+        env.fs.panic_once(
+            OpKind::Append,
+            if panic_in_settings {
+                "settings.json.tmp"
+            } else {
+                "/docs/page-a/"
+            },
+        );
+        store.run_writer_once();
+        let pending = store.flush(Instant::now());
+        assert_eq!(
+            pending,
+            Pending {
+                docs: if panic_in_settings {
+                    vec![]
+                } else {
+                    vec![page.clone()]
+                },
+                settings: panic_in_settings,
+            }
+        );
+        assert!(
+            matches!(store.health(), Health::Failing { reason: FailReason::Internal, pending_settings, .. } if pending_settings == panic_in_settings)
+        );
+        if !panic_in_settings {
+            store.wait_settings(settings).unwrap();
+        }
+        env.fs.clear_faults();
+        assert_eq!(
+            store.flush(Instant::now() + Duration::from_secs(1)),
+            Pending::default()
+        );
+        drop(store);
+        env.fs.crash(Crash::DropUnsynced);
+        let reopened = env.open();
+        crate::storage::tests::assert_doc(&reopened, &page, &[typed(7, 3)]);
+        assert_eq!(reopened.load_settings().unwrap(), session());
+    }
 }

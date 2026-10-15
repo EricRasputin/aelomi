@@ -90,14 +90,14 @@ fn publish(fs: &dyn Fs, layout: &Layout) -> io::Result<()> {
         layout.format_json_tmp(),
         encode_format(FolderVersion::Current2),
     );
-    match create_durable(fs, &tmp, marker.as_bytes()) {
+    let source = match create_durable(fs, &tmp, marker.as_bytes()) {
         Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
             fs.remove(&tmp)?;
-            create_durable(fs, &tmp, marker.as_bytes())?;
+            create_durable(fs, &tmp, marker.as_bytes())?
         }
         result => result?,
-    }
-    fs.replace(layout.root(), RootFile::Format)
+    };
+    fs.replace(layout.root(), RootFile::Format, source)
 }
 
 fn sync_folder(fs: &dyn Fs, layout: &Layout) -> io::Result<()> {

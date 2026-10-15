@@ -1,4 +1,5 @@
 import { commands } from "../ipc";
+import { drainCommands } from "../ipc/pending-commands";
 import { useQuitStore } from "../stores/quit";
 import { drainDeliveries } from "./delivery";
 
@@ -24,7 +25,7 @@ async function drain(revision: number) {
   // let that run before collecting what is in flight.
   await new Promise((done) => setTimeout(done, 0));
   for (const editor of editors) editor.freeze();
-  const failed = await drainDeliveries();
+  const [failed] = await Promise.all([drainDeliveries(), drainCommands()]);
   const quit = useQuitStore.getState();
   const reply =
     failed.length === 0

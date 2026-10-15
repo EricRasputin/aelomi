@@ -1,6 +1,7 @@
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
+use aelomi_core::storage::{DocId, Pending};
 use serde::Serialize;
 use specta::Type;
 
@@ -21,8 +22,11 @@ pub enum QuitPhase {
     /// A quit waits for the webview to deliver its edits and call `complete_quit` with this
     /// revision.
     Draining,
-    /// A quit was refused with these docs not yet saved, and waits for the user's answer.
-    Asking { pending_docs: Vec<String> },
+    /// A quit was refused with pending documents or settings, and waits for the user's answer.
+    Asking {
+        pending_docs: Vec<String>,
+        pending_settings: bool,
+    },
     /// The app is quitting.
     Confirmed,
 }
@@ -60,7 +64,7 @@ enum Phase {
     Open,
     Awaiting,
     Completing,
-    Asking(Vec<String>),
+    Asking(Pending),
     Confirmed,
 }
 
@@ -77,8 +81,9 @@ impl Gate {
             phase: match &self.phase {
                 Phase::Open => QuitPhase::Open,
                 Phase::Awaiting | Phase::Completing => QuitPhase::Draining,
-                Phase::Asking(docs) => QuitPhase::Asking {
-                    pending_docs: docs.clone(),
+                Phase::Asking(pending) => QuitPhase::Asking {
+                    pending_docs: pending.docs.iter().map(ToString::to_string).collect(),
+                    pending_settings: pending.settings,
                 },
                 Phase::Confirmed => QuitPhase::Confirmed,
             },
@@ -126,12 +131,15 @@ impl QuitGate {
         }
     }
 
-    pub fn refuse(&self, pending: &[String]) -> Option<QuitStatus> {
+    pub fn refuse(&self, pending: &[DocId], pending_settings: bool) -> Option<QuitStatus> {
         let mut gate = self.lock();
         if matches!(gate.phase, Phase::Confirmed) {
             return None;
         }
-        Some(gate.change(Phase::Asking(pending.to_vec())))
+        Some(gate.change(Phase::Asking(Pending {
+            docs: pending.to_vec(),
+            settings: pending_settings,
+        })))
     }
 
     pub fn status(&self) -> QuitStatus {
@@ -147,36 +155,60 @@ impl QuitGate {
         true
     }
 
-    pub fn finish_drain(&self, revision: u32, pending: &[String]) -> Option<QuitStatus> {
+    pub fn finish_drain(
+        &self,
+        revision: u32,
+        pending: &[DocId],
+        pending_settings: bool,
+    ) -> Option<QuitStatus> {
         let mut gate = self.lock();
         if !gate.draining_at(revision) {
             return None;
         }
-        Some(if pending.is_empty() {
+        Some(if pending.is_empty() && !pending_settings {
             gate.change(Phase::Confirmed)
         } else {
-            gate.change(Phase::Asking(pending.to_vec()))
+            gate.change(Phase::Asking(Pending {
+                docs: pending.to_vec(),
+                settings: pending_settings,
+            }))
         })
     }
 
-    pub fn drain_failed(&self, revision: u32, docs: &[String]) -> Option<QuitStatus> {
+    pub fn drain_failed(
+        &self,
+        revision: u32,
+        docs: &[DocId],
+        pending_settings: bool,
+    ) -> Option<QuitStatus> {
         let mut gate = self.lock();
         if !gate.draining_at(revision) {
             return None;
         }
-        Some(gate.change(Phase::Asking(docs.to_vec())))
+        Some(gate.change(Phase::Asking(Pending {
+            docs: docs.to_vec(),
+            settings: pending_settings,
+        })))
     }
 
     pub fn awaiting_drain(&self, revision: u32) -> bool {
         self.lock().awaiting_at(revision)
     }
 
-    pub fn drain_timed_out(&self, revision: u32, pending: &[String]) -> Option<QuitStatus> {
+    pub fn drain_timed_out(
+        &self,
+        revision: u32,
+        pending: &[DocId],
+        pending_settings: bool,
+    ) -> Option<QuitStatus> {
         let mut gate = self.lock();
         if !gate.awaiting_at(revision) {
             return None;
         }
-        Some(gate.change(Phase::Asking(pending.to_vec())))
+        Some(gate.change(Phase::Asking(Pending {
+            docs: pending.to_vec(),
+            settings: pending_settings,
+        })))
     }
 
     /// Keep app open answers the question asked at `revision`, and no newer one.
@@ -203,8 +235,8 @@ impl QuitGate {
 mod tests {
     use super::*;
 
-    fn docs(ids: &[&str]) -> Vec<String> {
-        ids.iter().map(|id| id.to_string()).collect()
+    fn docs(ids: &[&str]) -> Vec<DocId> {
+        ids.iter().map(|id| DocId::new(*id).unwrap()).collect()
     }
 
     fn status(revision: u32, phase: QuitPhase) -> QuitStatus {
@@ -216,6 +248,7 @@ mod tests {
             revision,
             QuitPhase::Asking {
                 pending_docs: docs.iter().map(|doc| doc.to_string()).collect(),
+                pending_settings: false,
             },
         )
     }
@@ -226,9 +259,9 @@ mod tests {
         assert_eq!(gate.status(), status(0, QuitPhase::Open));
         assert_eq!(gate.request(), QuitRequest::FlushStore);
 
-        assert_eq!(gate.refuse(&docs(&["a"])), Some(asking(1, &["a"])));
+        assert_eq!(gate.refuse(&docs(&["a"]), false), Some(asking(1, &["a"])));
         assert_eq!(
-            gate.refuse(&docs(&["a", "b"])),
+            gate.refuse(&docs(&["a", "b"]), false),
             Some(asking(2, &["a", "b"]))
         );
         assert_eq!(gate.status(), asking(2, &["a", "b"]));
@@ -237,8 +270,8 @@ mod tests {
     #[test]
     fn keep_open_answers_only_the_question_the_user_saw() {
         let gate = QuitGate::default();
-        gate.refuse(&docs(&["a"]));
-        gate.refuse(&docs(&["a"]));
+        gate.refuse(&docs(&["a"]), false);
+        gate.refuse(&docs(&["a"]), false);
 
         assert_eq!(gate.keep_open(1), None);
         assert_eq!(gate.status(), asking(2, &["a"]));
@@ -246,19 +279,19 @@ mod tests {
         assert_eq!(gate.keep_open(2), None);
         assert_eq!(gate.status(), status(3, QuitPhase::Open));
 
-        assert_eq!(gate.refuse(&docs(&["a"])), Some(asking(4, &["a"])));
+        assert_eq!(gate.refuse(&docs(&["a"]), false), Some(asking(4, &["a"])));
     }
 
     #[test]
     fn quit_anyway_is_sticky_and_outranks_every_answer() {
         let gate = QuitGate::default();
-        gate.refuse(&docs(&["a"]));
+        gate.refuse(&docs(&["a"]), false);
 
         assert_eq!(gate.confirm(), Some(status(2, QuitPhase::Confirmed)));
         assert_eq!(gate.confirm(), None);
         assert_eq!(gate.keep_open(1), None);
         assert_eq!(gate.keep_open(2), None);
-        assert_eq!(gate.refuse(&docs(&["a"])), None);
+        assert_eq!(gate.refuse(&docs(&["a"]), false), None);
         assert_eq!(gate.request(), QuitRequest::Allow);
         assert_eq!(gate.status(), status(2, QuitPhase::Confirmed));
     }
@@ -276,15 +309,15 @@ mod tests {
         assert_eq!(gate.request(), QuitRequest::DrainInProgress);
         assert_eq!(gate.status(), status(1, QuitPhase::Draining));
         assert!(!gate.begin_completing(0));
-        assert_eq!(gate.finish_drain(0, &[]), None);
+        assert_eq!(gate.finish_drain(0, &[], false), None);
         assert!(gate.begin_completing(1));
         assert_eq!(
-            gate.drain_timed_out(1, &[]),
+            gate.drain_timed_out(1, &[], false),
             None,
             "a completing drain has no deadline"
         );
         assert_eq!(
-            gate.finish_drain(1, &[]),
+            gate.finish_drain(1, &[], false),
             Some(status(2, QuitPhase::Confirmed))
         );
         assert_eq!(gate.request(), QuitRequest::Allow);
@@ -295,8 +328,11 @@ mod tests {
         let gate = QuitGate::default();
         gate.register_frontend();
         gate.request();
-        assert_eq!(gate.drain_failed(0, &docs(&["a"])), None);
-        assert_eq!(gate.drain_failed(1, &docs(&["a"])), Some(asking(2, &["a"])));
+        assert_eq!(gate.drain_failed(0, &docs(&["a"]), false), None);
+        assert_eq!(
+            gate.drain_failed(1, &docs(&["a"]), false),
+            Some(asking(2, &["a"]))
+        );
         assert!(
             !gate.begin_completing(1),
             "the reply came after the question"
@@ -307,9 +343,9 @@ mod tests {
             gate.request(),
             QuitRequest::StartDrain(status(4, QuitPhase::Draining))
         );
-        assert_eq!(gate.drain_timed_out(3, &docs(&["b"])), None);
+        assert_eq!(gate.drain_timed_out(3, &docs(&["b"]), false), None);
         assert_eq!(
-            gate.drain_timed_out(4, &docs(&["b"])),
+            gate.drain_timed_out(4, &docs(&["b"]), false),
             Some(asking(5, &["b"]))
         );
         assert_eq!(
@@ -318,7 +354,10 @@ mod tests {
             "quitting again while asked drains again"
         );
         assert!(gate.begin_completing(6));
-        assert_eq!(gate.finish_drain(6, &docs(&["c"])), Some(asking(7, &["c"])));
+        assert_eq!(
+            gate.finish_drain(6, &docs(&["c"]), false),
+            Some(asking(7, &["c"]))
+        );
     }
 
     #[test]
@@ -336,15 +375,18 @@ mod tests {
         assert_eq!(gate.request(), QuitRequest::DrainInProgress);
         assert_eq!(gate.status(), status(1, QuitPhase::Draining));
         assert!(!gate.awaiting_drain(1));
-        assert_eq!(gate.drain_timed_out(1, &docs(&["a"])), None);
+        assert_eq!(gate.drain_timed_out(1, &docs(&["a"]), false), None);
         assert!(
             gate.begin_completing(1),
             "a duplicate completion is accepted"
         );
         assert_eq!(gate.status(), status(1, QuitPhase::Draining));
-        assert_eq!(gate.drain_failed(1, &docs(&["a"])), Some(asking(2, &["a"])));
         assert_eq!(
-            gate.finish_drain(1, &[]),
+            gate.drain_failed(1, &docs(&["a"]), false),
+            Some(asking(2, &["a"]))
+        );
+        assert_eq!(
+            gate.finish_drain(1, &[], false),
             None,
             "the other completion is stale"
         );

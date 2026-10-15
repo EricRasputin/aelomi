@@ -166,7 +166,7 @@ fn a_docs_first_load_from_a_slow_disk_never_delays_another_docs_acknowledgement(
     for update in &on_b {
         store.append(&b, update).unwrap();
     }
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     drop(store);
 
     let store = env.open();
@@ -212,7 +212,7 @@ fn a_doc_whose_files_are_busy_never_delays_another_docs_acknowledgement() {
     for update in stored {
         store.append(&b, update).unwrap();
     }
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     let queued_on_b = store.append(&b, last).unwrap();
     assert!(store.has_pending_structs(&b), "b's load merges its files");
 
@@ -291,7 +291,7 @@ fn the_writer_thread_writes_a_skipped_doc_once_its_files_free() {
     for update in stored {
         store.append(&b, update).unwrap();
     }
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     assert!(store.has_pending_structs(&b), "b's load merges its files");
 
     let hold = env.fs.hold_once(OpKind::Read, "/docs/b/", Duration::ZERO);
@@ -301,7 +301,9 @@ fn the_writer_thread_writes_a_skipped_doc_once_its_files_free() {
         let queued_on_b = store.append(&b, last).unwrap();
         let queued_on_a = store.append(&a, &on_a).unwrap();
         let a_acked = within_5_s(|| store.is_durable(&a, queued_on_a));
-        let pending = store.flush(Instant::now() + Duration::from_millis(100));
+        let pending = store
+            .flush(Instant::now() + Duration::from_millis(100))
+            .docs;
         hold.release();
         loading.join().unwrap();
         let b_acked = within_5_s(|| store.is_durable(&b, queued_on_b));

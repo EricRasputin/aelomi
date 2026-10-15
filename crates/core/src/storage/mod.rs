@@ -41,4 +41,4 @@ pub use data_path::{DataPathError, check_data_path};
 pub use doc_id::{DocId, InvalidDocId};
 pub use health::{FailReason, Health};
 pub use state::Seq;
-pub use store::{AppendError, OpenError, Store};
+pub use store::{AppendError, OpenError, Pending, Store};

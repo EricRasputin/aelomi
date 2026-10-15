@@ -333,7 +333,8 @@ fn every_broken_index_rebuilds_to_the_same_results_and_source_files_never_change
         assert_eq!(
             opened
                 .workspace
-                .flush(Instant::now() + Duration::from_secs(10)),
+                .flush(Instant::now() + Duration::from_secs(10))
+                .docs,
             []
         );
         snapshot(&opened.workspace)
@@ -499,7 +500,7 @@ fn trashed_and_erased_pages_never_appear_as_source_or_target() {
     assert_eq!(sources("roadmap"), "aelomi");
     assert_eq!(sources("gone"), "");
     assert_eq!(search("orphanword"), "");
-    assert_eq!(ws.flush(Instant::now() + Duration::from_secs(10)), []);
+    assert_eq!(ws.flush(Instant::now() + Duration::from_secs(10)).docs, []);
     let root = std::fs::canonicalize(dir.path()).unwrap();
     assert!(
         root.join("docs/gone").is_dir(),
@@ -566,7 +567,8 @@ fn reconciling_an_unchanged_cache_writes_no_row() {
         assert_eq!(
             opened
                 .workspace
-                .flush(Instant::now() + Duration::from_secs(10)),
+                .flush(Instant::now() + Duration::from_secs(10))
+                .docs,
             []
         );
     }
@@ -599,7 +601,8 @@ fn a_cache_from_a_newer_build_is_replaced_and_says_so() {
         assert_eq!(
             opened
                 .workspace
-                .flush(Instant::now() + Duration::from_secs(10)),
+                .flush(Instant::now() + Duration::from_secs(10))
+                .docs,
             []
         );
         snapshot(&opened.workspace)

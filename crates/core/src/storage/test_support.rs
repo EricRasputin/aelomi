@@ -41,6 +41,14 @@ impl SimDisk {
         )
     }
 
+    pub fn settings_write_count(&self) -> usize {
+        self.0
+            .ops()
+            .iter()
+            .filter(|op| op.kind == OpKind::Append && op.path.ends_with("settings.json.tmp"))
+            .count()
+    }
+
     pub fn fail_settings_reads(&self) {
         self.0.fail(OpKind::Read, "settings.json", libc::EACCES);
     }

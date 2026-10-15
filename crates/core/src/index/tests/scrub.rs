@@ -87,7 +87,9 @@ fn erase_secret(workspace: &crate::workspace::Workspace) {
     let update = editor.edit(&id, |txn| erase_page(txn, &page("secret")));
     workspace.append(&id, &update).unwrap();
     assert_eq!(
-        workspace.flush(Instant::now() + Duration::from_secs(10)),
+        workspace
+            .flush(Instant::now() + Duration::from_secs(10))
+            .docs,
         []
     );
 }
@@ -163,7 +165,8 @@ fn seeded(dir: &Path, gate: Arc<Gate>) -> Opened {
     assert_eq!(
         opened
             .workspace
-            .flush(Instant::now() + Duration::from_secs(10)),
+            .flush(Instant::now() + Duration::from_secs(10))
+            .docs,
         []
     );
     opened

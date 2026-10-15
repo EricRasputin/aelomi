@@ -257,10 +257,10 @@ fn flush_retries_a_failing_doc_at_once_whatever_its_backoff() {
     };
     let before = appends();
     let quit_deadline = || Instant::now() + Duration::from_secs(2);
-    assert_eq!(store.flush(quit_deadline()), std::slice::from_ref(&a));
+    assert_eq!(store.flush(quit_deadline()).docs, std::slice::from_ref(&a));
     assert_eq!(appends(), before + 1, "one retry per flush");
     env.fs.clear_faults();
-    assert_eq!(store.flush(quit_deadline()), [], "the disk recovered");
+    assert_eq!(store.flush(quit_deadline()).docs, [], "the disk recovered");
     assert_eq!(store.health(), Health::Healthy);
     drop(store);
     assert_doc(&env.open(), &a, &sent);
@@ -276,7 +276,7 @@ fn a_flush_retries_a_failing_doc_whose_files_were_busy_as_soon_as_they_free() {
     for update in stored {
         store.append(&b, update).unwrap();
     }
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     assert!(store.has_pending_structs(&b), "b's load merges its files");
     env.fs.fail(OpKind::Append, "/docs/b/", libc::EIO);
     store.append(&b, last).unwrap();
@@ -287,7 +287,7 @@ fn a_flush_retries_a_failing_doc_whose_files_were_busy_as_soon_as_they_free() {
     let pending = std::thread::scope(|s| {
         let loading = s.spawn(|| store.load(&b).unwrap());
         hold.wait_until_reached();
-        let pending = store.flush(soon());
+        let pending = store.flush(soon()).docs;
         hold.release();
         loading.join().unwrap();
         pending
@@ -312,7 +312,7 @@ fn close_never_discards_a_pending_update() {
     }
     let (store, pending) = store.close(soon()).unwrap_err();
     assert_eq!(
-        pending,
+        pending.docs,
         std::slice::from_ref(&a),
         "close hands the store back"
     );
@@ -347,7 +347,7 @@ fn a_panic_holding_a_docs_state_stops_neither_its_writes_nor_any_others() {
 
     let more = gen_a.next_update();
     store.append(&a, &more).unwrap();
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     sent_a.push(more);
     drop(store);
     let store = env.open();
@@ -457,9 +457,12 @@ fn the_writer_thread_survives_a_panic() {
     let sent = UpdateGen::new(100, 1).updates(2);
     env.fs.panic_once(OpKind::Append, "/docs/a/");
     store.append(&a, &sent[0]).unwrap();
-    assert_eq!(store.flush(Instant::now() + Duration::from_secs(5)), []);
+    assert_eq!(
+        store.flush(Instant::now() + Duration::from_secs(5)).docs,
+        []
+    );
     store.append(&a, &sent[1]).unwrap();
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     assert_eq!(store.health(), Health::Healthy);
     drop(store);
     assert_doc(&env.open(), &a, &sent);
@@ -469,7 +472,7 @@ fn fail_then_recover(env: &Env, store: &Store, a: &DocId, sent: &[Vec<u8>], atte
     for update in &sent[..3] {
         store.append(a, update).unwrap();
     }
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     env.fs.fail(OpKind::Append, "/docs/a/", libc::EIO);
     for update in &sent[3..] {
         store.append(a, update).unwrap();
@@ -483,7 +486,7 @@ fn fail_then_recover(env: &Env, store: &Store, a: &DocId, sent: &[Vec<u8>], atte
         write_batch(store);
     }
     env.fs.clear_faults();
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
 }
 
 fn torn_logs(env: &Env, a: &DocId) -> Vec<(String, usize)> {

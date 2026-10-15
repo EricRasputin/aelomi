@@ -7,7 +7,7 @@ use std::time::Duration;
 use super::clock::Clock;
 use super::decode;
 use super::format::parse_format;
-use super::fs::{Fs, FsLock, LockError, validate_format_marker};
+use super::fs::{DurableFile, Fs, FsLock, LockError};
 use super::layout::{DocFile, Layout, RootFile};
 use super::log::{self, LogEnd};
 use super::snapshot::{self, Condition};
@@ -706,9 +706,10 @@ impl Fs for SimFs {
         })
     }
 
-    fn replace(&self, root: &Path, file: RootFile) -> io::Result<()> {
+    fn replace(&self, root: &Path, file: RootFile, source: DurableFile) -> io::Result<()> {
         let layout = Layout::new(root);
         let from = layout.temp_file(file);
+        source.require_path(&from)?;
         let to = layout.file(file);
         let kind = match file {
             RootFile::Format => OpKind::ReplaceFormat,
@@ -716,9 +717,7 @@ impl Fs for SimFs {
         };
         self.run(kind, &from, Some(&to), &[], |sim| {
             let (id, source) = sim.file(&from)?;
-            if file == RootFile::Format {
-                validate_format_marker(&source.data)?;
-            }
+            file.validate(&source.data)?;
             if source.durable != source.data.len() {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
@@ -953,11 +952,12 @@ mod tests {
                 fs.put_durable(&p("/data/format.json"), br#"{"format":1}"#);
                 fs.die_after(step);
                 let publish = || -> io::Result<()> {
-                    fs.create_new(&p("/data/format.json.tmp"))?;
-                    fs.append(&p("/data/format.json.tmp"), br#"{"format":2}"#)?;
-                    fs.fsync(&p("/data/format.json.tmp"))?;
-                    fs.full_sync(&p("/data/format.json.tmp"))?;
-                    fs.replace_format(&p("/data"))?;
+                    let source = super::super::fs::create_durable(
+                        &*fs,
+                        &p("/data/format.json.tmp"),
+                        br#"{"format":2}"#,
+                    )?;
+                    fs.replace(&p("/data"), RootFile::Format, source)?;
                     fs.fsync(&p("/data"))?;
                     fs.full_sync(&p("/data"))
                 };
@@ -999,13 +999,19 @@ mod tests {
         ] {
             let fs = sim();
             fs.put_durable(&p("/data/format.json"), br#"{"format":1}"#);
-            fs.create_new(&p("/data/format.json.tmp")).unwrap();
+            let source =
+                super::super::fs::create_durable(&*fs, &p("/data/format.json.tmp"), b"").unwrap();
             fs.append(&p("/data/format.json.tmp"), bytes).unwrap();
             fs.fsync(&p("/data/format.json.tmp")).unwrap();
             if sync {
                 fs.full_sync(&p("/data/format.json.tmp")).unwrap();
             }
-            assert_eq!(fs.replace_format(&p("/data")).unwrap_err().kind(), error);
+            assert_eq!(
+                fs.replace(&p("/data"), RootFile::Format, source)
+                    .unwrap_err()
+                    .kind(),
+                error
+            );
             assert_eq!(
                 fs.read(&p("/data/format.json")).unwrap(),
                 br#"{"format":1}"#
@@ -1025,8 +1031,13 @@ mod tests {
             let fs = sim();
             fs.put_durable(&p("/data/format.json"), br#"{"format":1}"#);
             fs.put_durable(&p("/data/docs/a/.keep"), b"");
-            fs.put_durable(&p("/data/format.json.tmp"), br#"{"format":2}"#);
-            fs.replace_format(&p("/data")).unwrap();
+            let source = super::super::fs::create_durable(
+                &*fs,
+                &p("/data/format.json.tmp"),
+                br#"{"format":2}"#,
+            )
+            .unwrap();
+            fs.replace(&p("/data"), RootFile::Format, source).unwrap();
             if sync_root {
                 fs.fsync(&p("/data")).unwrap();
             }

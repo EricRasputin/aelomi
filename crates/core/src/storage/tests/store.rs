@@ -33,7 +33,7 @@ fn docs_round_trip_through_close_and_reopen() {
         }
         store.run_writer_once();
     }
-    assert_eq!(store.flush(soon()), [], "flush leaves nothing pending");
+    assert_eq!(store.flush(soon()).docs, [], "flush leaves nothing pending");
     store.close(soon()).unwrap();
 
     let store = env.open();
@@ -136,7 +136,7 @@ fn flush_then_close_keeps_every_update() {
         sent[i % 2].push(update);
     }
     assert_eq!(
-        store.flush(soon()),
+        store.flush(soon()).docs,
         [],
         "flush finishes before its deadline"
     );
@@ -159,7 +159,7 @@ fn bytes_that_do_not_decode_are_rejected_and_write_nothing() {
             Err(AppendError::InvalidUpdate)
         ));
     }
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     assert_eq!(env.fs.ops().len(), before, "no filesystem operation at all");
     assert_doc(&store, &doc("a"), &[]);
 }
@@ -185,10 +185,10 @@ fn an_update_larger_than_a_record_holds_is_rejected_and_stores_nothing() {
         Err(AppendError::InvalidUpdate)
     ));
     assert_doc(&store, &a, &[]);
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     assert_eq!(env.doc_files(&a), Vec::<String>::new());
     store.append(&a, &fits).unwrap();
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     drop(store);
     assert_doc(&env.open(), &a, &[fits]);
 }
@@ -246,7 +246,7 @@ fn an_update_that_fails_to_apply_is_rejected_and_leaves_no_trace_in_memory() {
         Err(AppendError::InvalidUpdate)
     ));
     assert_doc(&store, &doc("a"), std::slice::from_ref(&good));
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     let appended: Vec<_> = env
         .fs
         .ops()
@@ -263,7 +263,7 @@ fn loading_writes_nothing_and_the_first_append_starts_a_new_segment() {
     let mut updates = UpdateGen::new(3, 1);
     let first = updates.next_update();
     store.append(&doc("a"), &first).unwrap();
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     drop(store);
 
     let store = env.open();
@@ -278,7 +278,7 @@ fn loading_writes_nothing_and_the_first_append_starts_a_new_segment() {
 
     let second = updates.next_update();
     store.append(&doc("a"), &second).unwrap();
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     assert_eq!(env.doc_files(&doc("a")), [log_name(0, 0), log_name(0, 1)]);
     drop(store);
     assert_doc(&env.open(), &doc("a"), &[first, second]);
@@ -296,7 +296,7 @@ fn a_doc_with_pending_structs_loads_as_bytes_that_apply_and_hold_exactly_its_ope
         }
         assert!(store.has_pending_structs(&a), "seed {seed}");
         let queued = store.load(&a).unwrap();
-        assert_eq!(store.flush(soon()), []);
+        assert_eq!(store.flush(soon()).docs, []);
         drop(store);
         let stored = env.open().load(&a).unwrap();
 
@@ -347,7 +347,7 @@ fn a_doc_without_pending_structs_loads_from_memory_without_reading_its_files() {
     for update in &sent {
         store.append(&a, update).unwrap();
     }
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     drop(store);
     let store = env.open();
     store.load(&a).unwrap();
@@ -379,7 +379,7 @@ fn a_doc_that_fails_to_rebuild_stays_stale_until_a_rebuild_succeeds() {
         txn.encode_update_v1()
     };
     store.append(&a, &good).unwrap();
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     assert_eq!(store.queued_compactions(), std::slice::from_ref(&a));
     store.append(&a, &later).unwrap();
 
@@ -400,7 +400,7 @@ fn a_doc_that_fails_to_rebuild_stays_stale_until_a_rebuild_succeeds() {
         [log_name(0, 0)],
         "compaction skips a stale doc"
     );
-    assert_eq!(store.flush(soon()), [], "its queue is still written");
+    assert_eq!(store.flush(soon()).docs, [], "its queue is still written");
 
     env.fs.clear_faults();
     assert_doc(&store, &a, &[good.clone(), later.clone()]);
@@ -420,7 +420,7 @@ fn a_rebuild_keeps_damage_it_finds_for_quarantine() {
     for update in &sent {
         store.append(&a, update).unwrap();
     }
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
 
     let name = log_name(0, 0);
     let path = env.path("docs/a").join(&name);
@@ -455,7 +455,7 @@ fn an_update_after_a_rebuild_survives_damage_the_rebuild_read_in_the_open_segmen
         for update in &sent {
             store.append(&a, update).unwrap();
         }
-        assert_eq!(store.flush(soon()), []);
+        assert_eq!(store.flush(soon()).docs, []);
         let open = env.path("docs/a").join(log_name(0, 0));
         env.fs.flip_bit(&open, frames(&sent)[5].body.start + 1);
 
@@ -466,7 +466,7 @@ fn an_update_after_a_rebuild_survives_damage_the_rebuild_read_in_the_open_segmen
         }
         assert_doc(&store, &a, &without(&sent, &[5]));
         store.append(&a, &later).unwrap();
-        assert_eq!(store.flush(soon()), []);
+        assert_eq!(store.flush(soon()).docs, []);
         drop(store);
         env.fs.crash(Crash::DropUnsynced);
 
@@ -485,7 +485,7 @@ fn a_queue_written_while_a_rebuild_fails_survives_damage_in_the_open_segment() {
     for update in &sent {
         store.append(&a, update).unwrap();
     }
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     let open = env.path("docs/a").join(log_name(0, 0));
     env.fs.flip_bit(&open, frames(&sent)[5].body.start + 1);
 
@@ -494,7 +494,7 @@ fn a_queue_written_while_a_rebuild_fails_survives_damage_in_the_open_segment() {
     assert!(store.append(&a, &bad).is_err());
     env.fs.fail(OpKind::Read, "/docs/a/", libc::EIO);
     assert!(store.load(&a).is_err(), "the rebuild fails");
-    assert_eq!(store.flush(soon()), [], "its queue is still written");
+    assert_eq!(store.flush(soon()).docs, [], "its queue is still written");
     drop(store);
     env.fs.clear_faults();
     env.fs.crash(Crash::DropUnsynced);
@@ -512,13 +512,13 @@ fn an_update_written_behind_damage_in_the_open_segment_survives_a_crash() {
     for update in &sent {
         store.append(&a, update).unwrap();
     }
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     let open = env.path("docs/a").join(log_name(0, 0));
     env.fs.flip_bit(&open, frames(&sent)[5].body.start + 1);
 
     let later = UpdateGen::new(41, 1).next_update();
     store.append(&a, &later).unwrap();
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     assert_eq!(
         env.doc_files(&a),
         [log_name(0, 0)],
@@ -543,13 +543,13 @@ fn an_update_after_a_pending_doc_loads_survives_damage_the_load_read_in_the_open
             store.append(&a, update).unwrap();
         }
         assert!(store.has_pending_structs(&a));
-        assert_eq!(store.flush(soon()), []);
+        assert_eq!(store.flush(soon()).docs, []);
         let open = env.path("docs/a").join(log_name(0, 0));
         env.fs.flip_bit(&open, frames(&sent)[intact].body.start + 1);
 
         store.load(&a).unwrap();
         store.append(&a, &later).unwrap();
-        assert_eq!(store.flush(soon()), []);
+        assert_eq!(store.flush(soon()).docs, []);
         drop(store);
         env.fs.crash(Crash::DropUnsynced);
 
@@ -569,7 +569,7 @@ fn the_next_compaction_quarantines_damage_a_pending_doc_load_reads() {
         store.append(&a, update).unwrap();
     }
     assert!(store.has_pending_structs(&a));
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     let name = log_name(0, 0);
     let path = env.path("docs/a").join(&name);
     env.fs.flip_bit(&path, frames(&sent)[9].body.start + 1);
@@ -602,7 +602,7 @@ fn a_rebuild_queues_the_compaction_a_stale_doc_skipped() {
         let a = doc("a");
         let PartlyApplying { good, bad } = partly_applying_update();
         store.append(&a, &good).unwrap();
-        assert_eq!(store.flush(soon()), []);
+        assert_eq!(store.flush(soon()).docs, []);
         assert!(store.append(&a, &bad).is_err());
         let (_, skipped) = store.run_compactor_once().expect("a was queued");
         assert!(skipped.is_ok());
@@ -623,7 +623,7 @@ fn a_rebuild_queues_the_compaction_a_stale_doc_skipped() {
         let (_, compacted) = store.run_compactor_once().expect("a was queued");
         assert!(compacted.is_ok());
         assert_eq!(env.doc_files(&a), [v2_snapshot_name(1)]);
-        assert_eq!(store.flush(soon()), []);
+        assert_eq!(store.flush(soon()).docs, []);
         drop(store);
         assert_doc(&env.open(), &a, &sent);
     }
@@ -639,7 +639,7 @@ fn compaction_quarantines_damage_a_rebuild_finds_while_it_runs() {
     for update in &sent {
         store.append(&a, update).unwrap();
     }
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     let rotated = store.begin_compaction(&a).unwrap();
 
     let name = log_name(0, 0);
@@ -671,7 +671,7 @@ fn plant_an_older_snapshot_the_loaded_doc_lacks(env: &Env) -> (Store, Vec<Vec<u8
     for update in &sent[..5] {
         store.append(&a, update).unwrap();
     }
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     let all_ten = doc_from(sent.iter().map(Vec::as_slice))
         .transact()
         .encode_state_as_update_v1(&StateVector::default());
@@ -771,10 +771,10 @@ fn a_compaction_asked_for_while_one_runs_is_queued_once_when_it_ends() {
         for update in &sent {
             store.append(&a, update).unwrap();
         }
-        assert_eq!(store.flush(soon()), []);
+        assert_eq!(store.flush(soon()).docs, []);
         store.append(&a, &more[1]).unwrap();
         sent.push(more[1].clone());
-        assert_eq!(store.flush(soon()), []);
+        assert_eq!(store.flush(soon()).docs, []);
         assert_eq!(
             store.queued_compactions(),
             std::slice::from_ref(&a),
@@ -787,7 +787,7 @@ fn a_compaction_asked_for_while_one_runs_is_queued_once_when_it_ends() {
             assert_doc(&store, &a, &sent);
             store.append(&a, &more[2]).unwrap();
             sent.push(more[2].clone());
-            assert_eq!(store.flush(soon()), []);
+            assert_eq!(store.flush(soon()).docs, []);
         }
         store.finish_compaction(&a, rotated).unwrap();
         if ask_while_running {
@@ -820,7 +820,7 @@ fn a_kept_record_that_never_applies_costs_no_compaction_per_edit() {
     let a = doc("a");
     let PartlyApplying { good, bad } = partly_applying_update();
     store.append(&a, &good).unwrap();
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     let name = "log-0000000000-0000000005.ylog";
     env.fs
         .put_durable(&env.path("docs/a").join(name), &encode_segment(&[&bad]));
@@ -833,7 +833,7 @@ fn a_kept_record_that_never_applies_costs_no_compaction_per_edit() {
     for client in 50..54 {
         sent.push(typed(client, 1));
         store.append(&a, sent.last().unwrap()).unwrap();
-        assert_eq!(store.flush(soon()), []);
+        assert_eq!(store.flush(soon()).docs, []);
         assert!(store.run_compactor_once().is_none(), "client {client}");
     }
     let (held, _) = applied(&store.load(&a).unwrap(), "loaded");
@@ -857,12 +857,12 @@ fn a_doc_with_both_log_formats_loads_every_update_and_continues_numbering() {
     let store = env.open();
     assert_doc(&store, &a, &updates[..2]);
     store.append(&a, &updates[2]).unwrap();
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     drop(store);
     let store = env.open();
     assert_doc(&store, &a, &updates[..3]);
     store.append(&a, &updates[3]).unwrap();
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     let files = env.fs.files();
     assert_eq!(
         (

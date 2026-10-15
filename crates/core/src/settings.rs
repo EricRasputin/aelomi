@@ -122,11 +122,8 @@ impl Settings {
             }))
         })
         .flatten();
-        let recent_pages = take_field(&mut extra, "recentPages", page_ids).unwrap_or_default();
-        let expanded_rows = take_field(&mut extra, "expandedRows", page_ids)
-            .unwrap_or_default()
-            .into_iter()
-            .collect();
+        let recent_pages = page_ids(&mut extra, "recentPages");
+        let expanded_rows = page_ids(&mut extra, "expandedRows").into_iter().collect();
         let mut settings = Self {
             theme,
             open_page,
@@ -189,12 +186,16 @@ fn take_field<T>(
     Some(parsed)
 }
 
-fn page_ids(value: &Value) -> Option<Vec<PageId>> {
-    Some(
-        value
-            .as_array()?
-            .iter()
-            .filter_map(|id| PageId::new(id.as_str()?).ok())
-            .collect(),
-    )
+fn page_ids(extra: &mut Map<String, Value>, key: &str) -> Vec<PageId> {
+    let Some(entries) = extra.get(key).and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    let ids: Vec<_> = entries
+        .iter()
+        .filter_map(|id| PageId::new(id.as_str()?).ok())
+        .collect();
+    if ids.len() == entries.len() {
+        extra.remove(key);
+    }
+    ids
 }

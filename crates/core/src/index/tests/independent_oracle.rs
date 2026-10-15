@@ -449,7 +449,8 @@ fn before_and_after_rebuild(
     assert_eq!(
         opened
             .workspace
-            .flush(std::time::Instant::now() + Duration::from_secs(10)),
+            .flush(std::time::Instant::now() + Duration::from_secs(10))
+            .docs,
         []
     );
     drop(opened);

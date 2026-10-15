@@ -12,12 +12,14 @@ export type QuitDecision =
       kind: "asking";
       revision: number;
       pendingDocs: string[];
+      pendingSettings: boolean;
       error: string | null;
     }
   | {
       kind: "quitting";
       revision: number;
       pendingDocs: string[];
+      pendingSettings: boolean;
       origin: QuitOrigin;
     };
 
@@ -43,6 +45,12 @@ function decide(status: QuitStatus, current: QuitDecision): QuitDecision {
           : current.kind === "quitting" || current.kind === "asking"
             ? current.pendingDocs
             : [],
+      pendingSettings:
+        typeof phase === "object"
+          ? phase.Asking.pending_settings
+          : current.kind === "quitting" || current.kind === "asking"
+            ? current.pendingSettings
+            : false,
       origin:
         current.kind === "asking" ||
         (current.kind === "quitting" && current.origin === "userConfirmed")
@@ -59,6 +67,7 @@ function decide(status: QuitStatus, current: QuitDecision): QuitDecision {
         kind: "asking",
         revision,
         pendingDocs: phase.Asking.pending_docs,
+        pendingSettings: phase.Asking.pending_settings,
         error: null,
       };
   }
@@ -95,6 +104,7 @@ export const useQuitStore = create<QuitStore>((set, get) => ({
         kind: "quitting",
         revision: decision.revision,
         pendingDocs: decision.pendingDocs,
+        pendingSettings: decision.pendingSettings,
         origin: "userConfirmed",
       },
     });
@@ -108,6 +118,7 @@ export const useQuitStore = create<QuitStore>((set, get) => ({
           kind: "asking",
           revision: current.revision,
           pendingDocs: current.pendingDocs,
+          pendingSettings: current.pendingSettings,
           error: storageCopy.quitError,
         },
       });

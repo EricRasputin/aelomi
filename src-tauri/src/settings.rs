@@ -57,6 +57,7 @@ pub enum SettingsError {
     Unavailable,
     InvalidPageId,
     Io(String),
+    Write(crate::storage::FailReason),
     Internal,
 }
 
@@ -69,6 +70,15 @@ impl From<crate::storage::StorageError> for SettingsError {
 impl From<std::io::Error> for SettingsError {
     fn from(error: std::io::Error) -> Self {
         Self::Io(error.to_string())
+    }
+}
+
+impl From<aelomi_core::workspace::SettingsError> for SettingsError {
+    fn from(error: aelomi_core::workspace::SettingsError) -> Self {
+        match error {
+            aelomi_core::workspace::SettingsError::Read(error) => error.into(),
+            aelomi_core::workspace::SettingsError::Write(reason) => Self::Write((&reason).into()),
+        }
     }
 }
 

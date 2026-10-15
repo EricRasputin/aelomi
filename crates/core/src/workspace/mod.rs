@@ -34,6 +34,12 @@ pub struct Workspace {
     settings: Mutex<Option<crate::settings::Settings>>,
 }
 
+#[derive(Debug)]
+pub enum SettingsError {
+    Read(io::Error),
+    Write(crate::storage::FailReason),
+}
+
 pub struct SettingsUpdate {
     workspace: Arc<Workspace>,
     patch: crate::settings::SettingsPatch,
@@ -49,7 +55,7 @@ impl Drop for SettingsAdmission {
 }
 
 impl SettingsUpdate {
-    pub fn run(self) -> io::Result<crate::settings::Settings> {
+    pub fn run(self) -> Result<crate::settings::Settings, SettingsError> {
         self.workspace.update_settings(self.patch)
     }
 }
@@ -173,24 +179,23 @@ impl Workspace {
         }
     }
 
-    pub fn update_settings(
+    fn update_settings(
         &self,
         patch: crate::settings::SettingsPatch,
-    ) -> io::Result<crate::settings::Settings> {
+    ) -> Result<crate::settings::Settings, SettingsError> {
         let mut current = self.settings.lock().unwrap_or_else(PoisonError::into_inner);
         if current.is_none() {
-            *current = Some(self.store.load_settings()?);
+            *current = Some(self.store.load_settings().map_err(SettingsError::Read)?);
         }
         let settings = current.as_mut().expect("settings loaded");
         settings.apply(patch);
         let snapshot = settings.clone();
         let seq = self.store.queue_settings(snapshot.clone());
-        self.store.wait_settings(seq)?;
+        drop(current);
+        self.store
+            .wait_settings(seq)
+            .map_err(SettingsError::Write)?;
         Ok(snapshot)
-    }
-
-    pub fn flush_settings(&self, deadline: Instant) -> bool {
-        self.store.flush_settings(deadline)
     }
 
     /// See [`Store::load`].
@@ -209,7 +214,7 @@ impl Workspace {
     }
 
     /// See [`Store::flush`]. Never waits for the index.
-    pub fn flush(&self, deadline: Instant) -> Vec<DocId> {
+    pub fn flush(&self, deadline: Instant) -> crate::storage::Pending {
         self.store.flush(deadline)
     }
 

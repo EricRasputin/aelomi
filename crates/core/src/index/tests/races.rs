@@ -125,7 +125,8 @@ fn edits_during_the_startup_reconcile_converge_to_a_fresh_rebuild() {
         assert_eq!(
             opened
                 .workspace
-                .flush(Instant::now() + Duration::from_secs(10)),
+                .flush(Instant::now() + Duration::from_secs(10))
+                .docs,
             []
         );
     }
@@ -206,7 +207,8 @@ fn edits_during_the_startup_reconcile_converge_to_a_fresh_rebuild() {
     assert_eq!(
         opened
             .workspace
-            .flush(Instant::now() + Duration::from_secs(10)),
+            .flush(Instant::now() + Duration::from_secs(10))
+            .docs,
         []
     );
     drop(opened);
@@ -297,7 +299,8 @@ fn the_index_never_delays_an_acknowledgement() {
     assert_eq!(
         opened
             .workspace
-            .flush(Instant::now() + Duration::from_secs(10)),
+            .flush(Instant::now() + Duration::from_secs(10))
+            .docs,
         []
     );
     eprintln!(

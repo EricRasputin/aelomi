@@ -25,7 +25,9 @@ impl Owner {
         Settings::from(&self.0.settings().unwrap())
     }
     fn update(&self, patch: SettingsPatch) -> Result<Settings, SettingsError> {
-        Ok(Settings::from(&self.0.update_settings(patch.try_into()?)?))
+        Ok(Settings::from(
+            &self.0.prepare_settings_update(patch.try_into()?).run()?,
+        ))
     }
 }
 fn owner(storage: &Storage) -> Arc<Owner> {
@@ -136,7 +138,7 @@ fn data_4_failed_write_keeps_the_patch_for_the_next_durable_update() {
     disk.fail_appends("settings.json.tmp");
     assert!(matches!(
         owner.update(session_patch()),
-        Err(SettingsError::Io(_))
+        Err(SettingsError::Write(crate::storage::FailReason::Io(_)))
     ));
     assert_eq!(owner.get().theme, Theme::Dark);
     disk.clear_faults();
@@ -315,7 +317,7 @@ fn shell_10_failed_settings_retry_without_another_patch_and_clear_health() {
     disk.fail_appends("settings.json.tmp");
     assert!(matches!(
         owner(&storage).update(session_patch()),
-        Err(SettingsError::Io(_))
+        Err(SettingsError::Write(_))
     ));
     let failed = health.recv_timeout(Duration::from_secs(2)).unwrap();
     assert!(matches!(
@@ -325,7 +327,13 @@ fn shell_10_failed_settings_retry_without_another_patch_and_clear_health() {
             ..
         }
     ));
-    assert_eq!(storage.pending_docs(), ["settings.json"]);
+    assert_eq!(
+        storage.pending_edits(),
+        aelomi_core::storage::Pending {
+            docs: vec![],
+            settings: true
+        }
+    );
     disk.clear_faults();
     assert_eq!(
         health.recv_timeout(Duration::from_secs(2)).unwrap(),
@@ -373,4 +381,72 @@ fn shell_9_quit_waits_for_a_settings_command_queued_before_its_worker_runs() {
         assert_eq!(reopened.load_settings().unwrap(), snapshot);
         assert_eq!(snapshot.theme, core::Theme::Dark);
     });
+}
+
+#[test]
+fn data_4_reads_do_not_wait_for_disk_and_quick_patches_coalesce() {
+    use std::sync::mpsc;
+    use std::time::{Duration, Instant};
+    let disk = SimDisk::default();
+    let storage = crate::storage::tests::open_on(&disk);
+    let workspace = storage.workspace().unwrap();
+    let hold = disk.hold_settings_write();
+    thread::scope(|scope| {
+        scope.spawn(|| owner(&storage).update(session_patch()).unwrap());
+        hold.wait_until_reached();
+        scope.spawn(|| {
+            owner(&storage)
+                .update(SettingsPatch {
+                    theme: Some(ThemeChoice::Light),
+                    ..Default::default()
+                })
+                .unwrap()
+        });
+        scope.spawn(|| {
+            owner(&storage)
+                .update(SettingsPatch {
+                    expanded_rows: Some(vec!["page-c".into()]),
+                    ..Default::default()
+                })
+                .unwrap()
+        });
+        let (done, result) = mpsc::channel();
+        let workspace_ref = &workspace;
+        scope.spawn(move || {
+            let deadline = Instant::now() + Duration::from_secs(1);
+            loop {
+                let snapshot = Settings::from(&workspace_ref.settings().unwrap());
+                if snapshot.theme == Theme::Light && snapshot.expanded_rows == ["page-c"] {
+                    done.send(snapshot).unwrap();
+                    break;
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "quick patches did not queue while the disk was held"
+                );
+                thread::yield_now();
+            }
+        });
+        let cached = result.recv_timeout(Duration::from_secs(1));
+        hold.release();
+        assert_eq!(
+            cached.unwrap(),
+            Settings {
+                theme: Theme::Light,
+                open_page: Some(SettingsOpenPage {
+                    page_id: "page-a".into(),
+                    top_visible_block_id: Some("block-7".into())
+                }),
+                recent_pages: vec!["page-b".into(), "page-a".into()],
+                expanded_rows: vec!["page-c".into()],
+            }
+        );
+    });
+    assert_eq!(disk.settings_write_count(), 2);
+    disk.crash();
+    let reopened = disk.open(Path::new("/data")).unwrap();
+    assert_eq!(
+        Settings::from(&reopened.load_settings().unwrap()),
+        owner(&storage).get()
+    );
 }

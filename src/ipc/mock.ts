@@ -160,26 +160,30 @@ function pendingDocs(): string[] {
   return [...storage.docs]
     .filter(([, doc]) => doc.pending)
     .map(([id]) => id)
-    .concat(settingsPending ? ["settings.json"] : []);
+    .sort();
 }
 
 function flushThenQuit() {
   const pending = pendingDocs();
-  if (pending.length === 0) {
+  if (pending.length === 0 && !settingsPending) {
     changeQuit("Confirmed");
     exited = true;
-  } else changeQuit({ Asking: { pending_docs: pending } });
+  } else
+    changeQuit({
+      Asking: { pending_docs: pending, pending_settings: settingsPending },
+    });
 }
 
 function refreshHealth() {
   const pending = pendingDocs();
   const next: Health =
-    pending.length === 0
+    pending.length === 0 && !settingsPending
       ? "Healthy"
       : {
           Failing: {
             reason: storage.reason,
             pending_docs: pending,
+            pending_settings: settingsPending,
           },
         };
   if (JSON.stringify(next) === JSON.stringify(storage.health)) return;
@@ -390,7 +394,7 @@ export const commands = {
     settingsPending = storage.failWrites;
     refreshHealth();
     if (settingsPending)
-      return { status: "error", error: { Io: "mock write failure" } };
+      return { status: "error", error: { Write: storage.reason } };
     return structuredClone(result);
   },
   ping: async (request) => {
@@ -498,7 +502,12 @@ export const commands = {
     if (invalid !== undefined)
       return { status: "error", error: "InvalidDocId" };
     if (quit.phase === "Draining" && quit.revision === revision)
-      changeQuit({ Asking: { pending_docs: [...docIds] } });
+      changeQuit({
+        Asking: {
+          pending_docs: [...new Set([...docIds, ...pendingDocs()])].sort(),
+          pending_settings: settingsPending,
+        },
+      });
     return { status: "ok", data: quitStatus() };
   },
   docLoad: async (docId) => {
@@ -702,8 +711,14 @@ const control = {
       }
       if (!quit.frontendReady) {
         const pending = pendingDocs();
-        if (pending.length === 0) exited = true;
-        else changeQuit({ Asking: { pending_docs: pending } });
+        if (pending.length === 0 && !settingsPending) exited = true;
+        else
+          changeQuit({
+            Asking: {
+              pending_docs: pending,
+              pending_settings: settingsPending,
+            },
+          });
         return;
       }
       if (quit.phase !== "Draining") changeQuit("Draining");
@@ -711,7 +726,12 @@ const control = {
     /** The shell's drain timeout: flushes the Store and asks. */
     timeOut() {
       if (quit.phase !== "Draining") return;
-      changeQuit({ Asking: { pending_docs: pendingDocs() } });
+      changeQuit({
+        Asking: {
+          pending_docs: pendingDocs(),
+          pending_settings: settingsPending,
+        },
+      });
     },
   },
   index: {

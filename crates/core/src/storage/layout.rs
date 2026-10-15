@@ -83,6 +83,13 @@ pub(crate) enum RootFile {
 }
 
 impl RootFile {
+    pub fn validate(self, bytes: &[u8]) -> std::io::Result<()> {
+        match self {
+            Self::Format => super::fs::validate_format_marker(bytes),
+            Self::Settings => Ok(()),
+        }
+    }
+
     pub fn name(self) -> &'static str {
         match self {
             Self::Format => "format.json",

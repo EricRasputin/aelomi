@@ -31,6 +31,18 @@ pub struct Store {
     _lock: FsLock,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Pending {
+    pub docs: Vec<DocId>,
+    pub settings: bool,
+}
+
+impl Pending {
+    pub fn is_empty(&self) -> bool {
+        self.docs.is_empty() && !self.settings
+    }
+}
+
 #[derive(Debug)]
 pub enum OpenError {
     /// Another process has the data folder open.
@@ -100,6 +112,7 @@ impl Store {
     }
     pub(crate) fn release_settings(&self) {
         self.shared.settings.release();
+        self.shared.batch_finished();
     }
 
     pub(crate) fn queue_settings(&self, settings: crate::settings::Settings) -> Seq {
@@ -109,18 +122,8 @@ impl Store {
         seq
     }
 
-    pub(crate) fn wait_settings(&self, seq: Seq) -> io::Result<()> {
+    pub(crate) fn wait_settings(&self, seq: Seq) -> Result<(), FailReason> {
         self.shared.settings.wait(seq)
-    }
-
-    pub(crate) fn flush_settings(&self, deadline: Instant) -> bool {
-        lock_ignoring_poison(&self.shared.signal).retry_failing = true;
-        self.shared.notify_writer();
-        #[cfg(test)]
-        if self.shared.driver == Driver::Manual {
-            writer::run_once(&self.shared);
-        }
-        self.shared.settings.flush(deadline)
     }
 
     pub fn open(root: impl AsRef<Path>) -> Result<Self, OpenError> {
@@ -235,15 +238,18 @@ impl Store {
     }
 
     /// Waits until every update appended before the call is durable, or `deadline` passes.
-    /// Returns the docs that still have such updates pending. A doc whose writes are failing
+    /// Returns the docs and settings still pending. A doc whose writes are failing
     /// retries once at the start, whatever its backoff.
-    pub fn flush(&self, deadline: Instant) -> Vec<DocId> {
+    pub fn flush(&self, deadline: Instant) -> Pending {
         let target = Seq(self.shared.next_seq.load(Ordering::SeqCst) - 1);
         lock_ignoring_poison(&self.shared.signal).retry_failing = true;
         self.shared.notify_writer();
         loop {
             let batches = lock_ignoring_poison(&self.shared.signal).batches;
-            let pending = self.shared.pending_through(target);
+            let pending = Pending {
+                docs: self.shared.pending_through(target),
+                settings: self.shared.settings.is_pending(),
+            };
             let now = Instant::now();
             if pending.is_empty() || now >= deadline {
                 return pending;
@@ -276,8 +282,8 @@ impl Store {
     }
 
     /// Flushes until `deadline`, then stops the threads and releases the folder. If updates are
-    /// still pending, nothing is discarded: the store comes back with the docs that have them.
-    pub fn close(self, deadline: Instant) -> Result<(), (Store, Vec<DocId>)> {
+    /// still pending, nothing is discarded: the store comes back with both pending kinds.
+    pub fn close(self, deadline: Instant) -> Result<(), (Store, Pending)> {
         let pending = self.flush(deadline);
         if pending.is_empty() {
             Ok(())

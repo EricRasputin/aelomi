@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use aelomi_core::index::IndexEvent;
-use aelomi_core::storage::{self as core, DataPathError, OpenError};
+use aelomi_core::storage::{self as core, DataPathError, OpenError, Pending};
 use aelomi_core::workspace::Workspace;
 use serde::Serialize;
 use specta::Type;
@@ -60,6 +60,7 @@ pub enum Health {
     Failing {
         reason: FailReason,
         pending_docs: Vec<String>,
+        pending_settings: bool,
     },
 }
 
@@ -162,26 +163,25 @@ impl Storage {
         )
     }
 
-    pub fn pending_docs(&self) -> Vec<String> {
-        match self.health() {
-            Health::Failing { pending_docs, .. } => pending_docs,
-            Health::Healthy => Vec::new(),
+    pub fn pending_edits(&self) -> Pending {
+        match self.workspace().map(|workspace| workspace.health()) {
+            Ok(core::Health::Failing {
+                pending_docs,
+                pending_settings,
+                ..
+            }) => Pending {
+                docs: pending_docs,
+                settings: pending_settings,
+            },
+            _ => Pending::default(),
         }
     }
 
-    pub fn flush_before_quit(&self, timeout: Duration) -> Result<(), Vec<String>> {
+    pub fn flush_before_quit(&self, timeout: Duration) -> Result<(), Pending> {
         let Ok(workspace) = &self.opened else {
             return Ok(());
         };
-        let deadline = Instant::now() + timeout;
-        let mut pending: Vec<String> = workspace
-            .flush(deadline)
-            .iter()
-            .map(ToString::to_string)
-            .collect();
-        if !workspace.flush_settings(deadline) {
-            pending.push("settings.json".into());
-        }
+        let pending = workspace.flush(Instant::now() + timeout);
         if pending.is_empty() {
             Ok(())
         } else {
@@ -211,19 +211,22 @@ impl From<&core::Health> for Health {
                 pending_settings,
                 ..
             } => Self::Failing {
-                reason: match reason {
-                    core::FailReason::DiskFull => FailReason::DiskFull,
-                    core::FailReason::PermissionDenied => FailReason::PermissionDenied,
-                    core::FailReason::ReadOnlyVolume => FailReason::ReadOnlyVolume,
-                    core::FailReason::Io(error) => FailReason::Io(error.clone()),
-                    core::FailReason::Internal => FailReason::Internal,
-                },
-                pending_docs: pending_docs
-                    .iter()
-                    .map(ToString::to_string)
-                    .chain(pending_settings.then(|| "settings.json".to_string()))
-                    .collect(),
+                reason: reason.into(),
+                pending_docs: pending_docs.iter().map(ToString::to_string).collect(),
+                pending_settings: *pending_settings,
             },
+        }
+    }
+}
+
+impl From<&core::FailReason> for FailReason {
+    fn from(reason: &core::FailReason) -> Self {
+        match reason {
+            core::FailReason::DiskFull => Self::DiskFull,
+            core::FailReason::PermissionDenied => Self::PermissionDenied,
+            core::FailReason::ReadOnlyVolume => Self::ReadOnlyVolume,
+            core::FailReason::Io(error) => Self::Io(error.clone()),
+            core::FailReason::Internal => Self::Internal,
         }
     }
 }
@@ -531,7 +534,10 @@ pub(crate) mod tests {
         let start = Instant::now();
         assert_eq!(
             storage.flush_before_quit(Duration::from_millis(300)),
-            Err(vec![doc.to_string()])
+            Err(Pending {
+                docs: vec![doc.clone()],
+                settings: false
+            })
         );
         assert!(
             start.elapsed() >= Duration::from_millis(300),

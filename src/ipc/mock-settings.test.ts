@@ -95,12 +95,13 @@ test("DATA-4 mock boot seeds settings and concurrent command patches preserve ea
     window.__aelomiMock?.storage.failWrites(true);
     expect(await commands.settingsUpdate({ theme: "Dark" })).toEqual({
       status: "error",
-      error: { Io: "mock write failure" },
+      error: { Write: { Io: "mock write failure" } },
     });
     expect(await commands.storageHealth()).toEqual({
       Failing: {
         reason: { Io: "mock write failure" },
-        pending_docs: ["settings.json"],
+        pending_docs: [],
+        pending_settings: true,
       },
     });
     window.__aelomiMock?.storage.failWrites(false);
@@ -145,4 +146,35 @@ test("DATA-4 seeded settings normalize IDs, sets, and the recent-page cap", () =
     recent_pages: pages.slice(0, 50),
     expanded_rows: ["page-a", "page-b"],
   });
+});
+
+test("SHELL-10 a failed frontend drain retains both refused documents and settings", async () => {
+  const { vi } = await import("vitest");
+  vi.stubGlobal("window", {});
+  const { installMock } = await import("./mock");
+  const { commands } = installMock();
+  try {
+    await commands.frontendReady();
+    window.__aelomiMock?.storage.failWrites(true);
+    await commands.settingsUpdate({ theme: "Dark" });
+    window.__aelomiMock?.quit.request();
+    expect(
+      await commands.quitDrainFailed(1, ["page-b", "page-a", "page-b"]),
+    ).toEqual({
+      status: "ok",
+      data: {
+        revision: 2,
+        phase: {
+          Asking: {
+            pending_docs: ["page-a", "page-b"],
+            pending_settings: true,
+          },
+        },
+      },
+    });
+    expect(window.__aelomiMock?.quit.exited).toBe(false);
+  } finally {
+    window.__aelomiMock?.reset();
+    vi.unstubAllGlobals();
+  }
 });

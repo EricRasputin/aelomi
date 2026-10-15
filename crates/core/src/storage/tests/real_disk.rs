@@ -24,7 +24,7 @@ fn every_append_is_acknowledged_on_a_real_disk() {
             let started = Instant::now();
             store.append(&a, update).unwrap();
             assert_eq!(
-                store.flush(started + Duration::from_secs(5)),
+                store.flush(started + Duration::from_secs(5)).docs,
                 [],
                 "acknowledged"
             );
@@ -77,7 +77,7 @@ fn compaction_and_quarantine_work_on_a_real_disk() {
     for update in &compacted {
         store.append(&a, update).unwrap();
     }
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     let (queued, result) = store.run_compactor_once().expect("over the limit");
     assert_eq!((queued, result.is_ok()), (a.clone(), true));
     assert_eq!(files(&docs_a), [v2_snapshot_name(1)]);

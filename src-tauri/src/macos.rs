@@ -213,7 +213,9 @@ mod tests {
         );
         assert_eq!(
             *quit_events.lock().unwrap(),
-            [r#"quit-status-changed {"revision":1,"phase":{"Asking":{"pending_docs":["page"]}}}"#]
+            [
+                r#"quit-status-changed {"revision":1,"phase":{"Asking":{"pending_docs":["page"],"pending_settings":false}}}"#
+            ]
         );
         assert_eq!(
             crate::commands::quit_status(app.state()),
@@ -221,6 +223,7 @@ mod tests {
                 revision: 1,
                 phase: QuitPhase::Asking {
                     pending_docs: vec!["page".into()],
+                    pending_settings: false,
                 }
             }
         );
@@ -232,7 +235,9 @@ mod tests {
         );
         assert_eq!(
             *quit_events.lock().unwrap(),
-            [r#"quit-status-changed {"revision":1,"phase":{"Asking":{"pending_docs":["page"]}}}"#]
+            [
+                r#"quit-status-changed {"revision":1,"phase":{"Asking":{"pending_docs":["page"],"pending_settings":false}}}"#
+            ]
         );
     }
 
@@ -291,7 +296,7 @@ mod tests {
         assert_eq!(
             *quit_events.lock().unwrap(),
             [
-                r#"quit-status-changed {"revision":1,"phase":{"Asking":{"pending_docs":["page"]}}}"#,
+                r#"quit-status-changed {"revision":1,"phase":{"Asking":{"pending_docs":["page"],"pending_settings":false}}}"#,
                 r#"quit-status-changed {"revision":2,"phase":"Confirmed"}"#,
             ]
         );

@@ -192,7 +192,7 @@ fn decode_guard_child() {
             } else if case == "boundary" || case == "small-stack" || case == "threaded" {
                 let nested = nested_update(NESTING_LIMIT);
                 store.append(&a, &nested).unwrap();
-                assert_eq!(store.flush(soon()), []);
+                assert_eq!(store.flush(soon()).docs, []);
                 if case == "threaded" {
                     let deadline = Instant::now() + Duration::from_secs(10);
                     while env.doc_files(&a) != [v2_snapshot_name(1)] {
@@ -221,7 +221,7 @@ fn decode_guard_child() {
                 let good = typed(7, 3);
                 let deep = nested_update(6000);
                 store.append(&a, &good).unwrap();
-                assert_eq!(store.flush(soon()), []);
+                assert_eq!(store.flush(soon()).docs, []);
                 store.close(soon()).unwrap();
                 let mut log = encode_segment(&[&deep]);
                 if case == "resync" {

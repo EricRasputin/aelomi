@@ -32,9 +32,20 @@ pub(crate) fn run(shared: &Shared) {
 }
 
 pub(crate) fn run_once(shared: &Shared) -> Step {
-    panic::catch_unwind(AssertUnwindSafe(|| write_queued(shared))).unwrap_or_else(|_| Step::Idle {
-        retry_at: fail_every_queued_doc(shared),
-    })
+    let retry_failing = shared.take_retry_failing();
+    let docs = panic::catch_unwind(AssertUnwindSafe(|| write_documents(shared, retry_failing)))
+        .unwrap_or_else(|_| Step::Idle {
+            retry_at: fail_every_queued_doc(shared),
+        });
+    let settings = super::settings::write_queued(shared, retry_failing);
+    shared.refresh_health(None);
+    shared.batch_finished();
+    match (docs, settings) {
+        (Step::Idle { retry_at }, super::settings::Attempt::Idle(settings_retry)) => Step::Idle {
+            retry_at: retry_at.into_iter().chain(settings_retry).min(),
+        },
+        _ => Step::Wrote,
+    }
 }
 
 /// The panic may have left any doc's write partway, so each retries in a new segment.
@@ -50,27 +61,16 @@ fn fail_every_queued_doc(shared: &Shared) -> Option<Duration> {
         let at = state.fail(FailReason::Internal, now);
         retry_at = Some(retry_at.map_or(at, |r| r.min(at)));
     }
-    if let Some(at) = shared.settings.failed(FailReason::Internal, now) {
-        retry_at = Some(retry_at.map_or(at, |r| r.min(at)));
-    }
     shared.batch_finished();
     shared.refresh_health(Some(FailReason::Internal));
     retry_at
 }
 
-fn write_queued(shared: &Shared) -> Step {
-    let retry_failing = shared.take_retry_failing();
-    let settings = super::settings::write_queued(shared, retry_failing);
+fn write_documents(shared: &Shared, retry_failing: bool) -> Step {
     let slots = shared.slots();
     let (queued, retry_at) = collect(&slots, shared.clock.now(), retry_failing);
-    if queued.is_empty() && matches!(settings, Step::Idle { .. }) {
-        let settings_retry = match settings {
-            Step::Idle { retry_at } => retry_at,
-            Step::Wrote => None,
-        };
-        return Step::Idle {
-            retry_at: retry_at.into_iter().chain(settings_retry).min(),
-        };
+    if queued.is_empty() {
+        return Step::Idle { retry_at };
     }
     let latest_failure = write(shared, queued);
     shared.refresh_health(latest_failure);

@@ -204,7 +204,7 @@ fn two_generations_pending(env: &Env, sent: &[Vec<u8>]) -> Store {
         for update in half {
             store.append(&a, update).unwrap();
         }
-        assert_eq!(store.flush(soon()), []);
+        assert_eq!(store.flush(soon()).docs, []);
         if then_compact {
             store.compact(&a).unwrap();
         }
@@ -385,7 +385,7 @@ fn pending_structs_survive_compaction() {
     let store = env.open();
     store.append(&a, &second).unwrap();
     store.append(&a, &third).unwrap();
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     store
         .compact(&a)
         .expect("compaction verifies a doc with pending structs");
@@ -421,7 +421,7 @@ fn pending_structs_still_let_compaction_delete_the_old_generation() {
             for update in half {
                 store.append(&a, update).unwrap();
             }
-            assert_eq!(store.flush(soon()), []);
+            assert_eq!(store.flush(soon()).docs, []);
             store.compact(&a).unwrap();
             let name = v2_snapshot_name(generation);
             assert_eq!(
@@ -471,7 +471,7 @@ fn a_doc_with_pending_structs_compacts_to_a_snapshot_of_exactly_its_operations()
             store.append(&a, update).unwrap();
         }
         assert!(store.has_pending_structs(&a), "seed {seed}");
-        assert_eq!(store.flush(soon()), []);
+        assert_eq!(store.flush(soon()).docs, []);
         store
             .compact(&a)
             .unwrap_or_else(|e| panic!("seed {seed}: {e}"));
@@ -484,7 +484,7 @@ fn a_doc_with_pending_structs_compacts_to_a_snapshot_of_exactly_its_operations()
         let more = UpdateGen::new(seed + 1_000, 2).updates(2);
         store.append(&a, &more[0]).unwrap();
         store.append(&b, &more[1]).unwrap();
-        assert_eq!(store.flush(soon()), []);
+        assert_eq!(store.flush(soon()).docs, []);
         sent.push(more[0].clone());
         drop(store);
         let store = env.open();
@@ -510,7 +510,7 @@ fn a_snapshot_damaged_on_its_way_to_disk_is_refused_and_leaves_every_file() {
             store.append(&a, update).unwrap();
         }
         assert_eq!(store.has_pending_structs(&a), shuffled, "seed {seed}");
-        assert_eq!(store.flush(soon()), []);
+        assert_eq!(store.flush(soon()).docs, []);
 
         env.fs.damage_append_once(&v2_snapshot_tmp_name(1));
         let refused = store.compact(&a);
@@ -551,7 +551,7 @@ fn a_doc_with_pending_structs_whose_merge_passes_the_payload_limit_keeps_its_fil
         store.has_pending_structs(&a),
         "each insert needs the one before"
     );
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     assert!(store.load(&a).unwrap().len() > 150);
 
     let (compacted, result) = store.run_compactor_once().expect("4 records queue it");
@@ -561,7 +561,7 @@ fn a_doc_with_pending_structs_whose_merge_passes_the_payload_limit_keeps_its_fil
     assert_eq!(env.doc_files(&a), [log.as_str()]);
 
     store.append(&a, &sent[0]).unwrap();
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     assert_eq!(
         env.doc_files(&a),
         [log.as_str(), log_name(1, 0).as_str()],
@@ -586,7 +586,7 @@ fn a_doc_whose_snapshot_passes_the_payload_limit_skips_compaction_and_keeps_writ
     for update in &sent[..4] {
         store.append(&a, update).unwrap();
     }
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     let snapshot = store.load(&a).unwrap();
     assert!(snapshot.len() > 150, "{} bytes", snapshot.len());
 
@@ -682,7 +682,7 @@ fn a_panic_compacting_one_doc_leaves_its_files_and_the_next_doc_still_compacts()
     for update in &sent_b {
         store.append(&b, update).unwrap();
     }
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     assert_eq!(store.queued_compactions(), [a.clone(), b.clone()]);
     env.fs.panic_once(
         OpKind::Read,
@@ -702,7 +702,7 @@ fn a_panic_compacting_one_doc_leaves_its_files_and_the_next_doc_still_compacts()
     for update in &more {
         store.append(&a, update).unwrap();
     }
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     assert_eq!(
         store.queued_compactions(),
         std::slice::from_ref(&a),
@@ -766,7 +766,7 @@ fn a_damaged_log_loads_every_record_around_the_damage_and_is_quarantined_not_del
         for update in &sent {
             store.append(&a, update).unwrap();
         }
-        assert_eq!(store.flush(soon()), []);
+        assert_eq!(store.flush(soon()).docs, []);
         drop(store);
 
         let name = log_name(0, 0);
@@ -842,7 +842,7 @@ fn a_log_damaged_at_its_end_is_quarantined_at_compaction_not_deleted() {
         for update in &sent {
             store.append(&a, update).unwrap();
         }
-        assert_eq!(store.flush(soon()), []);
+        assert_eq!(store.flush(soon()).docs, []);
         drop(store);
 
         let path = env.path("docs/a").join(name);
@@ -875,7 +875,7 @@ fn compaction_deletes_a_log_holding_no_record_bytes_but_quarantines_a_short_corr
     for update in &sent {
         store.append(&a, update).unwrap();
     }
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     drop(store);
     let header = encode_segment::<Vec<u8>>(&[]);
     let corrupt = ("log-0000000000-0000000005.ylog", b"AEX".to_vec());
@@ -921,7 +921,7 @@ fn a_damaged_format_2_log_moves_to_quarantine_byte_for_byte_and_loses_nothing() 
     for update in &updates[..2] {
         store.append(&a, update).unwrap();
     }
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     drop(store);
     let dir = env.path("docs/a");
     env.fs.put_durable(
@@ -958,7 +958,7 @@ fn a_torn_tail_left_by_a_crash_is_quarantined_at_compaction() {
             for update in &sent[..3] {
                 store.append(&a, update).unwrap();
             }
-            assert_eq!(store.flush(soon()), []);
+            assert_eq!(store.flush(soon()).docs, []);
             store.append(&a, &sent[3]).unwrap();
             env.fs.die_after(1);
             store.run_writer_once();
@@ -995,7 +995,7 @@ fn compaction_quarantines_damage_no_load_read_when_the_snapshot_holds_every_reco
     for update in &sent {
         store.append(&a, update).unwrap();
     }
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     let name = log_name(0, 0);
     let path = env.path("docs/a").join(&name);
     env.fs.flip_bit(&path, frames(&sent)[5].body.start + 1);
@@ -1031,7 +1031,7 @@ fn compaction_keeps_a_deletion_only_log_until_the_snapshot_holds_the_deletion() 
         txn.encode_update_v1()
     };
     store.append(&a, &inserted).unwrap();
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     let name = "log-0000000000-0000000005.ylog";
     let path = env.path("docs/a").join(name);
     let planted = encode_segment(&[deleted]);
@@ -1070,7 +1070,7 @@ fn compaction_keeps_a_damaged_log_until_the_doc_holds_what_it_salvages() {
     for update in &sent[..5] {
         store.append(&a, update).unwrap();
     }
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     let mut planted = encode_segment(&sent[5..]);
     planted[v1_record_at(&sent[5..], 0) + 9] ^= 0x10;
     let name = "log-0000000000-0000000005.ylog";
@@ -1105,7 +1105,7 @@ fn compaction_keeps_a_log_a_merged_load_marked_corrupt_until_the_snapshot_holds_
     let a = doc("a");
     let first = typed(1, 2);
     store.append(&a, &first).unwrap();
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     let client = Doc::with_client_id(200);
     let text = client.get_or_insert_text("u");
     text.insert(&mut client.transact_mut(), 0, "dependency");
@@ -1221,7 +1221,7 @@ fn append_durably(store: &Store, appends: &[(&DocId, &[Vec<u8>])]) {
             store.append(doc, update).unwrap();
         }
     }
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
 }
 
 #[test]
@@ -1328,7 +1328,7 @@ fn a_quarantined_file_survives_a_failed_sync_of_any_folder_it_moved_into() {
             for update in &sent {
                 store.append(&a, update).unwrap();
             }
-            assert_eq!(store.flush(soon()), []);
+            assert_eq!(store.flush(soon()).docs, []);
             drop(store);
             let path = env.path("docs/a").join(&name);
             env.fs.flip_bit(&path, frames(&sent)[0].length_byte(2));
@@ -1344,7 +1344,7 @@ fn a_quarantined_file_survives_a_failed_sync_of_any_folder_it_moved_into() {
                     store
                         .append(&a, &UpdateGen::new(34, 2).next_update())
                         .unwrap();
-                    assert_eq!(store.flush(soon()), []);
+                    assert_eq!(store.flush(soon()).docs, []);
                 }
             }
             drop(store);

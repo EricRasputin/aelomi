@@ -142,7 +142,7 @@ fn a_marker_whose_folder_sync_failed_after_the_rename_is_confirmed_again_on_retr
 
     env.fs.clear_faults();
     let before = env.fs.ops().len();
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     assert_eq!(
         ops_since(&env, before),
         [
@@ -186,7 +186,7 @@ fn a_format_2_marker_left_in_the_drive_cache_by_an_exit_is_confirmed_by_the_next
     let update = updates.next_update();
     let seq = store.append(&a, &update).unwrap();
     let before = env.fs.ops().len();
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     assert!(store.is_durable(&a, seq));
     assert_eq!(
         ops_since(&env, before),
@@ -281,7 +281,7 @@ fn a_format_tmp_left_by_a_failed_append_is_replaced_when_the_write_retries() {
 
     env.fs.clear_faults();
     let before = env.fs.ops().len();
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     assert_eq!(
         ops_since(&env, before),
         [
@@ -336,7 +336,7 @@ fn compaction_after_a_lifetimes_first_segment_writes_a_whole_format_2_snapshot()
     for update in &sent {
         store.append(&a, update).unwrap();
     }
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     let before = env.fs.ops().len();
     store.compact(&a).unwrap();
     assert_eq!(
@@ -371,7 +371,7 @@ fn compaction_before_a_lifetimes_first_segment_writes_format_1_in_a_format_2_fol
     for update in &sent {
         store.append(&a, update).unwrap();
     }
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     drop(store);
     assert_eq!(markers(&env), pair(MARKER_2, MARKER_2));
 
@@ -397,7 +397,7 @@ fn compaction_before_a_lifetimes_first_segment_writes_format_1_in_a_format_2_fol
 
     let later = updates.next_update();
     store.append(&a, &later).unwrap();
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     store.compact(&a).unwrap();
     assert_eq!(env.doc_files(&a), ["snapshot-0000000002.ysnap2"]);
     whole_format_2_snapshot(&env, "snapshot-0000000002.ysnap2");

@@ -115,6 +115,7 @@ export type FailReason = "DiskFull" | "PermissionDenied" | "ReadOnlyVolume" | { 
 export type Health = "Healthy" | { Failing: {
 	reason: FailReason,
 	pending_docs: string[],
+	pending_settings: boolean,
 } };
 
 /**  A committed index batch: search and backlink results may differ after it. */
@@ -202,6 +203,7 @@ export type QuitPhase =
 /**  A quit was refused with these docs not yet saved, and waits for the user's answer. */
 { Asking: {
 	pending_docs: string[],
+	pending_settings: boolean,
 } } | 
 /**  The app is quitting. */
 "Confirmed";
@@ -259,7 +261,7 @@ export type Settings = {
 	expanded_rows: string[],
 };
 
-export type SettingsError = "Unavailable" | "InvalidPageId" | { Io: string } | "Internal";
+export type SettingsError = "Unavailable" | "InvalidPageId" | ({ Io: string }) & { Write?: never } | ({ Write: FailReason }) & { Io?: never } | "Internal";
 
 export type SettingsOpenPage = {
 	page_id: string,

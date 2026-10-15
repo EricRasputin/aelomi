@@ -54,7 +54,8 @@ fn an_index_that_cannot_open_fails_while_docs_load_append_and_flush() {
     assert_eq!(
         opened
             .workspace
-            .flush(Instant::now() + Duration::from_secs(10)),
+            .flush(Instant::now() + Duration::from_secs(10))
+            .docs,
         []
     );
     assert!(index_path(dir.path()).is_dir(), "a folder is never removed");
@@ -218,7 +219,8 @@ fn a_pages_root_holding_a_sequence_fails_without_erasing_the_cache() {
     assert_eq!(
         opened
             .workspace
-            .flush(Instant::now() + Duration::from_secs(5)),
+            .flush(Instant::now() + Duration::from_secs(5))
+            .docs,
         []
     );
     let source = super::source_files(dir.path());
@@ -389,7 +391,8 @@ fn a_valid_index_that_lacks_a_flushed_edit_is_repaired_at_startup() {
         assert_eq!(
             opened
                 .workspace
-                .flush(Instant::now() + Duration::from_secs(10)),
+                .flush(Instant::now() + Duration::from_secs(10))
+                .docs,
             []
         );
     }
@@ -454,7 +457,8 @@ fn a_valid_index_that_holds_an_edit_lost_in_a_crash_is_repaired_at_startup() {
         assert_eq!(
             opened
                 .workspace
-                .flush(Instant::now() + Duration::from_secs(10)),
+                .flush(Instant::now() + Duration::from_secs(10))
+                .docs,
             []
         );
         let expected = snapshot(&opened.workspace);
@@ -480,7 +484,8 @@ fn a_valid_index_that_holds_an_edit_lost_in_a_crash_is_repaired_at_startup() {
         assert_eq!(
             opened
                 .workspace
-                .flush(Instant::now() + Duration::from_millis(200)),
+                .flush(Instant::now() + Duration::from_millis(200))
+                .docs,
             [daily]
         );
         expected
@@ -625,7 +630,8 @@ fn a_query_that_finds_a_corrupt_stored_value_replaces_the_cache_in_the_same_sess
         assert_eq!(
             opened
                 .workspace
-                .flush(Instant::now() + Duration::from_secs(10)),
+                .flush(Instant::now() + Duration::from_secs(10))
+                .docs,
             []
         );
         let source = super::source_files(dir.path());
@@ -680,7 +686,8 @@ fn a_wrong_sqlite_field_type_is_replaced_at_startup() {
             assert_eq!(
                 opened
                     .workspace
-                    .flush(Instant::now() + Duration::from_secs(10)),
+                    .flush(Instant::now() + Duration::from_secs(10))
+                    .docs,
                 []
             );
             snapshot(&opened.workspace)
@@ -733,7 +740,8 @@ fn backlinks_with_a_wrong_sqlite_field_type_rebuild_in_the_same_session() {
         assert_eq!(
             opened
                 .workspace
-                .flush(Instant::now() + Duration::from_secs(10)),
+                .flush(Instant::now() + Duration::from_secs(10))
+                .docs,
             []
         );
         let source = super::source_files(dir.path());
@@ -777,7 +785,8 @@ fn an_incremental_read_of_a_wrong_sqlite_field_type_rebuilds() {
     assert_eq!(
         opened
             .workspace
-            .flush(Instant::now() + Duration::from_secs(10)),
+            .flush(Instant::now() + Duration::from_secs(10))
+            .docs,
         []
     );
     let source = super::source_files(dir.path());
@@ -839,7 +848,8 @@ fn a_cache_whose_keys_break_the_content_order_is_replaced_at_startup() {
         assert_eq!(
             opened
                 .workspace
-                .flush(Instant::now() + Duration::from_secs(10)),
+                .flush(Instant::now() + Duration::from_secs(10))
+                .docs,
             []
         );
     }
@@ -913,7 +923,9 @@ fn an_index_worker_that_cannot_start_fails_once_and_docs_stay_usable() {
             .is_empty()
     );
     assert_eq!(
-        workspace.flush(Instant::now() + Duration::from_secs(10)),
+        workspace
+            .flush(Instant::now() + Duration::from_secs(10))
+            .docs,
         []
     );
     drop(workspace);

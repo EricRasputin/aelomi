@@ -136,7 +136,10 @@ pub(crate) fn complete_quit_with<R: Runtime>(
     let pending = crate::flush_before_quit(app, "CompleteQuit")
         .err()
         .unwrap_or_default();
-    let Some(status) = storage.quit().finish_drain(revision, &pending) else {
+    let Some(status) = storage
+        .quit()
+        .finish_drain(revision, &pending.docs, pending.settings)
+    else {
         return storage.quit().status();
     };
     crate::publish_quit(app, &status);
@@ -169,13 +172,16 @@ pub(crate) fn quit_drain_failed_with<R: Runtime>(
     docs: &[DocId],
 ) -> QuitStatus {
     let storage = app.state::<Storage>();
-    let mut pending: Vec<String> = docs.iter().map(ToString::to_string).collect();
-    pending.extend(storage.pending_docs());
-    pending.sort();
-    pending.dedup();
-    match storage.quit().drain_failed(revision, &pending) {
+    let mut pending = storage.pending_edits();
+    pending.docs.extend_from_slice(docs);
+    pending.docs.sort();
+    pending.docs.dedup();
+    match storage
+        .quit()
+        .drain_failed(revision, &pending.docs, pending.settings)
+    {
         Some(status) => {
-            println!("quit drain failed docs={docs:?}");
+            println!("quit drain failed pending={pending:?}");
             crate::publish_quit(app, &status);
             status
         }
