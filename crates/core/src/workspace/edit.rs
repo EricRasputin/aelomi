@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::{fmt, io};
 
 use yrs::updates::decoder::Decode;
-use yrs::{Doc, ReadTxn, Transact, Update};
+use yrs::{Doc, Transact, Update};
 
 use super::records::{
     MAX_SAFE_INTEGER, PageId, PageRecord, Placement, RecordError, Trash, read_pages,
@@ -303,16 +303,15 @@ impl Workspace {
                 reply.change = PageChange::Restored(batch);
             }
         }
-        let vector = doc.transact().state_vector();
-        {
+        let update = {
             let mut txn = doc.transact_mut();
             for (id, record) in &records {
                 if prior.get(id) != Some(record) {
                     write::put_page(&mut txn, id, record);
                 }
             }
-        }
-        let update = doc.transact().encode_state_as_update_v1(&vector);
+            txn.encode_update_v1()
+        };
         reply.seq = self.append_record_update(&update)?;
         Ok(reply)
     }
