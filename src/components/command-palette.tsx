@@ -2,10 +2,12 @@ import { useNavigate } from "@tanstack/react-router";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { createPortal, flushSync } from "react-dom";
+import { commandDispatcher } from "../command-dispatcher";
 import { restoreFocus } from "../editor/active-editor";
 import type { PageIssue, SearchHit } from "../ipc";
 import { HighlightedText } from "../pages/highlighted-text";
 import { type ContentResult, shownContent } from "../palette/content";
+import type { PageCommand } from "../palette/page-commands";
 import type { TitleMatch } from "../palette/title-match";
 import { useIndexStatusStore } from "../stores/index-status";
 import {
@@ -27,18 +29,30 @@ export const paletteCopy = {
 type Row =
   | { kind: "header"; label: string }
   | { kind: "title"; index: number; match: TitleMatch }
-  | { kind: "content"; index: number; hit: SearchHit };
+  | { kind: "content"; index: number; hit: SearchHit }
+  | { kind: "command"; index: number; command: PageCommand };
 
-function rowsOf(titles: readonly TitleMatch[], content: ContentResult): Row[] {
+function rowsOf(
+  titles: readonly TitleMatch[],
+  commands: readonly PageCommand[],
+  content: ContentResult,
+): Row[] {
   const rows: Row[] = [];
   if (titles.length > 0)
     rows.push({ kind: "header", label: paletteCopy.pages });
   for (const [index, match] of titles.entries())
     rows.push({ kind: "title", index, match });
+  if (commands.length > 0) rows.push({ kind: "header", label: "Commands" });
+  for (const [i, command] of commands.entries())
+    rows.push({ kind: "command", index: titles.length + i, command });
   if (content.kind === "ready" && content.hits.length > 0) {
     rows.push({ kind: "header", label: paletteCopy.content });
     for (const [i, hit] of content.hits.entries())
-      rows.push({ kind: "content", index: titles.length + i, hit });
+      rows.push({
+        kind: "content",
+        index: titles.length + commands.length + i,
+        hit,
+      });
   }
   return rows;
 }
@@ -46,6 +60,7 @@ function rowsOf(titles: readonly TitleMatch[], content: ContentResult): Row[] {
 const rowHeight: Record<Row["kind"], number> = {
   header: 28,
   title: 34,
+  command: 34,
   content: 52,
 };
 
@@ -58,6 +73,7 @@ function issueNotice(issues: readonly PageIssue[], source: SourceTree) {
 export function CommandPalette() {
   const open = usePaletteStore((state) => state.open);
   const query = usePaletteStore((state) => state.query);
+  const pageCommands = usePaletteStore((state) => state.pageCommands);
   const titles = usePaletteStore((state) => state.titles);
   const content = usePaletteStore((state) => state.content);
   const selected = usePaletteStore((state) => state.selected);
@@ -73,7 +89,7 @@ export function CommandPalette() {
   useLayoutEffect(() => {
     if (!open) return;
     const { returnTo } = usePaletteStore.getState();
-    const page = document.querySelector("main");
+    const page = document.querySelector<HTMLElement>("[data-workspace]");
     if (page) page.inert = true;
     input.current?.focus();
     void usePageTreeStore.getState().refresh();
@@ -86,7 +102,7 @@ export function CommandPalette() {
   const close = () => flushSync(() => usePaletteStore.getState().hide());
 
   const shown = shownContent(status, content);
-  const rows = rowsOf(titles, shown);
+  const rows = rowsOf(titles, pageCommands, shown);
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => list.current,
@@ -103,6 +119,14 @@ export function CommandPalette() {
   const activate = (row: Row | undefined) => {
     if (!row || row.kind === "header") return;
     close();
+    if (row.kind === "command") {
+      commandDispatcher.dispatch(row.command.command, {
+        source: "palette",
+        target: document.activeElement,
+        isComposing: false,
+      });
+      return;
+    }
     if (row.kind === "title")
       void navigate({
         to: "/page/$pageId",
@@ -224,7 +248,11 @@ export function CommandPalette() {
                   className="palette-row"
                   data-kind={row.kind}
                   data-page-id={
-                    row.kind === "title" ? row.match.id : row.hit.page_id
+                    row.kind === "title"
+                      ? row.match.id
+                      : row.kind === "content"
+                        ? row.hit.page_id
+                        : undefined
                   }
                   style={style}
                   onMouseMove={() => {
@@ -234,7 +262,9 @@ export function CommandPalette() {
                   onClick={() => activate(row)}
                   onKeyDown={() => {}}
                 >
-                  {row.kind === "title" ? (
+                  {row.kind === "command" ? (
+                    <span className="palette-title">{row.command.label}</span>
+                  ) : row.kind === "title" ? (
                     <span className="palette-title">
                       <HighlightedText parts={row.match.parts} />
                     </span>

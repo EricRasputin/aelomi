@@ -1,6 +1,6 @@
 # IPC status line
 
-The status line under the welcome text shows whether the UI can reach the Rust core. On launch it reads `Connecting to the core…`, then `IPC ok · core <version> · seq 1`. Each press of **Ping again** sends one more `ping` command, and the sequence number goes up by one. Hovering the button shows the tooltip `Check the connection to the Rust core`.
+The status landmark shows whether the UI can reach the Rust core. On launch it reads `Connecting to the core…`, then `IPC ok · core <version> · seq 1`. Each press of **Ping again** sends one more `ping` command, and the sequence number goes up by one. Hovering the button shows the tooltip `Check the connection to the Rust core`.
 
 ## Sub-features
 
@@ -11,7 +11,7 @@ The status line under the welcome text shows whether the UI can reach the Rust c
 
 ## How to get to it (user POV)
 
-- Launch the app. The status line sits under the `Aelomi` header, above **Ping again**.
+- In a dev or mock build, open `/dev/ipc`. The diagnostic shows the status line above **Ping again**.
 - Press the **Ping again** button below the status line.
 - Hover the pointer over **Ping again**.
 
@@ -20,7 +20,7 @@ The status line under the welcome text shows whether the UI can reach the Rust c
 Preconditions:
 
 - `RUN=$($S/app.sh launch dev)` printed a run directory, and `$S/app.sh doctor "$RUN"` reports every line as `ok`.
-- The run has not pressed **Ping again** yet.
+- The run is on `/dev/ipc` and has not pressed **Ping again** yet.
 
 - **Initial status.** Run `$S/app.sh wait-status "$RUN" "IPC ok · core 0.1.0 · seq 1"`. It prints the same text. `grep '^ping seq=' "$RUN/shell.log"` prints only `ping seq=1`.
 - **Before state.** Run `$S/app.sh screenshot "$RUN" before`. `before.png` shows `IPC ok · core 0.1.0 · seq 1` above the **Ping again** button.

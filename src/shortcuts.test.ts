@@ -43,6 +43,7 @@ test("SHELL-7 the dispatcher binds exactly the webview-owned shortcuts", () => {
   expect(webviewBindings.map((entry) => entry.command)).toEqual([
     "openSettings",
     "closeWindow",
+    "newPage",
     "undo",
     "redo",
     "openPalette",

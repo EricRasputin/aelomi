@@ -2,7 +2,7 @@ import { shortcutFor, shortcuts, type WebviewCommand } from "./shortcuts";
 import { acceptsUserCommands, useQuitStore } from "./stores/quit";
 
 export type CommandContext = {
-  source: "keyboard" | "menu";
+  source: "keyboard" | "menu" | "palette" | "button";
   target: Element | null;
   isComposing: boolean;
 };

@@ -8,6 +8,10 @@ import {
   titleGroupMax,
 } from "../palette/content";
 import {
+  matchingPageCommands,
+  type PageCommand,
+} from "../palette/page-commands";
+import {
   type PreparedTitles,
   prepareTitles,
   rankTitles,
@@ -16,12 +20,14 @@ import {
 import { useIndexStatusStore } from "./index-status";
 import { displayTitle, type SourceTree, usePageTreeStore } from "./page-tree";
 import { useRecentPagesStore } from "./recent-pages";
+import { useShellStore } from "./shell";
 
 type PaletteStore = {
   open: boolean;
   returnTo: Element | null;
   query: string;
   titles: TitleMatch[];
+  pageCommands: PageCommand[];
   content: ContentResult;
   /** The newest search sent. A reply for an older one is dropped. */
   request: number;
@@ -53,9 +59,12 @@ function titlesOf(source: SourceTree): PreparedTitles {
   return prepared.titles;
 }
 
-export function resultCount(state: Pick<PaletteStore, "titles" | "content">) {
+export function resultCount(
+  state: Pick<PaletteStore, "titles" | "content" | "pageCommands">,
+) {
   return (
     state.titles.length +
+    state.pageCommands.length +
     (state.content.kind === "ready" ? state.content.hits.length : 0)
   );
 }
@@ -68,11 +77,17 @@ export const usePaletteStore = create<PaletteStore>((set, get) => {
       useRecentPagesStore.getState().openedAt,
       titleGroupMax,
     );
+    const active = useShellStore.getState().activePageId;
+    const pageCommands = matchingPageCommands(
+      query,
+      source.kind === "ready" && active !== null && source.byId.has(active),
+    );
     const request = get().request + 1;
     if (query.trim() === "") {
       set({
         query,
         titles,
+        pageCommands,
         content: { kind: "idle" },
         request,
         answered: request,
@@ -80,7 +95,7 @@ export const usePaletteStore = create<PaletteStore>((set, get) => {
       });
       return;
     }
-    set({ query, titles, request, selected: 0 });
+    set({ query, titles, pageCommands, request, selected: 0 });
     void commands
       .search(query, contentLimit, contentScope(titles))
       .then(contentFromReply, (error: unknown) => ({
@@ -98,6 +113,7 @@ export const usePaletteStore = create<PaletteStore>((set, get) => {
     returnTo: null,
     query: "",
     titles: [],
+    pageCommands: [],
     content: { kind: "idle" },
     request: 0,
     answered: 0,
@@ -109,6 +125,7 @@ export const usePaletteStore = create<PaletteStore>((set, get) => {
         returnTo,
         query: "",
         titles: [],
+        pageCommands: [],
         content: { kind: "idle" },
         selected: 0,
         request: get().request + 1,

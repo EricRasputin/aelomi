@@ -93,7 +93,7 @@ for (const colorScheme of ["light", "dark"] as const) {
   }) => {
     await page.emulateMedia({ colorScheme });
     await page.setViewportSize({ width: 480, height: 720 });
-    await page.goto("/");
+    await page.goto("/dev/ipc");
     await expect(page.locator("html")).toHaveAttribute(
       "data-theme",
       colorScheme,
@@ -179,7 +179,7 @@ for (const colorScheme of ["light", "dark"] as const) {
 test("SHELL-10 double confirmation sends one exit and preserves pending text", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("/dev/ipc");
   await page.evaluate(async () => {
     const mock = window.__aelomiMock;
     if (!mock) throw new Error("Missing IPC mock");
@@ -206,7 +206,7 @@ test("SHELL-10 double confirmation sends one exit and preserves pending text", a
 test("SHELL-10 names pending settings in quit confirmation and retries after recovery", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("/dev/ipc");
   await page.evaluate(async () => {
     const mock = window.__aelomiMock;
     if (!mock) throw new Error("Missing IPC mock");

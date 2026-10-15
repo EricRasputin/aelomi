@@ -1,5 +1,5 @@
 export default async function ping({ page, expect, shot }) {
-  await page.goto("/");
+  await page.goto("/dev/ipc");
   const status = page.getByRole("status");
   await expect(status).toHaveText("IPC ok · core 0.1.0-mock · seq 1");
   await shot("before");

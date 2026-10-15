@@ -1,5 +1,5 @@
 export default async function tooltip({ page, expect, shot }) {
-  await page.goto("/");
+  await page.goto("/dev/ipc");
   await expect(page.getByRole("status")).toHaveText(
     "IPC ok · core 0.1.0-mock · seq 1",
   );

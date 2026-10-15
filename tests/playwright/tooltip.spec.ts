@@ -3,7 +3,7 @@ import { expect, test } from "./fixtures";
 test("the connection tooltip appears on hover and the trigger still pings", async ({
   page,
 }) => {
-  await page.goto("/");
+  await page.goto("/dev/ipc");
   const ping = page.getByRole("button", { name: "Ping again" });
   await expect(page.getByRole("status")).toHaveText(
     "IPC ok · core 0.1.0-mock · seq 1",

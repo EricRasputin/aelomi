@@ -6,12 +6,14 @@ import {
   Link,
   lazyRouteComponent,
   Outlet,
+  useMatch,
   useNavigate,
   useRouterState,
 } from "@tanstack/react-router";
-import { useEffect, useId, useLayoutEffect } from "react";
+import { useEffect, useId, useLayoutEffect, useRef } from "react";
 import { CommandPalette } from "./components/command-palette";
 import { SettingsDialog } from "./components/settings-dialog";
+import { NewPageButton, Sidebar } from "./components/sidebar";
 import {
   QuitConfirmation,
   SaveFailureBanner,
@@ -19,9 +21,15 @@ import {
 import { StorageRefusal } from "./components/storage-refusal";
 import { formatPingReply } from "./ipc/format-ping";
 import { markIndexCommit, resolveEntry } from "./perf/cold-start";
+import { pageAfterTrash } from "./shell/page-navigation";
+import { usePageCommands } from "./shell/use-page-commands";
 import { usePageTreeStore } from "./stores/page-tree";
 import { usePingStore } from "./stores/ping";
 import { useStorageStartupStore } from "./stores/storage-startup";
+import { useQuitStore } from "./stores/quit";
+import { useRecentPagesStore } from "./stores/recent-pages";
+import { useShellStore } from "./stores/shell";
+import { useTreeExpansionStore } from "./stores/tree-expansion";
 import {
   useShortcutCommands,
   useWorkspaceShortcutCommands,
@@ -40,12 +48,11 @@ function ShellStatus({ landmark }: { landmark: boolean }) {
   useEffect(() => {
     if (usePingStore.getState().seq === 0) void usePingStore.getState().ping();
   }, []);
-  if (!landmark) return null;
-  return (
+  return landmark ? (
     <p role="status" className="sr-only">
       {pingText(status)}
     </p>
-  );
+  ) : null;
 }
 
 function RootLayout() {
@@ -63,9 +70,20 @@ function RootLayout() {
 
 function WorkspaceLayout() {
   useWorkspaceShortcutCommands();
-  const onIndex = useRouterState({
-    select: (state) => state.location.pathname === "/",
+  const stress = useRouterState({
+    select: (state) => state.location.pathname === "/dev/sidebar-stress",
   });
+  const diagnostic = useRouterState({
+    select: (state) => state.location.pathname === "/dev/ipc",
+  });
+  const sidebarVisible = useShellStore((state) => state.sidebarVisible);
+  const message = useShellStore((state) => state.message);
+  const closing = useQuitStore((state) => state.decision.kind === "draining");
+  const openPage = usePageCommands();
+  useWorkspaceNavigation();
+  useEffect(() => {
+    void useTreeExpansionStore.getState().load();
+  }, []);
   return (
     <Tooltip.Provider delay={700} timeout={300}>
       <div className="flex h-screen flex-col">
@@ -88,7 +106,7 @@ function WorkspaceLayout() {
             </Link>
           )}
         </header>
-        <ShellStatus landmark={!onIndex} />
+        <ShellStatus landmark={!diagnostic} />
         <SaveFailureBanner />
         <main
           tabIndex={-1}
@@ -97,6 +115,19 @@ function WorkspaceLayout() {
           <Outlet />
         </main>
         <SettingsDialog />
+        {(message || closing) && (
+          <p role="status" className="shell-notice">
+            {closing
+              ? "Aelomi is closing. New actions are paused while pending changes finish."
+              : message}
+          </p>
+        )}
+        <div className="workspace" data-workspace>
+          {sidebarVisible && !stress && <Sidebar openPage={openPage} />}
+          <main tabIndex={-1} className="editor-pane">
+            <Outlet />
+          </main>
+        </div>
         <CommandPalette />
         <QuitConfirmation />
       </div>
@@ -104,24 +135,56 @@ function WorkspaceLayout() {
   );
 }
 
-function useEntryPage() {
+function useWorkspaceNavigation() {
   const navigate = useNavigate();
+  const match = useMatch({ from: "/page/$pageId", shouldThrow: false });
+  const pageId = match?.params.pageId ?? null;
+  const pathname = useRouterState({
+    select: (state) => state.location.pathname,
+  });
   const source = usePageTreeStore((state) => state.source);
+  const previous = useRef(source);
+  const entered = useRef(false);
+  useLayoutEffect(() => {
+    useShellStore.setState({ activePageId: pageId });
+  }, [pageId]);
   useEffect(() => {
-    if (source.kind === "loading") return;
-    const first = source.kind === "ready" ? source.tree.pages[0] : undefined;
-    if (!first) {
-      resolveEntry("index");
-      return;
+    if (source.kind !== "ready") return;
+    const before = previous.current;
+    if (!pageId || source.byId.has(pageId)) previous.current = source;
+    if (!entered.current) {
+      entered.current = true;
+      if (pathname === "/") {
+        const first = source.tree.pages[0];
+        resolveEntry(first ? "page" : "index");
+        if (first)
+          void navigate({
+            to: "/page/$pageId",
+            params: { pageId: first.id },
+            search: {},
+            replace: true,
+          });
+        return;
+      }
+      resolveEntry(pageId ? "page" : "index");
     }
-    resolveEntry("page");
-    void navigate({
-      to: "/page/$pageId",
-      params: { pageId: first.id },
-      search: {},
-      replace: true,
+    if (!pageId || source.byId.has(pageId)) return;
+    const next = pageAfterTrash({
+      pageId,
+      before: before.kind === "ready" ? before.tree.pages : [],
+      active: source.tree.pages,
+      openedAt: useRecentPagesStore.getState().openedAt,
     });
-  }, [source, navigate]);
+    if (next) {
+      useShellStore.getState().requestFocus({ pageId: next, target: "body" });
+      void navigate({
+        to: "/page/$pageId",
+        params: { pageId: next },
+        search: {},
+        replace: true,
+      });
+    } else void navigate({ to: "/", replace: true });
+  }, [source, pageId, pathname, navigate]);
 }
 
 export const workspaceCopy = {
@@ -130,14 +193,29 @@ export const workspaceCopy = {
 };
 
 function IndexScreen() {
+  const source = usePageTreeStore((state) => state.source);
+  useLayoutEffect(markIndexCommit, []);
+  return (
+    <section className="empty-state" aria-label="No page open">
+      {source.kind === "error" ? (
+        <div role="alert" className="workspace-alert">
+          <p>{workspaceCopy.unreadable}</p>
+          <p className="workspace-alert-reason">{source.message}</p>
+        </div>
+      ) : source.kind === "ready" ? (
+        <>
+          <h1>No page open</h1>
+          <p>Start with a new page.</p>
+          <NewPageButton />
+        </>
+      ) : null}
+    </section>
+  );
+}
+
+function ConnectionProbe() {
   const tooltipId = useId();
   const status = usePingStore((state) => state.status);
-  const ping = usePingStore((state) => state.ping);
-  const source = usePageTreeStore((state) => state.source);
-
-  useLayoutEffect(markIndexCommit, []);
-  useEntryPage();
-
   return (
     <section className="m-auto w-full max-w-md px-8 py-12">
       <p role="status" className="text-sm text-[var(--muted)] tabular-nums">
@@ -145,14 +223,13 @@ function IndexScreen() {
       </p>
       <Tooltip.Root>
         <Tooltip.Trigger
-          disabled={status.kind === "pending"}
           aria-describedby={tooltipId}
           render={
             <button
               type="button"
               disabled={status.kind === "pending"}
-              onClick={() => void ping()}
-              className="mt-4 rounded-md border border-[var(--border)] bg-[var(--button)] px-3 py-1.5 text-sm font-medium hover:bg-[var(--button-hover)] focus-visible:outline-2 focus-visible:outline-offset-4 disabled:opacity-50"
+              onClick={() => void usePingStore.getState().ping()}
+              className="shell-button mt-4"
             />
           }
         >
@@ -170,16 +247,9 @@ function IndexScreen() {
           </Tooltip.Positioner>
         </Tooltip.Portal>
       </Tooltip.Root>
-      {source.kind === "error" && (
-        <div role="alert" className="workspace-alert">
-          <p>{workspaceCopy.unreadable}</p>
-          <p className="workspace-alert-reason">{source.message}</p>
-        </div>
-      )}
     </section>
   );
 }
-
 const rootRoute = createRootRoute({ component: RootLayout });
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -200,6 +270,11 @@ const pageRoute = createRoute({
 const mockRoutes =
   import.meta.env.MODE === "mock"
     ? [
+        createRoute({
+          getParentRoute: () => rootRoute,
+          path: "/dev/sidebar-stress",
+          component: lazyRouteComponent(() => import("./dev/sidebar-stress")),
+        }),
         createRoute({
           getParentRoute: () => rootRoute,
           path: "/perf/keystroke/empty",
@@ -238,20 +313,26 @@ const mockRoutes =
       ]
     : [];
 
-const devRoutes = import.meta.env.DEV
-  ? [
-      createRoute({
-        getParentRoute: () => rootRoute,
-        path: "/dev/settings",
-        component: lazyRouteComponent(() => import("./dev/settings-probe")),
-      }),
-      createRoute({
-        getParentRoute: () => rootRoute,
-        path: "/dev/storage",
-        component: lazyRouteComponent(() => import("./dev/storage-probe")),
-      }),
-    ]
-  : [];
+const devRoutes =
+  import.meta.env.DEV || import.meta.env.MODE === "mock"
+    ? [
+        createRoute({
+          getParentRoute: () => rootRoute,
+          path: "/dev/ipc",
+          component: ConnectionProbe,
+        }),
+        createRoute({
+          getParentRoute: () => rootRoute,
+          path: "/dev/settings",
+          component: lazyRouteComponent(() => import("./dev/settings-probe")),
+        }),
+        createRoute({
+          getParentRoute: () => rootRoute,
+          path: "/dev/storage",
+          component: lazyRouteComponent(() => import("./dev/storage-probe")),
+        }),
+      ]
+    : [];
 
 export const router = createRouter({
   routeTree: rootRoute.addChildren([
