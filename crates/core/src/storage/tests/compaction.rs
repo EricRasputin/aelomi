@@ -1,7 +1,7 @@
 use std::time::Duration;
 
 use yrs::updates::decoder::Decode;
-use yrs::{Doc, GetString, ReadTxn, StateVector, Text, Transact, Update};
+use yrs::{Array, Doc, GetString, ReadTxn, StateVector, Text, Transact, Update, WriteTxn};
 
 use super::{
     ATTRIBUTED_PAGE, Delivery, Env, applied, assert_doc, attributed_page, doc, frames, in_order,
@@ -616,6 +616,52 @@ fn a_doc_whose_snapshot_passes_the_payload_limit_skips_compaction_and_keeps_writ
     );
     drop(store);
     assert_doc(&env.open(), &a, &sent);
+}
+
+/// Text runs leave out values stored beside text in one branch, so compaction can't check a
+/// snapshot of this doc and must keep its log.
+#[test]
+fn a_doc_whose_snapshot_cannot_be_checked_skips_compaction_and_keeps_its_log() {
+    let mut env = Env::manual();
+    env.limits = Limits {
+        records: 3,
+        ..Limits::DATA_6
+    };
+    let source = Doc::with_client_id(1);
+    let sent: Vec<Vec<u8>> = (0..5)
+        .map(|edit| {
+            let before = source.transact().state_vector();
+            let mut txn = source.transact_mut();
+            if edit == 0 {
+                let values = txn.get_or_insert_array("mixed");
+                values.push_back(&mut txn, 1);
+            } else {
+                let text = txn.get_or_insert_text("mixed");
+                text.insert(&mut txn, 0, "é");
+            }
+            drop(txn);
+            source.transact().encode_state_as_update_v1(&before)
+        })
+        .collect();
+    let store = env.open();
+    let a = doc("a");
+    for update in &sent {
+        store.append(&a, update).unwrap();
+    }
+    store.run_writer_once();
+    assert_eq!(store.queued_compactions(), std::slice::from_ref(&a));
+
+    let (compacted, result) = store.run_compactor_once().unwrap();
+    assert_eq!(compacted, a);
+    result.expect("compaction skips the doc");
+    let log = log_name(0, 0);
+    assert_eq!(env.doc_files(&a), [log.as_str()]);
+    assert_eq!(env.quarantine(), [].into());
+    let path = env.path("docs/a").join(&log);
+    assert_eq!(
+        read_log_file(&path, &env.fs.durable_files()[&path]).records,
+        sent
+    );
 }
 
 #[test]

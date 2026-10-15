@@ -5,7 +5,7 @@ use std::panic::{self, AssertUnwindSafe};
 use std::path::Path;
 use std::sync::atomic::Ordering;
 
-use yrs::{Doc, ReadTxn, StateVector, Transact};
+use yrs::{Doc, OffsetKind, ReadTxn, StateVector, Transact};
 
 use super::decode;
 use super::doc_id::DocId;
@@ -115,10 +115,10 @@ enum Expected {
 }
 
 impl Expected {
-    fn of(txn: &impl ReadTxn) -> Option<Self> {
+    fn of(txn: &impl ReadTxn, offsets: OffsetKind) -> Option<Self> {
         Some(Self::Equal {
             ops: Ops::of_doc(txn)?,
-            fingerprint: Fingerprint::of(txn)?,
+            fingerprint: Fingerprint::of(txn, offsets)?,
         })
     }
 
@@ -128,15 +128,16 @@ impl Expected {
         }
     }
 
-    fn met_by(&self, held: &Ops, loaded: &impl ReadTxn) -> bool {
-        let Some(loaded_ops) = Ops::of_doc(loaded) else {
+    fn met_by(&self, held: &Ops, loaded: &Doc) -> bool {
+        let txn = loaded.transact();
+        let Some(loaded_ops) = Ops::of_doc(&txn) else {
             return false;
         };
         match self {
             Self::Equal { ops, fingerprint } => {
                 held == ops
                     && loaded_ops == *ops
-                    && Fingerprint::of(loaded).as_ref() == Some(fingerprint)
+                    && Fingerprint::of(&txn, loaded.offset_kind()).as_ref() == Some(fingerprint)
             }
             Self::Merged(ops) => held == ops && loaded_ops.contains(ops),
         }
@@ -159,9 +160,9 @@ pub(crate) fn rotate(shared: &Shared, doc: &DocId) -> Option<Rotated> {
         if too_large(shared, doc, &payload) {
             return None;
         }
-        let Some(expected) = Expected::of(&txn) else {
+        let Some(expected) = Expected::of(&txn, ydoc.offset_kind()) else {
             eprintln!(
-                "aelomi storage: skipped compacting {doc}, as yrs can't decode its own encoding"
+                "aelomi storage: skipped compacting {doc}, as its snapshot can't be checked against the doc"
             );
             return None;
         };
@@ -209,7 +210,7 @@ fn verify(
             let held = Ops::of_update(&update);
             let loaded = Doc::new();
             let applied = loaded.transact_mut().apply_update(update).is_ok();
-            applied && expected.met_by(&held, &loaded.transact())
+            applied && expected.met_by(&held, &loaded)
         });
     if verified {
         Ok(())
@@ -425,8 +426,6 @@ impl fmt::Display for CompactError {
 
 #[cfg(test)]
 mod tests {
-    use yrs::Transact;
-
     use super::{Expected, decode};
     use crate::storage::equality::Ops;
     use crate::storage::recover::merge;
@@ -441,7 +440,7 @@ mod tests {
         let expected = Expected::Merged(all.ops);
         let verifies = |held: &[u8], loaded: &[u8]| {
             let held = Ops::of_update(&decode::update(held).unwrap());
-            expected.met_by(&held, &doc_from([loaded]).transact())
+            expected.met_by(&held, &doc_from([loaded]))
         };
         assert!(verifies(&all.payload, &all.payload));
         assert!(!verifies(&one_less, &all.payload), "holds one less");

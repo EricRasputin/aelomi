@@ -7,7 +7,7 @@ use yrs::{
 };
 
 use super::{ATTRIBUTED_PAGE, attributed_page, render_body};
-use crate::storage::equality::Ops;
+use crate::storage::equality::{Fingerprint, Ops};
 use crate::storage::testkit::{apply, doc_from, fingerprint};
 
 fn decoded(doc: &Doc) -> Doc {
@@ -52,7 +52,7 @@ fn every_shape_yrs_offers_matches_its_decoded_snapshot() {
         let len = text.len(&txn);
         text.insert_with_attributes(&mut txn, len, "linked", mark("link", "https://a".into()));
         let len = text.len(&txn);
-        text.insert_embed(&mut txn, len, Any::from("an embed"));
+        text.insert_embed(&mut txn, len, Any::from(vec![Any::from("an embed")]));
         let len = text.len(&txn);
         let nested = text.insert_embed(&mut txn, len, ArrayPrelim::from([1, 2]));
         nested.push_back(&mut txn, "pushed");
@@ -190,4 +190,52 @@ fn the_fingerprint_tells_apart_docs_that_differ_only_in_content() {
         let array = txn.get_or_insert_array("rows");
         array.push_back(txn, if variant { 2 } else { 1 });
     });
+}
+
+fn assert_not_compared(case: &str, edit: impl Fn(&mut TransactionMut, bool)) {
+    let (a, b) = twins(edit);
+    let (a_txn, b_txn) = (a.transact(), b.transact());
+    assert_eq!(a_txn.snapshot(), b_txn.snapshot(), "{case}: same snapshot");
+    assert_eq!(Ops::of_doc(&a_txn), Ops::of_doc(&b_txn), "{case}: same ops");
+    drop((a_txn, b_txn));
+    for (twin, doc) in [("a", &a), ("a decoded", &decoded(&a)), ("b", &b)] {
+        let fingerprint = Fingerprint::of(&doc.transact(), doc.offset_kind());
+        assert_eq!(fingerprint, None, "{case}: {twin}");
+    }
+}
+
+/// Text runs can't show these differences, so the fingerprint refuses the doc, and compaction
+/// leaves it alone.
+#[test]
+fn a_branch_whose_text_runs_hide_content_is_not_compared() {
+    assert_not_compared("values beside text", |txn, variant| {
+        txn.get_or_insert_array("mixed")
+            .push_back(txn, if variant { 2 } else { 1 });
+        txn.get_or_insert_text("mixed").insert(txn, 0, "é");
+    });
+    assert_not_compared("a string embed beside text", |txn, variant| {
+        let text = txn.get_or_insert_text("text");
+        text.insert(txn, 0, "é");
+        let embed = if variant { "b" } else { "a" };
+        text.insert_embed(txn, 0, Any::from(embed));
+    });
+}
+
+#[test]
+fn text_with_deleted_runs_matches_its_decoded_snapshot() {
+    let doc = Doc::with_client_id(1);
+    {
+        let mut txn = doc.transact_mut();
+        let text = txn.get_or_insert_text("text");
+        text.insert(&mut txn, 0, "é and 🙂 and more");
+        text.remove_range(&mut txn, 2, 5);
+        let xml = txn.get_or_insert_xml_fragment("prosemirror");
+        let p = xml.push_back(&mut txn, XmlElementPrelim::empty("paragraph"));
+        let run = p.push_back(&mut txn, XmlTextPrelim::new("keep 🙂 drop"));
+        run.remove_range(&mut txn, 9, 5);
+        run.insert_embed(&mut txn, 0, Any::from(7));
+    }
+    let snapshot = decoded(&doc);
+    assert_eq!(fingerprint(&doc), fingerprint(&snapshot));
+    assert_eq!(fingerprint(&snapshot), fingerprint(&decoded(&snapshot)));
 }

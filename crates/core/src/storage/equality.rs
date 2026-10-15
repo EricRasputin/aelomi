@@ -6,8 +6,8 @@ use yrs::branch::{Branch, BranchPtr};
 use yrs::types::TypeRef;
 use yrs::types::text::YChange;
 use yrs::{
-    Any, Array, ArrayRef, BranchID, Doc, GetString, IdSet, Map, MapRef, Out, ReadTxn, Snapshot,
-    StateVector, Text, TextRef, Transact, Update,
+    Any, Array, ArrayRef, BranchID, Doc, GetString, IdSet, Map, MapRef, OffsetKind, Out, ReadTxn,
+    Snapshot, StateVector, Text, TextRef, Transact, Update,
 };
 
 #[derive(Debug, PartialEq)]
@@ -54,8 +54,9 @@ struct PendingStructs {
 }
 
 impl Fingerprint {
-    /// `None` when yrs can't apply its own encoding of the doc's pending structs.
-    pub fn of(txn: &impl ReadTxn) -> Option<Self> {
+    /// `None` when yrs can't apply its own encoding of the doc's pending structs, or when a branch
+    /// holds text beside values its text runs leave out. `offsets` is the doc's offset kind.
+    pub fn of(txn: &impl ReadTxn, offsets: OffsetKind) -> Option<Self> {
         let pending = if txn.has_missing_updates() {
             Some(settled_pending(txn)?)
         } else {
@@ -63,13 +64,14 @@ impl Fingerprint {
         };
         let mut reader = Reader {
             txn,
+            offsets,
             found: Vec::new(),
             seen: BTreeSet::new(),
         };
         let mut branches = BTreeMap::new();
         for (_, root) in txn.root_refs() {
             if let Ok(root) = shared(root) {
-                let content = reader.content(root);
+                let content = reader.content(root)?;
                 if content != Content::default() {
                     branches.insert(
                         root.id(),
@@ -83,7 +85,7 @@ impl Fingerprint {
         }
         while let Some(branch) = reader.found.pop() {
             let kind = Some(branch.type_ref().clone());
-            let content = reader.content(branch);
+            let content = reader.content(branch)?;
             branches.insert(branch.id(), Node { kind, content });
         }
         Some(Self {
@@ -97,12 +99,13 @@ impl Fingerprint {
 /// Collects nested branches as it meets them, so a deep doc never deepens the stack.
 struct Reader<'a, T> {
     txn: &'a T,
+    offsets: OffsetKind,
     found: Vec<BranchPtr>,
     seen: BTreeSet<BranchID>,
 }
 
 impl<T: ReadTxn> Reader<'_, T> {
-    fn content(&mut self, branch: BranchPtr) -> Content {
+    fn content(&mut self, branch: BranchPtr) -> Option<Content> {
         let txn = self.txn;
         let text = TextRef::from(branch);
         let runs = text.diff(txn, YChange::identity).into_iter();
@@ -112,22 +115,43 @@ impl<T: ReadTxn> Reader<'_, T> {
                 marks.into_iter().map(|(k, v)| (k.to_string(), v)).collect()
             }),
         });
-        let runs = runs.collect();
+        let runs: Vec<Run> = runs.collect();
         // yrs's sequence iterator never ends on a string with a multi-byte character.
-        let sequence = if text.get_string(txn).is_empty() {
+        let string = text.get_string(txn);
+        let sequence = if string.is_empty() {
             let values = ArrayRef::from(branch).iter(txn);
             values.map(|value| self.value(value)).collect()
-        } else {
+        } else if self.runs_cover(&runs, &string, branch.content_len()) {
             Vec::new()
+        } else {
+            return None;
         };
         let map = MapRef::from(branch);
         let entries = map.iter(txn);
         let entries = entries.map(|(key, value)| (key.to_owned(), self.value(value)));
-        Content {
+        Some(Content {
             runs,
             sequence,
             entries: entries.collect(),
+        })
+    }
+
+    /// Text runs leave out values, binaries and subdocs, and a string embed reads like text, so
+    /// the runs must spell the branch's string and count up to its length, each other run as 1.
+    fn runs_cover(&self, runs: &[Run], string: &str, content_len: u32) -> bool {
+        let mut spelled = String::new();
+        let mut others: u64 = 0;
+        for run in runs {
+            match &run.insert {
+                Value::Any(Any::String(s)) => spelled.push_str(s),
+                _ => others += 1,
+            }
         }
+        let string_len = match self.offsets {
+            OffsetKind::Bytes => string.len(),
+            OffsetKind::Utf16 => string.encode_utf16().count(),
+        };
+        spelled == string && string_len as u64 + others == u64::from(content_len)
     }
 
     fn value(&mut self, out: Out) -> Value {
