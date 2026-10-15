@@ -76,6 +76,31 @@ fn number(digits: &str) -> Option<u64> {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum RootFile {
+    Format,
+    Settings,
+}
+
+impl RootFile {
+    pub fn validate(self, bytes: &[u8]) -> std::io::Result<()> {
+        match self {
+            Self::Format => super::fs::validate_format_marker(bytes),
+            Self::Settings => Ok(()),
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Format => "format.json",
+            Self::Settings => "settings.json",
+        }
+    }
+    pub fn temp_name(self) -> String {
+        format!("{}.tmp", self.name())
+    }
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct Layout {
     root: PathBuf,
@@ -93,11 +118,18 @@ impl Layout {
     }
 
     pub fn format_json(&self) -> PathBuf {
-        self.root.join("format.json")
+        self.file(RootFile::Format)
     }
 
     pub fn format_json_tmp(&self) -> PathBuf {
-        self.root.join("format.json.tmp")
+        self.temp_file(RootFile::Format)
+    }
+
+    pub fn file(&self, file: RootFile) -> PathBuf {
+        self.root.join(file.name())
+    }
+    pub fn temp_file(&self, file: RootFile) -> PathBuf {
+        self.root.join(file.temp_name())
     }
 
     pub fn lock(&self) -> PathBuf {

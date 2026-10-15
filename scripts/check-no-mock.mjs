@@ -1,7 +1,11 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-const markers = ["__aelomiMock", "aelomi-dev-storage-probe"];
+const markers = [
+  "__aelomiMock",
+  "aelomi-dev-storage-probe",
+  "aelomi-dev-settings-probe",
+];
 const files = await readdir("dist", { recursive: true, withFileTypes: true });
 let checked = 0;
 for (const file of files) {

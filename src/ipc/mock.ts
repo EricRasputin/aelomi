@@ -22,6 +22,8 @@ import {
   type QuitPhase,
   type QuitStatus,
   type SearchScope,
+  type Settings,
+  type SettingsPatch,
   type StorageError,
   type StorageStatus,
 } from "./bindings";
@@ -34,6 +36,7 @@ import {
   type SearchablePage,
   searchPages,
 } from "./mock-search";
+import { defaultSettings, patchSettings, seedSettings } from "./mock-settings";
 import {
   type PageRecord,
   pagesRootProblem,
@@ -55,6 +58,7 @@ type MockCall = {
 }[keyof Commands];
 
 export type MockSetup = {
+  settings?: Partial<Settings>;
   indexStatus?: IndexStatus;
   pages?: SeedPage[];
   bodies?: Record<string, SeedBlock[]>;
@@ -94,6 +98,8 @@ const storage: {
 };
 let exited = false;
 let indexStatus: IndexStatus = "Ready";
+let settings = defaultSettings();
+let settingsPending = false;
 
 type FixturePage = { id: string; title: string; lines: string[] };
 const fixtureBodies = new Map<string, string[]>();
@@ -151,28 +157,33 @@ function changeQuit(phase: QuitPhase) {
 }
 
 function pendingDocs(): string[] {
-  return [...storage.docs].filter(([, doc]) => doc.pending).map(([id]) => id);
+  return [...storage.docs]
+    .filter(([, doc]) => doc.pending)
+    .map(([id]) => id)
+    .sort();
 }
 
 function flushThenQuit() {
   const pending = pendingDocs();
-  if (pending.length === 0) {
+  if (pending.length === 0 && !settingsPending) {
     changeQuit("Confirmed");
     exited = true;
-  } else changeQuit({ Asking: { pending_docs: pending } });
+  } else
+    changeQuit({
+      Asking: { pending_docs: pending, pending_settings: settingsPending },
+    });
 }
 
 function refreshHealth() {
-  const pending = [...storage.docs]
-    .filter(([, doc]) => doc.pending)
-    .map(([id]) => id);
+  const pending = pendingDocs();
   const next: Health =
-    pending.length === 0
+    pending.length === 0 && !settingsPending
       ? "Healthy"
       : {
           Failing: {
             reason: storage.reason,
             pending_docs: pending,
+            pending_settings: settingsPending,
           },
         };
   if (JSON.stringify(next) === JSON.stringify(storage.health)) return;
@@ -365,6 +376,27 @@ function search(text: string, limit: number, scope: Scope): MockHit[] {
 }
 
 export const commands = {
+  settingsGet: async () => {
+    calls.push({ command: "settingsGet", args: [] });
+    await setupReady;
+    if (storage.status !== "Ready")
+      return { status: "error", error: "Unavailable" };
+    return { status: "ok", data: structuredClone(settings) };
+  },
+  settingsUpdate: async (patch) => {
+    calls.push({ command: "settingsUpdate", args: [structuredClone(patch)] });
+    await setupReady;
+    if (storage.status !== "Ready")
+      return { status: "error", error: "Unavailable" };
+    const result = patchSettings(settings, patch);
+    if (result.status === "error") return result;
+    settings = result.data;
+    settingsPending = storage.failWrites;
+    refreshHealth();
+    if (settingsPending)
+      return { status: "error", error: { Write: storage.reason } };
+    return structuredClone(result);
+  },
   ping: async (request) => {
     calls.push({ command: "ping", args: [structuredClone(request)] });
     return { seq: request.seq, core_version: "0.1.0-mock" };
@@ -470,7 +502,12 @@ export const commands = {
     if (invalid !== undefined)
       return { status: "error", error: "InvalidDocId" };
     if (quit.phase === "Draining" && quit.revision === revision)
-      changeQuit({ Asking: { pending_docs: [...docIds] } });
+      changeQuit({
+        Asking: {
+          pending_docs: [...new Set([...docIds, ...pendingDocs()])].sort(),
+          pending_settings: settingsPending,
+        },
+      });
     return { status: "ok", data: quitStatus() };
   },
   docLoad: async (docId) => {
@@ -582,6 +619,7 @@ async function loadSearchFixture() {
 
 async function applySetup(setup: MockSetup | undefined) {
   if (!setup) return;
+  if (setup.settings) settings = seedSettings(setup.settings);
   if (setup.indexStatus) indexStatus = structuredClone(setup.indexStatus);
   if (setup.pages) {
     writeRecords(workspaceDoc(), setup.pages);
@@ -616,6 +654,8 @@ function restoreKept(): boolean {
 function resetState() {
   calls.length = 0;
   errors.length = 0;
+  settings = defaultSettings();
+  settingsPending = false;
   storage.status = "Ready";
   storage.failWrites = false;
   storage.docs.clear();
@@ -671,8 +711,14 @@ const control = {
       }
       if (!quit.frontendReady) {
         const pending = pendingDocs();
-        if (pending.length === 0) exited = true;
-        else changeQuit({ Asking: { pending_docs: pending } });
+        if (pending.length === 0 && !settingsPending) exited = true;
+        else
+          changeQuit({
+            Asking: {
+              pending_docs: pending,
+              pending_settings: settingsPending,
+            },
+          });
         return;
       }
       if (quit.phase !== "Draining") changeQuit("Draining");
@@ -680,7 +726,12 @@ const control = {
     /** The shell's drain timeout: flushes the Store and asks. */
     timeOut() {
       if (quit.phase !== "Draining") return;
-      changeQuit({ Asking: { pending_docs: pendingDocs() } });
+      changeQuit({
+        Asking: {
+          pending_docs: pendingDocs(),
+          pending_settings: settingsPending,
+        },
+      });
     },
   },
   index: {
@@ -723,12 +774,18 @@ const control = {
       return toBase64(Y.encodeStateAsUpdate(mockDoc(pageId).doc));
     },
   },
+  settings: {
+    update: (patch: SettingsPatch) => commands.settingsUpdate(patch),
+  },
   storage: {
     /** While on, appends stay pending and health reports the failure. */
     failWrites(on: boolean, reason: FailReason = { Io: "mock write failure" }) {
       storage.failWrites = on;
       storage.reason = reason;
-      if (!on) for (const doc of storage.docs.values()) doc.pending = false;
+      if (!on) {
+        for (const doc of storage.docs.values()) doc.pending = false;
+        settingsPending = false;
+      }
       refreshHealth();
     },
     async type(docId: string, text: string) {

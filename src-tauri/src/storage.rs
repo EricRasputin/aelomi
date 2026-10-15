@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use aelomi_core::index::IndexEvent;
-use aelomi_core::storage::{self as core, DataPathError, DocId, OpenError};
+use aelomi_core::storage::{self as core, DataPathError, OpenError, Pending};
 use aelomi_core::workspace::Workspace;
 use serde::Serialize;
 use specta::Type;
@@ -60,6 +60,7 @@ pub enum Health {
     Failing {
         reason: FailReason,
         pending_docs: Vec<String>,
+        pending_settings: bool,
     },
 }
 
@@ -162,14 +163,21 @@ impl Storage {
         )
     }
 
-    pub fn pending_docs(&self) -> Vec<DocId> {
+    pub fn pending_edits(&self) -> Pending {
         match self.workspace().map(|workspace| workspace.health()) {
-            Ok(core::Health::Failing { pending_docs, .. }) => pending_docs,
-            _ => Vec::new(),
+            Ok(core::Health::Failing {
+                pending_docs,
+                pending_settings,
+                ..
+            }) => Pending {
+                docs: pending_docs,
+                settings: pending_settings,
+            },
+            _ => Pending::default(),
         }
     }
 
-    pub fn flush_before_quit(&self, timeout: Duration) -> Result<(), Vec<DocId>> {
+    pub fn flush_before_quit(&self, timeout: Duration) -> Result<(), Pending> {
         let Ok(workspace) = &self.opened else {
             return Ok(());
         };
@@ -200,17 +208,25 @@ impl From<&core::Health> for Health {
             core::Health::Failing {
                 reason,
                 pending_docs,
+                pending_settings,
                 ..
             } => Self::Failing {
-                reason: match reason {
-                    core::FailReason::DiskFull => FailReason::DiskFull,
-                    core::FailReason::PermissionDenied => FailReason::PermissionDenied,
-                    core::FailReason::ReadOnlyVolume => FailReason::ReadOnlyVolume,
-                    core::FailReason::Io(error) => FailReason::Io(error.clone()),
-                    core::FailReason::Internal => FailReason::Internal,
-                },
-                pending_docs: pending_docs.iter().map(|doc| doc.to_string()).collect(),
+                reason: reason.into(),
+                pending_docs: pending_docs.iter().map(ToString::to_string).collect(),
+                pending_settings: *pending_settings,
             },
+        }
+    }
+}
+
+impl From<&core::FailReason> for FailReason {
+    fn from(reason: &core::FailReason) -> Self {
+        match reason {
+            core::FailReason::DiskFull => Self::DiskFull,
+            core::FailReason::PermissionDenied => Self::PermissionDenied,
+            core::FailReason::ReadOnlyVolume => Self::ReadOnlyVolume,
+            core::FailReason::Io(error) => Self::Io(error.clone()),
+            core::FailReason::Internal => Self::Internal,
         }
     }
 }
@@ -249,7 +265,7 @@ pub struct StorageHealthChanged(pub Health);
 pub(crate) mod tests {
     use std::path::Path;
 
-    use aelomi_core::storage::test_support::SimDisk;
+    use aelomi_core::storage::{DocId, test_support::SimDisk};
 
     use super::*;
 
@@ -518,7 +534,10 @@ pub(crate) mod tests {
         let start = Instant::now();
         assert_eq!(
             storage.flush_before_quit(Duration::from_millis(300)),
-            Err(vec![doc.clone()])
+            Err(Pending {
+                docs: vec![doc.clone()],
+                settings: false
+            })
         );
         assert!(
             start.elapsed() >= Duration::from_millis(300),

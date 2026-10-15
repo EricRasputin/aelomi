@@ -257,7 +257,7 @@ fn run(scenario: &Scenario) -> Result<(), TestCaseError> {
         }
     }
     prop_assert_eq!(
-        store.flush(soon()),
+        store.flush(soon()).docs,
         Vec::<DocId>::new(),
         "writes work after the crash"
     );
@@ -367,14 +367,14 @@ fn the_threaded_writer_reports_an_update_durable_only_after_a_full_sync() {
             let seq = store.append(&a, update).unwrap();
             appended.lock().unwrap().push((seq, update.clone()));
             if i % 4 == 3 {
-                assert_eq!(store.flush(soon()), []);
+                assert_eq!(store.flush(soon()).docs, []);
                 for update in &sent[..=i] {
                     assert_in_durable_layer(&env, &a, update, "flush");
                 }
             }
             std::thread::sleep(Duration::from_millis(3));
         }
-        assert_eq!(store.flush(soon()), []);
+        assert_eq!(store.flush(soon()).docs, []);
         finished.store(true, Ordering::SeqCst);
     });
 }

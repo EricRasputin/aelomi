@@ -35,6 +35,47 @@ fn record_health(store: &Store) -> Arc<Mutex<Vec<Health>>> {
 }
 
 #[test]
+fn shell_10_a_writer_pass_publishes_only_its_latest_failure_reason() {
+    let env = Env::manual();
+    let store = env.open();
+    let seen = record_health(&store);
+    let (a, b) = (doc("a"), doc("b"));
+    env.fs.fail(OpKind::Append, "/docs/a/", libc::EACCES);
+    store.append(&a, &typed(1, 3)).unwrap();
+    write_batch(&store);
+    seen.lock().unwrap().clear();
+
+    env.fs.fail(OpKind::Append, "/docs/b/", libc::ENOSPC);
+    store.append(&b, &typed(2, 3)).unwrap();
+    write_batch(&store);
+    let latest = Health::Failing {
+        reason: FailReason::DiskFull,
+        since: Duration::ZERO,
+        pending_docs: vec![a.clone(), b.clone()],
+        pending_settings: false,
+    };
+    assert_eq!(*seen.lock().unwrap(), [latest.clone()]);
+    store.run_writer_once();
+    assert_eq!(*seen.lock().unwrap(), [latest.clone()]);
+    assert_eq!(store.health(), latest);
+
+    seen.lock().unwrap().clear();
+    env.clock.advance(ms(100));
+    env.fs
+        .fail(OpKind::Append, "settings.json.tmp", libc::EROFS);
+    store.queue_settings(crate::settings::Settings::default());
+    write_batch(&store);
+    let settings_latest = Health::Failing {
+        reason: FailReason::ReadOnlyVolume,
+        since: Duration::ZERO,
+        pending_docs: vec![a, b],
+        pending_settings: true,
+    };
+    assert_eq!(*seen.lock().unwrap(), [settings_latest.clone()]);
+    assert_eq!(store.health(), settings_latest);
+}
+
+#[test]
 fn a_failing_doc_stays_pending_while_other_docs_are_acknowledged() {
     let env = Env::manual();
     let store = env.open();
@@ -60,6 +101,7 @@ fn a_failing_doc_stays_pending_while_other_docs_are_acknowledged() {
         reason: FailReason::DiskFull,
         since: ms(1000),
         pending_docs: vec![a.clone()],
+        pending_settings: false,
     };
     assert_eq!(store.health(), failing);
 
@@ -256,10 +298,10 @@ fn flush_retries_a_failing_doc_at_once_whatever_its_backoff() {
     };
     let before = appends();
     let quit_deadline = || Instant::now() + Duration::from_secs(2);
-    assert_eq!(store.flush(quit_deadline()), std::slice::from_ref(&a));
+    assert_eq!(store.flush(quit_deadline()).docs, std::slice::from_ref(&a));
     assert_eq!(appends(), before + 1, "one retry per flush");
     env.fs.clear_faults();
-    assert_eq!(store.flush(quit_deadline()), [], "the disk recovered");
+    assert_eq!(store.flush(quit_deadline()).docs, [], "the disk recovered");
     assert_eq!(store.health(), Health::Healthy);
     drop(store);
     assert_doc(&env.open(), &a, &sent);
@@ -275,7 +317,7 @@ fn a_flush_retries_a_failing_doc_whose_files_were_busy_as_soon_as_they_free() {
     for update in stored {
         store.append(&b, update).unwrap();
     }
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     assert!(store.has_pending_structs(&b), "b's load merges its files");
     env.fs.fail(OpKind::Append, "/docs/b/", libc::EIO);
     store.append(&b, last).unwrap();
@@ -286,7 +328,7 @@ fn a_flush_retries_a_failing_doc_whose_files_were_busy_as_soon_as_they_free() {
     let pending = std::thread::scope(|s| {
         let loading = s.spawn(|| store.load(&b).unwrap());
         hold.wait_until_reached();
-        let pending = store.flush(soon());
+        let pending = store.flush(soon()).docs;
         hold.release();
         loading.join().unwrap();
         pending
@@ -311,7 +353,7 @@ fn close_never_discards_a_pending_update() {
     }
     let (store, pending) = store.close(soon()).unwrap_err();
     assert_eq!(
-        pending,
+        pending.docs,
         std::slice::from_ref(&a),
         "close hands the store back"
     );
@@ -346,7 +388,7 @@ fn a_panic_holding_a_docs_state_stops_neither_its_writes_nor_any_others() {
 
     let more = gen_a.next_update();
     store.append(&a, &more).unwrap();
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     sent_a.push(more);
     drop(store);
     let store = env.open();
@@ -394,6 +436,7 @@ fn a_panicking_health_subscriber_stops_neither_writes_nor_other_subscribers() {
         reason: FailReason::DiskFull,
         since: ms(1000),
         pending_docs: vec![doc("a")],
+        pending_settings: false,
     };
     assert_eq!(*seen.lock().unwrap(), [failing, Health::Healthy]);
     assert_eq!(calls.load(Ordering::SeqCst), 2);
@@ -428,6 +471,7 @@ fn a_panic_in_a_writer_step_leaves_every_update_queued_for_the_retry() {
         reason: FailReason::Internal,
         since: ms(1000),
         pending_docs: vec![a.clone(), b.clone()],
+        pending_settings: false,
     };
     assert_eq!(store.health(), failing);
 
@@ -454,9 +498,12 @@ fn the_writer_thread_survives_a_panic() {
     let sent = UpdateGen::new(100, 1).updates(2);
     env.fs.panic_once(OpKind::Append, "/docs/a/");
     store.append(&a, &sent[0]).unwrap();
-    assert_eq!(store.flush(Instant::now() + Duration::from_secs(5)), []);
+    assert_eq!(
+        store.flush(Instant::now() + Duration::from_secs(5)).docs,
+        []
+    );
     store.append(&a, &sent[1]).unwrap();
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     assert_eq!(store.health(), Health::Healthy);
     drop(store);
     assert_doc(&env.open(), &a, &sent);
@@ -466,7 +513,7 @@ fn fail_then_recover(env: &Env, store: &Store, a: &DocId, sent: &[Vec<u8>], atte
     for update in &sent[..3] {
         store.append(a, update).unwrap();
     }
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     env.fs.fail(OpKind::Append, "/docs/a/", libc::EIO);
     for update in &sent[3..] {
         store.append(a, update).unwrap();
@@ -480,7 +527,7 @@ fn fail_then_recover(env: &Env, store: &Store, a: &DocId, sent: &[Vec<u8>], atte
         write_batch(store);
     }
     env.fs.clear_faults();
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
 }
 
 fn torn_logs(env: &Env, a: &DocId) -> Vec<(String, usize)> {

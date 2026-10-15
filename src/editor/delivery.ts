@@ -23,6 +23,13 @@ export const useDeliveryStore = create<DeliveryStore>(() => ({
 const deliveries = new Map<string, DocDelivery>();
 const loads = new Set<Promise<unknown>>();
 
+export function hasOutstandingDeliveries(): boolean {
+  return (
+    loads.size > 0 ||
+    [...deliveries.values()].some((delivery) => delivery.outstanding.size > 0)
+  );
+}
+
 /** A drain also waits for doc loads in flight, so it never races an editor binding. */
 export function trackLoad<T>(load: Promise<T>): Promise<T> {
   loads.add(load);

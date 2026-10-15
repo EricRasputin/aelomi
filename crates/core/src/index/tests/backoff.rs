@@ -89,7 +89,8 @@ fn a_fault_that_recurs_after_every_ready_backs_off_fails_and_recovers() {
     assert_eq!(
         opened
             .workspace
-            .flush(Instant::now() + Duration::from_secs(10)),
+            .flush(Instant::now() + Duration::from_secs(10))
+            .docs,
         []
     );
     let expected = snapshot(&opened.workspace);
@@ -227,7 +228,8 @@ fn appends_and_flushes_are_acknowledged_while_a_repeated_repair_waits() {
     assert_eq!(
         opened
             .workspace
-            .flush(Instant::now() + Duration::from_secs(10)),
+            .flush(Instant::now() + Duration::from_secs(10))
+            .docs,
         []
     );
     let almost = clock.now() + ms(99);
@@ -247,7 +249,8 @@ fn appends_and_flushes_are_acknowledged_while_a_repeated_repair_waits() {
     assert_eq!(
         opened
             .workspace
-            .flush(Instant::now() + Duration::from_secs(10)),
+            .flush(Instant::now() + Duration::from_secs(10))
+            .docs,
         []
     );
     let tree = opened.workspace.tree().unwrap();

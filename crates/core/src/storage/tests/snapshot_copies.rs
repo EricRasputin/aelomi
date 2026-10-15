@@ -108,7 +108,7 @@ fn a_folder_mixing_snapshot_formats_loads_both_and_compacts_above_both() {
 
     let store = env.open();
     store.append(&a, &later[0]).unwrap();
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     assert_eq!(
         env.doc_files(&a),
         [
@@ -138,7 +138,7 @@ fn compaction_deletes_a_whole_format_2_snapshot_it_holds_and_quarantines_a_damag
         for update in &sent {
             store.append(&a, update).unwrap();
         }
-        assert_eq!(store.flush(soon()), []);
+        assert_eq!(store.flush(soon()).docs, []);
         let name = "snapshot-0000000000.ysnap2";
         env.fs.put_durable(&env.path("docs/a").join(name), &planted);
 
@@ -166,7 +166,7 @@ fn compaction_keeps_a_format_2_snapshot_holding_changes_it_lacks() {
         for update in &sent[..5] {
             store.append(&a, update).unwrap();
         }
-        assert_eq!(store.flush(soon()), []);
+        assert_eq!(store.flush(soon()).docs, []);
         let path = env.path("docs/a/snapshot-0000000000.ysnap2");
         env.fs.put_durable(&path, &planted);
 
@@ -275,7 +275,7 @@ fn one_fault_in_a_compactor_written_format_2_snapshot_loses_no_update() {
         for update in &sent {
             store.append(&a, update).unwrap();
         }
-        assert_eq!(store.flush(soon()), []);
+        assert_eq!(store.flush(soon()).docs, []);
         store.compact(&a).unwrap();
         assert_eq!(env.doc_files(&a), [name]);
         env.fs.files()[&env.path("docs/a").join(name)].clone()

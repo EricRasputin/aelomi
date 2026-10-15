@@ -203,7 +203,7 @@ fn a_format_1_build_refuses_a_folder_the_writer_moved_to_format_2_before_any_wri
     store
         .append(&a, &UpdateGen::new(10, 2).next_update())
         .unwrap();
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     drop(store);
     let (files, before) = (env.fs.files(), env.fs.ops().len());
 

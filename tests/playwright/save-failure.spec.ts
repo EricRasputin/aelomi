@@ -189,3 +189,28 @@ test("SHELL-10 double confirmation sends one exit and preserves pending text", a
     })),
   ).toEqual({ exited: true, confirmations: 1, text: "x" });
 });
+
+test("SHELL-10 names pending settings in quit confirmation and retries after recovery", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.evaluate(async () => {
+    const mock = window.__aelomiMock;
+    if (!mock) throw new Error("Missing IPC mock");
+    mock.storage.failWrites(true, "PermissionDenied");
+    await mock.settings.update({ theme: "Dark" });
+  });
+  await expect(page.getByRole("alert")).toContainText(
+    "Changes aren't being saved.",
+  );
+  await page.evaluate(() => window.__aelomiMock?.quit.request());
+  const dialog = page.getByRole("alertdialog");
+  await expect(dialog).toContainText("Settings changes have not been saved.");
+  await page.getByRole("button", { name: "Keep app open" }).click();
+  await expect(dialog).toBeHidden();
+  await page.evaluate(() => window.__aelomiMock?.storage.failWrites(false));
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  expect(await page.evaluate(() => window.__aelomiMock?.quit.exited)).toBe(
+    false,
+  );
+});

@@ -3,7 +3,7 @@ use std::path::Path;
 use std::sync::Mutex;
 
 use super::fs::{Fs, create_durable};
-use super::layout::Layout;
+use super::layout::{Layout, RootFile};
 use super::state::lock_ignoring_poison;
 
 pub(crate) const FORMAT_VERSION: u64 = 2;
@@ -90,14 +90,14 @@ fn publish(fs: &dyn Fs, layout: &Layout) -> io::Result<()> {
         layout.format_json_tmp(),
         encode_format(FolderVersion::Current2),
     );
-    match create_durable(fs, &tmp, marker.as_bytes()) {
+    let source = match create_durable(fs, &tmp, marker.as_bytes()) {
         Err(e) if e.kind() == io::ErrorKind::AlreadyExists => {
             fs.remove(&tmp)?;
-            create_durable(fs, &tmp, marker.as_bytes())?;
+            create_durable(fs, &tmp, marker.as_bytes())?
         }
         result => result?,
-    }
-    fs.replace_format(layout.root())
+    };
+    fs.replace(layout.root(), RootFile::Format, source)
 }
 
 fn sync_folder(fs: &dyn Fs, layout: &Layout) -> io::Result<()> {

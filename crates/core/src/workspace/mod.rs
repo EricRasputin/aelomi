@@ -31,6 +31,33 @@ pub struct Workspace {
     revision: AtomicU64,
     tree: Mutex<TreeMemo>,
     tree_projected: Condvar,
+    settings: Mutex<Option<crate::settings::Settings>>,
+}
+
+#[derive(Debug)]
+pub enum SettingsError {
+    Read(io::Error),
+    Write(crate::storage::FailReason),
+}
+
+pub struct SettingsUpdate {
+    workspace: Arc<Workspace>,
+    patch: crate::settings::SettingsPatch,
+    _admission: SettingsAdmission,
+}
+
+struct SettingsAdmission(Arc<Store>);
+
+impl Drop for SettingsAdmission {
+    fn drop(&mut self) {
+        self.0.release_settings();
+    }
+}
+
+impl SettingsUpdate {
+    pub fn run(self) -> Result<crate::settings::Settings, SettingsError> {
+        self.workspace.update_settings(self.patch)
+    }
 }
 
 /// The newest tree and the revision being projected, so callers for that revision wait for
@@ -128,7 +155,47 @@ impl Workspace {
             revision: AtomicU64::new(0),
             tree: Mutex::default(),
             tree_projected: Condvar::new(),
+            settings: Mutex::default(),
         }
+    }
+
+    pub fn settings(&self) -> io::Result<crate::settings::Settings> {
+        let mut current = self.settings.lock().unwrap_or_else(PoisonError::into_inner);
+        if current.is_none() {
+            *current = Some(self.store.load_settings()?);
+        }
+        Ok(current.as_ref().expect("settings loaded").clone())
+    }
+
+    pub fn prepare_settings_update(
+        self: &Arc<Self>,
+        patch: crate::settings::SettingsPatch,
+    ) -> SettingsUpdate {
+        self.store.admit_settings();
+        SettingsUpdate {
+            workspace: self.clone(),
+            patch,
+            _admission: SettingsAdmission(self.store.clone()),
+        }
+    }
+
+    fn update_settings(
+        &self,
+        patch: crate::settings::SettingsPatch,
+    ) -> Result<crate::settings::Settings, SettingsError> {
+        let mut current = self.settings.lock().unwrap_or_else(PoisonError::into_inner);
+        if current.is_none() {
+            *current = Some(self.store.load_settings().map_err(SettingsError::Read)?);
+        }
+        let settings = current.as_mut().expect("settings loaded");
+        settings.apply(patch);
+        let snapshot = settings.clone();
+        let seq = self.store.queue_settings(snapshot.clone());
+        drop(current);
+        self.store
+            .wait_settings(seq)
+            .map_err(SettingsError::Write)?;
+        Ok(snapshot)
     }
 
     /// See [`Store::load`].
@@ -147,7 +214,7 @@ impl Workspace {
     }
 
     /// See [`Store::flush`]. Never waits for the index.
-    pub fn flush(&self, deadline: Instant) -> Vec<DocId> {
+    pub fn flush(&self, deadline: Instant) -> crate::storage::Pending {
         self.store.flush(deadline)
     }
 

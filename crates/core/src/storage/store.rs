@@ -31,6 +31,18 @@ pub struct Store {
     _lock: FsLock,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Pending {
+    pub docs: Vec<DocId>,
+    pub settings: bool,
+}
+
+impl Pending {
+    pub fn is_empty(&self) -> bool {
+        self.docs.is_empty() && !self.settings
+    }
+}
+
 #[derive(Debug)]
 pub enum OpenError {
     /// Another process has the data folder open.
@@ -66,6 +78,7 @@ pub(crate) struct Shared {
     pub layout: Layout,
     pub limits: Limits,
     pub format: FormatGate,
+    pub settings: super::settings::Slot,
     driver: Driver,
     next_seq: AtomicU64,
     pub quarantine_exists: AtomicBool,
@@ -90,6 +103,29 @@ struct Signal {
 }
 
 impl Store {
+    pub fn load_settings(&self) -> io::Result<crate::settings::Settings> {
+        super::settings::load(&*self.shared.fs, &self.shared.layout)
+    }
+
+    pub(crate) fn admit_settings(&self) {
+        self.shared.settings.admit();
+    }
+    pub(crate) fn release_settings(&self) {
+        self.shared.settings.release();
+        self.shared.batch_finished();
+    }
+
+    pub(crate) fn queue_settings(&self, settings: crate::settings::Settings) -> Seq {
+        let seq = Seq(self.shared.next_seq.fetch_add(1, Ordering::SeqCst));
+        self.shared.settings.queue(seq, settings);
+        self.shared.notify_writer();
+        seq
+    }
+
+    pub(crate) fn wait_settings(&self, seq: Seq) -> Result<(), FailReason> {
+        self.shared.settings.wait(seq)
+    }
+
     pub fn open(root: impl AsRef<Path>) -> Result<Self, OpenError> {
         let clock = Arc::new(SystemClock::new());
         let fs = Arc::new(OsFs);
@@ -111,6 +147,7 @@ impl Store {
             layout,
             limits,
             format: FormatGate::new(version),
+            settings: super::settings::Slot::default(),
             driver,
             next_seq: AtomicU64::new(1),
             quarantine_exists: AtomicBool::new(quarantine_exists),
@@ -201,15 +238,18 @@ impl Store {
     }
 
     /// Waits until every update appended before the call is durable, or `deadline` passes.
-    /// Returns the docs that still have such updates pending. A doc whose writes are failing
+    /// Returns the docs and settings still pending. A doc whose writes are failing
     /// retries once at the start, whatever its backoff.
-    pub fn flush(&self, deadline: Instant) -> Vec<DocId> {
+    pub fn flush(&self, deadline: Instant) -> Pending {
         let target = Seq(self.shared.next_seq.load(Ordering::SeqCst) - 1);
         lock_ignoring_poison(&self.shared.signal).retry_failing = true;
         self.shared.notify_writer();
         loop {
             let batches = lock_ignoring_poison(&self.shared.signal).batches;
-            let pending = self.shared.pending_through(target);
+            let pending = Pending {
+                docs: self.shared.pending_through(target),
+                settings: self.shared.settings.is_pending(),
+            };
             let now = Instant::now();
             if pending.is_empty() || now >= deadline {
                 return pending;
@@ -242,8 +282,8 @@ impl Store {
     }
 
     /// Flushes until `deadline`, then stops the threads and releases the folder. If updates are
-    /// still pending, nothing is discarded: the store comes back with the docs that have them.
-    pub fn close(self, deadline: Instant) -> Result<(), (Store, Vec<DocId>)> {
+    /// still pending, nothing is discarded: the store comes back with both pending kinds.
+    pub fn close(self, deadline: Instant) -> Result<(), (Store, Pending)> {
         let pending = self.flush(deadline);
         if pending.is_empty() {
             Ok(())
@@ -463,20 +503,32 @@ impl Shared {
                 failing.push(id);
             }
         }
+        let settings = lock_ignoring_poison(&self.settings.state);
+        let pending_settings = settings.failure.is_some();
+        if let Some(failure) = &settings.failure {
+            reason.get_or_insert_with(|| failure.reason.clone());
+        }
+        drop(settings);
         let mut health = lock_ignoring_poison(&self.health);
         let next = match (reason, &*health) {
-            (Some(reason), Health::Failing { since, .. }) if !failing.is_empty() => {
+            (Some(reason), Health::Failing { since, .. })
+                if !failing.is_empty() || pending_settings =>
+            {
                 Health::Failing {
                     reason,
                     since: *since,
                     pending_docs: failing,
+                    pending_settings,
                 }
             }
-            (Some(reason), Health::Healthy) if !failing.is_empty() => Health::Failing {
-                reason,
-                since: self.clock.now(),
-                pending_docs: failing,
-            },
+            (Some(reason), Health::Healthy) if !failing.is_empty() || pending_settings => {
+                Health::Failing {
+                    reason,
+                    since: self.clock.now(),
+                    pending_docs: failing,
+                    pending_settings,
+                }
+            }
             _ => Health::Healthy,
         };
         if next == *health {

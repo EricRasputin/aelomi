@@ -22,7 +22,7 @@ fn a_retried_open_syncs_the_entries_a_failed_open_left_unsynced() {
         for update in &sent {
             store.append(&doc("a"), update).unwrap();
         }
-        assert_eq!(store.flush(soon()), [], "{root}");
+        assert_eq!(store.flush(soon()).docs, [], "{root}");
         drop(store);
         env.fs.crash(Crash::DropUnsynced);
 
@@ -46,7 +46,7 @@ fn a_doc_folder_an_earlier_session_left_unsynced_is_synced_before_an_acknowledge
     env.fs.fail_at(OpKind::Fsync, &env.path("docs"), libc::EIO);
     store.append(&a, &first).unwrap();
     assert_eq!(
-        store.flush(soon()),
+        store.flush(soon()).docs,
         std::slice::from_ref(&a),
         "docs/ fails to sync"
     );
@@ -55,7 +55,7 @@ fn a_doc_folder_an_earlier_session_left_unsynced_is_synced_before_an_acknowledge
 
     let store = env.open();
     store.append(&a, &second).unwrap();
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     drop(store);
     env.fs.crash(Crash::DropUnsynced);
     assert_doc(&env.open(), &a, &[first, second]);

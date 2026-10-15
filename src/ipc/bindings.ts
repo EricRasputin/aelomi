@@ -54,6 +54,8 @@ export const commands = {
 	/**  Active pages linking to `page_id`, most recently updated first. */
 	backlinks: (pageId: string) => typedError<BacklinksReply, QueryError>(__TAURI_INVOKE("backlinks", { pageId })),
 	devProbeLog: (line: string) => __TAURI_INVOKE<void>("dev_probe_log", { line }),
+	settingsGet: () => typedError<Settings, SettingsError>(__TAURI_INVOKE("settings_get")),
+	settingsUpdate: (patch: SettingsPatch) => typedError<Settings, SettingsError>(__TAURI_INVOKE("settings_update", { patch })),
 };
 
 /** Events */
@@ -68,6 +70,8 @@ export const events = {
 export const MAX_EXCLUDED_PAGES = 200 as const;
 
 export const MAX_SEARCH_LIMIT = 200 as const;
+
+export const RECENT_PAGES_LIMIT = 50 as const;
 
 /* Types */
 export type Backlink = {
@@ -111,6 +115,7 @@ export type FailReason = "DiskFull" | "PermissionDenied" | "ReadOnlyVolume" | { 
 export type Health = "Healthy" | { Failing: {
 	reason: FailReason,
 	pending_docs: string[],
+	pending_settings: boolean,
 } };
 
 /**  A committed index batch: search and backlink results may differ after it. */
@@ -133,6 +138,8 @@ export type InvalidQuery =
 { TooManyExcluded: {
 	max: number,
 } };
+
+export type OpenPagePatch = { Set: SettingsOpenPage } | "Clear";
 
 /**  An active page whose body the index could read only in part. Its doc is unchanged. */
 export type PageIssue = {
@@ -193,9 +200,10 @@ export type QuitPhase =
  *  revision.
  */
 "Draining" | 
-/**  A quit was refused with these docs not yet saved, and waits for the user's answer. */
+/**  A quit was refused with pending documents or settings, and waits for the user's answer. */
 { Asking: {
 	pending_docs: string[],
+	pending_settings: boolean,
 } } | 
 /**  The app is quitting. */
 "Confirmed";
@@ -246,6 +254,27 @@ export type SearchScope =
 	exclude: string[],
 } };
 
+export type Settings = {
+	theme: Theme,
+	open_page: SettingsOpenPage | null,
+	recent_pages: string[],
+	expanded_rows: string[],
+};
+
+export type SettingsError = "Unavailable" | "Quitting" | "InvalidPageId" | ({ Io: string }) & { Write?: never } | ({ Write: FailReason }) & { Io?: never } | "Internal";
+
+export type SettingsOpenPage = {
+	page_id: string,
+	top_visible_block_id: string | null,
+};
+
+export type SettingsPatch = {
+	theme?: ThemeChoice | null,
+	open_page?: OpenPagePatch | null,
+	recent_pages?: string[] | null,
+	expanded_rows?: string[] | null,
+};
+
 export type StorageError = 
 /**  The store is not open. `storage_status` says why. */
 "Unavailable" | "InvalidDocId" | "InvalidUpdate" | { Io: string };
@@ -260,6 +289,10 @@ export type TextPart = {
 	text: string,
 	highlighted: boolean,
 };
+
+export type Theme = "System" | "Light" | "Dark" | { Unknown: string };
+
+export type ThemeChoice = "System" | "Light" | "Dark";
 
 export type TrashedPage = {
 	id: string,

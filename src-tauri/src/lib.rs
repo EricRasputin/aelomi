@@ -4,10 +4,12 @@ mod index;
 mod macos;
 mod perf;
 mod quit;
+mod settings;
 mod storage;
 mod trace;
 
 use aelomi_core::index::IndexEvent;
+#[cfg(test)]
 use aelomi_core::storage::DocId;
 use index::{IndexChanged, IndexStatusChanged};
 use quit::{QuitRequest, QuitStatus, QuitStatusChanged};
@@ -91,6 +93,10 @@ fn open_storage(app: &tauri::App) {
         trace::since_start_ms()
     );
     if let Ok(workspace) = storage.workspace() {
+        let settings_workspace = workspace.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            let _ = settings_workspace.settings();
+        });
         warm_tree(workspace.clone());
         let app = app.handle().clone();
         workspace.subscribe_health(move |health| {
@@ -173,7 +179,7 @@ fn flush_then_allow_quit<R: Runtime>(app: &AppHandle<R>, via: &str) -> bool {
     let Err(pending) = flush_before_quit(app, via) else {
         return true;
     };
-    match storage.quit().refuse(&pending) {
+    match storage.quit().refuse(&pending.docs, pending.settings) {
         Some(status) => {
             publish_quit(app, &status);
             false
@@ -192,7 +198,7 @@ fn publish_quit<R: Runtime>(app: &AppHandle<R>, status: &QuitStatus) {
 fn start_drain<R: Runtime>(app: &AppHandle<R>, status: QuitStatus) {
     let revision = status.revision;
     if QuitStatusChanged(status).emit(app).is_err() {
-        let pending = app.state::<Storage>().pending_docs();
+        let pending = app.state::<Storage>().pending_edits();
         drain_timed_out(app, revision, &pending);
         return;
     }
@@ -211,31 +217,35 @@ fn start_drain<R: Runtime>(app: &AppHandle<R>, status: QuitStatus) {
             drain_timed_out(&handle, revision, &pending);
         });
     if timer.is_err() {
-        let pending = app.state::<Storage>().pending_docs();
+        let pending = app.state::<Storage>().pending_edits();
         drain_timed_out(app, revision, &pending);
     }
 }
 
-fn drain_timed_out<R: Runtime>(app: &AppHandle<R>, revision: u32, pending: &[DocId]) {
-    if let Some(status) = app
-        .state::<Storage>()
-        .quit()
-        .drain_timed_out(revision, pending)
+fn drain_timed_out<R: Runtime>(
+    app: &AppHandle<R>,
+    revision: u32,
+    pending: &aelomi_core::storage::Pending,
+) {
+    if let Some(status) =
+        app.state::<Storage>()
+            .quit()
+            .drain_timed_out(revision, &pending.docs, pending.settings)
     {
         println!("quit drain timed out revision={revision}");
         publish_quit(app, &status);
     }
 }
 
-fn flush_before_quit<R: Runtime>(app: &AppHandle<R>, via: &str) -> Result<(), Vec<DocId>> {
+fn flush_before_quit<R: Runtime>(
+    app: &AppHandle<R>,
+    via: &str,
+) -> Result<(), aelomi_core::storage::Pending> {
     let Some(storage) = app.try_state::<Storage>() else {
         return Ok(());
     };
     let result = storage.flush_before_quit(QUIT_FLUSH_TIMEOUT);
-    println!(
-        "quit flush via={via} pending={:?}",
-        result.as_ref().err().map_or(&[][..], Vec::as_slice)
-    );
+    println!("quit flush via={via} pending={:?}", result.as_ref().err());
     result
 }
 
@@ -319,8 +329,162 @@ pub(crate) mod tests {
             revision,
             QuitPhase::Asking {
                 pending_docs: docs.iter().map(|d| d.to_string()).collect(),
+                pending_settings: false,
             },
         )
+    }
+
+    fn asking_settings(revision: u32, docs: &[&str]) -> QuitStatus {
+        status(
+            revision,
+            QuitPhase::Asking {
+                pending_docs: docs.iter().map(|doc| doc.to_string()).collect(),
+                pending_settings: true,
+            },
+        )
+    }
+
+    #[test]
+    fn shell_9_registered_quit_defers_exit_for_a_held_settings_write() {
+        {
+            let via = "ExitRequested";
+            let disk = SimDisk::default();
+            let BlockedApp { app, .. } = app_with_webview(&disk, Duration::from_secs(60));
+            let workspace = app.state::<Storage>().workspace().unwrap();
+            let hold = disk.hold_settings_write();
+            thread::scope(|scope| {
+                let writing = scope.spawn(|| {
+                    workspace
+                        .prepare_settings_update(aelomi_core::settings::SettingsPatch {
+                            theme: Some(aelomi_core::settings::ThemeChoice::Dark),
+                            ..Default::default()
+                        })
+                        .run()
+                        .unwrap()
+                });
+                hold.wait_until_reached();
+                assert!(!flush_then_allow_quit(app.handle(), via));
+                let handle = app.handle().clone();
+                let (exited, exit) = mpsc::channel();
+                let completing = scope.spawn(move || {
+                    commands::complete_quit_with(&handle, 1, || exited.send(()).unwrap())
+                });
+                let early = exit.recv_timeout(Duration::from_millis(100));
+                hold.release();
+                assert_eq!(early, Err(mpsc::RecvTimeoutError::Timeout), "{via}");
+                assert_eq!(completing.join().unwrap(), status(2, QuitPhase::Confirmed));
+                assert_eq!(exit.recv_timeout(Duration::from_secs(2)).unwrap(), ());
+                let expected = writing.join().unwrap();
+                disk.crash();
+                let reopened = disk.open(std::path::Path::new("/data")).unwrap();
+                assert_eq!(reopened.load_settings().unwrap(), expected);
+                assert_eq!(expected.theme, aelomi_core::settings::Theme::Dark);
+            });
+        }
+    }
+
+    #[test]
+    fn shell_10_a_failed_frontend_drain_also_names_pending_settings() {
+        let disk = SimDisk::default();
+        let BlockedApp { app, .. } = app_with_webview(&disk, Duration::from_secs(60));
+        disk.fail_appends("settings.json.tmp");
+        assert!(
+            app.state::<Storage>()
+                .workspace()
+                .unwrap()
+                .prepare_settings_update(aelomi_core::settings::SettingsPatch {
+                    theme: Some(aelomi_core::settings::ThemeChoice::Dark),
+                    ..Default::default()
+                })
+                .run()
+                .is_err()
+        );
+        assert!(!flush_then_allow_quit(app.handle(), "ExitRequested"));
+        assert_eq!(
+            commands::quit_drain_failed_with(app.handle(), 1, &[DocId::new("page").unwrap()]),
+            asking_settings(2, &["page"])
+        );
+    }
+
+    #[test]
+    fn shell_10_registered_quit_names_failed_settings_and_retries_them() {
+        {
+            let via = "ExitRequested";
+            let disk = SimDisk::default();
+            let BlockedApp { app, .. } = app_with_webview(&disk, Duration::from_secs(60));
+            let workspace = app.state::<Storage>().workspace().unwrap();
+            disk.fail_appends("settings.json.tmp");
+            assert!(
+                workspace
+                    .prepare_settings_update(aelomi_core::settings::SettingsPatch {
+                        theme: Some(aelomi_core::settings::ThemeChoice::Dark),
+                        ..Default::default()
+                    })
+                    .run()
+                    .is_err()
+            );
+            assert!(!flush_then_allow_quit(app.handle(), via));
+            let mut exits = 0;
+            assert_eq!(
+                commands::complete_quit_with(app.handle(), 1, || exits += 1),
+                asking_settings(2, &[])
+            );
+            assert_eq!(exits, 0);
+            disk.clear_faults();
+            assert!(!flush_then_allow_quit(app.handle(), via));
+            assert_eq!(
+                commands::complete_quit_with(app.handle(), 3, || exits += 1),
+                status(4, QuitPhase::Confirmed)
+            );
+            assert_eq!(exits, 1);
+            disk.crash();
+            let reopened = disk.open(std::path::Path::new("/data")).unwrap();
+            assert_eq!(
+                reopened.load_settings().unwrap(),
+                aelomi_core::settings::Settings {
+                    theme: aelomi_core::settings::Theme::Dark,
+                    ..Default::default()
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn shell_10_unregistered_frontend_refuses_failed_settings_then_recovers() {
+        let disk = SimDisk::default();
+        let app = mock_builder().build(mock_context(noop_assets())).unwrap();
+        tauri_specta::Builder::<MockRuntime>::new()
+            .events(tauri_specta::collect_events![QuitStatusChanged])
+            .mount_events(&app);
+        let storage = storage::tests::open_on(&disk);
+        let workspace = storage.workspace().unwrap();
+        disk.fail_appends("settings.json.tmp");
+        assert!(
+            workspace
+                .prepare_settings_update(aelomi_core::settings::SettingsPatch {
+                    theme: Some(aelomi_core::settings::ThemeChoice::Dark),
+                    ..Default::default()
+                })
+                .run()
+                .is_err()
+        );
+        app.manage(storage);
+        assert!(!flush_then_allow_quit(app.handle(), "ExitRequested"));
+        assert_eq!(
+            app.state::<Storage>().quit().status(),
+            asking_settings(1, &[])
+        );
+        disk.clear_faults();
+        assert!(flush_then_allow_quit(app.handle(), "ExitRequested"));
+        disk.crash();
+        let reopened = disk.open(std::path::Path::new("/data")).unwrap();
+        assert_eq!(
+            reopened.load_settings().unwrap(),
+            aelomi_core::settings::Settings {
+                theme: aelomi_core::settings::Theme::Dark,
+                ..Default::default()
+            }
+        );
     }
 
     #[test]
@@ -412,11 +576,11 @@ pub(crate) mod tests {
         );
         assert_eq!(
             commands::quit_drain_failed_with(app.handle(), 3, &[DocId::new("other").unwrap()]),
-            asking(4, &["other"])
+            asking(4, &["other", "page"])
         );
         assert_eq!(
             commands::quit_drain_failed_with(app.handle(), 3, &[]),
-            asking(4, &["other"]),
+            asking(4, &["other", "page"]),
             "a stale failure changes nothing"
         );
         assert_eq!(
@@ -429,9 +593,9 @@ pub(crate) mod tests {
             *quit_events.lock().unwrap(),
             [
                 r#"quit-status-changed {"revision":1,"phase":"Draining"}"#,
-                r#"quit-status-changed {"revision":2,"phase":{"Asking":{"pending_docs":["page"]}}}"#,
+                r#"quit-status-changed {"revision":2,"phase":{"Asking":{"pending_docs":["page"],"pending_settings":false}}}"#,
                 r#"quit-status-changed {"revision":3,"phase":"Draining"}"#,
-                r#"quit-status-changed {"revision":4,"phase":{"Asking":{"pending_docs":["other"]}}}"#,
+                r#"quit-status-changed {"revision":4,"phase":{"Asking":{"pending_docs":["other","page"],"pending_settings":false}}}"#,
                 r#"quit-status-changed {"revision":5,"phase":"Open"}"#,
                 r#"quit-status-changed {"revision":6,"phase":"Confirmed"}"#,
             ]
@@ -462,7 +626,7 @@ pub(crate) mod tests {
             *quit_events.lock().unwrap(),
             [
                 r#"quit-status-changed {"revision":1,"phase":"Draining"}"#,
-                r#"quit-status-changed {"revision":2,"phase":{"Asking":{"pending_docs":[]}}}"#,
+                r#"quit-status-changed {"revision":2,"phase":{"Asking":{"pending_docs":[],"pending_settings":false}}}"#,
             ]
         );
     }
@@ -570,7 +734,7 @@ pub(crate) mod tests {
             *quit_events.lock().unwrap(),
             [
                 "CloseRequested",
-                r#"quit-status-changed {"revision":1,"phase":{"Asking":{"pending_docs":["page"]}}}"#,
+                r#"quit-status-changed {"revision":1,"phase":{"Asking":{"pending_docs":["page"],"pending_settings":false}}}"#,
                 "CloseRequested",
                 "ExitRequested",
                 "Exit",
@@ -613,7 +777,7 @@ pub(crate) mod tests {
             *quit_events.lock().unwrap(),
             [
                 "ExitRequested",
-                r#"quit-status-changed {"revision":1,"phase":{"Asking":{"pending_docs":["page"]}}}"#,
+                r#"quit-status-changed {"revision":1,"phase":{"Asking":{"pending_docs":["page"],"pending_settings":false}}}"#,
                 "ExitRequested",
                 "Exit",
             ]
@@ -673,7 +837,7 @@ pub(crate) mod tests {
             *quit_events.lock().unwrap(),
             [
                 "CloseRequested",
-                r#"quit-status-changed {"revision":1,"phase":{"Asking":{"pending_docs":["page"]}}}"#,
+                r#"quit-status-changed {"revision":1,"phase":{"Asking":{"pending_docs":["page"],"pending_settings":false}}}"#,
                 r#"quit-status-changed {"revision":2,"phase":"Confirmed"}"#,
                 "CloseRequested",
                 "ExitRequested",
@@ -690,6 +854,7 @@ pub(crate) mod tests {
             revision: 1,
             phase: QuitPhase::Asking {
                 pending_docs: vec!["page".into()],
+                pending_settings: false,
             },
         };
 
@@ -726,6 +891,7 @@ pub(crate) mod tests {
                 revision: 3,
                 phase: QuitPhase::Asking {
                     pending_docs: vec!["page".into()],
+                    pending_settings: false,
                 },
             }
         );
@@ -733,7 +899,7 @@ pub(crate) mod tests {
             *late_listener.lock().unwrap(),
             [
                 r#"quit-status-changed {"revision":2,"phase":"Open"}"#,
-                r#"quit-status-changed {"revision":3,"phase":{"Asking":{"pending_docs":["page"]}}}"#,
+                r#"quit-status-changed {"revision":3,"phase":{"Asking":{"pending_docs":["page"],"pending_settings":false}}}"#,
             ]
         );
     }
@@ -782,7 +948,7 @@ pub(crate) mod tests {
         assert_eq!(
             *quit_events.lock().unwrap(),
             [
-                r#"quit-status-changed {"revision":1,"phase":{"Asking":{"pending_docs":["page"]}}}"#,
+                r#"quit-status-changed {"revision":1,"phase":{"Asking":{"pending_docs":["page"],"pending_settings":false}}}"#,
                 r#"quit-status-changed {"revision":2,"phase":"Confirmed"}"#,
             ]
         );

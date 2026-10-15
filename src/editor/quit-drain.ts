@@ -1,6 +1,11 @@
 import { commands } from "../ipc";
+import {
+  drainCommands,
+  hasPendingCommands,
+  setCommandAdmission,
+} from "../ipc/pending-commands";
 import { useQuitStore } from "../stores/quit";
-import { drainDeliveries } from "./delivery";
+import { drainDeliveries, hasOutstandingDeliveries } from "./delivery";
 
 type OpenEditor = {
   /** Commits input still in flight, such as an IME composition. */
@@ -24,8 +29,14 @@ async function drain(revision: number) {
   // let that run before collecting what is in flight.
   await new Promise((done) => setTimeout(done, 0));
   for (const editor of editors) editor.freeze();
-  const failed = await drainDeliveries();
+  let failed: string[];
+  do {
+    [failed] = await Promise.all([drainDeliveries(), drainCommands()]);
+  } while (hasOutstandingDeliveries() || hasPendingCommands());
   const quit = useQuitStore.getState();
+  if (quit.decision.kind !== "draining" || quit.decision.revision !== revision)
+    return;
+  setCommandAdmission("completing");
   const reply =
     failed.length === 0
       ? await commands.completeQuit(revision)
@@ -43,6 +54,7 @@ export function connectQuitDrain(): () => void {
   let answered = 0;
   const run = () => {
     const { decision } = useQuitStore.getState();
+    if (decision.kind === "open") setCommandAdmission("open");
     if (decision.kind !== "draining" || decision.revision <= answered) return;
     answered = decision.revision;
     void drain(decision.revision).catch((error: unknown) => {

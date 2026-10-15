@@ -136,7 +136,10 @@ pub(crate) fn complete_quit_with<R: Runtime>(
     let pending = crate::flush_before_quit(app, "CompleteQuit")
         .err()
         .unwrap_or_default();
-    let Some(status) = storage.quit().finish_drain(revision, &pending) else {
+    let Some(status) = storage
+        .quit()
+        .finish_drain(revision, &pending.docs, pending.settings)
+    else {
         return storage.quit().status();
     };
     crate::publish_quit(app, &status);
@@ -169,9 +172,16 @@ pub(crate) fn quit_drain_failed_with<R: Runtime>(
     docs: &[DocId],
 ) -> QuitStatus {
     let storage = app.state::<Storage>();
-    match storage.quit().drain_failed(revision, docs) {
+    let mut pending = storage.pending_edits();
+    pending.docs.extend_from_slice(docs);
+    pending.docs.sort();
+    pending.docs.dedup();
+    match storage
+        .quit()
+        .drain_failed(revision, &pending.docs, pending.settings)
+    {
         Some(status) => {
-            println!("quit drain failed docs={docs:?}");
+            println!("quit drain failed pending={pending:?}");
             crate::publish_quit(app, &status);
             status
         }
@@ -224,6 +234,41 @@ pub fn dev_probe_log(line: String) {
     println!("{line}");
 }
 
+#[tauri::command]
+#[specta::specta]
+pub async fn settings_get(
+    storage: State<'_, Storage>,
+) -> Result<crate::settings::Settings, crate::settings::SettingsError> {
+    let workspace = storage.workspace()?;
+    tauri::async_runtime::spawn_blocking(move || {
+        workspace
+            .settings()
+            .map(|settings| (&settings).into())
+            .map_err(Into::into)
+    })
+    .await
+    .map_err(|_| crate::settings::SettingsError::Internal)?
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn settings_update(
+    storage: State<'_, Storage>,
+    patch: crate::settings::SettingsPatch,
+) -> Result<crate::settings::Settings, crate::settings::SettingsError> {
+    let workspace = storage.workspace()?;
+    let patch = aelomi_core::settings::SettingsPatch::try_from(patch)?;
+    let update = workspace.prepare_settings_update(patch);
+    tauri::async_runtime::spawn_blocking(move || {
+        update
+            .run()
+            .map(|settings| (&settings).into())
+            .map_err(Into::into)
+    })
+    .await
+    .map_err(|_| crate::settings::SettingsError::Internal)?
+}
+
 pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
     tauri_specta::Builder::new()
         .commands(tauri_specta::collect_commands![
@@ -244,6 +289,8 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
             index::search,
             index::backlinks,
             dev_probe_log,
+            settings_get,
+            settings_update,
         ])
         .events(tauri_specta::collect_events![
             StorageHealthChanged,
@@ -251,6 +298,10 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
             IndexStatusChanged,
             IndexChanged
         ])
+        .constant(
+            "RECENT_PAGES_LIMIT",
+            aelomi_core::settings::RECENT_PAGES_LIMIT,
+        )
         .constant("MAX_SEARCH_LIMIT", aelomi_core::index::MAX_LIMIT)
         .constant("MAX_EXCLUDED_PAGES", aelomi_core::index::MAX_EXCLUDED)
 }

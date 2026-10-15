@@ -52,7 +52,7 @@ fn compact_and_reopen(seed: u64, n: usize, case: Case) -> Outcome {
         }
         merged = store.has_pending_structs(&a);
         had_pending |= merged;
-        assert_eq!(store.flush(soon()), []);
+        assert_eq!(store.flush(soon()).docs, []);
         compacted &= store.compact(&a).is_ok();
     }
     if !had_pending {
@@ -139,7 +139,7 @@ fn median_load(dir: &std::path::Path, updates: &[Vec<u8>], pending: bool) -> (Du
     for update in updates {
         store.append(&a, update).unwrap();
     }
-    assert_eq!(store.flush(soon()), []);
+    assert_eq!(store.flush(soon()).docs, []);
     drop(store);
     let store = open();
     assert_eq!(store.has_pending_structs(&a), pending);
