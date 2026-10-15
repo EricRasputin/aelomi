@@ -244,17 +244,23 @@ impl Workspace {
                 if restoring.is_empty() {
                     return Err(PageEditError::MissingBatch);
                 }
+                let mut restored = records.clone();
+                for id in &restoring {
+                    let record = restored.get_mut(id).expect("batch member");
+                    let trash = record.trash.take().expect("batch member");
+                    record.placement = Placement {
+                        parent: trash.original_parent,
+                        order: trash.original_order,
+                    };
+                }
+                let planned = tree::forest(&restored);
                 let mut active = forest.active.clone();
                 let mut pending: Vec<_> = restoring.iter().cloned().collect();
                 while !pending.is_empty() {
                     let at = pending
                         .iter()
                         .position(|id| {
-                            let parent = &records[id]
-                                .trash
-                                .as_ref()
-                                .expect("batch member")
-                                .original_parent;
+                            let parent = &planned.parent[id];
                             parent
                                 .as_ref()
                                 .is_none_or(|p| !restoring.contains(p) || active.contains(p))
@@ -262,14 +268,13 @@ impl Workspace {
                         .ok_or(PageEditError::Cycle)?;
                     let id = pending.remove(at);
                     let trash = records[&id].trash.clone().expect("batch member");
-                    let parent = trash.original_parent.filter(|p| active.contains(p));
-                    let order = if parent.is_none()
-                        && records[&id]
-                            .trash
-                            .as_ref()
-                            .unwrap()
+                    let parent = planned.parent[&id].clone().filter(|p| active.contains(p));
+                    let cut_root = planned.parent[&id].is_none()
+                        && trash
                             .original_parent
-                            .is_some()
+                            .as_ref()
+                            .is_some_and(|p| restoring.contains(p));
+                    let order = if parent.is_none() && trash.original_parent.is_some() && !cut_root
                     {
                         end_order(&records, None)?
                     } else {

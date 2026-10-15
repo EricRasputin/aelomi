@@ -473,3 +473,36 @@ fn inserting_into_an_order_gap_and_noop_moves_leave_other_records_unchanged() {
     .unwrap();
     assert_eq!(records(&w), after);
 }
+
+#[test]
+fn trash_restore_round_trips_self_parent_and_two_page_cycles_field_by_field() {
+    for pages in [
+        vec![("a", Some("a"), 10)],
+        vec![("a", Some("b"), 10), ("b", Some("a"), 20)],
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let w = empty(dir.path());
+        crafted(&w, &pages);
+        let before_tree = w.tree().unwrap();
+        let mut expected = records(&w);
+        expected.get_mut(&page("a")).unwrap().placement.parent = None;
+        let batch = w
+            .edit_page(PageEdit::Trash { page: page("a") })
+            .unwrap()
+            .trash_batch()
+            .unwrap();
+        assert_eq!(projected_ids(&w), Vec::<String>::new());
+        w.edit_page(PageEdit::Restore { batch }).unwrap();
+        let mut after = records(&w);
+        for (id, record) in &mut after {
+            record.updated_at = expected[id].updated_at;
+        }
+        assert_eq!(after, expected);
+        let mut after_tree = (*w.tree().unwrap()).clone();
+        for (actual, before) in after_tree.pages.iter_mut().zip(&before_tree.pages) {
+            actual.updated_at = before.updated_at;
+        }
+        assert_eq!(after_tree, *before_tree);
+        assert_eq!(after_tree.pages[0].parent, None);
+    }
+}
