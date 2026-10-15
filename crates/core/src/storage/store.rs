@@ -95,6 +95,13 @@ impl Store {
         super::settings::load(&*self.shared.fs, &self.shared.layout)
     }
 
+    pub(crate) fn admit_settings(&self) {
+        self.shared.settings.admit();
+    }
+    pub(crate) fn release_settings(&self) {
+        self.shared.settings.release();
+    }
+
     pub(crate) fn queue_settings(&self, settings: crate::settings::Settings) -> Seq {
         let seq = Seq(self.shared.next_seq.fetch_add(1, Ordering::SeqCst));
         self.shared.settings.queue(seq, settings);

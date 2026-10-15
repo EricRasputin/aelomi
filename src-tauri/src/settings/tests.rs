@@ -346,3 +346,31 @@ fn shell_10_failed_settings_retry_without_another_patch_and_clear_health() {
         }
     );
 }
+
+#[test]
+fn shell_9_quit_waits_for_a_settings_command_queued_before_its_worker_runs() {
+    use std::sync::mpsc;
+    use std::time::Duration;
+    let disk = SimDisk::default();
+    let storage = crate::storage::tests::open_on(&disk);
+    let workspace = storage.workspace().unwrap();
+    let update = workspace.prepare_settings_update(session_patch().try_into().unwrap());
+    thread::scope(|scope| {
+        let (done, result) = mpsc::channel();
+        let storage_ref = &storage;
+        scope.spawn(move || {
+            done.send(storage_ref.flush_before_quit(Duration::from_secs(2)))
+                .unwrap()
+        });
+        assert_eq!(
+            result.recv_timeout(Duration::from_millis(100)),
+            Err(mpsc::RecvTimeoutError::Timeout)
+        );
+        let snapshot = update.run().unwrap();
+        assert_eq!(result.recv_timeout(Duration::from_secs(2)).unwrap(), Ok(()));
+        disk.crash();
+        let reopened = disk.open(Path::new("/data")).unwrap();
+        assert_eq!(reopened.load_settings().unwrap(), snapshot);
+        assert_eq!(snapshot.theme, core::Theme::Dark);
+    });
+}

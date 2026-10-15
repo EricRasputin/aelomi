@@ -367,6 +367,28 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn shell_10_a_failed_frontend_drain_also_names_pending_settings() {
+        let disk = SimDisk::default();
+        let BlockedApp { app, .. } = app_with_webview(&disk, Duration::from_secs(60));
+        disk.fail_appends("settings.json.tmp");
+        assert!(
+            app.state::<Storage>()
+                .workspace()
+                .unwrap()
+                .update_settings(aelomi_core::settings::SettingsPatch {
+                    theme: Some(aelomi_core::settings::ThemeChoice::Dark),
+                    ..Default::default()
+                })
+                .is_err()
+        );
+        assert!(!flush_then_allow_quit(app.handle(), "ExitRequested"));
+        assert_eq!(
+            commands::quit_drain_failed_with(app.handle(), 1, &[DocId::new("page").unwrap()]),
+            asking(2, &["page", "settings.json"])
+        );
+    }
+
+    #[test]
     fn shell_10_every_quit_route_names_failed_settings_and_retries_them() {
         for via in ["CloseRequested", "ExitRequested", "Terminate", "PerfReport"] {
             let disk = SimDisk::default();

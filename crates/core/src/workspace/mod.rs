@@ -34,6 +34,26 @@ pub struct Workspace {
     settings: Mutex<Option<crate::settings::Settings>>,
 }
 
+pub struct SettingsUpdate {
+    workspace: Arc<Workspace>,
+    patch: crate::settings::SettingsPatch,
+    _admission: SettingsAdmission,
+}
+
+struct SettingsAdmission(Arc<Store>);
+
+impl Drop for SettingsAdmission {
+    fn drop(&mut self) {
+        self.0.release_settings();
+    }
+}
+
+impl SettingsUpdate {
+    pub fn run(self) -> io::Result<crate::settings::Settings> {
+        self.workspace.update_settings(self.patch)
+    }
+}
+
 /// The newest tree and the revision being projected, so callers for that revision wait for
 /// its projection instead of repeating it.
 #[derive(Default)]
@@ -139,6 +159,18 @@ impl Workspace {
             *current = Some(self.store.load_settings()?);
         }
         Ok(current.as_ref().expect("settings loaded").clone())
+    }
+
+    pub fn prepare_settings_update(
+        self: &Arc<Self>,
+        patch: crate::settings::SettingsPatch,
+    ) -> SettingsUpdate {
+        self.store.admit_settings();
+        SettingsUpdate {
+            workspace: self.clone(),
+            patch,
+            _admission: SettingsAdmission(self.store.clone()),
+        }
     }
 
     pub fn update_settings(

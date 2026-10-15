@@ -19,6 +19,7 @@ pub(crate) struct Slot {
 
 #[derive(Default)]
 pub(crate) struct State {
+    admissions: usize,
     pending: Option<(Seq, Settings)>,
     durable: Option<Seq>,
     attempted: Option<Seq>,
@@ -55,13 +56,19 @@ impl Slot {
         }
     }
 
+    pub fn admit(&self) {
+        lock_ignoring_poison(&self.state).admissions += 1;
+    }
+
+    pub fn release(&self) {
+        lock_ignoring_poison(&self.state).admissions -= 1;
+        self.changed.notify_all();
+    }
+
     pub fn flush(&self, deadline: Instant) -> bool {
         let mut state = lock_ignoring_poison(&self.state);
-        let Some(target) = state.pending.as_ref().map(|(seq, _)| *seq) else {
-            return true;
-        };
         loop {
-            if state.durable.is_some_and(|seq| seq >= target) {
+            if state.admissions == 0 && state.pending.is_none() {
                 return true;
             }
             let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {

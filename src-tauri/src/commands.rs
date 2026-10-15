@@ -169,10 +169,11 @@ pub(crate) fn quit_drain_failed_with<R: Runtime>(
     docs: &[DocId],
 ) -> QuitStatus {
     let storage = app.state::<Storage>();
-    match storage.quit().drain_failed(
-        revision,
-        &docs.iter().map(ToString::to_string).collect::<Vec<_>>(),
-    ) {
+    let mut pending: Vec<String> = docs.iter().map(ToString::to_string).collect();
+    pending.extend(storage.pending_docs());
+    pending.sort();
+    pending.dedup();
+    match storage.quit().drain_failed(revision, &pending) {
         Some(status) => {
             println!("quit drain failed docs={docs:?}");
             crate::publish_quit(app, &status);
@@ -251,9 +252,10 @@ pub async fn settings_update(
 ) -> Result<crate::settings::Settings, crate::settings::SettingsError> {
     let workspace = storage.workspace()?;
     let patch = aelomi_core::settings::SettingsPatch::try_from(patch)?;
+    let update = workspace.prepare_settings_update(patch);
     tauri::async_runtime::spawn_blocking(move || {
-        workspace
-            .update_settings(patch)
+        update
+            .run()
             .map(|settings| (&settings).into())
             .map_err(Into::into)
     })
