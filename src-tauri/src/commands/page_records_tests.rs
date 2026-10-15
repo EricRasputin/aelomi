@@ -241,3 +241,58 @@ fn complete_quit_waits_for_a_rename_held_on_the_record_lock_and_reopens_with_its
         "Just before quit"
     );
 }
+
+#[test]
+fn a_second_quit_drain_accepts_a_rename_and_reopens_with_its_title() {
+    use aelomi_core::storage::DocId;
+    use std::time::{Duration, Instant};
+    use yrs::updates::decoder::Decode;
+    use yrs::{Doc, Transact, Update};
+
+    let disk = SimDisk::default();
+    let shell = shell(crate::storage::tests::open_on(&disk));
+    let id = created(&shell, None);
+    let storage = shell.app.state::<Storage>();
+    storage.quit().register_frontend();
+    let crate::quit::QuitRequest::StartDrain(first) = storage.quit().request() else {
+        panic!()
+    };
+    assert!(storage.quit().begin_completing(first.revision));
+    storage.flush_before_quit(Duration::from_secs(1)).unwrap();
+    storage
+        .quit()
+        .finish_drain(first.revision, &[DocId::workspace()])
+        .unwrap();
+    let crate::quit::QuitRequest::StartDrain(second) = storage.quit().request() else {
+        panic!()
+    };
+    assert_eq!(
+        invoke(
+            &shell,
+            "page_rename",
+            json!({"pageId": id, "title": "Second drain title"})
+        ),
+        Ok(Value::Null)
+    );
+    let result = super::complete_quit_with(shell.app.handle(), second.revision, || {});
+    assert_eq!(result.phase, crate::quit::QuitPhase::Confirmed);
+    assert_eq!(
+        storage
+            .workspace()
+            .unwrap()
+            .flush(Instant::now() + Duration::from_secs(1)),
+        []
+    );
+    disk.crash();
+    let reopened = disk.open(std::path::Path::new("/data")).unwrap();
+    let doc = Doc::new();
+    doc.transact_mut()
+        .apply_update(Update::decode_v1(&reopened.load(&DocId::workspace()).unwrap()).unwrap())
+        .unwrap();
+    assert_eq!(
+        aelomi_core::workspace::records::read_pages(&doc.transact()).unwrap()
+            [&aelomi_core::workspace::records::PageId::new(id).unwrap()]
+            .title,
+        "Second drain title"
+    );
+}

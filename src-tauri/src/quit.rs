@@ -1,5 +1,5 @@
 use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use aelomi_core::storage::{DocId, Pending};
 use serde::Serialize;
@@ -71,7 +71,6 @@ struct Gate {
     frontend: bool,
     phase: Phase,
     record_edits: usize,
-    records_closed: bool,
 }
 
 #[derive(Default)]
@@ -80,6 +79,7 @@ enum Phase {
     Open,
     Awaiting,
     Completing,
+    FlushingStore,
     Asking(Pending),
     Confirmed,
 }
@@ -96,7 +96,7 @@ impl Gate {
             revision: self.revision,
             phase: match &self.phase {
                 Phase::Open => QuitPhase::Open,
-                Phase::Awaiting | Phase::Completing => QuitPhase::Draining,
+                Phase::Awaiting | Phase::Completing | Phase::FlushingStore => QuitPhase::Draining,
                 Phase::Asking(pending) => QuitPhase::Asking {
                     pending_docs: pending.docs.iter().map(ToString::to_string).collect(),
                     pending_settings: pending.settings,
@@ -132,7 +132,10 @@ impl QuitGate {
 
     pub fn record_edit(&self) -> Option<RecordEdit> {
         let mut gate = self.lock();
-        if gate.records_closed || matches!(gate.phase, Phase::Completing | Phase::Confirmed) {
+        if matches!(
+            gate.phase,
+            Phase::Completing | Phase::Confirmed | Phase::FlushingStore
+        ) {
             return None;
         }
         gate.record_edits += 1;
@@ -142,15 +145,23 @@ impl QuitGate {
         })
     }
 
-    pub fn wait_for_record_edits(&self) {
+    pub fn wait_for_record_edits(&self, deadline: Instant) -> bool {
         let mut gate = self.lock();
-        gate.records_closed = true;
-        while gate.record_edits != 0 && !matches!(gate.phase, Phase::Awaiting | Phase::Confirmed) {
+        let revision = gate.revision;
+        while gate.record_edits != 0
+            && gate.revision == revision
+            && matches!(gate.phase, Phase::Completing | Phase::FlushingStore)
+        {
+            let Some(remaining) = deadline.checked_duration_since(Instant::now()) else {
+                return false;
+            };
             gate = self
                 .record_edits_done
-                .wait(gate)
-                .unwrap_or_else(PoisonError::into_inner);
+                .wait_timeout(gate, remaining)
+                .unwrap_or_else(PoisonError::into_inner)
+                .0;
         }
+        true
     }
 
     pub fn drain_timeout(&self) -> Duration {
@@ -165,8 +176,13 @@ impl QuitGate {
         let mut gate = self.lock();
         match gate.phase {
             Phase::Confirmed => QuitRequest::Allow,
-            _ if !gate.frontend => QuitRequest::FlushStore,
-            Phase::Awaiting | Phase::Completing => QuitRequest::DrainInProgress,
+            _ if !gate.frontend => {
+                gate.phase = Phase::FlushingStore;
+                QuitRequest::FlushStore
+            }
+            Phase::Awaiting | Phase::Completing | Phase::FlushingStore => {
+                QuitRequest::DrainInProgress
+            }
             Phase::Open | Phase::Asking(_) => QuitRequest::StartDrain(gate.change(Phase::Awaiting)),
         }
     }
@@ -255,10 +271,9 @@ impl QuitGate {
     pub fn keep_open(&self, revision: u32) -> Option<QuitStatus> {
         let mut gate = self.lock();
         let asked = matches!(gate.phase, Phase::Asking(_)) && gate.revision == revision;
-        asked.then(|| {
-            gate.records_closed = false;
-            gate.change(Phase::Open)
-        })
+        let status = asked.then(|| gate.change(Phase::Open));
+        self.record_edits_done.notify_all();
+        status
     }
 
     /// Quit anyway. `Some` only the first time.
@@ -284,6 +299,82 @@ mod tests {
 
     fn docs(ids: &[&str]) -> Vec<DocId> {
         ids.iter().map(|id| DocId::new(*id).unwrap()).collect()
+    }
+
+    #[test]
+    fn a_refused_quit_then_a_second_request_admits_record_commands_during_its_drain() {
+        let gate = QuitGate::default();
+        gate.register_frontend();
+        let QuitRequest::StartDrain(first) = gate.request() else {
+            panic!()
+        };
+        assert!(gate.begin_completing(first.revision));
+        gate.wait_for_record_edits(Instant::now() + Duration::from_secs(2));
+        gate.finish_drain(first.revision, &docs(&["workspace"]))
+            .unwrap();
+        let QuitRequest::StartDrain(second) = gate.request() else {
+            panic!()
+        };
+        assert_eq!(second.phase, QuitPhase::Draining);
+        let rename = gate
+            .record_edit()
+            .expect("the new drain accepts its rename");
+        drop(rename);
+        assert!(gate.begin_completing(second.revision));
+        gate.wait_for_record_edits(Instant::now() + Duration::from_secs(2));
+        assert_eq!(
+            gate.finish_drain(second.revision, &[]).unwrap().phase,
+            QuitPhase::Confirmed
+        );
+    }
+
+    #[test]
+    fn a_stale_timeout_resuming_after_keep_open_leaves_record_admission_open() {
+        let gate = QuitGate::default();
+        gate.register_frontend();
+        let QuitRequest::StartDrain(first) = gate.request() else {
+            panic!()
+        };
+        assert!(gate.awaiting_drain(first.revision));
+        let asked = gate.drain_failed(first.revision, &[]).unwrap();
+        gate.keep_open(asked.revision).unwrap();
+        gate.wait_for_record_edits(Instant::now() + Duration::from_secs(2));
+        assert_eq!(gate.drain_timed_out(first.revision, &[]), None);
+        assert_eq!(gate.status().phase, QuitPhase::Open);
+        let rename = gate
+            .record_edit()
+            .expect("the stale timer cannot close admission");
+        drop(rename);
+    }
+
+    #[test]
+    fn a_completing_record_wait_reaches_its_deadline_and_asks_without_losing_the_guard() {
+        let gate = QuitGate::default();
+        gate.register_frontend();
+        let edit = gate.record_edit().unwrap();
+        let QuitRequest::StartDrain(status) = gate.request() else {
+            panic!()
+        };
+        assert!(gate.begin_completing(status.revision));
+        assert!(!gate.wait_for_record_edits(Instant::now() + Duration::from_millis(20)));
+        assert_eq!(gate.lock().record_edits, 1);
+        assert!(gate.record_edit().is_none());
+        let asked = gate
+            .finish_drain(status.revision, &docs(&["workspace"]))
+            .unwrap();
+        assert_eq!(
+            asked.phase,
+            QuitPhase::Asking {
+                pending_docs: vec!["workspace".into()]
+            }
+        );
+        gate.keep_open(asked.revision).unwrap();
+        let next = gate
+            .record_edit()
+            .expect("the timeout allows Keep app open");
+        drop(next);
+        drop(edit);
+        assert_eq!(gate.lock().record_edits, 0);
     }
 
     fn status(revision: u32, phase: QuitPhase) -> QuitStatus {
@@ -314,7 +405,7 @@ mod tests {
             let (send, receive) = mpsc::channel();
             let finished_before_release = std::thread::scope(|scope| {
                 let waiting = scope.spawn(|| {
-                    gate.wait_for_record_edits();
+                    gate.wait_for_record_edits(Instant::now() + Duration::from_secs(2));
                     send.send(()).unwrap();
                 });
                 let finished = receive.recv_timeout(Duration::from_millis(100)).is_ok();
@@ -326,7 +417,7 @@ mod tests {
                 finished_before_release,
                 "a non-confirming timeout or explicit confirmation cannot wait on a stalled command"
             );
-            assert!(gate.record_edit().is_none());
+            assert_eq!(gate.record_edit().is_none(), confirmed);
         }
     }
 
@@ -344,11 +435,11 @@ mod tests {
         let (send, receive) = mpsc::channel();
         let finished_before_release = std::thread::scope(|scope| {
             let waiting = scope.spawn(|| {
-                gate.wait_for_record_edits();
+                gate.wait_for_record_edits(Instant::now() + Duration::from_secs(2));
                 send.send(()).unwrap();
             });
             let deadline = Instant::now() + Duration::from_secs(1);
-            while !gate.lock().records_closed {
+            while !matches!(gate.lock().phase, Phase::Completing) {
                 assert!(Instant::now() < deadline);
                 std::thread::yield_now();
             }
@@ -370,7 +461,8 @@ mod tests {
         let gate = QuitGate::default();
         let edit = gate.record_edit().expect("open command admission");
         drop(edit);
-        gate.wait_for_record_edits();
+        assert_eq!(gate.request(), QuitRequest::FlushStore);
+        gate.wait_for_record_edits(Instant::now() + Duration::from_secs(2));
         assert!(gate.record_edit().is_none());
         let asked = gate.refuse(&docs(&["workspace"])).unwrap();
         assert_eq!(
@@ -444,7 +536,7 @@ mod tests {
         assert_eq!(
             gate.drain_timed_out(1, &[], false),
             None,
-            "a completing drain has no deadline"
+            "the frontend timeout does not replace completion"
         );
         assert_eq!(
             gate.finish_drain(1, &[], false),

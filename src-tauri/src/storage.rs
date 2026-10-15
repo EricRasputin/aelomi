@@ -273,11 +273,14 @@ impl Storage {
     }
 
     pub fn flush_before_quit(&self, timeout: Duration) -> Result<(), Pending> {
-        self.quit.wait_for_record_edits();
+        let deadline = Instant::now() + timeout;
+        if !self.quit.wait_for_record_edits(deadline) {
+            return Err(Pending { docs: vec![DocId::workspace()], settings: self.pending_at_quit().settings });
+        }
         let Ok(workspace) = &self.opened else {
             return Ok(());
         };
-        let pending = workspace.flush(Instant::now() + timeout);
+        let pending = workspace.flush(deadline);
         if pending.is_empty() {
             Ok(())
         } else {
