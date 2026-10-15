@@ -1,9 +1,0 @@
-storage status=Ready path=/private/tmp/aelomi-data5-final-native-MtjA/garbage-data
-storage open ms=0.604 t_ms=264.2
-index status=Rebuilding t_ms=264.2
-index cache=replaced reason=not-a-database (file is not a database) t_ms=271.8
-index status=Ready t_ms=277.7
-index startup total_ms=13.756 check_open_ms=7.505 schema_ms=- integrity_ms=- title_fts_ms=- block_fts_ms=- workspace_load_ms=0.537 workspace_decode_ms=0.050 workspace_forest_ms=0.014 workspace_sql_ms=0.305 pages=8 loaded_bytes=2246 page_load_ms=3.030 page_decode_ms=0.137 page_project_ms=0.058 page_sql_ms=1.593 publish_ms=0.264 t_ms=278.0
-index main_peak_rss_bytes=99237888 t_ms=278.0
-quit frontend ready
-ping seq=1

@@ -32,9 +32,9 @@ To launch the dev build, run:
 RUN=$($S/app.sh launch dev)
 ```
 
-`launch dev` runs `pnpm dev:app`, which prints `AELOMI_DEV_PORT=N` and runs `tauri dev` with the UI on port N. `launch` waits for the line `ping seq=1` in the shell log. The UI sends its first `ping` command when it mounts, and the Rust handler prints that line. So the line means the window, the UI, and the IPC round trip are up. `launch` then waits until the web content appears in the accessibility tree, and prints the run directory on stdout, for example `/tmp/aelomi-verify/20261011-064618-dev-ik2v`. Pass that directory to every other command.
+`launch dev` runs `pnpm dev:app`, which prints `AELOMI_DEV_PORT=N` and runs `tauri dev` with the UI on port N. `launch` waits for the line `ping seq=1` in the shell log. The UI sends its first `ping` command when it mounts, and the Rust handler prints that line. So the line means the window, the UI, and the IPC round trip are up. `launch` then waits until the web content appears in the accessibility tree, and prints the run directory on stdout, for example `~/.local/state/aelomi-verify/20261011-064618-dev-ik2v`. Pass that directory to every other command.
 
-Each launch sets `AELOMI_DATA_DIR=<run dir>/data`, so every run, dev or release, keeps its data in its own folder and never touches `~/Library/Application Support`. The shell log's first storage line names the resolved folder, for example `storage status=Ready path=/private/tmp/aelomi-verify/<run>/data`. To launch on an existing folder, set the variable yourself. For example, `AELOMI_DATA_DIR=$OLD_RUN/data $S/app.sh launch dev` relaunches on an earlier run's data, or, while that run is still open, logs `storage status=Locked`. Debug builds also read `AELOMI_CLOUD_ROOTS`, a `:`-separated list that replaces `~/Library/Mobile Documents` and `~/Library/CloudStorage`. Point it at a fake folder to prove the cloud folder refusal without touching the real `~/Library`.
+Each launch sets `AELOMI_DATA_DIR=<run dir>/data`, so every run, dev or release, keeps its data in its own folder and never touches `~/Library/Application Support`. The shell log's first storage line names the resolved folder, for example `storage status=Ready path=/Users/<you>/.local/state/aelomi-verify/<run>/data`. To launch on an existing folder, set the variable yourself. For example, `AELOMI_DATA_DIR=$OLD_RUN/data $S/app.sh launch dev` relaunches on an earlier run's data, or, while that run is still open, logs `storage status=Locked`. Debug builds also read `AELOMI_CLOUD_ROOTS`, a `:`-separated list that replaces `~/Library/Mobile Documents` and `~/Library/CloudStorage`. Point it at a fake folder to prove the cloud folder refusal without touching the real `~/Library`.
 
 The first build compiles about 350 crates and took 59 s on an Apple Silicon Mac. Later launches reuse it. `launch` waits up to 900 s. Change the limit with `--timeout S`. It fails early, and prints the end of the log, if the launch process exits, Rust fails to compile, or the app panics.
 
@@ -158,7 +158,7 @@ Use role and name locators, as the browser suites do. In mock builds the status 
 
 ## Capture evidence
 
-Every run gets its own directory under `/tmp/aelomi-verify/`. Set `AELOMI_VERIFY_ROOT` to use another root. Cleanup never deletes a run directory.
+Every run gets its own directory under `~/.local/state/aelomi-verify/` (or `$XDG_STATE_HOME/aelomi-verify/`), which survives a reboot, sits outside every checkout, and is never synced by iCloud. Set `AELOMI_VERIFY_ROOT` to use another root. Cleanup never deletes a run directory. Delete runs you no longer need yourself with `rm -rf`, but keep any run a PR names until that PR merges. Run directories are local evidence. [Native verification evidence](../../../docs/native-verification-evidence.md) says what to attach to the PR and what, if anything, to commit.
 
 A real-app run directory holds these files:
 

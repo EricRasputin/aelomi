@@ -11,6 +11,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { createServer } from "node:net";
+import { homedir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
@@ -20,7 +21,7 @@ import { isLocalUrl } from "../../../../tests/is-local-url.ts";
 const USAGE = `Usage: mock-drive.mjs [--port N] [--flow FILE] [--out DIR] [--rebuild] [--headed]
   --port N     serve dist-mock on 127.0.0.1:N (default: a free port; 4173 is refused)
   --flow FILE  flow module to run (default: flows/ping.mjs next to this script)
-  --out DIR    evidence directory (default: /tmp/aelomi-verify/<timestamp>-mock)
+  --out DIR    evidence directory (default: ~/.local/state/aelomi-verify/<timestamp>-mock)
   --rebuild    run pnpm build:mock even if dist-mock is newer than the sources
   --headed     show the WebKit window`;
 
@@ -48,7 +49,12 @@ const stamp = new Date()
   .replace(/[-:]/g, "")
   .replace("T", "-")
   .slice(0, 15);
-const verifyRoot = process.env.AELOMI_VERIFY_ROOT ?? "/tmp/aelomi-verify";
+const verifyRoot =
+  process.env.AELOMI_VERIFY_ROOT ||
+  path.join(
+    process.env.XDG_STATE_HOME || path.join(homedir(), ".local/state"),
+    "aelomi-verify",
+  );
 mkdirSync(verifyRoot, { recursive: true });
 const out = opts.out
   ? path.resolve(opts.out)

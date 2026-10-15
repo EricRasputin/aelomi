@@ -1,1 +1,0 @@
-quit event pid=92691 logout=false send_status=0 reply_error=-128 read_status=0

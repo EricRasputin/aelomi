@@ -1,9 +1,0 @@
-{
-  "native_append_before_ready": true,
-  "append_command_ms": 0.115,
-  "after_body_read_status": "Ready",
-  "before_body": "Fumaso zidasi fire kisa govova dapoku de fosuvu voha logihe hufo ko siro hulu.\n\nFire ko ledawo govova jima zitida gilu nodoje muni kaza robo dapoku rokezi rehada wofome.",
-  "expected_reopen_body": "EFumaso zidasi fire kisa govova dapoku de fosuvu voha logihe hufo ko siro hulu.\n\nFire ko ledawo govova jima zitida gilu nodoje muni kaza robo dapoku rokezi rehada wofome.",
-  "capture_guard_failed": "the later AX body read saw Ready; its guard demanded Rebuilding",
-  "normal_quit_claim": false
-}

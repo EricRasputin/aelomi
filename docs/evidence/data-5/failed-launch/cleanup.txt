@@ -1,8 +1,0 @@
-app.sh: nothing from this run is running
-app.sh: evidence kept in /tmp/aelomi-verify/20261014-021452-app-tiu1:
-actions.log
-cleanup.txt
-doctor.txt
-pids
-run.env
-shell.log
