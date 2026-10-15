@@ -14,6 +14,33 @@ use super::records::PageId;
 /// The page doc's root: one Y.XmlFragment, the ProseMirror document's children.
 pub const BODY_ROOT: &str = "prosemirror";
 
+/// Builds a new BlockNote body with stable block IDs and canonical paragraph attributes.
+pub fn paragraphs_update(paragraphs: &[(BlockId, &str)]) -> Vec<u8> {
+    use yrs::{Doc, Transact, WriteTxn, XmlElementPrelim, XmlTextPrelim};
+    let doc = Doc::new();
+    let mut txn = doc.transact_mut();
+    let fragment = txn.get_or_insert_xml_fragment(BODY_ROOT);
+    let group = fragment.insert(&mut txn, 0, XmlElementPrelim::empty(node::BLOCK_GROUP));
+    for (at, (id, text)) in paragraphs.iter().enumerate() {
+        let container = group.insert(
+            &mut txn,
+            at as u32,
+            XmlElementPrelim::empty(node::BLOCK_CONTAINER),
+        );
+        container.insert_attribute(&mut txn, node::ID, id.as_str());
+        let paragraph = container.insert(&mut txn, 0, XmlElementPrelim::empty("paragraph"));
+        for (key, value) in [
+            ("backgroundColor", "default"),
+            ("textColor", "default"),
+            ("textAlignment", "left"),
+        ] {
+            paragraph.insert_attribute(&mut txn, key, value);
+        }
+        paragraph.insert(&mut txn, 0, XmlTextPrelim::new(*text));
+    }
+    txn.encode_update_v1()
+}
+
 pub(crate) mod node {
     pub const BLOCK_GROUP: &str = "blockGroup";
     pub const BLOCK_CONTAINER: &str = "blockContainer";

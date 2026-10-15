@@ -1,6 +1,7 @@
 pub mod body;
 mod edit;
 pub mod records;
+mod seed;
 pub mod tree;
 mod write;
 
@@ -113,13 +114,17 @@ impl Workspace {
     ) -> Result<Self, OpenError> {
         let store = Store::open(root.as_ref())?;
         let root = std::fs::canonicalize(root)?;
-        Ok(Self::start(
+        let workspace = Self::start(
             store,
             root.join(index::FILE),
             index::Config::DEFAULT,
             Arc::new(on_index),
             Arc::default(),
-        ))
+        );
+        workspace
+            .seed_if_pristine()
+            .map_err(|e| OpenError::Io(io::Error::other(e)))?;
+        Ok(workspace)
     }
 
     /// Indexes `store`, such as one on a simulated disk, into the file at `index_path`.

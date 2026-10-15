@@ -93,10 +93,14 @@ impl Workspace {
             .record_edits
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        self.edit_page_locked(edit)
+        self.edit_page_locked(edit, None)
     }
 
-    pub(crate) fn edit_page_locked(&self, edit: PageEdit) -> Result<PageEditReply, PageEditError> {
+    pub(crate) fn edit_page_locked(
+        &self,
+        edit: PageEdit,
+        create_id: Option<PageId>,
+    ) -> Result<PageEditReply, PageEditError> {
         let doc = Doc::new();
         doc.transact_mut()
             .apply_update(
@@ -128,7 +132,8 @@ impl Workspace {
                 if let Some(parent) = &parent {
                     active(parent)?;
                 }
-                let page = PageId::new(random_id()?).expect("hex is a page ID");
+                let page =
+                    create_id.unwrap_or(PageId::new(random_id()?).expect("hex is a page ID"));
                 let order = end_order(&records, parent.as_ref())?;
                 records.insert(
                     page.clone(),

@@ -130,6 +130,41 @@ impl Store {
         self.shared.clock.unix_ms()
     }
 
+    pub(crate) fn is_pristine(&self, doc: &DocId) -> io::Result<bool> {
+        let names = match self.shared.fs.list(&self.shared.layout.doc_dir(doc)) {
+            Ok(names) => names,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Vec::new(),
+            Err(e) => return Err(e),
+        };
+        for name in names {
+            let Some(file) = super::layout::DocFile::parse(&name) else {
+                continue;
+            };
+            match file {
+                super::layout::DocFile::Snapshot(..) => return Ok(false),
+                super::layout::DocFile::Log(_, _, format) => {
+                    let path = self.shared.layout.doc_file(doc, file);
+                    let prefix = self.shared.fs.read_prefix(&path, 4096)?;
+                    if !super::log::read(format, &prefix).records.is_empty() {
+                        return Ok(false);
+                    }
+                    if prefix.len() == 4096
+                        && !super::log::read(format, &self.shared.fs.read(&path)?)
+                            .records
+                            .is_empty()
+                    {
+                        return Ok(false);
+                    }
+                }
+                super::layout::DocFile::SnapshotTmp(..) => return Ok(false),
+            }
+        }
+        self.shared.with_doc(doc, |ydoc, state| {
+            let txn = ydoc.transact();
+            txn.state_vector().is_empty() && !txn.has_missing_updates() && state.queue.is_empty()
+        })
+    }
+
     pub fn open(root: impl AsRef<Path>) -> Result<Self, OpenError> {
         let clock = Arc::new(SystemClock::new());
         let fs = Arc::new(OsFs);

@@ -292,6 +292,8 @@ Sibling orders are nonnegative integers with a gap of 2^20 between end appends. 
 
 `tree::forest` decides each page's parent and whether it is active. A parent with no record makes its page top-level, and a parent cycle is cut at its smallest page ID, so no page disappears. A page is active when it and every ancestor have no `trash`, so a descendant left active under a trashed page is still hidden from the tree, favorites, search, and backlinks (TREE-9). The trash list holds each trashed page whose parent is not in its batch, newest first (TREE-10). An erased page has no record (TREE-14). The index no longer reads that body doc, even if its files remain.
 
+`Workspace::open` seeds SHELL-2 only when the workspace has no snapshot, log records, queued update or nonempty state vector. Ordinary later launches check a bounded log prefix and skip the seed without loading the workspace; a record larger than the prefix or a damaged prefix falls back to reading that log. The seed uses page ID `getting-started`. Its canonical three-paragraph body is flushed before the record is accepted, so a crash before publication retries with that same body and ID. A stored empty update or an erased page's deletion history prevents a new seed. Refused data folders never reach Workspace.
+
 ## Page bodies
 
 A page's body is the Y.XmlFragment root `prosemirror` of its doc, as `@blocknote/core/yjs` 0.55.0 (MPL-2.0) writes it through y-prosemirror 1.3.7 (MIT). The editor must bind that same fragment. The layout is ProseMirror's document without the `doc` node:
@@ -307,7 +309,7 @@ Y.XmlFragment "prosemirror"
       blockGroup    optional, the block's children
 ```
 
-`body::read_body` returns `Body { blocks, problem }` and walks with an explicit stack, parents before children. A block has a typed ID and text or page-link segments. Marks do not affect index text. Hard breaks become `\n`, code keeps its newlines, images contribute captions, and dividers contribute none. URL links keep their text and do not become backlinks. Literal `[[…]]` remains text. Unknown elements contribute contained text, while attributes remain metadata.
+`body::paragraphs_update` builds a new canonical paragraph body with block IDs and BlockNote defaults. The Getting started seed uses it. `body::read_body` returns `Body { blocks, problem }` and walks with an explicit stack, parents before children. A block has a typed ID and text or page-link segments. Marks do not affect index text. Hard breaks become `\n`, code keeps its newlines, images contribute captions, and dividers contribute none. URL links keep their text and do not become backlinks. Literal `[[…]]` remains text. Unknown elements contribute contained text, while attributes remain metadata.
 
 A missing block ID skips that block and still reads its children. An invalid page link contributes a space, so its neighbouring words cannot become a false token. Content under another root is diagnosed when the supported body is empty. The index salvages readable blocks and reports `PageIssue { page_id, problem, indexed_blocks }`. A `prosemirror` root, or an element under it, that holds text, values or map entries instead of XML reports `NotAFragment`, whether the doc typed the root or decoded it from an update. A stray value never hides the nodes after it. Problem precedence is undecodable update, unrecognized root, non-XML content, missing block ID, then invalid page link. Unknown additive metadata does not erase a supported projection.
 
