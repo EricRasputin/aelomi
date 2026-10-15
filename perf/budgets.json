@@ -2,7 +2,7 @@
   "coldStart": {
     "specMs": {
       "value": 500,
-      "why": "CLAUDE.md budget: process launch to first usable content, median of 10. Populated workspaces require the editable page frame; an empty workspace reports its index screen. pnpm perf:cold enforces 500 ms on Apple Silicon, while CI gates its separately measured hosted budget. The maintainer accepted the current 10,001-page first-editable-frame result of 618 ms median on 2026-10-15 and deferred optimization. This value retains the 500 ms goal; the recorded local FAIL is not relabeled as a pass. Hosted CI budgets remain unchanged."
+      "why": "SPEC.md budget: process launch to first usable content, median of 10. Populated workspaces require the editable page frame; an empty workspace reports its index screen. pnpm perf:cold enforces 500 ms on Apple Silicon, while CI gates its separately measured hosted budget. The maintainer accepted the current 10,001-page first-editable-frame result of 618 ms median on 2026-10-15 and deferred optimization. This value retains the 500 ms goal; the recorded local FAIL is not relabeled as a pass. Hosted CI budgets remain unchanged."
     },
     "hostedCiMs": {
       "value": 2500,
@@ -28,7 +28,7 @@
     },
     "hostedAppOwnedP95Ms": {
       "value": 45,
-      "why": "Provisional hosted macos-15 calibration from the unchanged 0ad6f34 head: the real 5,000-block editor measured 33 ms pooled app-owned p95 across three fresh loads, whose p95 values were 31, 30 and 41 ms. This ceiling rounds the worst measured load up by 4 ms. The second hosted attempt failed its 5-second fixture setup before collecting this surface, so it supplies no second typing series. Both jobs were noisy on three-core hosts. Full logs and limits are in docs/evidence/data-5-ci-calibration-0ad6f34. The local ceiling stays 19 ms and the product goal stays 16 ms. The clock adds key-to-input work and rendering work from the rAF timestamp to the following MessageChannel task. It excludes initial layout before that timestamp, scheduler and IPC delay, frame wait, and presentation. Source delivery stays inside input. Issue #72 tracks broader hosted calibration and complete presentation timing."
+      "why": "Provisional hosted macos-15 calibration from the unchanged 0ad6f34 head: the real 5,000-block editor measured 33 ms pooled app-owned p95 across three fresh loads, whose p95 values were 31, 30 and 41 ms. This ceiling rounds the worst measured load up by 4 ms. The second hosted attempt failed its 5-second fixture setup before collecting this surface, so it supplies no second typing series. Both jobs were noisy on three-core hosts. docs/evidence/data-5-ci-calibration-0ad6f34 summarizes the limits and links the full logs at the commit before the evidence trim. The local ceiling stays 19 ms and the product goal stays 16 ms. The clock adds key-to-input work and rendering work from the rAF timestamp to the following MessageChannel task. It excludes initial layout before that timestamp, scheduler and IPC delay, frame wait, and presentation. Source delivery stays inside input. Issue #72 tracks broader hosted calibration and complete presentation timing."
     },
     "pageLoads": {
       "value": 3,
@@ -54,7 +54,7 @@
     },
     "hostedAppOwnedP95Ms": {
       "value": 40,
-      "why": "Provisional hosted macos-15 calibration from two unchanged-head 0ad6f34 jobs: the 10,000-page palette measured 29 and 36 ms p95 over 55 query keys per job. This ceiling rounds the worse measured p95 up by 4 ms. Both jobs were noisy on three-core hosts. Full logs and limits are in docs/evidence/data-5-ci-calibration-0ad6f34. The local one-frame goal stays 16 ms. Issue #72 tracks broader hosted calibration and the recorder's presentation limits."
+      "why": "Provisional hosted macos-15 calibration from two unchanged-head 0ad6f34 jobs: the 10,000-page palette measured 29 and 36 ms p95 over 55 query keys per job. This ceiling rounds the worse measured p95 up by 4 ms. Both jobs were noisy on three-core hosts. docs/evidence/data-5-ci-calibration-0ad6f34 summarizes the limits and links the full logs at the commit before the evidence trim. The local one-frame goal stays 16 ms. Issue #72 tracks broader hosted calibration and the recorder's presentation limits."
     }
   },
   "scroll": {
@@ -74,7 +74,7 @@
     },
     "hostedP95Ms": {
       "value": 35,
-      "why": "Provisional hosted macos-15 calibration from two unchanged-head 0ad6f34 release jobs. Each ran all 192 complete-query cases with 30 fresh-reader and 200 steady queries per case. Their worst fresh-reader p95 values were 27.137709 and 30.837625 ms; their worst steady p95 values were 5.006167 and 8.418250 ms. This ceiling rounds the worse measured fresh-reader p95 up to the next 5 ms. Three-core host load ranged from 10.07 to 31.03. Full logs and limits are in docs/evidence/data-5-ci-calibration-0ad6f34. The local product query gate remains 5 ms and all result-consumption and correctness assertions remain required. Issue #72 tracks broader hosted calibration."
+      "why": "Provisional hosted macos-15 calibration from two unchanged-head 0ad6f34 release jobs. Each ran all 192 complete-query cases with 30 fresh-reader and 200 steady queries per case. Their worst fresh-reader p95 values were 27.137709 and 30.837625 ms; their worst steady p95 values were 5.006167 and 8.418250 ms. This ceiling rounds the worse measured fresh-reader p95 up to the next 5 ms. Three-core host load ranged from 10.07 to 31.03. docs/evidence/data-5-ci-calibration-0ad6f34 summarizes the limits and links the full logs at the commit before the evidence trim. The local product query gate remains 5 ms and all result-consumption and correctness assertions remain required. Issue #72 tracks broader hosted calibration."
     },
     "firstSamples": {
       "value": 30,

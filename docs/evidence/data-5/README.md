@@ -1,7 +1,9 @@
 # DATA-5 and SHELL-12 native verification
 
-Later records cover the [CI timing correction](ci-timing/README.md) and
-[issue 66's producer and workflow fixes](issue-66/README.md). Each record names
+This folder keeps only this README and its scripts, under the [evidence policy](../../native-verification-evidence.md). Every file it names is in the [complete record at 9b44d57](https://github.com/aelomi/aelomi/tree/9b44d575e43efa1170b743cc54b019b5faf7a8cf/docs/evidence/data-5).
+
+Later records cover the [CI timing correction](https://github.com/aelomi/aelomi/blob/e2dc56de7844ee4885da5ceff4ef8bb3c570e86a/docs/evidence/data-5/ci-timing/README.md) and
+[issue 66's producer and workflow fixes](https://github.com/aelomi/aelomi/blob/7a54b10e52257fc9d91f3377596b2c7701381549/docs/evidence/data-5/issue-66/README.md). Each record names
 its tested source commit. The observations below are from the original implementation.
 
 The release app opened with a missing, garbage, and old-schema index. Every run logged `Rebuilding` followed by `Ready`, kept all source files unchanged, and quit with no pending saves. The native window remained usable through a second IPC ping.
@@ -88,36 +90,36 @@ Personal checkout and home prefixes are replaced with `<checkout>` and `<home>`.
 
 | File | Bytes | SHA-256 |
 | --- | ---: | --- |
-| [missing/shell.log](missing/shell.log) | 241 | `7ee99c4e1d6aeaf3ba1f0c0814027369e21b4786eed161ada7d8de6dacc9842d` |
-| [missing/actions.log](missing/actions.log) | 205 | `c651b70870b1b354f12cb61952d3bb91f54175108175c723502301dc43c7afd8` |
-| [missing/doctor.txt](missing/doctor.txt) | 358 | `2cd48b07692cf652e2573bcf29705558cf2ce2803396db7592f06cc4444c5350` |
-| [missing/cleanup.txt](missing/cleanup.txt) | 217 | `c1c22443a17b8c729aa02ec102859b9341a926f4c2e09c0ae11cb7aec0fb32da` |
-| [missing/before.ax.txt](missing/before.ax.txt) | 253 | `fef7cecbafd30944758ae8f22dbe12a7558cd95277c672bc5c9a83785fe21580` |
-| [missing/after.ax.txt](missing/after.ax.txt) | 253 | `84ef7eddf6cf6954cf21515de013f3144bafa769e7fe23c07f9296305818b855` |
-| [missing/source-preservation.json](missing/source-preservation.json) | 2098 | `87e637c0bc704c1f01eaa944b666d3b3247301302f367362f2f63df2f6fc1a15` |
-| [missing/source-before.json](missing/source-before.json) | 1688 | `21444a16158c4b03485d1d2e8f98d7d3b08781fdc5772951930d37ca3b4773f8` |
-| [missing/seed.log](missing/seed.log) | 421 | `08a9ae217474ae9db3bf689ed8ab0fc7bd741aa102df50b9fa00495ecbf4505e` |
-| [garbage/shell.log](garbage/shell.log) | 289 | `1bbccb87a5585a55158be104bea55eaf8aa37e429d4b4e857df401354d84153b` |
-| [garbage/actions.log](garbage/actions.log) | 205 | `22a24c1344fb3d881f0b2fc988bf30c41132642c1d25a21eb51dfb72ea11691b` |
-| [garbage/doctor.txt](garbage/doctor.txt) | 358 | `e3d48c7cb1ff9547ee9e3d38a8768d6cbdf842de86e4985592a381f092934de7` |
-| [garbage/cleanup.txt](garbage/cleanup.txt) | 217 | `2db31b7b759b7ad28f565ec38f037caa6c6a2febd5dff86ebd6025d9747afab7` |
-| [garbage/before.ax.txt](garbage/before.ax.txt) | 253 | `99c6b00e24424eee9be3475274bc621b910ec3714248bcf50f4eb95ceb64dd22` |
-| [garbage/after.ax.txt](garbage/after.ax.txt) | 253 | `9916082800a30da91722ebcfba085cd3f2e0de61d2e1ec1b70e42023926ce26e` |
-| [garbage/source-preservation.json](garbage/source-preservation.json) | 2098 | `df8d4dd5fc8f10711351595627c06bbbfc3d33eac7481cd2386a547e55d4c095` |
-| [garbage/source-before.json](garbage/source-before.json) | 1688 | `9e31d4f903e58d11ef07bfb40e976098d67f877331aacc7ab636d21cfdde917c` |
-| [garbage/seed.log](garbage/seed.log) | 421 | `688a131def38e0773a67f66447c8978214aa6ebd2dedd766641230bc6e871f34` |
-| [old-schema/shell.log](old-schema/shell.log) | 275 | `364303d0e7edae3620511ccd49c7139434a19f42c36f410ed0f0e9189c7dadcb` |
-| [old-schema/actions.log](old-schema/actions.log) | 205 | `ebce802e6b6b534d0dd831c4c437da74411b7f13d4755ef39a8b18d924b2c234` |
-| [old-schema/doctor.txt](old-schema/doctor.txt) | 358 | `ef378ea08e00558d1727132d549ca82e7dc7a42c6409ffba65bbcb9ef5e095fa` |
-| [old-schema/cleanup.txt](old-schema/cleanup.txt) | 217 | `4d4137709b59810593a352c9d2163c2069cf47c26bb325bbf15c6ebdbe2beb69` |
-| [old-schema/before.ax.txt](old-schema/before.ax.txt) | 253 | `58970394e37750f23476c7eaa7d207033c36916c32b231010b8198e6144c2d29` |
-| [old-schema/after.ax.txt](old-schema/after.ax.txt) | 253 | `4e2c242c8ad9e89089b41a25e604da6692ba394b5268f8a7711792c40743bc29` |
-| [old-schema/source-preservation.json](old-schema/source-preservation.json) | 2098 | `1263f07ea008e9473f6d3fba1ca04bc1b923001e6354afd76a02646bda533064` |
-| [old-schema/source-before.json](old-schema/source-before.json) | 1688 | `91a13ad5fab83c9adf7842a5f70ff96e8e0b9240974af66822836de7563fc00c` |
-| [old-schema/seed.log](old-schema/seed.log) | 433 | `d5c28b6ac77f203bf56415eb571ea77c251bec938ffdcdcb6ecc7e33adfe043c` |
-| [failed-launch/shell.log](failed-launch/shell.log) | 153 | `05b213fd1f41a441aaf5c64c2c254b1187e84c39b5517949e9d2b2ce69d77dda` |
-| [failed-launch/actions.log](failed-launch/actions.log) | 54 | `1d60640d54e1853ee054ee7667865229b8703c4903baad59be7e0a9d3a5647c6` |
-| [failed-launch/doctor.txt](failed-launch/doctor.txt) | 358 | `eb5298ff2093a03cec0ca46e7301b11647ca36dd2af721d3b9523e5bcb270971` |
-| [failed-launch/cleanup.txt](failed-launch/cleanup.txt) | 169 | `abd454862ca3348bad64a024ab0d29ddef953d57fe6bed958eb498942a6c0517` |
-| [cold-start.log](cold-start.log) | 3500 | `b0328df5e25355ecd8a282e0f8d00a47ef35b295420b64e002968a067ff49796` |
-| [index-performance.log](index-performance.log) | 10831 | `7fe2601cb18e54f44802ed447cbd968e46893583c6db6eb765a384d82df2eb13` |
+| [missing/shell.log](https://github.com/aelomi/aelomi/blob/757e84c5fb0cc39ae57691a1cce60adda24eeda7/docs/evidence/data-5/missing/shell.log) | 241 | `7ee99c4e1d6aeaf3ba1f0c0814027369e21b4786eed161ada7d8de6dacc9842d` |
+| [missing/actions.log](https://github.com/aelomi/aelomi/blob/757e84c5fb0cc39ae57691a1cce60adda24eeda7/docs/evidence/data-5/missing/actions.log) | 205 | `c651b70870b1b354f12cb61952d3bb91f54175108175c723502301dc43c7afd8` |
+| [missing/doctor.txt](https://github.com/aelomi/aelomi/blob/757e84c5fb0cc39ae57691a1cce60adda24eeda7/docs/evidence/data-5/missing/doctor.txt) | 358 | `2cd48b07692cf652e2573bcf29705558cf2ce2803396db7592f06cc4444c5350` |
+| [missing/cleanup.txt](https://github.com/aelomi/aelomi/blob/757e84c5fb0cc39ae57691a1cce60adda24eeda7/docs/evidence/data-5/missing/cleanup.txt) | 217 | `c1c22443a17b8c729aa02ec102859b9341a926f4c2e09c0ae11cb7aec0fb32da` |
+| [missing/before.ax.txt](https://github.com/aelomi/aelomi/blob/757e84c5fb0cc39ae57691a1cce60adda24eeda7/docs/evidence/data-5/missing/before.ax.txt) | 253 | `fef7cecbafd30944758ae8f22dbe12a7558cd95277c672bc5c9a83785fe21580` |
+| [missing/after.ax.txt](https://github.com/aelomi/aelomi/blob/757e84c5fb0cc39ae57691a1cce60adda24eeda7/docs/evidence/data-5/missing/after.ax.txt) | 253 | `84ef7eddf6cf6954cf21515de013f3144bafa769e7fe23c07f9296305818b855` |
+| [missing/source-preservation.json](https://github.com/aelomi/aelomi/blob/a2f8b821298ff211e7ccac62ce38c7250f15c4be/docs/evidence/data-5/missing/source-preservation.json) | 2098 | `87e637c0bc704c1f01eaa944b666d3b3247301302f367362f2f63df2f6fc1a15` |
+| [missing/source-before.json](https://github.com/aelomi/aelomi/blob/757e84c5fb0cc39ae57691a1cce60adda24eeda7/docs/evidence/data-5/missing/source-before.json) | 1688 | `21444a16158c4b03485d1d2e8f98d7d3b08781fdc5772951930d37ca3b4773f8` |
+| [missing/seed.log](https://github.com/aelomi/aelomi/blob/757e84c5fb0cc39ae57691a1cce60adda24eeda7/docs/evidence/data-5/missing/seed.log) | 421 | `08a9ae217474ae9db3bf689ed8ab0fc7bd741aa102df50b9fa00495ecbf4505e` |
+| [garbage/shell.log](https://github.com/aelomi/aelomi/blob/757e84c5fb0cc39ae57691a1cce60adda24eeda7/docs/evidence/data-5/garbage/shell.log) | 289 | `1bbccb87a5585a55158be104bea55eaf8aa37e429d4b4e857df401354d84153b` |
+| [garbage/actions.log](https://github.com/aelomi/aelomi/blob/757e84c5fb0cc39ae57691a1cce60adda24eeda7/docs/evidence/data-5/garbage/actions.log) | 205 | `22a24c1344fb3d881f0b2fc988bf30c41132642c1d25a21eb51dfb72ea11691b` |
+| [garbage/doctor.txt](https://github.com/aelomi/aelomi/blob/757e84c5fb0cc39ae57691a1cce60adda24eeda7/docs/evidence/data-5/garbage/doctor.txt) | 358 | `e3d48c7cb1ff9547ee9e3d38a8768d6cbdf842de86e4985592a381f092934de7` |
+| [garbage/cleanup.txt](https://github.com/aelomi/aelomi/blob/757e84c5fb0cc39ae57691a1cce60adda24eeda7/docs/evidence/data-5/garbage/cleanup.txt) | 217 | `2db31b7b759b7ad28f565ec38f037caa6c6a2febd5dff86ebd6025d9747afab7` |
+| [garbage/before.ax.txt](https://github.com/aelomi/aelomi/blob/757e84c5fb0cc39ae57691a1cce60adda24eeda7/docs/evidence/data-5/garbage/before.ax.txt) | 253 | `99c6b00e24424eee9be3475274bc621b910ec3714248bcf50f4eb95ceb64dd22` |
+| [garbage/after.ax.txt](https://github.com/aelomi/aelomi/blob/757e84c5fb0cc39ae57691a1cce60adda24eeda7/docs/evidence/data-5/garbage/after.ax.txt) | 253 | `9916082800a30da91722ebcfba085cd3f2e0de61d2e1ec1b70e42023926ce26e` |
+| [garbage/source-preservation.json](https://github.com/aelomi/aelomi/blob/a2f8b821298ff211e7ccac62ce38c7250f15c4be/docs/evidence/data-5/garbage/source-preservation.json) | 2098 | `df8d4dd5fc8f10711351595627c06bbbfc3d33eac7481cd2386a547e55d4c095` |
+| [garbage/source-before.json](https://github.com/aelomi/aelomi/blob/757e84c5fb0cc39ae57691a1cce60adda24eeda7/docs/evidence/data-5/garbage/source-before.json) | 1688 | `9e31d4f903e58d11ef07bfb40e976098d67f877331aacc7ab636d21cfdde917c` |
+| [garbage/seed.log](https://github.com/aelomi/aelomi/blob/757e84c5fb0cc39ae57691a1cce60adda24eeda7/docs/evidence/data-5/garbage/seed.log) | 421 | `688a131def38e0773a67f66447c8978214aa6ebd2dedd766641230bc6e871f34` |
+| [old-schema/shell.log](https://github.com/aelomi/aelomi/blob/757e84c5fb0cc39ae57691a1cce60adda24eeda7/docs/evidence/data-5/old-schema/shell.log) | 275 | `364303d0e7edae3620511ccd49c7139434a19f42c36f410ed0f0e9189c7dadcb` |
+| [old-schema/actions.log](https://github.com/aelomi/aelomi/blob/757e84c5fb0cc39ae57691a1cce60adda24eeda7/docs/evidence/data-5/old-schema/actions.log) | 205 | `ebce802e6b6b534d0dd831c4c437da74411b7f13d4755ef39a8b18d924b2c234` |
+| [old-schema/doctor.txt](https://github.com/aelomi/aelomi/blob/757e84c5fb0cc39ae57691a1cce60adda24eeda7/docs/evidence/data-5/old-schema/doctor.txt) | 358 | `ef378ea08e00558d1727132d549ca82e7dc7a42c6409ffba65bbcb9ef5e095fa` |
+| [old-schema/cleanup.txt](https://github.com/aelomi/aelomi/blob/757e84c5fb0cc39ae57691a1cce60adda24eeda7/docs/evidence/data-5/old-schema/cleanup.txt) | 217 | `4d4137709b59810593a352c9d2163c2069cf47c26bb325bbf15c6ebdbe2beb69` |
+| [old-schema/before.ax.txt](https://github.com/aelomi/aelomi/blob/757e84c5fb0cc39ae57691a1cce60adda24eeda7/docs/evidence/data-5/old-schema/before.ax.txt) | 253 | `58970394e37750f23476c7eaa7d207033c36916c32b231010b8198e6144c2d29` |
+| [old-schema/after.ax.txt](https://github.com/aelomi/aelomi/blob/757e84c5fb0cc39ae57691a1cce60adda24eeda7/docs/evidence/data-5/old-schema/after.ax.txt) | 253 | `4e2c242c8ad9e89089b41a25e604da6692ba394b5268f8a7711792c40743bc29` |
+| [old-schema/source-preservation.json](https://github.com/aelomi/aelomi/blob/a2f8b821298ff211e7ccac62ce38c7250f15c4be/docs/evidence/data-5/old-schema/source-preservation.json) | 2098 | `1263f07ea008e9473f6d3fba1ca04bc1b923001e6354afd76a02646bda533064` |
+| [old-schema/source-before.json](https://github.com/aelomi/aelomi/blob/757e84c5fb0cc39ae57691a1cce60adda24eeda7/docs/evidence/data-5/old-schema/source-before.json) | 1688 | `91a13ad5fab83c9adf7842a5f70ff96e8e0b9240974af66822836de7563fc00c` |
+| [old-schema/seed.log](https://github.com/aelomi/aelomi/blob/757e84c5fb0cc39ae57691a1cce60adda24eeda7/docs/evidence/data-5/old-schema/seed.log) | 433 | `d5c28b6ac77f203bf56415eb571ea77c251bec938ffdcdcb6ecc7e33adfe043c` |
+| [failed-launch/shell.log](https://github.com/aelomi/aelomi/blob/757e84c5fb0cc39ae57691a1cce60adda24eeda7/docs/evidence/data-5/failed-launch/shell.log) | 153 | `05b213fd1f41a441aaf5c64c2c254b1187e84c39b5517949e9d2b2ce69d77dda` |
+| [failed-launch/actions.log](https://github.com/aelomi/aelomi/blob/757e84c5fb0cc39ae57691a1cce60adda24eeda7/docs/evidence/data-5/failed-launch/actions.log) | 54 | `1d60640d54e1853ee054ee7667865229b8703c4903baad59be7e0a9d3a5647c6` |
+| [failed-launch/doctor.txt](https://github.com/aelomi/aelomi/blob/757e84c5fb0cc39ae57691a1cce60adda24eeda7/docs/evidence/data-5/failed-launch/doctor.txt) | 358 | `eb5298ff2093a03cec0ca46e7301b11647ca36dd2af721d3b9523e5bcb270971` |
+| [failed-launch/cleanup.txt](https://github.com/aelomi/aelomi/blob/757e84c5fb0cc39ae57691a1cce60adda24eeda7/docs/evidence/data-5/failed-launch/cleanup.txt) | 169 | `abd454862ca3348bad64a024ab0d29ddef953d57fe6bed958eb498942a6c0517` |
+| [cold-start.log](https://github.com/aelomi/aelomi/blob/757e84c5fb0cc39ae57691a1cce60adda24eeda7/docs/evidence/data-5/cold-start.log) | 3500 | `b0328df5e25355ecd8a282e0f8d00a47ef35b295420b64e002968a067ff49796` |
+| [index-performance.log](https://github.com/aelomi/aelomi/blob/757e84c5fb0cc39ae57691a1cce60adda24eeda7/docs/evidence/data-5/index-performance.log) | 10831 | `7fe2601cb18e54f44802ed447cbd968e46893583c6db6eb765a384d82df2eb13` |

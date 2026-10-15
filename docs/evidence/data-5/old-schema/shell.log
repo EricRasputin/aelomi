@@ -1,8 +1,0 @@
-storage status=Ready path=/private/tmp/aelomi-data5-native.KLBOtO/old-schema-proof-data
-index status=Rebuilding
-index cache=replaced reason=old-schema (version 0)
-index status=Ready
-ping seq=1
-ping seq=2
-quit flush via=ExitRequested pending=[]
-quit flush via=Exit pending=[]

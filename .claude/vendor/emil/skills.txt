@@ -1,4 +1,5 @@
 animate
+animation-performance
 animation-vocabulary
 apple-design
 ask-sonner

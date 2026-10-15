@@ -1,5 +1,7 @@
 # SHELL-10 quit decision recovery
 
+This folder keeps only this README and its scripts, under the [evidence policy](../../native-verification-evidence.md). Every file it names is in the [complete record at 9b44d57](https://github.com/aelomi/aelomi/tree/9b44d575e43efa1170b743cc54b019b5faf7a8cf/docs/evidence/shell-47).
+
 Issue #47 exposed a confirmation lost before frontend listener registration. The shell retained the pending edits but no queryable quit decision. The regression committed before the fix produced:
 
 ```text
@@ -15,7 +17,7 @@ Opus 5.5 drove the real Tauri dev app through the macOS accessibility tree. Brow
 
 Run A was `/tmp/aelomi-verify/20261013-100637-dev-JlZl`. The existing Storage probe queued an update while its test `docs` folder was read-only. Command-Q held the window and showed the confirmation. Three intentional `touch index.html` operations reloaded the webview without changing the file's bytes. Vite logged each full reload, and the probe's local status reset to `Storage probe idle`. No additional quit request occurred.
 
-The [native event log](reload-events.log) shows one failed quit flush before the reloads. The confirmation returned after the first reload. Restoring write permission produced Healthy and removed the banner, while the confirmation remained open. A second reload still recovered that outstanding choice. Keep app open published revision 2 with no pending decision. A third reload showed no dialog. A subsequent healthy Command-Q ran both the cancellable and final Exit flushes successfully.
+The [native event log](https://github.com/aelomi/aelomi/blob/b5e88db063ab87b0c250d37b1d34da4908f05655/docs/evidence/shell-47/reload-events.log) shows one failed quit flush before the reloads. The confirmation returned after the first reload. Restoring write permission produced Healthy and removed the banner, while the confirmation remained open. A second reload still recovered that outstanding choice. Keep app open published revision 2 with no pending decision. A third reload showed no dialog. A subsequent healthy Command-Q ran both the cancellable and final Exit flushes successfully.
 
 Screenshots and accessibility trees remain in the local run folder. The coordinator inspected `a05-reload1-dialog.png`, `a07-reload2-healthy-dialog.png`, and `a09-reload3-open.png`. They show the restored dialog with safe focus, the restored dialog after recovery with no banner, and the answered state after reload.
 
@@ -23,7 +25,7 @@ Screenshots and accessibility trees remain in the local run folder. The coordina
 
 Run B was `/tmp/aelomi-verify/20261013-101021-dev-5DdA`. Command-W held the window through `CloseRequested`. PID-targeted quit Apple events, including the logout reason, returned `reply_error=-128` and reached `via=Terminate`. A repeated request while the dialog was open flushed again and created a newer decision. One accessibility press failed, so run C repeated the logout and Keep app open sequence successfully.
 
-Run C was `/tmp/aelomi-verify/20261013-101336-dev-0MkN`. Its [termination log](termination-events.log) records cancelled logout-reason events, Keep app open, a later request, and one Quit anyway. Its [shell event log](quit-events.log) records one confirmation, the confirmed `ExitRequested` bypass, and the unconditional final `Exit` flush with the failing update still pending. This is the explicit discard choice. The coordinator inspected `c02-logout-dialog.png` and `c03-logout-kept.png`, which show safe focus and the answered decision while the save-failure banner remains.
+Run C was `/tmp/aelomi-verify/20261013-101336-dev-0MkN`. Its [termination log](https://github.com/aelomi/aelomi/blob/b5e88db063ab87b0c250d37b1d34da4908f05655/docs/evidence/shell-47/termination-events.log) records cancelled logout-reason events, Keep app open, a later request, and one Quit anyway. Its [shell event log](https://github.com/aelomi/aelomi/blob/b5e88db063ab87b0c250d37b1d34da4908f05655/docs/evidence/shell-47/quit-events.log) records one confirmation, the confirmed `ExitRequested` bypass, and the unconditional final `Exit` flush with the failing update still pending. This is the explicit discard choice. The coordinator inspected `c02-logout-dialog.png` and `c03-logout-kept.png`, which show safe focus and the answered decision while the save-failure banner remains.
 
 The sender was compiled from the existing `docs/evidence/shell-10/quit-event.swift.txt` into `/tmp`. It addressed only the supplied app PID. It did not log out the Mac. Dock Quit and a real logout were not performed; they share the tested AppKit termination hook.
 

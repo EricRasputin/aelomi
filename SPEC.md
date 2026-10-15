@@ -6,7 +6,7 @@ This file lists what the MVP does and how each behavior is tested. Each behavior
 
 ## How to read the tests
 
-Each feature has three kinds of tests. They map to the testing table in `CLAUDE.md`.
+Each feature has three kinds of tests. They map to the test layers in `ARCHITECTURE.md`.
 
 - **Acceptance** tests are plain-English steps for TesterArmy `e2e`. They run in a browser with Tauri IPC mocked. Each one ends in something a person can see on screen.
 - **Core** tests are cargo-nextest and property tests in the Rust core. Data-safety tests end in exact assertions, never an AI judgment.
@@ -20,7 +20,7 @@ Rules for every test:
 - A test that expects something to be absent first shows it present, in the same test.
 - Acceptance tests cannot quit and relaunch the app. Anything that must survive a relaunch is a core test, plus the maintainer's daily use.
 
-A feature is done when every test listed for it passes in CI. Every behavior has at least one test. The full definition of done is in `CLAUDE.md`.
+A feature is done when every test listed for it passes in CI, logic has unit tests, the performance budgets are green, the dependency checks pass, and the PR passes review. Every behavior has at least one test.
 
 ## Scope
 
@@ -37,7 +37,7 @@ These are out of scope for the MVP: the MCP server, databases and table views, N
 
 ## Where data lives
 
-`CLAUDE.md` makes Yjs the source of truth and SQLite a derived index. These rules say which data goes where, so the index can always be rebuilt and nothing the user made lives only in the index.
+Yjs is the source of truth and SQLite a derived index. These rules say which data goes where, so the index can always be rebuilt and nothing the user made lives only in the index.
 
 - **DATA-1.** Each page's body is one Y.Doc.
 - **DATA-2.** One workspace Y.Doc holds a record for every page: page ID, title, parent ID, sibling order, favorite flag and favorite order, trash state, and created and updated times. Trash state is active, or trashed with the original parent, a trash batch ID, and the trash time. An erased page has no record (TREE-14).
@@ -331,7 +331,7 @@ Acceptance tests cannot read exported files. The core tests below cover the outp
 
 ## Performance budgets
 
-The budgets in `CLAUDE.md` apply to every feature above. CI gates runner-calibrated versions of them, and local commands check the exact numbers on Apple Silicon (see `CLAUDE.md`). This spec defines how each is measured:
+These budgets apply to every feature above. CI gates runner-calibrated versions of them. `pnpm perf:cold` and `pnpm perf:keystroke` check them on Apple Silicon against the local ceilings in `perf/budgets.json`, whose `why` fields record each accepted deviation, such as the 19 ms typing ceiling. This spec defines how each is measured:
 
 - **Cold start under 500 ms.** From process launch to the open page's first content paint, measured by launching the built `.app`, median of 10 runs.
 - **Keystroke-to-paint under 16 ms.** From the key event to the first frame that shows the typed character, at p95, in Playwright WebKit (EDIT-14).

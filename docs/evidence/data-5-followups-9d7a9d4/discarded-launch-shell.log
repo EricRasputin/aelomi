@@ -1,9 +1,0 @@
-storage status=Ready path=/private/tmp/aelomi-data5-final-native-MtjA/missing-data
-storage open ms=6.190 t_ms=965.3
-index status=Rebuilding t_ms=965.0
-index cache=created t_ms=972.5
-index status=Ready t_ms=980.1
-index startup total_ms=14.773 check_open_ms=7.090 schema_ms=- integrity_ms=- title_fts_ms=- block_fts_ms=- workspace_load_ms=1.035 workspace_decode_ms=0.086 workspace_forest_ms=0.026 workspace_sql_ms=1.400 pages=8 loaded_bytes=2246 page_load_ms=3.164 page_decode_ms=0.192 page_project_ms=0.045 page_sql_ms=1.597 publish_ms=0.043 t_ms=980.2
-index main_peak_rss_bytes=97828864 t_ms=980.2
-quit frontend ready
-ping seq=1
