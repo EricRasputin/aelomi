@@ -41,7 +41,7 @@ test("SHELL-13 acceptance 9: a URL opens in the default browser and the page sta
   await expect(screen.getByRole("textbox", "Page body")).toHaveText("Example");
 });
 
-test("SHELL-13 double-click selects link text with only one browser handoff", async ({
+test("SHELL-13 double-click then a later single click opens exactly twice", async ({
   app,
   browser,
   screen,
@@ -60,6 +60,18 @@ test("SHELL-13 double-click selects link text with only one browser handoff", as
         ) ?? null,
     ),
   ).toEqual([{ command: "openUrl", args: ["https://example.com"] }]);
+  await screen.getByRole("link", "Example", { exact: true }).click();
+  expect(
+    await browser.evaluate(
+      () =>
+        window.__aelomiMock?.calls.filter(
+          (call) => call.command === "openUrl",
+        ) ?? null,
+    ),
+  ).toEqual([
+    { command: "openUrl", args: ["https://example.com"] },
+    { command: "openUrl", args: ["https://example.com"] },
+  ]);
   await expect(screen.getByRole("textbox", "Page body")).toHaveText("Example");
 });
 
@@ -90,7 +102,24 @@ test("SHELL-13 drag-select and a link context menu make no additional handoff", 
   expect(
     await browser.evaluate(() => window.getSelection()?.isCollapsed ?? true),
   ).toBe(false);
+  await browser.evaluate(() => {
+    window.addEventListener(
+      "contextmenu",
+      (event) => {
+        document.documentElement.dataset.contextMenuPrevented = String(
+          event.defaultPrevented,
+        );
+      },
+      { once: true },
+    );
+    return true;
+  });
   await link.secondaryTap();
+  expect(
+    await browser.evaluate(
+      () => document.documentElement.dataset.contextMenuPrevented ?? null,
+    ),
+  ).toBe("true");
   expect(
     await browser.evaluate(
       () =>

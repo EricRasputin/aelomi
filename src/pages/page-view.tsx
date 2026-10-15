@@ -5,7 +5,7 @@ import { setActiveEditor } from "../editor/active-editor";
 import { renderSegments, type ShownBlock } from "../editor/body-reader";
 import { inCode, type PickerKey, pickerTrigger } from "../editor/page-picker";
 import { openPage, type PageSession } from "../editor/page-session";
-import { openPageLink } from "../editor/url-links";
+import { openPageLink, recordPageLinkPointer } from "../editor/url-links";
 import { markPageContent } from "../perf/cold-start";
 import { storageErrorText } from "../storage-copy";
 import { displayTitle, linkText, usePageTreeStore } from "../stores/page-tree";
@@ -144,6 +144,7 @@ export function PageView({
     <article
       className="page"
       aria-label="Page"
+      onPointerDownCapture={recordPageLinkPointer}
       onClickCapture={openPageLink}
       onAuxClickCapture={openPageLink}
       onContextMenuCapture={openPageLink}
