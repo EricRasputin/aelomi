@@ -89,6 +89,7 @@ export const STAGES: readonly Stage[] = [
   {
     job: "cold-start",
     commands: [
+      ["node", "scripts/wait-for-quiet.ts"],
       [
         "node",
         "perf/cold-start.ts",
@@ -98,6 +99,7 @@ export const STAGES: readonly Stage[] = [
         "--out",
         "perf-results/cold-start-index",
       ],
+      ["node", "scripts/wait-for-quiet.ts"],
       [
         "node",
         "perf/cold-start.ts",
@@ -108,6 +110,5 @@ export const STAGES: readonly Stage[] = [
         "perf-results/cold-start-page",
       ],
     ],
-    perf: true,
   },
 ];

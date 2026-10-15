@@ -222,3 +222,23 @@ test("every pinned action names its version", () => {
       .map(([, action]) => action),
   ).toEqual([]);
 });
+
+test.each(["index", "page"])(
+  "cold-start waits for a quiet machine immediately before %s locally and in CI",
+  (variant) => {
+    const local =
+      STAGES.find((stage) => stage.job === "cold-start")?.commands.map(
+        (command) => command.join(" "),
+      ) ?? [];
+    const hosted = ciRuns.get("cold-start") ?? [];
+    for (const commands of [local, hosted]) {
+      const measure = commands.findIndex((command) =>
+        command.includes(
+          `perf/cold-start.ts --ci --expected-variant ${variant}`,
+        ),
+      );
+      expect(measure).toBeGreaterThan(0);
+      expect(commands[measure - 1]).toBe("node scripts/wait-for-quiet.ts");
+    }
+  },
+);
