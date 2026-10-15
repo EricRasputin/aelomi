@@ -1,9 +1,7 @@
 import { commands, events } from "../ipc";
+import { storageRetry } from "../storage-retry";
 import { useQuitStore } from "./quit";
 import { useStorageHealthStore } from "./storage-health";
-
-/** Registration retries back off from the first delay to the cap. */
-const registrationRetry = { firstMs: 100, maxMs: 5_000 };
 
 /**
  * Listens for health and quit events before reading their snapshots, then
@@ -38,7 +36,7 @@ export function connectStorageEvents() {
     retry = setTimeout(() => {
       if (disposed) return;
       register().catch(() =>
-        retryRegistration(Math.min(delayMs * 2, registrationRetry.maxMs)),
+        retryRegistration(Math.min(delayMs * 2, storageRetry.maxMs)),
       );
     }, delayMs);
   };
@@ -92,10 +90,10 @@ export function connectStorageEvents() {
     if (!disposed && quitListening) {
       try {
         if (quitRead) await register();
-        else retryRegistration(registrationRetry.firstMs);
+        else retryRegistration(storageRetry.firstMs);
       } catch (error: unknown) {
         errors.push(error);
-        if (!disposed) retryRegistration(registrationRetry.firstMs);
+        if (!disposed) retryRegistration(storageRetry.firstMs);
       }
     }
     if (errors.length > 0) {

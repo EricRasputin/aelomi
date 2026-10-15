@@ -1,5 +1,6 @@
 import { test as base } from "@e2e-dev/web";
 import { isLocalUrl } from "../tests/is-local-url";
+import { acceptanceContext } from "./browser";
 
 // e2e starts every extended fixture, even when the test does not request its value.
 export const test = base.extend<{ networkGuard: undefined }>({
@@ -9,6 +10,13 @@ export const test = base.extend<{ networkGuard: undefined }>({
       if (isLocalUrl(route.request.url)) return route.fallback();
       requests.push(`${route.request.method} ${route.request.url}`);
       await route.abort();
+    });
+    await acceptanceContext().routeWebSocket(/.*/, (socket) => {
+      if (isLocalUrl(socket.url())) socket.connectToServer();
+      else {
+        requests.push(`WS ${socket.url()}`);
+        void socket.close();
+      }
     });
     await use(undefined);
     if (requests.length > 0) {

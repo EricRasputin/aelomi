@@ -476,6 +476,10 @@ mark {
   line-height: 1.3;
 }
 
+.storage-refusal h1:focus {
+  outline: none;
+}
+
 .storage-refusal-message {
   margin-top: 0.75rem;
   color: var(--muted);

@@ -26,7 +26,11 @@ Preconditions:
 
 - **Refusal.** Run `$S/app.sh doctor "$RUN"`, then `$S/app.sh tree "$RUN"`. Expect the heading `Move your data folder out of cloud storage`, both complete paths, Finder’s Go to Folder, symbolic-link removal, the overwrite precaution, and the quit, move, and reopen steps. The editor is absent.
 - **Appearance.** Capture `$S/app.sh screenshot "$RUN" cloud-dark` and `cloud-light` with the Mac in each appearance. Restore the original appearance. Both shots show the complete path and readable instructions.
-- **URL link.** Launch on a synthetic folder with one page and a URL link to `https://example.com`. Run `$S/app.sh tree "$RUN"` to find its link label. Capture `url-before`, press the link with `$S/app.sh press "$RUN" "Example"`, and capture `url-after`. Expect `url opener handed_to_browser=true` in the shell log. The default browser receives the URL and Aelomi still shows the same page.
+- **URL link.** Launch on a synthetic folder with one page and a URL link to `https://example.com`. Run `$S/app.sh tree "$RUN"` to find its link label. Capture `url-before`, press the link with `$S/app.sh press "$RUN" "Example"`, and capture `url-after`. Expect `url opener launched=true` in the shell log. This log proves the OS opener launched, not browser receipt. Observe the browser and confirm Aelomi still shows the same page.
+- **Selection.** Double-click the link with native pointer input. Expect only one new opener line. Drag-select its text and expect no new opener line.
+- **Context menu.** In a packaged build, right-click a link targeting a synthetic loopback request counter. Expect no WebKit link menu and no request at the counter. `allowLinkPreview` must be false in the bundle configuration. Capture the app and the request count.
+- **Navigation guard.** In the dev window’s Web Inspector console, assign a synthetic loopback URL to `location.href`. Expect `url navigation refused=true`, no request at the loopback server, and the original page still visible. This action must bypass the captured link handler.
+- **Quit survival.** Type a unique synthetic marker, quit with ⌘Q, relaunch with the same isolated data folder, and confirm the exact marker in the editor.
 - **Mock URL link.** Run `pnpm test:e2e e2e/url-links.e2e.ts`. Expect the open-URL call to receive exactly `https://example.com`, and the page heading and body to remain.
 - **Cleanup.** Run `$S/app.sh cleanup "$RUN"`. Keep the named evidence directory.
 

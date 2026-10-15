@@ -146,6 +146,7 @@ export function PageView({
       aria-label="Page"
       onClickCapture={openPageLink}
       onAuxClickCapture={openPageLink}
+      onContextMenuCapture={openPageLink}
     >
       <PageTitle pageId={pageId} />
       {view.kind === "readOnly" && (

@@ -10,7 +10,7 @@ test("SHELL-10 acceptance 5: typing during a write failure shows a banner and re
     window.__aelomiMockSetup = {
       pages: [{ id: "page", title: "A" }],
       bodies: { page: [{ id: "block-a", content: [] }] },
-      failWrites: true,
+      failWrites: "DiskFull",
     };
   });
   await app.open("/");
@@ -22,7 +22,7 @@ test("SHELL-10 acceptance 5: typing during a write failure shows a banner and re
     "Changes aren't being saved.",
     { timeout: 2_000 },
   );
-  await expect(screen.getByRole("alert")).toContainText("mock write failure");
+  await expect(screen.getByRole("alert")).toContainText("The disk is full.");
   await expect(screen.getByRole("alert")).toContainText(
     "Your changes are kept in memory. Aelomi will keep trying.",
   );

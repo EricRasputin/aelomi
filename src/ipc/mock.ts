@@ -61,7 +61,7 @@ type MockCall = {
 export type MockSetup = {
   settings?: Partial<Settings>;
   storageStatus?: StorageStatus;
-  failWrites?: boolean;
+  failWrites?: FailReason;
   indexStatus?: IndexStatus;
   pages?: SeedPage[];
   bodies?: Record<string, SeedBlock[]>;
@@ -556,6 +556,15 @@ export const commands = {
     calls.push({ command: "openUrl", args: [url] });
     return { status: "ok", data: null };
   },
+  storageFlush: async () => {
+    calls.push({ command: "storageFlush", args: [] });
+    if (storage.status !== "Ready")
+      return { status: "error", error: "Unavailable" };
+    return {
+      status: "ok",
+      data: [...storage.docs.values()].every((doc) => !doc.pending),
+    };
+  },
 } satisfies Commands;
 
 function seedBodies(bodies: Record<string, SeedBlock[]>) {
@@ -634,7 +643,10 @@ async function applySetup(setup: MockSetup | undefined) {
   if (setup.settings) settings = seedSettings(setup.settings);
   if (setup.storageStatus)
     storage.status = structuredClone(setup.storageStatus);
-  if (setup.failWrites) storage.failWrites = true;
+  if (setup.failWrites) {
+    storage.failWrites = true;
+    storage.reason = setup.failWrites;
+  }
   if (setup.indexStatus) indexStatus = structuredClone(setup.indexStatus);
   if (setup.pages) {
     writeRecords(workspaceDoc(), setup.pages);

@@ -9,14 +9,21 @@ export function allowedUrl(value: string): boolean {
   }
 }
 
-export function openPageLink(event: MouseEvent<HTMLElement>) {
+export function openPageLink(
+  event: Pick<
+    MouseEvent<HTMLElement>,
+    "target" | "currentTarget" | "preventDefault" | "type" | "button" | "detail"
+  >,
+) {
   const target = event.target;
   const link = target instanceof Element ? target.closest("a[href]") : null;
   if (!link || !event.currentTarget.contains(link)) return;
   event.preventDefault();
-  event.stopPropagation();
   const url = link.getAttribute("href");
   if (
+    event.type === "contextmenu" ||
+    event.detail !== 1 ||
+    window.getSelection()?.isCollapsed === false ||
     !url ||
     !allowedUrl(url) ||
     (event.type === "auxclick" && event.button !== 1)

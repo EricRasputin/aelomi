@@ -81,7 +81,8 @@ export async function openPage({
   let raw = fromBase64(loaded.data);
   const ydoc = new Y.Doc();
   try {
-    raw = Y.mergeUpdates([raw, ...pending, ...pendingUpdates(pageId)]);
+    const recovered = [...pending, ...pendingUpdates(pageId)];
+    if (recovered.length > 0) raw = Y.mergeUpdates([raw, ...recovered]);
     Y.applyUpdate(ydoc, raw, loadOrigin);
   } catch {
     ydoc.destroy();

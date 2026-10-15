@@ -282,6 +282,19 @@ pub async fn open_url(url: String) -> Result<(), String> {
         .map_err(|error| error.to_string())?
 }
 
+#[tauri::command]
+#[specta::specta]
+pub async fn storage_flush(storage: State<'_, Storage>) -> Result<bool, StorageError> {
+    let workspace = storage.workspace()?;
+    tauri::async_runtime::spawn_blocking(move || {
+        workspace
+            .flush(Instant::now() + crate::storage::QUIT_FLUSH_TIMEOUT)
+            .is_empty()
+    })
+    .await
+    .map_err(|error| StorageError::Io(error.to_string()))
+}
+
 pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
     tauri_specta::Builder::new()
         .commands(tauri_specta::collect_commands![
@@ -305,6 +318,7 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
             settings_get,
             settings_update,
             open_url,
+            storage_flush,
         ])
         .events(tauri_specta::collect_events![
             StorageHealthChanged,
@@ -330,6 +344,34 @@ mod tests {
         let reply = super::ping(super::PingRequest { seq: 42 });
         assert_eq!(reply.seq, 42);
         assert_eq!(reply.core_version, aelomi_core::VERSION);
+    }
+
+    #[test]
+    fn recovery_flush_waits_for_durability_and_survives_a_crash() {
+        use aelomi_core::storage::{DocId, test_support::SimDisk};
+        use std::time::Duration;
+        use tauri::{
+            Manager,
+            test::{mock_builder, mock_context, noop_assets},
+        };
+        let disk = SimDisk::default();
+        let storage = crate::storage::tests::open_on(&disk);
+        disk.set_full_sync_latency(Duration::from_millis(100));
+        let doc = DocId::new("page-recovered").unwrap();
+        storage
+            .workspace()
+            .unwrap()
+            .append(&doc, &crate::storage::tests::update("recovered x"))
+            .unwrap();
+        let app = mock_builder().build(mock_context(noop_assets())).unwrap();
+        app.manage(storage);
+        assert!(tauri::async_runtime::block_on(super::storage_flush(app.state())).unwrap());
+        disk.crash();
+        let reopened = disk.open(Path::new("/data")).unwrap();
+        assert_eq!(
+            crate::storage::tests::text_of(&reopened.load(&doc).unwrap()),
+            "recovered x"
+        );
     }
 
     #[test]

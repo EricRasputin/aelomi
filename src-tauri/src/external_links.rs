@@ -3,7 +3,6 @@ use tauri::{Manager, Url};
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Navigation {
     App,
-    Browser,
     Blocked,
 }
 
@@ -25,21 +24,25 @@ pub(crate) fn navigation(url: &Url, dev_url: Option<&Url>) -> Navigation {
     };
     if is_app {
         Navigation::App
-    } else if allowed_url(url) {
-        Navigation::Browser
     } else {
         Navigation::Blocked
     }
 }
 
 pub(crate) fn open(url: &str) -> Result<(), String> {
+    open_with(url, |url| {
+        tauri_plugin_opener::open_url(url, None::<&str>).map_err(|error| error.to_string())
+    })?;
+    println!("url opener launched=true");
+    Ok(())
+}
+
+fn open_with(url: &str, opener: impl FnOnce(&str) -> Result<(), String>) -> Result<(), String> {
     let parsed = Url::parse(url).map_err(|_| "The URL isn't valid.".to_owned())?;
     if !allowed_url(&parsed) {
         return Err("Only http, https, and mailto links can open.".into());
     }
-    tauri_plugin_opener::open_url(url, None::<&str>).map_err(|error| error.to_string())?;
-    println!("url opener handed_to_browser=true");
-    Ok(())
+    opener(parsed.as_str())
 }
 
 pub(crate) fn guard() -> tauri::plugin::TauriPlugin<tauri::Wry> {
@@ -50,16 +53,10 @@ pub(crate) fn guard() -> tauri::plugin::TauriPlugin<tauri::Wry> {
                 .flatten();
             match navigation(url, dev_url) {
                 Navigation::App => true,
-                Navigation::Browser => {
-                    let url = url.to_string();
-                    tauri::async_runtime::spawn_blocking(move || {
-                        if let Err(error) = open(&url) {
-                            eprintln!("url opener failed: {error}");
-                        }
-                    });
+                Navigation::Blocked => {
+                    println!("url navigation refused=true");
                     false
                 }
-                Navigation::Blocked => false,
             }
         })
         .build()
@@ -68,6 +65,29 @@ pub(crate) fn guard() -> tauri::plugin::TauriPlugin<tauri::Wry> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_window_disables_webkit_link_previews() {
+        let config: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        assert_eq!(config["app"]["windows"][0]["allowLinkPreview"], false);
+    }
+
+    #[test]
+    fn the_opener_receives_the_normalized_url() {
+        for (input, expected) in [
+            ("\thttps://example.com", "https://example.com/"),
+            ("https://exa\nmple.com/a b", "https://example.com/a%20b"),
+        ] {
+            let mut received = String::new();
+            open_with(input, |url| {
+                received = url.to_owned();
+                Ok(())
+            })
+            .unwrap();
+            assert_eq!(received, expected);
+        }
+    }
 
     #[test]
     fn only_web_and_mail_schemes_can_open() {
@@ -95,7 +115,7 @@ mod tests {
     }
 
     #[test]
-    fn navigation_keeps_the_app_and_hands_only_allowed_schemes_to_the_browser() {
+    fn navigation_permits_only_the_app_origin() {
         let decide = |input| navigation(&Url::parse(input).unwrap(), None);
         assert_eq!(
             decide("tauri://localhost/page/page-a?block=a#b"),
@@ -107,7 +127,7 @@ mod tests {
             "mailto:hello@example.com",
             "http://tauri.localhost",
         ] {
-            assert_eq!(decide(input), Navigation::Browser, "{input}");
+            assert_eq!(decide(input), Navigation::Blocked, "{input}");
         }
         for input in [
             "tauri://example.com",
@@ -131,7 +151,7 @@ mod tests {
             "http://127.0.0.1:1420",
             "http://localhost.example.com:1420",
         ] {
-            assert_eq!(decide(input), Navigation::Browser, "{input}");
+            assert_eq!(decide(input), Navigation::Blocked, "{input}");
         }
         assert_eq!(decide("tauri://localhost"), Navigation::Blocked);
     }

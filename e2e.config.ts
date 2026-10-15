@@ -1,5 +1,5 @@
-import { web } from "@e2e-dev/web";
 import type { E2EConfig } from "e2e";
+import { acceptanceEngine } from "./e2e/browser";
 
 export default {
   tests: ["e2e/**/*.e2e.ts"],
@@ -8,8 +8,7 @@ export default {
   targets: [
     {
       name: "webkit",
-      // This engine blocks service workers only when headers are configured.
-      engine: web({ browser: "webkit", headers: {} }),
+      engine: acceptanceEngine,
       app: {
         url: "http://127.0.0.1:0",
         command: {

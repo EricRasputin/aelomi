@@ -6,7 +6,7 @@ When a write to the data folder fails, Aelomi keeps the edit in memory and shows
 
 - `save-banner` shows the banner with the reason while a write fails. A read-only `docs` folder gives `Aelomi doesn't have permission to write to its data folder.`
 - `reopen-pending` keeps refused edits visible when the page closes and reopens before recovery.
-- `save-recovery` clears the banner after the folder is writable again and the retry succeeds.
+- `save-recovery` clears the banner after the folder is writable again and all retried edits are durable. Acceptance alone does not clear it.
 - `quit-settings` names unsaved settings when a settings write is pending.
 - `quit-blocked` opens the dialog when a quit finds a pending edit, after a flush of up to 2 s. **Keep app open** has focus.
 - `quit-keep-open` closes the dialog, keeps the app running, and keeps the pending edit and the banner.

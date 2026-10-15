@@ -57,6 +57,7 @@ export const commands = {
 	settingsGet: () => typedError<Settings, SettingsError>(__TAURI_INVOKE("settings_get")),
 	settingsUpdate: (patch: SettingsPatch) => typedError<Settings, SettingsError>(__TAURI_INVOKE("settings_update", { patch })),
 	openUrl: (url: string) => typedError<null, string>(__TAURI_INVOKE("open_url", { url })),
+	storageFlush: () => typedError<boolean, StorageError>(__TAURI_INVOKE("storage_flush")),
 };
 
 /** Events */

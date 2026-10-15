@@ -266,3 +266,79 @@ test("the delivery banner stays until an in-flight retry is accepted and the nex
   stop();
   ydoc.destroy();
 });
+
+test("an accepted retry keeps its banner until a held durability acknowledgement succeeds", async () => {
+  vi.useFakeTimers();
+  const { ydoc } = loaded("page-durable", "");
+  const stop = syncPage({
+    docId: "page-durable",
+    ydoc,
+    hasUserInput: () => true,
+    onTrip: () => {},
+  });
+  vi.spyOn(commands, "docAppend").mockResolvedValueOnce({
+    status: "error",
+    error: { Io: "Read failed" },
+  });
+  let release = () => {};
+  const flush = vi.spyOn(commands, "storageFlush").mockImplementationOnce(
+    () =>
+      new Promise((done) => {
+        release = () => done({ status: "ok", data: true });
+      }),
+  );
+  try {
+    ydoc.getText("t").insert(0, "x");
+    await vi.advanceTimersByTimeAsync(100);
+    expect(stored("page-durable")).toBe("x");
+    expect([...useDeliveryStore.getState().failing]).toEqual([
+      ["page-durable", { Io: "Read failed" }],
+    ]);
+    expect(flush.mock.calls).toEqual([[]]);
+  } finally {
+    release();
+    await vi.advanceTimersByTimeAsync(0);
+    stop();
+    ydoc.destroy();
+  }
+  expect([...useDeliveryStore.getState().failing]).toEqual([]);
+  expect(stored("page-durable")).toBe("x");
+});
+
+test("an older successful flush cannot clear a newer refused edit", async () => {
+  vi.useFakeTimers();
+  const { ydoc } = loaded("page-flush-race", "");
+  const stop = syncPage({
+    docId: "page-flush-race",
+    ydoc,
+    hasUserInput: () => true,
+    onTrip: () => {},
+  });
+  window.__aelomiMock?.storage.refuseAppends({ Io: "First read failed" });
+  ydoc.getText("t").insert(0, "x");
+  await vi.advanceTimersByTimeAsync(0);
+  window.__aelomiMock?.storage.refuseAppends(null);
+  let release = () => {};
+  vi.spyOn(commands, "storageFlush").mockImplementationOnce(
+    () =>
+      new Promise((done) => {
+        release = () => done({ status: "ok", data: true });
+      }),
+  );
+  await vi.advanceTimersByTimeAsync(100);
+  window.__aelomiMock?.storage.refuseAppends({ Io: "New read failed" });
+  ydoc.getText("t").insert(1, "y");
+  await vi.advanceTimersByTimeAsync(0);
+  release();
+  await vi.advanceTimersByTimeAsync(0);
+  expect(stored("page-flush-race")).toBe("x");
+  expect([...useDeliveryStore.getState().failing]).toEqual([
+    ["page-flush-race", { Io: "New read failed" }],
+  ]);
+  window.__aelomiMock?.storage.refuseAppends(null);
+  await vi.advanceTimersByTimeAsync(200);
+  expect([...useDeliveryStore.getState().failing]).toEqual([]);
+  expect(stored("page-flush-race")).toBe("xy");
+  stop();
+  ydoc.destroy();
+});
