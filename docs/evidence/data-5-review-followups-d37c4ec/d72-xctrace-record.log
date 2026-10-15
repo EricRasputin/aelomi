@@ -1,9 +1,0 @@
-Starting recording with the Animation Hitches template. Attaching to: aelomi (10041). Time limit: 30.0 s
-Ctrl-C to stop the recording
-Reached specified time limit, ending recording...
-Run issues were detected (trace is still ready to be viewed):
-* [Error] Transferred trace file is malformed
-
-Recording failed with errors. Saving output file...
-Output file saved as: d72-hitches.trace
-record exit 2

@@ -1,9 +1,0 @@
-11:01:23 screenshot d74-page-open (id=32082 title="Aelomi" x=240 y=88 w=960 h=640)
-11:01:23 keys "k" command
-11:01:23 keys "kestrel" 
-11:01:30 screenshot d74-palette-issue (id=32082 title="Aelomi" x=240 y=88 w=960 h=640)
-11:01:38 keys "a" command
-11:01:38 keys "plain text" 
-11:01:40 keys "" 
-11:01:47 screenshot d74-readonly-page (id=32082 title="Aelomi" x=240 y=88 w=960 h=640)
-11:01:47 keys "q" command
