@@ -206,6 +206,8 @@ The source tree remains the authoritative ordered list of active records. `flatt
 
 Titles use a map of pending drafts keyed by page ID, each with a version and a possible refusal. The title field and sidebar select the same draft until a matching source snapshot arrives. Each input invokes `page_rename` immediately through the existing record FIFO; its one running job and consecutive queued rename coalescing bound native work. Failed calls retain the draft and offer retry. A textarea preserves imported line breaks and wraps long titles; the sidebar truncates a single line and exposes its full title. Visibility and focus requests stay in session memory.
 
+The Playwright preview uses port 4173 by default. Set `AELOMI_PLAYWRIGHT_PORT` to give a concurrent worktree its own server, including during `pnpm check:all`. The override changes both the preview server and browser base URL.
+
 ## Tests by layer
 
 | Layer | Tool | Location | CI job |
