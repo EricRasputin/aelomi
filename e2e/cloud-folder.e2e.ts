@@ -10,9 +10,18 @@ test("SHELL-11 acceptance 7: a cloud folder shows its resolved path and how to m
     window.__aelomiMockSetup = {
       storageStatus: {
         CloudPath: {
-          configured: "/Users/test/Library/Support/Aelomi Dev",
-          resolved: "~/Library/Mobile Documents/com~apple~CloudDocs/Aelomi",
-          link: "/Users/test/Library/Support",
+          configured: "/Users/test/Library/Application Support/Aelomi",
+          resolved:
+            "/Users/test/Library/Mobile Documents/com~apple~CloudDocs/Aelomi Notes",
+          recovery: {
+            LinkAtDataFolder: {
+              configured_parent: "/Users/test/Library/Application Support",
+              configured_name: "Aelomi",
+              resolved_parent:
+                "/Users/test/Library/Mobile Documents/com~apple~CloudDocs",
+              resolved_name: "Aelomi Notes",
+            },
+          },
         },
       },
       pages: [{ id: "page-a", title: "A" }],
@@ -23,52 +32,70 @@ test("SHELL-11 acceptance 7: a cloud folder shows its resolved path and how to m
     screen.getByRole("heading", "Move your data folder out of cloud storage"),
   ).toBeVisible();
   await expect(
-    screen.getByText("~/Library/Mobile Documents/com~apple~CloudDocs/Aelomi", {
-      exact: true,
-    }),
+    screen.getByText("Cloud sync corrupts the database.", { exact: true }),
   ).toBeVisible();
   await expect(
-    screen.getByText("Cloud sync corrupts the database.", { exact: false }),
-  ).toBeVisible();
-  await expect(
-    screen.getByText("/Users/test/Library/Support/Aelomi Dev", {
-      exact: true,
-    }),
-  ).toBeVisible();
+    screen.getByRole("textbox", "Where your data really is"),
+  ).toHaveValue(
+    "/Users/test/Library/Mobile Documents/com~apple~CloudDocs/Aelomi Notes",
+  );
   await expect(
     screen.getByText(
-      "Keep this screen open while you move the folder in Finder.",
+      'Find "Aelomi". It has a small arrow because it is a link. Drag it to the Trash. This removes only the link, not your pages.',
       { exact: true },
     ),
   ).toBeVisible();
   await expect(
     screen.getByText(
-      'In Finder, open /Users/test/Library with Go > Go to Folder (⇧⌘G). Drag "Support" (it has an arrow badge) to the Trash. The cloud folder it points to stays where it is.',
+      'Drag "Aelomi Notes" into the first folder\'s window. Then rename it "Aelomi".',
       { exact: true },
     ),
   ).toBeVisible();
   await expect(
-    screen.getByText(
-      "If a folder already exists at the destination, Aelomi may have created it when it last opened. Move it aside, then move your data in.",
-      { exact: true },
-    ),
+    screen.getByText("Quit Aelomi and open it again.", { exact: true }),
   ).toBeVisible();
-  expect(
-    await browser.evaluate(() =>
-      Array.from(
-        document.querySelectorAll(".storage-refusal li"),
-        (item) => item.textContent,
-      ),
-    ),
-  ).toEqual([
-    'In Finder, open /Users/test/Library with Go > Go to Folder (⇧⌘G). Drag "Support" (it has an arrow badge) to the Trash. The cloud folder it points to stays where it is.',
-    'Create a regular folder named "Support" in /Users/test/Library. Recreate any other folders needed to reach /Users/test/Library/Support.',
-    "Move ~/Library/Mobile Documents/com~apple~CloudDocs/Aelomi so its new path is /Users/test/Library/Support/Aelomi Dev.",
-    "Quit Aelomi and reopen it.",
-  ]);
+  await expect(
+    screen.getByText("Nothing in this folder was changed.", { exact: true }),
+  ).toBeVisible();
   expect(await browser.evaluate(() => document.activeElement?.id ?? null)).toBe(
     "storage-refusal-title",
   );
+  expect(
+    await browser.evaluate(() =>
+      Array.from(document.querySelectorAll(".storage-refusal-path"), (chip) =>
+        chip instanceof HTMLTextAreaElement ? chip.value : null,
+      ),
+    ),
+  ).toEqual([
+    "/Users/test/Library/Mobile Documents/com~apple~CloudDocs/Aelomi Notes",
+    "/Users/test/Library/Application Support",
+    "/Users/test/Library/Mobile Documents/com~apple~CloudDocs",
+  ]);
+  await screen
+    .getByRole(
+      "textbox",
+      "In Finder, choose Go > Go to Folder (⇧⌘G) and paste:",
+    )
+    .click();
+  expect(
+    await browser.evaluate(() => {
+      const chip = document.activeElement;
+      return chip instanceof HTMLTextAreaElement
+        ? chip.value.slice(chip.selectionStart, chip.selectionEnd)
+        : null;
+    }),
+  ).toBe("/Users/test/Library/Application Support");
+  await screen
+    .getByRole("textbox", "Choose Go > Go to Folder again and paste:")
+    .focus();
+  expect(
+    await browser.evaluate(() => {
+      const chip = document.activeElement;
+      return chip instanceof HTMLTextAreaElement
+        ? chip.value.slice(chip.selectionStart, chip.selectionEnd)
+        : null;
+    }),
+  ).toBe("/Users/test/Library/Mobile Documents/com~apple~CloudDocs");
   expect(
     await browser.evaluate(() => ({
       editors: document.querySelectorAll('[data-testid="page-editor"]').length,

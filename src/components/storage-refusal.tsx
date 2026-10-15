@@ -1,6 +1,26 @@
 import { useEffect, useRef } from "react";
 import { type StorageStartup, storageCopy } from "../storage-copy";
 
+function PathChip({ path, label }: { path: string; label: string }) {
+  return (
+    <textarea
+      className="storage-refusal-path"
+      dir="ltr"
+      aria-label={label}
+      readOnly
+      rows={1}
+      value={path}
+      onPointerDown={(event) => event.preventDefault()}
+      onClick={(event) => {
+        event.preventDefault();
+        event.currentTarget.focus();
+        event.currentTarget.select();
+      }}
+      onFocus={(event) => event.currentTarget.select()}
+    />
+  );
+}
+
 export function StorageRefusal({
   startup,
 }: {
@@ -24,43 +44,40 @@ export function StorageRefusal({
               {startup.title}
             </h1>
             <p className="storage-refusal-message">{startup.message}</p>
-            {startup.recovery &&
-              startup.recovery.configured !== startup.recovery.resolved && (
-                <div className="storage-refusal-detail">
-                  <p>{storageCopy.configuredPath}</p>
-                  <p className="storage-refusal-path" dir="ltr">
-                    {startup.recovery.configured}
-                  </p>
-                </div>
-              )}
             {startup.recovery !== null && (
-              <div className="storage-refusal-detail">
-                <p>{storageCopy.cloudDataPath}</p>
-                <p className="storage-refusal-path" dir="ltr">
-                  {startup.recovery.resolved}
+              <>
+                <div className="storage-refusal-location">
+                  <p>{storageCopy.cloudDataPath}</p>
+                  <PathChip
+                    path={startup.recovery.resolved}
+                    label={storageCopy.cloudDataPath}
+                  />
+                </div>
+                <ol className="storage-refusal-recovery">
+                  {startup.recovery.steps.map((step) => (
+                    <li key={step.text}>
+                      {step.kind === "text" ? (
+                        step.text
+                      ) : (
+                        <>
+                          <p>{step.text}</p>
+                          <PathChip path={step.path} label={step.text} />
+                          <p>{step.after}</p>
+                        </>
+                      )}
+                    </li>
+                  ))}
+                </ol>
+                <p className="storage-refusal-message">
+                  {storageCopy.unchanged}
                 </p>
-              </div>
+              </>
             )}
             {startup.detail !== null && (
               <div className="storage-refusal-detail">
                 <p>{storageCopy.details}</p>
                 <p>{startup.detail}</p>
               </div>
-            )}
-            {startup.recovery !== null && (
-              <section
-                className="storage-refusal-recovery"
-                aria-labelledby="storage-recovery-title"
-              >
-                <h2 id="storage-recovery-title">{storageCopy.moveTitle}</h2>
-                <p>{storageCopy.finder}</p>
-                <p>{storageCopy.occupiedDestination}</p>
-                <ol>
-                  {startup.recovery.steps.map((step) => (
-                    <li key={step}>{step}</li>
-                  ))}
-                </ol>
-              </section>
             )}
           </>
         )}

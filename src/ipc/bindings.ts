@@ -101,6 +101,15 @@ export type BlockHit = {
 	text: TextPart[],
 };
 
+export type CloudRecovery = ({ LinkAtDataFolder: {
+	configured_parent: string,
+	configured_name: string,
+	resolved_parent: string,
+	resolved_name: string,
+} }) & { SharedLink?: never } | ({ SharedLink: {
+	link: string,
+} }) & { LinkAtDataFolder?: never } | "Override";
+
 export type ColdStartMarks = {
 	variant: string,
 	time_origin: number | null,
@@ -291,7 +300,7 @@ export type StorageHealthChanged = Health;
 export type StorageStatus = "Ready" | ({ CloudPath: {
 	configured: string,
 	resolved: string,
-	link: string | null,
+	recovery: CloudRecovery,
 } }) & { Io?: never } | "Locked" | "NewerFormat" | "UnknownFormat" | ({ Io: string }) & { CloudPath?: never };
 
 export type TextPart = {

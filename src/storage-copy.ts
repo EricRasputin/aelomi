@@ -21,18 +21,13 @@ export const storageCopy = {
   invalidDoc: "The page ID isn't valid.",
   opening: "Opening your data folder…",
   cloudTitle: "Move your data folder out of cloud storage",
-  cloudRisk:
-    "Cloud sync corrupts the database. Aelomi can't open this folder safely. Aelomi hasn't opened or changed anything in it.",
-  configuredPath: "Configured data folder",
-  cloudDataPath: "Cloud data folder",
+  cloudRisk: "Cloud sync corrupts the database.",
+  cloudDataPath: "Where your data really is",
   details: "Details",
-  finder: "Keep this screen open while you move the folder in Finder.",
-  moveTitle: "Move it back to this Mac",
-  occupiedDestination:
-    "If a folder already exists at the destination, Aelomi may have created it when it last opened. Move it aside, then move your data in.",
-  restart: "Quit Aelomi and reopen it.",
+  unchanged: "Nothing in this folder was changed.",
+  restart: "Quit Aelomi and open it again.",
   override:
-    "Choose a local path on this Mac, outside cloud storage. Set AELOMI_DATA_DIR to that path.",
+    "Set AELOMI_DATA_DIR to a folder outside cloud storage, or unset it.",
   startupTitle: "Aelomi couldn't start",
   startup: "Aelomi couldn't read its startup status. Quit and reopen it.",
   lockedTitle: "This data folder is already open",
@@ -48,6 +43,10 @@ export const storageCopy = {
   io: "The folder couldn't be read. Check that the disk is available and you have permission to open it.",
 };
 
+export type RecoveryStep =
+  | { kind: "text"; text: string }
+  | { kind: "folder"; text: string; path: string; after: string };
+
 export type StorageStartup =
   | { kind: "loading" }
   | { kind: "ready" }
@@ -59,39 +58,61 @@ export type StorageStartup =
       recovery: {
         configured: string;
         resolved: string;
-        steps: readonly string[];
+        steps: readonly RecoveryStep[];
       } | null;
     };
 
 function cloudRecovery(
   cloud: Extract<StorageStatus, { CloudPath: object }>["CloudPath"],
 ) {
-  const { configured, resolved, link } = cloud;
-  const steps: string[] = [];
-  if (link !== null) {
-    const slash = link.lastIndexOf("/");
-    const parent = link.slice(0, slash) || "/";
-    const name = link.slice(slash + 1);
-    steps.push(
-      `In Finder, open ${parent} with Go > Go to Folder (⇧⌘G). Drag "${name}" (it has an arrow badge) to the Trash. The cloud folder it points to stays where it is.`,
-    );
-    if (link !== configured) {
-      const destinationParent = configured.slice(
-        0,
-        configured.lastIndexOf("/"),
-      );
-      steps.push(
-        `Create a regular folder named "${name}" in ${parent}. Recreate any other folders needed to reach ${destinationParent}.`,
-      );
-    }
-    steps.push(`Move ${resolved} so its new path is ${configured}.`);
+  const { configured, resolved, recovery } = cloud;
+  let steps: RecoveryStep[];
+  if (recovery === "Override") {
+    steps = [
+      { kind: "text", text: storageCopy.override },
+      { kind: "text", text: storageCopy.restart },
+    ];
+  } else if (recovery.SharedLink !== undefined) {
+    steps = [
+      {
+        kind: "folder",
+        text: "This folder is synced to cloud storage:",
+        path: recovery.SharedLink.link,
+        after:
+          "Other apps and files may use it. Aelomi can't keep its database there.",
+      },
+      {
+        kind: "text",
+        text: "In your cloud app's settings, turn off syncing for this folder so it is a regular folder on this Mac. Then quit Aelomi and open it again.",
+      },
+    ];
   } else {
-    steps.push(
-      storageCopy.override,
-      `Move ${resolved} so its new path is the AELOMI_DATA_DIR path.`,
-    );
+    const {
+      configured_parent,
+      configured_name,
+      resolved_parent,
+      resolved_name,
+    } = recovery.LinkAtDataFolder;
+    const rename =
+      configured_name === resolved_name
+        ? ""
+        : ` Then rename it "${configured_name}".`;
+    steps = [
+      {
+        kind: "folder",
+        text: "In Finder, choose Go > Go to Folder (⇧⌘G) and paste:",
+        path: configured_parent,
+        after: `Find "${configured_name}". It has a small arrow because it is a link. Drag it to the Trash. This removes only the link, not your pages.`,
+      },
+      {
+        kind: "folder",
+        text: "Choose Go > Go to Folder again and paste:",
+        path: resolved_parent,
+        after: `Drag "${resolved_name}" into the first folder's window.${rename}`,
+      },
+      { kind: "text", text: storageCopy.restart },
+    ];
   }
-  steps.push(storageCopy.restart);
   return { configured, resolved, steps };
 }
 

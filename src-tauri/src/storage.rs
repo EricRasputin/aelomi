@@ -1,5 +1,5 @@
 use std::ffi::OsString;
-use std::path::PathBuf;
+use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -41,12 +41,76 @@ pub enum StorageStatus {
     CloudPath {
         configured: String,
         resolved: String,
-        link: Option<String>,
+        recovery: CloudRecovery,
     },
     Locked,
     NewerFormat,
     UnknownFormat,
     Io(String),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Type)]
+pub enum CloudRecovery {
+    LinkAtDataFolder {
+        configured_parent: String,
+        configured_name: String,
+        resolved_parent: String,
+        resolved_name: String,
+    },
+    SharedLink {
+        link: String,
+    },
+    Override,
+}
+
+impl CloudRecovery {
+    fn from_paths(
+        configured: &Path,
+        resolved: &Path,
+        link: Option<&Path>,
+    ) -> std::io::Result<Self> {
+        match link {
+            Some(link) if link == configured => {
+                let parts = |path: &Path| {
+                    path.parent()
+                        .zip(path.file_name())
+                        .map(|(parent, name)| {
+                            (
+                                parent.to_string_lossy().into_owned(),
+                                name.to_string_lossy().into_owned(),
+                            )
+                        })
+                        .ok_or_else(|| {
+                            std::io::Error::other("the cloud data folder has no parent or name")
+                        })
+                };
+                let (configured_parent, configured_name) = parts(configured)?;
+                let (resolved_parent, resolved_name) = parts(resolved)?;
+                Ok(Self::LinkAtDataFolder {
+                    configured_parent,
+                    configured_name,
+                    resolved_parent,
+                    resolved_name,
+                })
+            }
+            Some(link) => Ok(Self::SharedLink {
+                link: link.to_string_lossy().into_owned(),
+            }),
+            None => Ok(Self::Override),
+        }
+    }
+}
+
+fn normalize_configured(path: &Path) -> std::io::Result<PathBuf> {
+    let mut normalized = PathBuf::new();
+    for component in std::path::absolute(path)?.components() {
+        if component == Component::ParentDir {
+            normalized.pop();
+        } else {
+            normalized.push(component);
+        }
+    }
+    Ok(normalized)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Type)]
@@ -97,7 +161,7 @@ impl Storage {
             #[cfg(test)]
             _index_dir: None,
         };
-        let configured = match std::path::absolute(&location.path) {
+        let configured = match normalize_configured(&location.path) {
             Ok(path) => path,
             Err(error) => {
                 return storage(
@@ -113,14 +177,18 @@ impl Storage {
                     .map_err(StorageStatus::from),
                 resolved,
             ),
-            Err(DataPathError::CloudFolder { resolved, link, .. }) => storage(
-                Err(StorageStatus::CloudPath {
-                    configured: configured.to_string_lossy().into_owned(),
-                    resolved: resolved.to_string_lossy().into_owned(),
-                    link: link.map(|path| path.to_string_lossy().into_owned()),
-                }),
-                resolved,
-            ),
+            Err(DataPathError::CloudFolder { resolved, link, .. }) => {
+                let status =
+                    match CloudRecovery::from_paths(&configured, &resolved, link.as_deref()) {
+                        Ok(recovery) => StorageStatus::CloudPath {
+                            configured: configured.to_string_lossy().into_owned(),
+                            resolved: resolved.to_string_lossy().into_owned(),
+                            recovery,
+                        },
+                        Err(error) => StorageStatus::Io(error.to_string()),
+                    };
+                storage(Err(status), resolved)
+            }
             Err(DataPathError::Io(error)) => storage(
                 Err(StorageStatus::Io(error.to_string())),
                 location.path.clone(),
@@ -446,96 +514,124 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn opening_a_symlink_into_a_cloud_root_reports_the_resolved_path() {
-        let dir = tempfile::tempdir().unwrap();
-        let cloud = dir.path().join("cloud");
-        let target = cloud.join("data");
-        std::fs::create_dir_all(&target).unwrap();
-        let path = dir.path().join("data");
-        std::os::unix::fs::symlink(&target, &path).unwrap();
-        let resolved = std::fs::canonicalize(&target)
-            .unwrap()
-            .to_string_lossy()
-            .into_owned();
-        let location = DataLocation {
-            path,
-            cloud_roots: vec![cloud.clone()],
-        };
-
-        let storage = Storage::open(&location, |_| {});
-
-        assert_eq!(
-            serde_json::to_value(storage.status()).unwrap(),
-            serde_json::json!({ "CloudPath": {
-                "configured": location.path.to_string_lossy(),
-                "resolved": resolved,
-                "link": location.path.to_string_lossy(),
-            }}),
-        );
-        assert_eq!(
-            storage.status(),
-            StorageStatus::CloudPath {
-                configured: location.path.to_string_lossy().into_owned(),
-                resolved: resolved.clone(),
-                link: Some(location.path.to_string_lossy().into_owned()),
-            }
-        );
-        assert_eq!(
-            storage.startup_line(),
-            format!(
-                "storage status=CloudPath {{ configured: {:?}, resolved: {resolved:?}, link: Some({:?}) }} path={resolved}",
-                location.path.to_string_lossy(),
-                location.path.to_string_lossy()
-            )
-        );
-        assert_eq!(std::fs::read_dir(target).unwrap().count(), 0);
-        let names: Vec<_> = std::fs::read_dir(cloud)
-            .unwrap()
-            .map(|entry| entry.unwrap().file_name())
-            .collect();
-        assert_eq!(names, [OsString::from("data")]);
-    }
-
-    #[test]
-    fn cloud_status_names_a_parent_link_or_a_direct_override_without_changing_data() {
+    fn cloud_leaf_recovery_has_parts_for_normal_trailing_slash_and_dot_dot_paths() {
         let dir = tempfile::tempdir().unwrap();
         let base = dir.path().canonicalize().unwrap();
         let cloud = base.join("cloud");
-        let target = cloud.join("Aelomi Dev");
+        let target = cloud.join("Aelomi Notes");
         std::fs::create_dir_all(&target).unwrap();
-        std::fs::write(target.join("sentinel"), b"cloud data stays intact").unwrap();
-        let link = base.join("Support");
-        std::os::unix::fs::symlink(&cloud, &link).unwrap();
-        for (configured, expected_link) in [
-            (
-                link.join("Aelomi Dev"),
-                Some(link.to_string_lossy().into_owned()),
-            ),
-            (target.clone(), None),
-        ] {
+        std::fs::write(target.join("sentinel"), b"pages stay intact").unwrap();
+        let link = base.join("Aelomi");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        for path in [link.clone(), link.join(""), base.join("missing/../Aelomi")] {
             let storage = Storage::open(
                 &DataLocation {
-                    path: configured.clone(),
+                    path,
                     cloud_roots: vec![cloud.clone()],
                 },
                 |_| {},
             );
             assert_eq!(
                 serde_json::to_value(storage.status()).unwrap(),
-                serde_json::json!({ "CloudPath": {
-                    "configured": configured.to_string_lossy(), "resolved": target.to_string_lossy(), "link": expected_link,
-                }})
+                serde_json::json!({
+                    "CloudPath": {
+                        "configured": link,
+                        "resolved": target,
+                        "recovery": { "LinkAtDataFolder": {
+                            "configured_parent": base,
+                            "configured_name": "Aelomi",
+                            "resolved_parent": cloud,
+                            "resolved_name": "Aelomi Notes"
+                        }}
+                    }
+                })
             );
-            let names: Vec<_> = std::fs::read_dir(&target)
-                .unwrap()
-                .map(|entry| entry.unwrap().file_name())
-                .collect();
-            assert_eq!(names, [OsString::from("sentinel")]);
+            assert_eq!(
+                std::fs::read_dir(&target)
+                    .unwrap()
+                    .map(|e| e.unwrap().file_name())
+                    .collect::<Vec<_>>(),
+                [OsString::from("sentinel")]
+            );
             assert_eq!(
                 std::fs::read(target.join("sentinel")).unwrap(),
-                b"cloud data stays intact"
+                b"pages stay intact"
             );
+            assert_eq!(std::fs::read_link(&link).unwrap(), target);
         }
+    }
+
+    #[test]
+    fn cloud_shared_link_recovery_names_the_shared_folder_without_changing_data() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path().canonicalize().unwrap();
+        let cloud = base.join("cloud");
+        let target = cloud.join("Aelomi Dev");
+        std::fs::create_dir_all(&target).unwrap();
+        std::fs::write(target.join("sentinel"), b"pages stay intact").unwrap();
+        std::fs::create_dir(base.join("Library")).unwrap();
+        let link = base.join("Library/Application Support");
+        std::os::unix::fs::symlink(&cloud, &link).unwrap();
+        let configured = link.join("Aelomi Dev");
+        let storage = Storage::open(
+            &DataLocation {
+                path: configured.clone(),
+                cloud_roots: vec![cloud.clone()],
+            },
+            |_| {},
+        );
+        assert_eq!(
+            serde_json::to_value(storage.status()).unwrap(),
+            serde_json::json!({
+                "CloudPath": { "configured": configured, "resolved": target, "recovery": { "SharedLink": { "link": link } } }
+            })
+        );
+        assert_eq!(std::fs::read_link(link).unwrap(), cloud);
+        assert_eq!(
+            std::fs::read_dir(&target)
+                .unwrap()
+                .map(|e| e.unwrap().file_name())
+                .collect::<Vec<_>>(),
+            [OsString::from("sentinel")]
+        );
+        assert_eq!(
+            std::fs::read(target.join("sentinel")).unwrap(),
+            b"pages stay intact"
+        );
+    }
+
+    #[test]
+    fn cloud_override_recovery_keeps_paths_without_changing_data() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path().canonicalize().unwrap();
+        let cloud = base.join("cloud");
+        let target = cloud.join("Aelomi");
+        std::fs::create_dir_all(&target).unwrap();
+        std::fs::write(target.join("sentinel"), b"pages stay intact").unwrap();
+        let storage = Storage::open(
+            &DataLocation {
+                path: target.clone(),
+                cloud_roots: vec![cloud],
+            },
+            |_| {},
+        );
+        assert_eq!(
+            serde_json::to_value(storage.status()).unwrap(),
+            serde_json::json!({
+                "CloudPath": { "configured": target, "resolved": target, "recovery": "Override" }
+            })
+        );
+        assert_eq!(
+            std::fs::read_dir(&target)
+                .unwrap()
+                .map(|e| e.unwrap().file_name())
+                .collect::<Vec<_>>(),
+            [OsString::from("sentinel")]
+        );
+        assert_eq!(
+            std::fs::read(target.join("sentinel")).unwrap(),
+            b"pages stay intact"
+        );
     }
 
     pub(crate) fn open_on(disk: &SimDisk) -> Storage {

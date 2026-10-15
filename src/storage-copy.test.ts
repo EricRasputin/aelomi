@@ -20,55 +20,141 @@ test("keeps the complete storage IO reason", () => {
 test.each([
   {
     name: "link at the data folder",
-    configured: "/Users/test/Library/Application Support/Aelomi",
-    resolved: "/Users/test/Library/Mobile Documents/Aelomi",
-    link: "/Users/test/Library/Application Support/Aelomi",
+    cloud: {
+      configured: "/Users/test/Library/Application Support/Aelomi",
+      resolved: "/Users/test/Library/Mobile Documents/Aelomi",
+      recovery: {
+        LinkAtDataFolder: {
+          configured_parent: "/Users/test/Library/Application Support",
+          configured_name: "Aelomi",
+          resolved_parent: "/Users/test/Library/Mobile Documents",
+          resolved_name: "Aelomi",
+        },
+      },
+    },
     steps: [
-      'In Finder, open /Users/test/Library/Application Support with Go > Go to Folder (⇧⌘G). Drag "Aelomi" (it has an arrow badge) to the Trash. The cloud folder it points to stays where it is.',
-      "Move /Users/test/Library/Mobile Documents/Aelomi so its new path is /Users/test/Library/Application Support/Aelomi.",
-      "Quit Aelomi and reopen it.",
+      {
+        kind: "folder",
+        text: "In Finder, choose Go > Go to Folder (⇧⌘G) and paste:",
+        path: "/Users/test/Library/Application Support",
+        after:
+          'Find "Aelomi". It has a small arrow because it is a link. Drag it to the Trash. This removes only the link, not your pages.',
+      },
+      {
+        kind: "folder",
+        text: "Choose Go > Go to Folder again and paste:",
+        path: "/Users/test/Library/Mobile Documents",
+        after: 'Drag "Aelomi" into the first folder\'s window.',
+      },
+      { kind: "text", text: "Quit Aelomi and open it again." },
     ],
   },
   {
-    name: "link at a parent",
-    configured: "/Users/test/Library/Support/Aelomi",
-    resolved: "/Users/test/Library/CloudStorage/Dropbox/Aelomi",
-    link: "/Users/test/Library/Support",
+    name: "link with differing names",
+    cloud: {
+      configured: "/Users/test/Library/Application Support/Aelomi",
+      resolved: "/Users/test/Library/CloudStorage/Dropbox/Apps/Aelomi Notes",
+      recovery: {
+        LinkAtDataFolder: {
+          configured_parent: "/Users/test/Library/Application Support",
+          configured_name: "Aelomi",
+          resolved_parent: "/Users/test/Library/CloudStorage/Dropbox/Apps",
+          resolved_name: "Aelomi Notes",
+        },
+      },
+    },
     steps: [
-      'In Finder, open /Users/test/Library with Go > Go to Folder (⇧⌘G). Drag "Support" (it has an arrow badge) to the Trash. The cloud folder it points to stays where it is.',
-      'Create a regular folder named "Support" in /Users/test/Library. Recreate any other folders needed to reach /Users/test/Library/Support.',
-      "Move /Users/test/Library/CloudStorage/Dropbox/Aelomi so its new path is /Users/test/Library/Support/Aelomi.",
-      "Quit Aelomi and reopen it.",
+      {
+        kind: "folder",
+        text: "In Finder, choose Go > Go to Folder (⇧⌘G) and paste:",
+        path: "/Users/test/Library/Application Support",
+        after:
+          'Find "Aelomi". It has a small arrow because it is a link. Drag it to the Trash. This removes only the link, not your pages.',
+      },
+      {
+        kind: "folder",
+        text: "Choose Go > Go to Folder again and paste:",
+        path: "/Users/test/Library/CloudStorage/Dropbox/Apps",
+        after:
+          'Drag "Aelomi Notes" into the first folder\'s window. Then rename it "Aelomi".',
+      },
+      { kind: "text", text: "Quit Aelomi and open it again." },
+    ],
+  },
+  {
+    name: "shared Application Support link",
+    cloud: {
+      configured: "/Users/test/Library/Application Support/Aelomi",
+      resolved: "/Users/test/Library/CloudStorage/Dropbox/Support/Aelomi",
+      recovery: {
+        SharedLink: { link: "/Users/test/Library/Application Support" },
+      },
+    },
+    steps: [
+      {
+        kind: "folder",
+        text: "This folder is synced to cloud storage:",
+        path: "/Users/test/Library/Application Support",
+        after:
+          "Other apps and files may use it. Aelomi can't keep its database there.",
+      },
+      {
+        kind: "text",
+        text: "In your cloud app's settings, turn off syncing for this folder so it is a regular folder on this Mac. Then quit Aelomi and open it again.",
+      },
     ],
   },
   {
     name: "direct override",
-    configured: "/Users/test/Library/Mobile Documents/Aelomi",
-    resolved: "/Users/test/Library/Mobile Documents/Aelomi",
-    link: null,
+    cloud: {
+      configured: "/Users/test/Library/Mobile Documents/Aelomi",
+      resolved: "/Users/test/Library/Mobile Documents/Aelomi",
+      recovery: "Override",
+    },
     steps: [
-      "Choose a local path on this Mac, outside cloud storage. Set AELOMI_DATA_DIR to that path.",
-      "Move /Users/test/Library/Mobile Documents/Aelomi so its new path is the AELOMI_DATA_DIR path.",
-      "Quit Aelomi and reopen it.",
+      {
+        kind: "text",
+        text: "Set AELOMI_DATA_DIR to a folder outside cloud storage, or unset it.",
+      },
+      { kind: "text", text: "Quit Aelomi and open it again." },
     ],
   },
   {
     name: "debug build path",
-    configured: "/Users/test/Library/Application Support/Aelomi Dev",
-    resolved: "/Users/test/Library/Mobile Documents/Aelomi Dev",
-    link: "/Users/test/Library/Application Support/Aelomi Dev",
+    cloud: {
+      configured: "/Users/test/Library/Application Support/Aelomi Dev",
+      resolved: "/Users/test/Library/Mobile Documents/Aelomi Dev",
+      recovery: {
+        LinkAtDataFolder: {
+          configured_parent: "/Users/test/Library/Application Support",
+          configured_name: "Aelomi Dev",
+          resolved_parent: "/Users/test/Library/Mobile Documents",
+          resolved_name: "Aelomi Dev",
+        },
+      },
+    },
     steps: [
-      'In Finder, open /Users/test/Library/Application Support with Go > Go to Folder (⇧⌘G). Drag "Aelomi Dev" (it has an arrow badge) to the Trash. The cloud folder it points to stays where it is.',
-      "Move /Users/test/Library/Mobile Documents/Aelomi Dev so its new path is /Users/test/Library/Application Support/Aelomi Dev.",
-      "Quit Aelomi and reopen it.",
+      {
+        kind: "folder",
+        text: "In Finder, choose Go > Go to Folder (⇧⌘G) and paste:",
+        path: "/Users/test/Library/Application Support",
+        after:
+          'Find "Aelomi Dev". It has a small arrow because it is a link. Drag it to the Trash. This removes only the link, not your pages.',
+      },
+      {
+        kind: "folder",
+        text: "Choose Go > Go to Folder again and paste:",
+        path: "/Users/test/Library/Mobile Documents",
+        after: 'Drag "Aelomi Dev" into the first folder\'s window.',
+      },
+      { kind: "text", text: "Quit Aelomi and open it again." },
     ],
   },
-])("maps safe recovery steps for $name", ({ name: _name, steps, ...cloud }) => {
+] as const)("maps safe recovery steps for $name", ({ cloud, steps }) => {
   expect(storageStartup({ CloudPath: cloud })).toEqual({
     kind: "refused",
     title: "Move your data folder out of cloud storage",
-    message:
-      "Cloud sync corrupts the database. Aelomi can't open this folder safely. Aelomi hasn't opened or changed anything in it.",
+    message: "Cloud sync corrupts the database.",
     detail: null,
     recovery: { configured: cloud.configured, resolved: cloud.resolved, steps },
   });

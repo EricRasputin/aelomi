@@ -40,7 +40,14 @@ test("reads the immutable native startup status once", async () => {
     CloudPath: {
       configured: "/local/data",
       resolved: "/cloud/data",
-      link: "/local/data",
+      recovery: {
+        LinkAtDataFolder: {
+          configured_parent: "/local",
+          configured_name: "data",
+          resolved_parent: "/cloud",
+          resolved_name: "data",
+        },
+      },
     },
   });
   await connect().ready;
