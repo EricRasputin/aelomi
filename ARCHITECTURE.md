@@ -32,7 +32,7 @@ This file maps the code. `SPEC.md` has the behaviors and the budgets, and `READM
 | `crates/core/src/workspace/fixture.rs` | Writers for records and bodies, the index fixture, and `break_index`, behind the `test-support` feature |
 | `crates/core/src/index/` | The derived SQLite index: `mod.rs` owns status and marks, `worker.rs` the single writer, `db.rs` schema and cache replacement, `query.rs` ordered search and backlinks, `tokenizer.rs` the SQLite FFI, and `highlight.rs` safe text spans |
 | `crates/core/src/index/tests/` | Index tests: rebuild equality, races, failures, repair backoff, unreadable bodies, latency, the backlink property test, and the 10,000-page search fixture |
-| `crates/core/examples/seed_index.rs` | Seeds a new folder through the real Store with rebuild cases, a body root that is not XML, an unreadable pages root, or `search-10k` with optional copies and the 5,000-block page |
+| `crates/core/examples/seed_index.rs` | Seeds a new folder through the real Store with rebuild cases, invalid body or workspace roots, `search-10k`, or a stored empty workspace for cold-start timing |
 | `src-tauri/` | `aelomi`, the Tauri 2 shell (library name `aelomi_lib`) |
 | `src-tauri/src/lib.rs` | `run()` builds the Tauri app, registers the commands and events, opens the workspace, logs and emits index events, and flushes the store before quitting |
 | `src-tauri/src/tests.rs` | Shell quit-route tests and shared helpers for the macOS tests |

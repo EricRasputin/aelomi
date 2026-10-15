@@ -2,11 +2,11 @@
   "coldStart": {
     "specMs": {
       "value": 500,
-      "why": "SPEC.md budget: process launch to first usable content, median of 10. Populated workspaces require the editable page frame; an empty workspace reports its index screen. pnpm perf:cold enforces 500 ms on Apple Silicon, while CI gates its separately measured hosted budget. The maintainer accepted the current 10,001-page first-editable-frame result of 618 ms median on 2026-10-15 and deferred optimization. This value retains the 500 ms goal; the recorded local FAIL is not relabeled as a pass. Hosted CI budgets remain unchanged."
+      "why": "SPEC.md budget: process launch to first usable content, median of 10. Populated workspaces require the editable page frame; an empty workspace reports its index screen. pnpm perf:cold enforces 500 ms on Apple Silicon, while CI gates its separately measured hosted budget. The maintainer accepted the current 10,001-page first-editable-frame result of 618 ms median on 2026-10-15 and deferred optimization. This value retains the 500 ms goal; the recorded local FAIL is not relabeled as a pass. The hosted index budgets keep their calibration. The seeded page uses its separate measured navigation budget."
     },
     "hostedCiMs": {
       "value": 2500,
-      "why": "End-to-end budget on hosted macos-15. Three VMs of the same image measured series medians of 1449, 475, and 1634 ms with this harness, so the runner, not the app, sets the floor. 1.5 times the worst median, rounded up."
+      "why": "Shared end-to-end ceiling on hosted macos-15, originally calibrated on the empty-workspace index variant. Three VMs of the same image measured series medians of 1449, 475, and 1634 ms with this harness, so the runner sets the floor. 1.5 times the worst median, rounded up. Both variants retain this existing ceiling."
     },
     "hostedNavToPaintMs": {
       "value": 400,
@@ -21,8 +21,8 @@
       "why": "SPEC: median of 10 runs. With an even count the median is the mean of the 5th and 6th sorted runs."
     },
     "hostedPageNavToPaintMs": {
-      "value": 400,
-      "why": "Seeded Getting started page navigation-to-paint variant on hosted macos-15. Calibration pending three hosted series on this fix round; 400 ms temporarily retains the old ceiling until those measurements finish. Orchestrator countersign pending."
+      "value": 677,
+      "why": "Seeded Getting started page variant, navigation start to the first editable content frame on hosted macos-15. The first three complete chronological series on 40955da measured medians of 451, 164, and 439.5 ms. 1.5 times the worst median, rounded up to a whole millisecond, is 677 ms. docs/evidence/shell-page-records/review-fix-1 records the runs and summarizing scripts. Requires orchestrator countersign."
     }
   },
   "keystroke": {
