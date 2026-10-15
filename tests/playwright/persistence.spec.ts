@@ -113,7 +113,9 @@ test("SHELL-10 a drain whose delivery fails asks before quitting and keeps the e
   page,
 }) => {
   await openDaily(page);
-  await page.evaluate(() => window.__aelomiMock?.storage.setStatus("Locked"));
+  await page.evaluate(() =>
+    window.__aelomiMock?.storage.refuseAppends({ Io: "Rebuild read failed" }),
+  );
   await page.keyboard.type("y");
   await expect(page.getByRole("alert")).toContainText(
     "Changes aren't being saved.",
@@ -132,13 +134,17 @@ test("SHELL-10 a drain whose delivery fails asks before quitting and keeps the e
     "contenteditable",
     "false",
   );
-  await page.evaluate(() => window.__aelomiMock?.storage.setStatus("Ready"));
+  await page.evaluate(() => window.__aelomiMock?.storage.refuseAppends(null));
   await page.getByRole("button", { name: "Keep app open" }).click();
   await expect(dialog).not.toBeVisible();
   await expect(page.getByTestId("page-editor")).toHaveAttribute(
     "contenteditable",
     "true",
   );
+  await expect(page.getByRole("alert")).not.toBeVisible();
+  expect(
+    await page.evaluate(() => window.__aelomiMock?.bodies.text("page-daily")),
+  ).toBe("plany");
   await page.evaluate(() => window.__aelomiMock?.quit.request());
   await expect
     .poll(() => page.evaluate(() => window.__aelomiMock?.quit.exited ?? null))

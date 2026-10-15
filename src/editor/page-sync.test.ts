@@ -132,15 +132,15 @@ test("a refused update is kept, shown, retried with the next one, and reported b
     hasUserInput: () => true,
     onTrip: () => {},
   });
-  window.__aelomiMock?.storage.setStatus("Locked");
+  window.__aelomiMock?.storage.refuseAppends({ Io: "Rebuild read failed" });
   ydoc.getText("t").insert(0, "x");
   await vi.waitFor(() =>
     expect([...useDeliveryStore.getState().failing]).toEqual([
-      ["page-e", "Unavailable"],
+      ["page-e", { Io: "Rebuild read failed" }],
     ]),
   );
   expect(await drainDeliveries()).toEqual(["page-e"]);
-  window.__aelomiMock?.storage.setStatus("Ready");
+  window.__aelomiMock?.storage.refuseAppends(null);
   ydoc.getText("t").insert(1, "y");
   expect(await drainDeliveries()).toEqual([]);
   expect([...useDeliveryStore.getState().failing]).toEqual([]);

@@ -86,6 +86,7 @@ type MockDoc = { doc: Y.Doc; updates: Uint8Array[]; pending: boolean };
 
 const storage: {
   status: StorageStatus;
+  appendError: StorageError | null;
   failWrites: boolean;
   docs: Map<string, MockDoc>;
   seq: number;
@@ -93,6 +94,7 @@ const storage: {
   reason: FailReason;
 } = {
   status: "Ready",
+  appendError: null,
   failWrites: false,
   docs: new Map<string, MockDoc>(),
   seq: 0,
@@ -527,6 +529,8 @@ export const commands = {
     calls.push({ command: "docAppend", args: [docId, update] });
     const error = refusal(docId);
     if (error) return { status: "error", error };
+    if (storage.appendError !== null)
+      return { status: "error", error: storage.appendError };
     const doc = mockDoc(docId);
     let bytes: Uint8Array;
     try {
@@ -669,6 +673,7 @@ function resetState() {
   settings = defaultSettings();
   settingsPending = false;
   storage.status = "Ready";
+  storage.appendError = null;
   storage.failWrites = false;
   storage.docs.clear();
   storage.seq = 0;
@@ -795,6 +800,9 @@ const control = {
     update: (patch: SettingsPatch) => commands.settingsUpdate(patch),
   },
   storage: {
+    refuseAppends(error: StorageError | null) {
+      storage.appendError = error;
+    },
     /** While on, appends stay pending and health reports the failure. */
     failWrites(on: boolean, reason: FailReason = { Io: "mock write failure" }) {
       storage.failWrites = on;
