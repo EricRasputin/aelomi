@@ -1,0 +1,33 @@
+import json
+import math
+import statistics
+import sys
+from pathlib import Path
+
+page_medians = []
+for series in sys.argv[1:]:
+    paths = sorted(Path(series).rglob("results.json"))
+    assert len(paths) == 2, (series, paths)
+    variants = set()
+    for path in paths:
+        result = json.loads(path.read_text())
+        variant = result["expectedVariant"]
+        variants.add(variant)
+        runs = result["runs"]
+        assert len(runs) == 10
+        assert all(run["exit"] == "exit 0" and run["variant"] == variant for run in runs)
+        assert result["endToEndMedian"] == statistics.median(run["endToEnd"] for run in runs)
+        assert result["navToPaintMedian"] == statistics.median(run["navToPaint"] for run in runs)
+        nav = [run["navToPaint"] for run in runs]
+        print(Path(series).name, variant, "end-to-end", result["endToEndMedian"],
+              "nav-to-paint", result["navToPaintMedian"], "range", min(nav), max(nav),
+              "exits", len(runs), "hosted-pass", result["hostedPass"])
+        for line in path.with_name("harness.log").read_text().splitlines():
+            if line.startswith(("cold-start harness", "load at end")):
+                print(line)
+        if variant == "page":
+            page_medians.append(result["navToPaintMedian"])
+    assert variants == {"index", "page"}
+assert len(page_medians) == 3, page_medians
+print("page medians", page_medians)
+print("page navigation budget", math.ceil(1.5 * max(page_medians)), "ms")

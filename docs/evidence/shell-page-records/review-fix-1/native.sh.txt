@@ -1,0 +1,42 @@
+set -euo pipefail
+S=.claude/skills/verify-aelomi/scripts
+wait_quit() {
+    python3 - "$1/shell.log" <<'PY'
+from pathlib import Path
+import sys
+import time
+log = Path(sys.argv[1])
+for _ in range(100):
+    lines = log.read_text()
+    if "quit flush via=Exit pending=[]" in lines:
+        print("\n".join(line for line in lines.splitlines() if line.startswith(("quit ", "tree warm", "page rename"))))
+        break
+    time.sleep(.1)
+else:
+    raise SystemExit("quit did not finish")
+PY
+}
+FIRST=$($S/app.sh launch dev)
+$S/app.sh doctor "$FIRST"
+$S/app.sh screenshot "$FIRST" before
+$S/app.sh focus "$FIRST" "Page body"
+$S/app.sh keys "$FIRST" " fix round one"
+$S/app.sh screenshot "$FIRST" after
+$S/app.sh keys "$FIRST" q command
+wait_quit "$FIRST"
+$S/app.sh cleanup "$FIRST"
+SECOND=$(AELOMI_DATA_DIR="$FIRST/data" $S/app.sh launch dev)
+$S/app.sh doctor "$SECOND"
+$S/app.sh screenshot "$SECOND" relaunch
+$S/app.sh press "$SECOND" "Storage probe"
+$S/app.sh press "$SECOND" "Rename Getting started"
+$S/app.sh keys "$SECOND" q command
+wait_quit "$SECOND"
+$S/app.sh cleanup "$SECOND"
+THIRD=$(AELOMI_DATA_DIR="$FIRST/data" $S/app.sh launch dev)
+$S/app.sh doctor "$THIRD"
+$S/app.sh screenshot "$THIRD" renamed-relaunch
+sqlite3 -readonly "$FIRST/data/index.sqlite" 'select page_id,title from pages;'
+$S/app.sh keys "$THIRD" q command
+wait_quit "$THIRD"
+$S/app.sh cleanup "$THIRD"
