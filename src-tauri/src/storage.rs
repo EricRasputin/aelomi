@@ -261,6 +261,9 @@ impl From<std::io::Error> for StorageError {
 #[derive(Clone, Serialize, Type, tauri_specta::Event)]
 pub struct StorageHealthChanged(pub Health);
 
+#[derive(Clone, Serialize, Type, tauri_specta::Event)]
+pub struct StorageStatusChanged(pub StorageStatus);
+
 #[cfg(test)]
 pub(crate) mod tests {
     use std::path::Path;

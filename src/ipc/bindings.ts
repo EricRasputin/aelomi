@@ -65,6 +65,7 @@ export const events = {
 	menuCommand: makeEvent<MenuCommand>("menu-command"),
 	quitStatusChanged: makeEvent<QuitStatusChanged>("quit-status-changed"),
 	storageHealthChanged: makeEvent<StorageHealthChanged>("storage-health-changed"),
+	storageStatusChanged: makeEvent<StorageStatusChanged>("storage-status-changed"),
 };
 
 /* Constants */
@@ -289,6 +290,8 @@ export type StorageHealthChanged = Health;
 export type StorageStatus = "Ready" | ({ CloudPath: {
 	resolved: string,
 } }) & { Io?: never } | "Locked" | "NewerFormat" | "UnknownFormat" | ({ Io: string }) & { CloudPath?: never };
+
+export type StorageStatusChanged = StorageStatus;
 
 export type TextPart = {
 	text: string,

@@ -60,6 +60,8 @@ type MockCall = {
 
 export type MockSetup = {
   settings?: Partial<Settings>;
+  storageStatus?: StorageStatus;
+  failWrites?: boolean;
   indexStatus?: IndexStatus;
   pages?: SeedPage[];
   bodies?: Record<string, SeedBlock[]>;
@@ -142,6 +144,7 @@ function mockEvent<T>(name: string) {
 
 export const events = {
   menuCommand: mockEvent<MenuCommand>("menu-command"),
+  storageStatusChanged: mockEvent<StorageStatus>("storage-status-changed"),
   indexChanged: mockEvent<IndexChanged>("index-changed"),
   indexStatusChanged: mockEvent<IndexStatus>("index-status-changed"),
   quitStatusChanged: mockEvent<QuitStatus>("quit-status-changed"),
@@ -622,6 +625,9 @@ async function loadSearchFixture() {
 async function applySetup(setup: MockSetup | undefined) {
   if (!setup) return;
   if (setup.settings) settings = seedSettings(setup.settings);
+  if (setup.storageStatus)
+    storage.status = structuredClone(setup.storageStatus);
+  if (setup.failWrites) storage.failWrites = true;
   if (setup.indexStatus) indexStatus = structuredClone(setup.indexStatus);
   if (setup.pages) {
     writeRecords(workspaceDoc(), setup.pages);
@@ -817,6 +823,7 @@ const control = {
     },
     setStatus(status: StorageStatus) {
       storage.status = status;
+      void events.storageStatusChanged.emit(structuredClone(status));
     },
     /**
      * Keeps every doc for the next load of this tab, as the store keeps

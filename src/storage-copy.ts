@@ -1,4 +1,4 @@
-import type { FailReason, StorageError } from "./ipc";
+import type { FailReason, StorageError, StorageStatus } from "./ipc";
 
 export const storageCopy = {
   banner: "Changes aren't being saved.",
@@ -19,7 +19,93 @@ export const storageCopy = {
   notOpen: "The data folder isn't open.",
   refusedEdit: "The core refused an edit.",
   invalidDoc: "The page ID isn't valid.",
+  opening: "Opening your data folder…",
+  cloudTitle: "Move your data folder out of cloud storage",
+  cloudRisk:
+    "Cloud sync corrupts the database. Aelomi can't open this folder safely.",
+  resolvedPath: "Resolved data folder",
+  moveTitle: "Move it back to this Mac",
+  moveSteps: [
+    "Quit Aelomi.",
+    "Move the data folder to the location below.",
+    "Reopen Aelomi.",
+  ],
+  localPath: "~/Library/Application Support/Aelomi",
+  lockedTitle: "This data folder is already open",
+  locked:
+    "Another Aelomi process is using this folder. Quit that process, then reopen Aelomi.",
+  newerTitle: "This data folder needs a newer Aelomi",
+  newer:
+    "A newer version of Aelomi created this folder. Open it with that version or a later one.",
+  unknownTitle: "This data folder isn't recognized",
+  unknown:
+    "Aelomi can't read this folder's storage format. Its contents haven't been changed.",
+  ioTitle: "Aelomi couldn't open its data folder",
+  io: "The folder couldn't be read. Check that the disk is available and you have permission to open it.",
 };
+
+export type StorageStartup =
+  | { kind: "loading" }
+  | { kind: "ready" }
+  | {
+      kind: "refused";
+      title: string;
+      message: string;
+      detail: string | null;
+      recovery: "moveFolder" | null;
+    };
+
+export function storageStartup(status: StorageStatus): StorageStartup {
+  if (typeof status === "object") {
+    if (status.CloudPath !== undefined)
+      return {
+        kind: "refused",
+        title: storageCopy.cloudTitle,
+        message: storageCopy.cloudRisk,
+        detail: status.CloudPath.resolved,
+        recovery: "moveFolder",
+      };
+    return {
+      kind: "refused",
+      title: storageCopy.ioTitle,
+      message: storageCopy.io,
+      detail: status.Io,
+      recovery: null,
+    };
+  }
+  switch (status) {
+    case "Ready":
+      return { kind: "ready" };
+    case "Locked":
+      return {
+        kind: "refused",
+        title: storageCopy.lockedTitle,
+        message: storageCopy.locked,
+        detail: null,
+        recovery: null,
+      };
+    case "NewerFormat":
+      return {
+        kind: "refused",
+        title: storageCopy.newerTitle,
+        message: storageCopy.newer,
+        detail: null,
+        recovery: null,
+      };
+    case "UnknownFormat":
+      return {
+        kind: "refused",
+        title: storageCopy.unknownTitle,
+        message: storageCopy.unknown,
+        detail: null,
+        recovery: null,
+      };
+    default: {
+      const exhaustive: never = status;
+      return exhaustive;
+    }
+  }
+}
 
 export function storageErrorText(error: StorageError): string {
   if (typeof error === "object") return error.Io;
