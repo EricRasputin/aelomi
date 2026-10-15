@@ -66,27 +66,41 @@ export function connectPageTreeEvents() {
     if (disposed) stop();
     else stops.push(stop);
   };
+  const timers = new Set<ReturnType<typeof setTimeout>>();
+  const subscribe = async (
+    register: () => Promise<() => void>,
+    delay = 100,
+  ): Promise<void> => {
+    try {
+      keep(await register());
+    } catch (error: unknown) {
+      if (disposed) return;
+      console.error("Page tree event connection failed; retrying", error);
+      const timer = setTimeout(() => {
+        timers.delete(timer);
+        if (!disposed)
+          void subscribe(register, Math.min(delay * 2, 5000)).then(refresh);
+      }, delay);
+      timers.add(timer);
+    }
+  };
   const ready = (async () => {
-    const registrations = await Promise.allSettled([
-      events.pageRecordsChanged.listen(refresh).then(keep),
-      events.indexChanged
-        .listen(({ payload }) => {
+    await Promise.all([
+      subscribe(() => events.pageRecordsChanged.listen(refresh)),
+      subscribe(() =>
+        events.indexChanged.listen(({ payload }) => {
           if (payload.workspace) refresh();
-        })
-        .then(keep),
+        }),
+      ),
     ]);
-    if (disposed) return;
-    const errors = registrations.flatMap((result) =>
-      result.status === "rejected" ? [result.reason] : [],
-    );
-    if (errors.length)
-      throw new AggregateError(errors, "Page tree event connection failed");
-    await usePageTreeStore.getState().refresh();
+    if (!disposed) await usePageTreeStore.getState().refresh();
   })();
   return {
     ready,
     dispose: () => {
       disposed = true;
+      for (const timer of timers) clearTimeout(timer);
+      timers.clear();
       for (const stop of stops.splice(0)) stop();
     },
   };

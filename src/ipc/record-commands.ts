@@ -1,11 +1,12 @@
 type Commands = typeof import("./bindings").commands;
+type RecordReply = Awaited<
+  ReturnType<Commands["pageCreate" | "pageRename" | "pageTrash"]>
+>;
 
 const pending = new Set<Promise<boolean>>();
 const listeners = new Set<() => void>();
 
-function track<T extends { status: "ok" | "error" }>(
-  command: Promise<T>,
-): Promise<T> {
+function track<T extends RecordReply>(command: Promise<T>): Promise<T> {
   const completion = command.then(
     (reply) => {
       if (reply.status === "ok") {
@@ -17,7 +18,19 @@ function track<T extends { status: "ok" | "error" }>(
           }
         }
       }
-      return reply.status === "ok";
+      return (
+        reply.status === "ok" ||
+        (typeof reply.error === "string" &&
+          [
+            "Quitting",
+            "InvalidPageId",
+            "NotActive",
+            "MissingBatch",
+            "Cycle",
+            "OrderExhausted",
+            "InvalidTime",
+          ].includes(reply.error))
+      );
     },
     () => false,
   );
@@ -26,12 +39,71 @@ function track<T extends { status: "ok" | "error" }>(
   return command;
 }
 
+type RenameReply = Awaited<ReturnType<Commands["pageRename"]>>;
+type Job =
+  | { kind: "command"; run: () => Promise<void> }
+  | {
+      kind: "rename";
+      pageId: string;
+      title: string;
+      promise: Promise<RenameReply>;
+      run: () => Promise<void>;
+    };
+
+function queued<T extends RecordReply>(run: () => Promise<T>) {
+  let execute = async () => {};
+  const promise = new Promise<T>((resolve, reject) => {
+    execute = async () => {
+      try {
+        resolve(await run());
+      } catch (error: unknown) {
+        reject(error);
+      }
+    };
+  });
+  return { promise: track(promise), run: execute };
+}
+
 export function withRecordCommands(transport: Commands): Commands {
+  const queue: Job[] = [];
+  let running = false;
+  const enqueue = (job: Job) => {
+    queue.push(job);
+    if (running) return;
+    running = true;
+    void (async () => {
+      let next = queue.shift();
+      while (next) {
+        await next.run();
+        next = queue.shift();
+      }
+      running = false;
+    })();
+  };
+  const submit = <T extends RecordReply>(run: () => Promise<T>) => {
+    const job = queued(run);
+    enqueue({ kind: "command", run: job.run });
+    return job.promise;
+  };
   return {
     ...transport,
-    pageCreate: (parentId) => track(transport.pageCreate(parentId)),
-    pageRename: (pageId, title) => track(transport.pageRename(pageId, title)),
-    pageTrash: (pageId) => track(transport.pageTrash(pageId)),
+    pageCreate: (parentId) => submit(() => transport.pageCreate(parentId)),
+    pageRename: (pageId, title) => {
+      const last = queue.at(-1);
+      if (last?.kind === "rename" && last.pageId === pageId) {
+        last.title = title;
+        return last.promise;
+      }
+      const job: Extract<Job, { kind: "rename" }> = {
+        kind: "rename",
+        pageId,
+        title,
+        ...queued(() => transport.pageRename(pageId, job.title)),
+      };
+      enqueue(job);
+      return job.promise;
+    },
+    pageTrash: (pageId) => submit(() => transport.pageTrash(pageId)),
   };
 }
 

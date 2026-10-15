@@ -293,3 +293,29 @@ test("a mock rename whose typed fields are unchanged appends only an empty trans
     window.__aelomiMock?.workspace.tree().pages.map((page) => page.title),
   ).toEqual(["A"]);
 });
+
+test("a failed tree listener still reads the initial page and retries the subscription", async () => {
+  window.__aelomiMock?.workspace.seed([
+    { id: "getting-started", title: "Getting started" },
+  ]);
+  const error = vi.spyOn(console, "error").mockImplementation(() => {});
+  const listen = vi
+    .spyOn(events.pageRecordsChanged, "listen")
+    .mockRejectedValueOnce(new Error("registration refused"));
+  const connection = connectPageTreeEvents();
+  connections.push(connection);
+  await expect(connection.ready).resolves.toBeUndefined();
+  expect(shown().pages.map((page) => [page.id, page.title])).toEqual([
+    ["getting-started", "Getting started"],
+  ]);
+  await vi.waitFor(() => expect(listen.mock.calls.length).toBe(2));
+  await commands.pageRename("getting-started", "After subscription recovery");
+  await vi.waitFor(() =>
+    expect(shown().pages.map((page) => page.title)).toEqual([
+      "After subscription recovery",
+    ]),
+  );
+  expect(error.mock.calls[0]?.[0]).toBe(
+    "Page tree event connection failed; retrying",
+  );
+});
