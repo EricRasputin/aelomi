@@ -45,6 +45,10 @@ test("SHELL-7 TREE-15 editor undo and redo never undo workspace record edits", a
   await app.open("/page/page-daily");
   const body = screen.getByRole("textbox", "Page body");
   await expect(body).toHaveText("plan");
+  await browser.keyboard.press("Meta+k");
+  await browser.keyboard.type("Other");
+  await expect(screen.getByRole("option", "Other")).toBeVisible();
+  await browser.keyboard.press("Escape");
   await body.click();
   await browser.keyboard.press("Meta+ArrowRight");
   await browser.keyboard.type(" token");
@@ -59,5 +63,6 @@ test("SHELL-7 TREE-15 editor undo and redo never undo workspace record edits", a
   await expect(body).toHaveText("plan token");
   await browser.keyboard.press("Meta+k");
   await browser.keyboard.type("Other");
+  await expect(screen.getByRole("option", "Other")).not.toBeVisible();
   await expect(screen.getByText("No page content matches.")).toBeVisible();
 });
