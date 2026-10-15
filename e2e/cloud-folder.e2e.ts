@@ -48,7 +48,7 @@ test("SHELL-11 acceptance 7: a cloud folder shows its resolved path and how to m
   ).toBeVisible();
   await expect(
     screen.getByText(
-      "Remove any symbolic link at the configured path or its parents first.",
+      "If the configured path or a parent is a symbolic link into cloud storage, remove that link first.",
       { exact: false },
     ),
   ).toBeVisible();

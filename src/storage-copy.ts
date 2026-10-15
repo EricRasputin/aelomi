@@ -29,7 +29,7 @@ export const storageCopy = {
   moveTitle: "Move it back to this Mac",
   moveSteps: [
     "Quit Aelomi (⌘Q).",
-    "Remove any symbolic link at the configured path or its parents first. Keep the folder it points to, and restore linked parents as local folders.",
+    "If the configured path or a parent is a symbolic link into cloud storage, remove that link first. Keep its target folder and restore a local parent.",
     "Move the cloud folder to the configured path once it is local. Do not overwrite an existing folder.",
     "If AELOMI_DATA_DIR points directly into cloud storage, set it to a local folder and move the data there instead.",
     "Reopen Aelomi.",
