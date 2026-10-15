@@ -1,0 +1,222 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+S=.claude/skills/verify-aelomi/scripts
+OUT=.local-gate/fix4
+BASE=$(cat "$OUT/base.txt")
+CONFIGURED="$BASE/local/Aelomi"
+RUN=
+OWN_LOCK=0
+OLD_DARK=
+release_lock() {
+  if [[ "$OWN_LOCK" == 1 && -f /tmp/aelomi-ui.lock/owner && "$(awk '{print $1}' /tmp/aelomi-ui.lock/owner)" == "$$" ]]; then
+    rm -rf /tmp/aelomi-ui.lock
+  fi
+  OWN_LOCK=0
+}
+finish() {
+  if [[ "$OWN_LOCK" == 1 ]]; then
+    if [[ -n "$OLD_DARK" ]]; then
+      osascript -e "tell application \"System Events\" to tell appearance preferences to set dark mode to $OLD_DARK" >/dev/null || true
+    fi
+    if [[ -f "$OUT/clipboard-before.txt" ]]; then pbcopy < "$OUT/clipboard-before.txt"; fi
+  fi
+  release_lock
+  if [[ -n "$RUN" ]]; then "$S/app.sh" cleanup "$RUN" >/dev/null || true; fi
+  ls -la "$HOME/Library/Application Support/Aelomi" > "$OUT/real-data-after.txt"
+  diff -u "$OUT/real-data-before.txt" "$OUT/real-data-after.txt"
+}
+trap finish EXIT INT TERM
+take_lock() {
+  local started
+  started=$(date +%s)
+  until mkdir /tmp/aelomi-ui.lock 2>/dev/null; do
+    if [[ -f /tmp/aelomi-ui.lock/owner ]] && (( $(date +%s) - $(stat -f %m /tmp/aelomi-ui.lock/owner) > 1800 )); then
+      rm -rf /tmp/aelomi-ui.lock
+    fi
+    if (( $(date +%s) - started > 2700 )); then echo 'INCONCLUSIVE: keyboard lock unavailable for 45 minutes' >&2; exit 1; fi
+    sleep 15
+  done
+  printf '%s %s E-fix4-Finder\n' "$$" "$(date -u +%FT%TZ)" > /tmp/aelomi-ui.lock/owner
+  OWN_LOCK=1
+}
+finder_shot() {
+  local id
+  local finder_pid
+  finder_pid=$(pgrep -x Finder)
+  id=$(osascript -l JavaScript "$S/ax.js" window "$finder_pid" | sed -E 's/^id=([0-9]+).*/\1/')
+  screencapture -x -l "$id" "$RUN/$1.png"
+}
+copy_chip() {
+  python3 - "$RUN/refusal-tree.txt" "$1" "$2" <<'PYCHIP' | pbcopy
+import json,re,sys
+from pathlib import Path
+values=[]
+for line in Path(sys.argv[1]).read_text().splitlines():
+    match=re.fullmatch(r'\s*AXTextArea ("(?:[^"\\]|\\.)*") = ("(?:[^"\\]|\\.)*")',line)
+    if match and json.loads(match[1])==sys.argv[2]: values.append(json.loads(match[2]))
+assert values==[sys.argv[3]], values
+print(values[0],end='')
+PYCHIP
+  test "$(pbpaste)" = "$2"
+}
+
+go_to_folder() {
+  osascript - "$(basename "$1")" <<'APPLESCRIPT'
+on run argv
+  set expectedName to item 1 of argv
+  tell application "System Events" to tell process "Finder" to set frontmost to true
+  tell application "System Events" to tell process "Finder"
+    keystroke "g" using {shift down, command down}
+    repeat 50 times
+      if exists sheet 1 of window 1 then exit repeat
+      delay 0.1
+    end repeat
+    keystroke "v" using {command down}
+    key code 36
+  end tell
+  repeat 50 times
+    try
+      tell application "System Events" to tell process "Finder"
+        if (count windows) > 0 then
+          if (name of window 1) is expectedName then return
+        end if
+      end tell
+    end try
+    delay 0.1
+  end repeat
+  error "Finder did not reach the copied chip path"
+end run
+APPLESCRIPT
+}
+test -d "$BASE/cloud/Aelomi Notes/docs"
+if [[ ! -L "$CONFIGURED" ]]; then ln -s "$BASE/cloud/Aelomi Notes" "$CONFIGURED"; fi
+python3 - "$BASE/cloud/Aelomi Notes" "$OUT/before-move.json" <<'PY'
+import hashlib,json,sys
+from pathlib import Path
+root=Path(sys.argv[1])
+Path(sys.argv[2]).write_text(json.dumps({str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest() for p in root.rglob('*') if p.is_file()},sort_keys=True))
+PY
+RUN=$(AELOMI_DATA_DIR="$CONFIGURED" AELOMI_CLOUD_ROOTS="$BASE/cloud" AELOMI_DEV_PORT=55086 "$S/app.sh" launch dev)
+printf '%s\n' "$RUN" > "$OUT/refusal-run.txt"
+take_lock
+OLD_DARK=$(osascript -e 'tell application "System Events" to tell appearance preferences to get dark mode')
+pbpaste > "$OUT/clipboard-before.txt"
+"$S/app.sh" doctor "$RUN"
+"$S/app.sh" tree "$RUN" > "$RUN/refusal-tree.txt"
+for appearance in dark light; do
+  if [[ "$appearance" == dark ]]; then DARK=true; else DARK=false; fi
+  osascript -e "tell application \"System Events\" to tell appearance preferences to set dark mode to $DARK" >/dev/null
+  "$S/app.sh" screenshot "$RUN" "leaf-$appearance"
+done
+osascript <<'APPLESCRIPT'
+tell application "System Events" to tell process "Finder"
+  set frontmost to true
+  keystroke "w" using {option down, command down}
+end tell
+APPLESCRIPT
+test "$(osascript -e 'tell application "System Events" to tell process "Finder" to count windows')" = 0
+echo "STEP 1: Go to Folder, using the configured-parent chip"
+copy_chip 'In Finder, choose Go > Go to Folder (⇧⌘G) and paste:' "$BASE/local"
+go_to_folder "$BASE/local"
+test "$(osascript -e 'tell application "System Events" to tell process "Finder" to count windows')" = 1
+finder_shot 01-link-parent
+osascript <<'APPLESCRIPT'
+tell application "System Events" to tell process "Finder" to keystroke "Aelomi"
+APPLESCRIPT
+finder_shot 02-link-selected
+osascript <<'APPLESCRIPT'
+tell application "System Events" to tell process "Finder" to key code 51 using {command down}
+APPLESCRIPT
+for attempt in {1..50}; do if [[ ! -L "$CONFIGURED" ]]; then break; fi; sleep 0.1; done
+test ! -e "$CONFIGURED"
+test ! -L "$CONFIGURED"
+test -d "$BASE/cloud/Aelomi Notes/docs"
+finder_shot 03-link-trashed
+echo "PASS: only the synthetic link was trashed; the cloud workspace remains"
+echo "STEP 2: open a second Finder window, then use the cloud-parent chip"
+copy_chip 'In Finder, choose File > New Finder Window (⌘N). Then choose Go > Go to Folder and paste:' "$BASE/cloud"
+osascript <<'APPLESCRIPT'
+tell application "System Events" to tell process "Finder"
+  set frontmost to true
+  keystroke "n" using {command down}
+end tell
+APPLESCRIPT
+for attempt in {1..50}; do
+  count=$(osascript -e 'tell application "System Events" to tell process "Finder" to count windows')
+  if [[ "$count" == 2 ]]; then break; fi
+  sleep 0.1
+done
+test "$count" = 2
+go_to_folder "$BASE/cloud"
+finder_shot 04-second-window-cloud-parent
+echo "PASS: two Finder windows remain, with the cloud parent in the second"
+osascript <<'APPLESCRIPT'
+tell application "System Events" to tell process "Finder"
+  keystroke "Aelomi Notes"
+  keystroke "c" using {command down}
+  perform action "AXRaise" of window "local"
+  repeat 50 times
+    if (name of window 1) is "local" then exit repeat
+    delay 0.1
+  end repeat
+  keystroke "v" using {option down, command down}
+end tell
+APPLESCRIPT
+for attempt in {1..50}; do if [[ -d "$BASE/local/Aelomi Notes/docs" ]]; then break; fi; sleep 0.1; done
+test -d "$BASE/local/Aelomi Notes/docs"
+test ! -e "$BASE/cloud/Aelomi Notes"
+finder_shot 05-folder-moved
+echo "PASS: Finder Move Item Here moved Aelomi Notes into the step-1 window"
+osascript <<'APPLESCRIPT'
+tell application "System Events" to tell process "Finder"
+  keystroke "Aelomi Notes"
+  key code 36
+  keystroke "a" using {command down}
+  keystroke "Aelomi"
+  key code 36
+end tell
+APPLESCRIPT
+for attempt in {1..50}; do if [[ -d "$CONFIGURED/docs" ]]; then break; fi; sleep 0.1; done
+test -d "$CONFIGURED/docs"
+finder_shot 06-folder-renamed
+echo "PASS: Finder renamed Aelomi Notes to Aelomi"
+python3 - "$CONFIGURED" "$OUT/before-move.json" <<'PY'
+import hashlib,json,sys
+from pathlib import Path
+root=Path(sys.argv[1])
+actual={str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest() for p in root.rglob('*') if p.is_file()}
+assert not root.is_symlink()
+expected=json.loads(Path(sys.argv[2]).read_text())
+assert {name:actual[name] for name in expected}==expected
+assert all(Path(name).name=='.DS_Store' for name in actual.keys()-expected.keys())
+print('PASS: Finder move and rename preserved every original workspace file byte for byte; only Finder .DS_Store metadata may be added')
+PY
+"$S/app.sh" keys "$RUN" q command
+osascript -e "tell application \"System Events\" to tell appearance preferences to set dark mode to $OLD_DARK" >/dev/null
+OLD_DARK=
+pbcopy < "$OUT/clipboard-before.txt"
+release_lock
+"$S/app.sh" cleanup "$RUN" >/dev/null
+RUN=
+RUN=$(AELOMI_DATA_DIR="$CONFIGURED" AELOMI_CLOUD_ROOTS="$BASE/cloud" AELOMI_DEV_PORT=55086 "$S/app.sh" launch dev)
+printf '%s\n' "$RUN" > "$OUT/recovered-run.txt"
+take_lock
+"$S/app.sh" doctor "$RUN"
+"$S/app.sh" tree "$RUN" > "$RUN/recovered-tree.txt"
+python3 - "$RUN/recovered-tree.txt" <<'PY'
+from pathlib import Path
+import sys
+tree=Path(sys.argv[1]).read_text()
+expected='Original pages survived Finder recovery, round 4.'
+assert any(line.strip().endswith('"'+expected+'"') for line in tree.splitlines()), tree
+assert 'Finder recovery proof' in tree
+assert 'Move your data folder out of cloud storage' not in tree
+print('PASS: relaunched app shows the exact original page text: '+expected)
+PY
+"$S/app.sh" screenshot "$RUN" 07-original-page-recovered
+"$S/app.sh" keys "$RUN" q command
+release_lock
+"$S/app.sh" cleanup "$RUN" >/dev/null
+RUN=
+echo 'PASS: Finder recovery used no shell equivalent for any recovery step'
