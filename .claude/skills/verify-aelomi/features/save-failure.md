@@ -5,7 +5,8 @@ When a write to the data folder fails, Aelomi keeps the edit in memory and shows
 ## Sub-features
 
 - `save-banner` shows the banner with the reason while a write fails. A read-only `docs` folder gives `Aelomi doesn't have permission to write to its data folder.`
-- `save-recovery` clears the banner after the folder is writable again and the retry succeeds.
+- `reopen-pending` keeps refused edits visible when the page closes and reopens before recovery.
+- `save-recovery` clears the banner after the folder is writable again and all retried edits are durable. Acceptance alone does not clear it.
 - `quit-settings` names unsaved settings when a settings write is pending.
 - `quit-blocked` opens the dialog when a quit finds a pending edit, after a flush of up to 2 s. **Keep app open** has focus.
 - `quit-keep-open` closes the dialog, keeps the app running, and keeps the pending edit and the banner.
@@ -42,6 +43,7 @@ Preconditions:
 - **Close with ⌘W.** From the failing state, run `$S/app.sh keys "$RUN" w command` and `$S/app.sh wait-dialog "$RUN" "Quit with unsaved changes?"`. `shell.log` has `quit flush via=CloseRequested pending=[DocId(probe)]` and a `storage event quit_status=` line with `"pending_docs":["probe"]`. The window stays open with the dialog. Press **Keep app open** before the next path.
 - **Quit Apple event.** From the failing state, send a quit Apple event to the app PID with a PID-targeted sender (see Gotchas), then run `$S/app.sh wait-dialog "$RUN" "Quit with unsaved changes?"`. `shell.log` has `quit flush via=Terminate pending=[DocId(probe)]` and a `quit_status` line with `"pending_docs":["probe"]`. The sender gets reply error `-128` because the quit was cancelled. The same event with the logout reason gives the same lines.
 - **Quit anyway.** From the dialog, run `$S/app.sh press "$RUN" "Quit anyway"` and wait up to 15 s for the app PID to exit with the loop from **Quit after recovery**. The app exited 5 s after the press in the proof run. `shell.log` has one `quit confirmed`, then `quit allowed via=ExitRequested confirmed=true`, then a final `quit flush via=Exit pending=[DocId(probe)]` while the folder is still read-only. No `quit_status` line with pending docs and no other `quit flush` line follow `quit confirmed`. `data/docs` stays empty, because the pending edit is lost.
+- **Reopen pending edits.** In the mock browser, refuse appends, type into the page, leave it, then reopen it before enabling appends. Expect the full typed text before and after recovery. Type again and compare the editor and stored body exactly. `src/editor/page-session.test.ts` covers the snapshot race with real BlockNote and Yjs.
 - **Mock browser.** Run `pnpm exec playwright test tests/playwright/save-failure.spec.ts --project webkit` and `pnpm test:e2e`. Both pass. They cover Escape, outside clicks, recovery while the dialog is open, both themes, wrapping of a long reason, and a double click on **Quit anyway**. The mock injects the failure, so report these as mock-only. Run them only while no `launch dev` run is active.
 - **Proof.** Keep the before and dialog screenshot of each path with its `.ax.txt` file, plus `actions.log` and `shell.log`.
 

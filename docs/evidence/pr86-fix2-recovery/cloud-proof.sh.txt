@@ -1,0 +1,22 @@
+#!/bin/bash
+set -euo pipefail
+S=.claude/skills/verify-aelomi/scripts
+proof_root=$(mktemp -d /private/tmp/ae86-r2-XXXX)
+mkdir -p "$proof_root/cloud/Aelomi Dev"
+ln -s "$proof_root/cloud" "$proof_root/Support"
+printf 'synthetic cloud data stays intact\n' > "$proof_root/cloud/Aelomi Dev/sentinel"
+original_appearance=$(osascript -e 'tell application "System Events" to get dark mode of appearance preferences')
+run=$(AELOMI_CLOUD_ROOTS="$proof_root/cloud" AELOMI_DATA_DIR="$proof_root/Support/Aelomi Dev" "$S/app.sh" launch dev)
+trap 'osascript -e "tell application \"System Events\" to set dark mode of appearance preferences to $original_appearance"; "$S/app.sh" cleanup "$run"' EXIT
+"$S/app.sh" doctor "$run"
+osascript -e 'tell application "System Events" to set dark mode of appearance preferences to true'
+"$S/app.sh" screenshot "$run" cloud-dark
+osascript -e 'tell application "System Events" to set dark mode of appearance preferences to false'
+"$S/app.sh" screenshot "$run" cloud-light
+python3 - "$proof_root" <<'PY'
+import pathlib, sys
+target = pathlib.Path(sys.argv[1]) / "cloud/Aelomi Dev"
+assert [entry.name for entry in target.iterdir()] == ["sentinel"]
+assert (target / "sentinel").read_bytes() == b"synthetic cloud data stays intact\n"
+PY
+printf 'Run: %s\nSynthetic root: %s\n' "$run" "$proof_root"

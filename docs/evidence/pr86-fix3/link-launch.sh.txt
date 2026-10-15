@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -euo pipefail
+S=.claude/skills/verify-aelomi/scripts
+rm -f .local-gate/fix3/release-link-launcher
+RUN=$(AELOMI_DATA_DIR="$(cat .local-gate/fix3/link-base.txt)/data" "$S/app.sh" launch app)
+printf '%s\n' "$RUN" > .local-gate/fix3/link-run.txt
+finish() { "$S/app.sh" cleanup "$RUN" >/dev/null || true; }
+trap finish EXIT INT TERM
+printf 'ISOLATED_APP_READY %s\n' "$RUN"
+while [[ ! -f .local-gate/fix3/release-link-launcher ]]; do sleep 1; done

@@ -1,0 +1,47 @@
+import { writeFileSync } from 'node:fs';
+export default async function ({page, expect, shot, out}) {
+  await page.addInitScript(() => {
+    const worst = new URLSearchParams(location.search).get('data') === 'worst';
+    const parent = worst ? '/Users/aleksandra/Library/ProjectArchives/北極星研究所🦊/2026-Q4-board-materials-and-reference-documents/ResearchAndDevelopmentInternationalPlanning' : '/Users/test/Library';
+    const name = worst ? 'ApplicationSupportForResearchAndDevelopmentInternationalPlanning' : 'Support';
+    window.__aelomiMockSetup = { storageStatus: { CloudPath: { configured: `${parent}/${name}/Aelomi Dev`, resolved: `${parent}/Mobile Documents/北極星🦊/Aelomi Dev`, link: `${parent}/${name}` } } };
+    window.addEventListener('DOMContentLoaded', () => {
+      const toggle = document.createElement('div');
+      toggle.style.cssText = 'position:fixed;bottom:4px;right:4px;font:12px system-ui;z-index:999;background:#ddd;color:#111;padding:4px';
+      for (const mode of ['Demo data', 'Worst case']) {
+        const button = document.createElement('button');
+        button.textContent = mode;
+        button.onclick = () => { location.search = mode === 'Worst case' ? '?data=worst' : '?data=demo'; };
+        toggle.append(button);
+      }
+      document.body.append(toggle);
+    });
+  });
+  const results=[];
+  for (const theme of ['dark','light']) {
+    await page.emulateMedia({colorScheme:theme});
+    for (const width of [320,480,960,1440]) {
+      await page.setViewportSize({width,height:900});
+      for (const mode of ['demo','worst']) {
+        await page.goto(`/?data=${mode}`);
+        await expect(page.getByRole('heading',{name:'Move your data folder out of cloud storage'})).toBeVisible();
+        const result = await page.evaluate(() => ({ width: innerWidth, scrollWidth: document.documentElement.scrollWidth, steps: [...document.querySelectorAll('.storage-refusal li')].map(x=>x.textContent), editors: document.querySelectorAll('[contenteditable="true"]').length }));
+        expect(result.scrollWidth).toBeLessThanOrEqual(width);
+        expect(result.editors).toBe(0);
+        expect(result.steps.at(-1)).toBe('Quit Aelomi and reopen it.');
+        await page.getByText('Quit Aelomi and reopen it.',{exact:true}).scrollIntoViewIfNeeded();
+        await expect(page.getByText('Quit Aelomi and reopen it.',{exact:true})).toBeInViewport();
+        results.push({theme,width,mode,...result});
+        if (width === 960) { await page.evaluate(()=>window.scrollTo(0,0)); await shot(`${theme}-${mode}`); }
+      }
+    }
+    await page.setViewportSize({width:480,height:900});
+    await page.goto('/?data=worst');
+    await page.evaluate(()=>document.documentElement.style.fontSize='200%');
+    expect(await page.evaluate(()=>document.documentElement.scrollWidth)).toBeLessThanOrEqual(480);
+    await page.getByText('Quit Aelomi and reopen it.',{exact:true}).scrollIntoViewIfNeeded();
+    await expect(page.getByText('Quit Aelomi and reopen it.',{exact:true})).toBeInViewport();
+    await shot(`${theme}-200pct-bottom`);
+  }
+  writeFileSync(`${out}/layout-checks.json`, JSON.stringify(results,null,2));
+}

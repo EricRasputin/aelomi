@@ -60,6 +60,8 @@ type MockCall = {
 
 export type MockSetup = {
   settings?: Partial<Settings>;
+  storageStatus?: StorageStatus;
+  failWrites?: FailReason;
   indexStatus?: IndexStatus;
   pages?: SeedPage[];
   bodies?: Record<string, SeedBlock[]>;
@@ -84,6 +86,7 @@ type MockDoc = { doc: Y.Doc; updates: Uint8Array[]; pending: boolean };
 
 const storage: {
   status: StorageStatus;
+  appendError: StorageError | null;
   failWrites: boolean;
   docs: Map<string, MockDoc>;
   seq: number;
@@ -91,6 +94,7 @@ const storage: {
   reason: FailReason;
 } = {
   status: "Ready",
+  appendError: null,
   failWrites: false,
   docs: new Map<string, MockDoc>(),
   seq: 0,
@@ -524,6 +528,8 @@ export const commands = {
     calls.push({ command: "docAppend", args: [docId, update] });
     const error = refusal(docId);
     if (error) return { status: "error", error };
+    if (storage.appendError !== null)
+      return { status: "error", error: storage.appendError };
     const doc = mockDoc(docId);
     let bytes: Uint8Array;
     try {
@@ -545,6 +551,19 @@ export const commands = {
   },
   devProbeLog: async (line) => {
     calls.push({ command: "devProbeLog", args: [line] });
+  },
+  openUrl: async (url) => {
+    calls.push({ command: "openUrl", args: [url] });
+    return { status: "ok", data: null };
+  },
+  storageFlush: async () => {
+    calls.push({ command: "storageFlush", args: [] });
+    if (storage.status !== "Ready")
+      return { status: "error", error: "Unavailable" };
+    return {
+      status: "ok",
+      data: [...storage.docs.values()].every((doc) => !doc.pending),
+    };
   },
 } satisfies Commands;
 
@@ -622,6 +641,12 @@ async function loadSearchFixture() {
 async function applySetup(setup: MockSetup | undefined) {
   if (!setup) return;
   if (setup.settings) settings = seedSettings(setup.settings);
+  if (setup.storageStatus)
+    storage.status = structuredClone(setup.storageStatus);
+  if (setup.failWrites) {
+    storage.failWrites = true;
+    storage.reason = setup.failWrites;
+  }
   if (setup.indexStatus) indexStatus = structuredClone(setup.indexStatus);
   if (setup.pages) {
     writeRecords(workspaceDoc(), setup.pages);
@@ -659,6 +684,7 @@ function resetState() {
   settings = defaultSettings();
   settingsPending = false;
   storage.status = "Ready";
+  storage.appendError = null;
   storage.failWrites = false;
   storage.docs.clear();
   storage.seq = 0;
@@ -785,6 +811,9 @@ const control = {
     update: (patch: SettingsPatch) => commands.settingsUpdate(patch),
   },
   storage: {
+    refuseAppends(error: StorageError | null) {
+      storage.appendError = error;
+    },
     /** While on, appends stay pending and health reports the failure. */
     failWrites(on: boolean, reason: FailReason = { Io: "mock write failure" }) {
       storage.failWrites = on;

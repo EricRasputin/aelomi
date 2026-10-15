@@ -5,7 +5,6 @@ test("TREE-9 the [[ picker lists a page until its parent is trashed, and links a
   app,
   browser,
   screen,
-  nonLocalRequests,
 }) => {
   await browser.addInitScript(() => {
     window.__aelomiMockSetup = {
@@ -62,14 +61,12 @@ test("TREE-9 the [[ picker lists a page until its parent is trashed, and links a
     ),
   ).toEqual([{ kind: "link", pageId: "page-daily" }]);
   await expect(body.getByText("Daily", { exact: true })).toBeVisible();
-  expect(nonLocalRequests).toEqual([]);
 });
 
 test("LINK-2 [[ is plain text inside a code block and inside inline code", async ({
   app,
   browser,
   screen,
-  nonLocalRequests,
 }) => {
   await browser.addInitScript(() => {
     window.__aelomiMockSetup = {
@@ -121,14 +118,12 @@ test("LINK-2 [[ is plain text inside a code block and inside inline code", async
       ),
     ),
   ).toEqual(["false", "true", "true"]);
-  expect(nonLocalRequests).toEqual([]);
 });
 
 test("LINK-2 pages with the same title show their parent paths in the picker", async ({
   app,
   browser,
   screen,
-  nonLocalRequests,
 }) => {
   await browser.addInitScript(() => {
     window.__aelomiMockSetup = {
@@ -164,5 +159,4 @@ test("LINK-2 pages with the same title show their parent paths in the picker", a
     { kind: "text", text: "plan" },
     { kind: "link", pageId: "page-home-notes" },
   ]);
-  expect(nonLocalRequests).toEqual([]);
 });

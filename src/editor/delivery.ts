@@ -1,11 +1,16 @@
 import { create } from "zustand";
 import { commands, type StorageError } from "../ipc";
 import { toBase64 } from "../ipc/base64";
+import { storageRetry } from "../storage-retry";
 
 type DocDelivery = {
-  outstanding: Set<Promise<void>>;
+  outstanding: Map<Promise<void>, Uint8Array>;
   failed: Uint8Array[];
+  confirming: Promise<void> | null;
+  revision: number;
   error: StorageError | null;
+  retryTimer: ReturnType<typeof setTimeout> | undefined;
+  retryDelayMs: number;
 };
 
 type DeliveryStore = {
@@ -41,7 +46,15 @@ export function trackLoad<T>(load: Promise<T>): Promise<T> {
 function deliveryFor(docId: string): DocDelivery {
   let delivery = deliveries.get(docId);
   if (!delivery) {
-    delivery = { outstanding: new Set(), failed: [], error: null };
+    delivery = {
+      outstanding: new Map(),
+      failed: [],
+      confirming: null,
+      revision: 0,
+      error: null,
+      retryTimer: undefined,
+      retryDelayMs: storageRetry.firstMs,
+    };
     deliveries.set(docId, delivery);
   }
   return delivery;
@@ -50,13 +63,63 @@ function deliveryFor(docId: string): DocDelivery {
 function publish() {
   const failing = new Map<string, StorageError>();
   for (const [docId, delivery] of deliveries) {
-    if (delivery.failed.length > 0 && delivery.error)
-      failing.set(docId, delivery.error);
+    if (delivery.error) failing.set(docId, delivery.error);
   }
   useDeliveryStore.setState({ failing });
 }
 
+function scheduleRetry(docId: string, delivery: DocDelivery) {
+  if (delivery.retryTimer !== undefined) return;
+  delivery.retryTimer = setTimeout(() => {
+    delivery.retryTimer = undefined;
+    delivery.retryDelayMs = Math.min(
+      delivery.retryDelayMs * 2,
+      storageRetry.maxMs,
+    );
+    retry(docId, delivery);
+  }, delivery.retryDelayMs);
+}
+
+function confirmDurable(docId: string, delivery: DocDelivery) {
+  if (
+    delivery.confirming ||
+    delivery.error === null ||
+    delivery.failed.length > 0 ||
+    delivery.outstanding.size > 0
+  )
+    return;
+  const revision = delivery.revision;
+  delivery.confirming = commands
+    .storageFlush()
+    .then((reply) => {
+      if (
+        reply.status === "ok" &&
+        reply.data &&
+        revision === delivery.revision &&
+        delivery.failed.length === 0 &&
+        delivery.outstanding.size === 0
+      ) {
+        delivery.error = null;
+        delivery.retryDelayMs = storageRetry.firstMs;
+        clearTimeout(delivery.retryTimer);
+        delivery.retryTimer = undefined;
+        publish();
+      }
+    })
+    .catch((error: unknown) => {
+      delivery.error = {
+        Io: error instanceof Error ? error.message : String(error),
+      };
+      publish();
+    })
+    .finally(() => {
+      delivery.confirming = null;
+      if (delivery.error !== null) scheduleRetry(docId, delivery);
+    });
+}
+
 function invoke(docId: string, delivery: DocDelivery, update: Uint8Array) {
+  delivery.revision += 1;
   const fail = (error: StorageError) => {
     delivery.failed.push(update);
     delivery.error = error;
@@ -73,15 +136,28 @@ function invoke(docId: string, delivery: DocDelivery, update: Uint8Array) {
     )
     .finally(() => {
       delivery.outstanding.delete(sent);
+      if (delivery.outstanding.size === 0 && delivery.failed.length === 0) {
+        confirmDurable(docId, delivery);
+      } else if (delivery.failed.length > 0) {
+        scheduleRetry(docId, delivery);
+      }
     });
-  delivery.outstanding.add(sent);
+  delivery.outstanding.set(sent, update);
+}
+
+export function pendingUpdates(docId: string): Uint8Array[] {
+  const delivery = deliveries.get(docId);
+  return delivery ? [...delivery.failed, ...delivery.outstanding.values()] : [];
 }
 
 function retry(docId: string, delivery: DocDelivery) {
-  if (delivery.failed.length === 0) return;
+  if (delivery.failed.length === 0) {
+    confirmDurable(docId, delivery);
+    return;
+  }
+  clearTimeout(delivery.retryTimer);
+  delivery.retryTimer = undefined;
   const failed = delivery.failed.splice(0);
-  delivery.error = null;
-  publish();
   for (const update of failed) invoke(docId, delivery, update);
 }
 
@@ -92,14 +168,14 @@ function retry(docId: string, delivery: DocDelivery) {
  */
 export function deliver(docId: string, update: Uint8Array) {
   const delivery = deliveryFor(docId);
-  retry(docId, delivery);
+  if (delivery.failed.length > 0) retry(docId, delivery);
   invoke(docId, delivery, update);
 }
 
 async function settle(docId: string, delivery: DocDelivery) {
   retry(docId, delivery);
-  while (delivery.outstanding.size > 0)
-    await Promise.all([...delivery.outstanding]);
+  while (delivery.outstanding.size > 0 || delivery.confirming)
+    await Promise.all([...delivery.outstanding.keys(), delivery.confirming]);
 }
 
 /**
@@ -113,12 +189,19 @@ export async function drainDeliveries(): Promise<string[]> {
   for (;;) {
     while (loads.size > 0) await Promise.allSettled([...loads]);
     const waiting = [...deliveries].filter(
-      ([, delivery]) => !retried.has(delivery) || delivery.outstanding.size > 0,
+      ([, delivery]) =>
+        !retried.has(delivery) ||
+        delivery.outstanding.size > 0 ||
+        delivery.confirming !== null,
     );
     if (waiting.length === 0) break;
     await Promise.all(
       waiting.map(([docId, delivery]) => {
-        if (retried.has(delivery)) return Promise.all(delivery.outstanding);
+        if (retried.has(delivery))
+          return Promise.all([
+            ...delivery.outstanding.keys(),
+            delivery.confirming,
+          ]);
         retried.add(delivery);
         return settle(docId, delivery);
       }),
@@ -128,8 +211,4 @@ export async function drainDeliveries(): Promise<string[]> {
     .filter(([, delivery]) => delivery.failed.length > 0)
     .map(([docId]) => docId)
     .sort();
-}
-
-export function retryDeliveries() {
-  for (const [docId, delivery] of deliveries) retry(docId, delivery);
 }

@@ -1,4 +1,5 @@
 mod commands;
+mod external_links;
 mod index;
 #[cfg(target_os = "macos")]
 mod macos;
@@ -7,6 +8,11 @@ mod quit;
 mod settings;
 mod storage;
 mod trace;
+
+#[cfg(target_os = "macos")]
+use macos::PACKAGED_APP_ORIGIN;
+#[cfg(not(target_os = "macos"))]
+const PACKAGED_APP_ORIGIN: &str = "tauri://localhost";
 
 use aelomi_core::index::IndexEvent;
 #[cfg(test)]
@@ -23,6 +29,7 @@ pub fn run() {
     let commands = commands::builder();
     let mut builder = tauri::Builder::default()
         .invoke_handler(commands.invoke_handler())
+        .plugin(external_links::guard())
         .on_page_load(|_, payload| match payload.event() {
             PageLoadEvent::Started => perf::stamp(&perf::PAGE_START_US),
             PageLoadEvent::Finished => perf::stamp(&perf::PAGE_DONE_US),

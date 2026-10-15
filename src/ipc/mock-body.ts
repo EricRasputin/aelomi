@@ -5,7 +5,8 @@ export type SeedStyle = "bold" | "italic" | "underline" | "strike" | "code";
 export type SeedInline =
   | string
   | { text: string; styles: readonly SeedStyle[] }
-  | { link: string };
+  | { link: string }
+  | { text: string; url: string };
 
 export type SeedBlock = {
   id: string;
@@ -86,6 +87,12 @@ function inlineNodes(
       const link = new Y.XmlElement("pageLink");
       link.setAttribute("targetPageId", inline.link);
       nodes.push(link);
+    } else if ("url" in inline) {
+      if (inline.text !== "")
+        run.push({
+          insert: inline.text,
+          attributes: { link: { href: inline.url } },
+        });
     } else if (inline.text !== "") {
       run.push({
         insert: inline.text,

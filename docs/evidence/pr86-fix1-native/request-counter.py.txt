@@ -1,0 +1,17 @@
+from http.server import HTTPServer, BaseHTTPRequestHandler
+import json
+from pathlib import Path
+record = Path('.local-gate/fix1/native-requests.json')
+requests = []
+record.write_text('[]')
+class Counter(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == '/context-proof':
+            requests.append({'path': self.path, 'userAgent': self.headers.get('User-Agent')})
+            record.write_text(json.dumps(requests, indent=2))
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/html')
+        self.end_headers()
+        self.wfile.write(b'<title>Aelomi native URL proof</title><p>Browser received the synthetic URL.</p>')
+    def log_message(self, *args): pass
+HTTPServer(('127.0.0.1', 53661), Counter).serve_forever()

@@ -56,6 +56,8 @@ export const commands = {
 	devProbeLog: (line: string) => __TAURI_INVOKE<void>("dev_probe_log", { line }),
 	settingsGet: () => typedError<Settings, SettingsError>(__TAURI_INVOKE("settings_get")),
 	settingsUpdate: (patch: SettingsPatch) => typedError<Settings, SettingsError>(__TAURI_INVOKE("settings_update", { patch })),
+	openUrl: (url: string) => typedError<null, string>(__TAURI_INVOKE("open_url", { url })),
+	storageFlush: () => typedError<boolean, StorageError>(__TAURI_INVOKE("storage_flush")),
 };
 
 /** Events */
@@ -98,6 +100,15 @@ export type BlockHit = {
 	block_id: string,
 	text: TextPart[],
 };
+
+export type CloudRecovery = ({ LinkAtDataFolder: {
+	configured_parent: string,
+	configured_name: string,
+	resolved_parent: string,
+	resolved_name: string,
+} }) & { SharedLink?: never } | ({ SharedLink: {
+	link: string,
+} }) & { LinkAtDataFolder?: never } | "Override";
 
 export type ColdStartMarks = {
 	variant: string,
@@ -287,7 +298,9 @@ export type StorageError =
 export type StorageHealthChanged = Health;
 
 export type StorageStatus = "Ready" | ({ CloudPath: {
+	configured: string,
 	resolved: string,
+	recovery: CloudRecovery,
 } }) & { Io?: never } | "Locked" | "NewerFormat" | "UnknownFormat" | ({ Io: string }) & { CloudPath?: never };
 
 export type TextPart = {

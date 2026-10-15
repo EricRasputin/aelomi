@@ -1,0 +1,26 @@
+import { writeFileSync } from "node:fs";
+import * as Y from "yjs";
+import { writeBody } from "../../src/ipc/mock-body.ts";
+
+const doc = new Y.Doc();
+writeBody(doc, [
+  {
+    id: "block-example",
+    content: [
+      "Before ",
+      { text: "Example", url: "https://example.com" },
+      " after.",
+    ],
+  },
+  {
+    id: "block-context",
+    content: [
+      { text: "Context check", url: "http://127.0.0.1:55087/context-proof" },
+    ],
+  },
+  { id: "block-marker", content: ["Type here: "] },
+]);
+writeFileSync(
+  ".local-gate/fix3/native-body.yupdate",
+  Y.encodeStateAsUpdate(doc),
+);

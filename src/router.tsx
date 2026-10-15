@@ -15,10 +15,12 @@ import {
   QuitConfirmation,
   SaveFailureBanner,
 } from "./components/storage-notices";
+import { StorageRefusal } from "./components/storage-refusal";
 import { formatPingReply } from "./ipc/format-ping";
 import { markIndexCommit, resolveEntry } from "./perf/cold-start";
 import { usePageTreeStore } from "./stores/page-tree";
 import { usePingStore } from "./stores/ping";
+import { useStorageStartupStore } from "./stores/storage-startup";
 import { useShortcutCommands } from "./use-shortcut-commands";
 
 function pingText(status: ReturnType<typeof usePingStore.getState>["status"]) {
@@ -43,6 +45,18 @@ function ShellStatus({ landmark }: { landmark: boolean }) {
 }
 
 function RootLayout() {
+  const startup = useStorageStartupStore((state) => state.startup);
+  if (startup.kind !== "ready")
+    return (
+      <>
+        <StorageRefusal startup={startup} />
+        <ShellStatus landmark />
+      </>
+    );
+  return <WorkspaceLayout />;
+}
+
+function WorkspaceLayout() {
   const onIndex = useRouterState({
     select: (state) => state.location.pathname === "/",
   });
