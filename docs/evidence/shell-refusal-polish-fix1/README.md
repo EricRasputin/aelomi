@@ -2,7 +2,7 @@
 
 Source commit `5fb8fb008f712ac72117b71d6a67ca28d6ccf6bb`. Merge base against `origin/main` is `6d64d683d5bf02bea2f67e8038428caef1ab4d62`. Verbatim patch-id is `954478497f2131627cd3edd8dd64165b3046115f`.
 
-Proven pathspecs are `src/storage-copy.ts`, `src/router.tsx`, `src-tauri/src/commands.rs`, `src-tauri/src/lib.rs`, `src/ipc/mock.ts`, `e2e/cloud-folder.e2e.ts`, `src/storage-copy.test.ts`, and `tests/playwright/storage-refusal.spec.ts`.
+Proven pathspecs are `src/storage-copy.ts`, `src-tauri/src/commands.rs`, `src-tauri/src/lib.rs`, `src/ipc/mock.ts`, `e2e/cloud-folder.e2e.ts`, `src/storage-copy.test.ts`, and `tests/playwright/storage-refusal.spec.ts`.
 
 ## Shape and scope
 
@@ -66,7 +66,7 @@ quit allowed via=ExitRequested confirmed=true
 quit flush via=Exit pending=None
 ```
 
-The recovered page's accessibility text was asserted against the complete original marker. The screenshot shows the same page title and its single original line. Both themes of all three refusal variants were inspected and show the complete instructions and paths. The real-data folder was listed read-only before launch and after cleanup; the listings were identical.
+The complete native `Page body` value equals the original marker. The reproduction script checks that exact textarea value. The screenshot shows the same page title and its single original line. Both themes of all three refusal variants were inspected and show the complete instructions and paths. The real-data folder was listed read-only before launch and after cleanup; the listings were identical.
 
 The prior record documents failed drag automation on this harness. This round used the explicitly authorized Finder keyboard equivalents. Two initial app-level Finder scripting attempts also stalled at an automation permission prompt for Dia and stopped before folder movement. System Events keyboard commands avoided that path. Read-only Finder diagnostic probes during this debugging ran outside this task's owned lock, a deviation from the strict Finder-step rule. Every key, click, screenshot and folder operation in the successful proof ran under the owned lock. No permission prompt was approved. All owned helper processes were stopped.
 
@@ -79,7 +79,7 @@ Copy these text scripts into `.local-gate/e2-fix1/`, removing only the final `.t
 
 `native-proof.sh` takes `/tmp/aelomi-ui.lock` before keys, clicks, Finder operations and screenshots. It releases the owned lock between launches and on failures. It closes only the Finder window IDs it created, restores appearance and clipboard, and runs `app.sh cleanup` for each owned launch. The read-only real-data-folder listing is compared before the first launch and after the last.
 
-Run the stress flow with `.claude/skills/verify-aelomi/scripts/mock-drive.mjs --flow .local-gate/e2-fix1/stress.mjs`. Run `hoisted-hook-proof.sh` only with no native dev run active, then rebuild the mock before positive checks. The mutation script restores the source on exit.
+Run the stress flow with `.claude/skills/verify-aelomi/scripts/mock-drive.mjs --flow .local-gate/e2-fix1/stress.mjs`. Run `hoisted-hook-proof.sh` only with no native dev run active, then rebuild the mock before positive checks. The mutation script restores the source on exit. Run `python3 .local-gate/e2-fix1/audit-record.py` to check the source paths, unchanged product files, and recorded patch-id.
 
 ## Published screenshots
 

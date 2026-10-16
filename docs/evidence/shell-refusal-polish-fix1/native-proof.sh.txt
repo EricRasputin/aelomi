@@ -238,10 +238,14 @@ launch "$CONFIGURED" recovered
 "$S/app.sh" tree "$RUN" > "$RUN/recovered-tree.txt"
 python3 - "$RUN/recovered-tree.txt" <<'PY'
 from pathlib import Path
-import sys
+import json,re,sys
 tree=Path(sys.argv[1]).read_text()
 expected='Original pages survived the equal-name Finder recovery, round 1.'
-assert any(line.strip().endswith('"'+expected+'"') for line in tree.splitlines()), tree
+values=[]
+for line in tree.splitlines():
+    match=re.fullmatch(r'\s*AXTextArea "Page body" = ("(?:[^"\\]|\\.)*")',line)
+    if match: values.append(json.loads(match[1]))
+assert values==[expected], values
 assert 'Finder recovery proof' in tree
 assert 'Move your data folder out of cloud storage' not in tree
 print('PASS: relaunched app shows exact original page text: '+expected)
