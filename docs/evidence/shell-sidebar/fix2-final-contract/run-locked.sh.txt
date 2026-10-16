@@ -1,0 +1,17 @@
+#!/bin/bash
+set -euo pipefail
+lock=/tmp/aelomi-ui.lock
+deadline=$(( $(date +%s) + 2700 ))
+while ! mkdir "$lock" 2>/dev/null; do
+  if [ -f "$lock/owner" ] && [ $(( $(date +%s) - $(stat -f %m "$lock/owner") )) -gt 1800 ]; then
+    rm -rf "$lock"
+    continue
+  fi
+  if [ "$(date +%s)" -gt "$deadline" ]; then echo 'INCONCLUSIVE keyboard lock timeout'; exit 1; fi
+  sleep 15
+done
+token="$$ $(date -u +%FT%TZ) D1-fix2"
+echo "$token" > "$lock/owner"
+finish() { if [ -f "$lock/owner" ] && [ "$(cat "$lock/owner")" = "$token" ]; then rm -rf "$lock"; fi; }
+trap finish EXIT INT TERM
+"$@"

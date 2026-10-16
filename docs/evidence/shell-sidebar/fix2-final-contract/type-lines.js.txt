@@ -1,0 +1,8 @@
+function run(argv) {
+ const se=Application('System Events');
+ const p=se.processes.whose({unixId:Number(argv[0])})[0];
+ p.frontmost=true;
+ for(let i=0;i<40;i++){se.keystroke('Visible body line '+i);se.keyCode(36);}
+ for(let i=0;i<24;i++)se.keyCode(126);
+ se.keystroke(' caret-visible');
+}

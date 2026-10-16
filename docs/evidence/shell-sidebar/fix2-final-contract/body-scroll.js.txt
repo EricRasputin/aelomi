@@ -1,0 +1,14 @@
+function run(argv) {
+ const se = Application('System Events');
+ const proc = se.processes.whose({ unixId: Number(argv[0]) })[0];
+ proc.frontmost = true;
+ if (argv[1] === 'type') {
+  se.keystroke('A long native body paragraph keeps the caret in view while the title scrolls away. '.repeat(90));
+  delay(2);
+ } else {
+  delay(1);
+  for (let i = 0; i < 44; i++) { se.keyCode(126); delay(0.08); }
+  se.keystroke(" caret remains visible ");
+  delay(1);
+ }
+}

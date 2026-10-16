@@ -1,0 +1,75 @@
+#!/bin/bash
+set -euo pipefail
+E=docs/evidence/shell-sidebar/fix2-final-contract
+S=.claude/skills/verify-aelomi/scripts
+mkdir -p .local-gate
+for file in native-main.sh native-scroll.sh native-subtree-only.sh native-reopen.sh native-nested.sh run-locked.sh read-records.sh body-scroll.js nested-scroll.js type-lines.js press-nth.js click-upper-body.js; do cp "$E/$file.txt" ".local-gate/$file"; done
+cp "$E/native-probe.mjs.txt" .local-gate/native-probe.ts
+cp index.html .local-gate/index-before-native.html
+runs=()
+finish() {
+ cp .local-gate/index-before-native.html index.html
+ rm -f .local-gate/native-probe.ts
+ for run in "${runs[@]}"; do bash "$S/app.sh" cleanup "$run"; done
+}
+trap finish EXIT
+python3 - <<'PY'
+from pathlib import Path
+p=Path('index.html')
+p.write_text(p.read_text().replace('</body>', '<script type="module" src="/.local-gate/native-probe.ts"></script>\n</body>'))
+PY
+ls -la ~/Library/Application\ Support/Aelomi > .local-gate/real-data-before.txt
+df -h /System/Volumes/Data
+env -u AELOMI_DATA_DIR bash "$S/app.sh" launch dev --timeout 900 > .local-gate/native-run.txt
+main_run=$(cat .local-gate/native-run.txt)
+runs+=("$main_run")
+bash .local-gate/run-locked.sh bash .local-gate/native-main.sh
+bash "$S/app.sh" cleanup "$main_run"
+bash .local-gate/read-records.sh "$main_run/data" > "$main_run/read-records.log" 2>&1
+AELOMI_DATA_DIR="$main_run/data" bash "$S/app.sh" launch dev --timeout 900 > .local-gate/reopen-run.txt
+reopened=$(cat .local-gate/reopen-run.txt)
+runs+=("$reopened")
+bash .local-gate/run-locked.sh bash .local-gate/native-reopen.sh
+bash "$S/app.sh" cleanup "$reopened"
+bash .local-gate/read-records.sh "$main_run/data" > "$main_run/read-records-after-reopen.log" 2>&1
+cat "$E/subtree-probe.mjs.txt" >> .local-gate/native-probe.ts
+fixture=$(mktemp -d "$HOME/.local/state/aelomi-verify/$(date +%Y%m%d-%H%M%S)-d1-nested-XXXX")
+printf '%s\n' "$fixture" > .local-gate/nested-fixture.txt
+CARGO_BUILD_JOBS=4 cargo run -p aelomi-core --features test-support --example seed_index -- "$fixture/data" missing > "$fixture/seed.log" 2>&1
+AELOMI_DATA_DIR="$fixture/data" bash "$S/app.sh" launch dev --timeout 900 > .local-gate/nested-run.txt
+nested=$(cat .local-gate/nested-run.txt)
+runs+=("$nested")
+cp .local-gate/nested-run.txt .local-gate/nested-expand-run.txt
+bash .local-gate/run-locked.sh bash .local-gate/native-nested.sh expand
+bash "$S/app.sh" cleanup "$nested"
+python3 - "$fixture/data/settings.json" <<'PY'
+import json,sys
+assert json.load(open(sys.argv[1]))['expandedRows']==[]
+print('expandedRows=[] after collapse and quit')
+PY
+AELOMI_DATA_DIR="$fixture/data" bash "$S/app.sh" launch dev --timeout 900 > .local-gate/nested-run.txt
+nested_reopened=$(cat .local-gate/nested-run.txt)
+runs+=("$nested_reopened")
+bash .local-gate/run-locked.sh bash .local-gate/native-nested.sh subtree
+bash "$S/app.sh" cleanup "$nested_reopened"
+python3 - "$nested_reopened/settings-before-subtree.json" <<'PY'
+import json,sys
+assert json.load(open(sys.argv[1]))['expandedRows']==[]
+print('expandedRows=[] after relaunch, before the explicit subtree expansion')
+PY
+AELOMI_DATA_DIR="$main_run/data" bash "$S/app.sh" launch dev --timeout 900 > .local-gate/scroll-run.txt
+scroll_run=$(cat .local-gate/scroll-run.txt)
+runs+=("$scroll_run")
+bash .local-gate/run-locked.sh bash .local-gate/native-scroll.sh
+bash "$S/app.sh" cleanup "$scroll_run"
+bash .local-gate/read-records.sh "$main_run/data" > "$main_run/read-records-after-scroll.log" 2>&1
+subtree_fixture=$(mktemp -d "$HOME/.local/state/aelomi-verify/$(date +%Y%m%d-%H%M%S)-d1-subtree-XXXX")
+CARGO_BUILD_JOBS=4 cargo run -p aelomi-core --features test-support --example seed_index -- "$subtree_fixture/data" missing > "$subtree_fixture/seed.log" 2>&1
+AELOMI_DATA_DIR="$subtree_fixture/data" bash "$S/app.sh" launch dev --timeout 900 > .local-gate/subtree-run.txt
+subtree_run=$(cat .local-gate/subtree-run.txt)
+runs+=("$subtree_run")
+bash .local-gate/run-locked.sh bash .local-gate/native-subtree-only.sh subtree
+bash "$S/app.sh" cleanup "$subtree_run"
+ls -la ~/Library/Application\ Support/Aelomi > .local-gate/real-data-after.txt
+cmp .local-gate/real-data-before.txt .local-gate/real-data-after.txt
+printf 'PASS native proof; real-data listings match\n'

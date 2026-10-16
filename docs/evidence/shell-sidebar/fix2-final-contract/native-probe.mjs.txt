@@ -1,0 +1,46 @@
+import { commands } from '/src/ipc/index.ts';
+import { commands as transport } from '/src/ipc/bindings.ts';
+import { usePageTreeStore } from '/src/stores/page-tree.ts';
+import { usePageTitlesStore } from '/src/stores/page-titles.ts';
+import { useRecordCommandStore } from '/src/stores/record-commands.ts';
+const panel = document.createElement('div');
+panel.id = 'd1-proof';
+panel.style.cssText = 'position:fixed;bottom:8px;right:8px;z-index:1000;background:var(--background);padding:6px;font:11px system-ui;border:1px solid var(--border);display:flex;gap:4px;max-width:80vw;flex-wrap:wrap';
+const output = document.createElement('span');
+function button(label, action) {
+ const b = document.createElement('button'); b.textContent = label; b.type = 'button'; b.addEventListener('click', action); panel.append(b);
+}
+const realRename = transport.pageRename;
+const realCreate = transport.pageCreate;
+const realTrash = transport.pageTrash;
+button('Fail record trash', () => { transport.pageTrash = async () => ({ status: 'error', error: { Io: 'synthetic trash failure' } }); output.textContent = 'TRASH_RETAINED'; });
+button('Recover record trash', () => { transport.pageTrash = realTrash; output.textContent = 'TRASH_RECOVERED'; });
+button('Read draft and retention', () => {
+ const id = location.pathname.split('/').at(-1);
+ const draft = usePageTitlesStore.getState().drafts.get(id);
+ output.textContent = `DRAFT=${draft ? draft.result?.status ?? 'pending' : 'none'};RETAINED=${useRecordCommandStore.getState().retained.size};FAILED=${useRecordCommandStore.getState().failed.size};CREATE=${useRecordCommandStore.getState().pendingCreates.has(null)};ERROR=${draft?.error ?? 'none'};FOCUS=${document.activeElement?.getAttribute('aria-label') ?? 'none'}`;
+});
+button('Fail record renames', () => { transport.pageRename = async () => ({ status: 'error', error: { Io: 'synthetic rename failure' } }); output.textContent = 'RENAMES_RETAINED'; });
+button('Recover record renames', () => { transport.pageRename = realRename; output.textContent = 'RENAMES_RECOVERED'; });
+button('Refuse record renames', () => { transport.pageRename = async () => ({ status: 'error', error: { Internal: 'synthetic terminal rename failure' } }); output.textContent = 'RENAMES_FINAL'; });
+button('Fail title refresh', async () => {
+ const original = commands.pageTree;
+ commands.pageTree = async () => { commands.pageTree = original; return { status: 'error', error: { Io: 'synthetic refresh failure' } }; };
+ await usePageTreeStore.getState().refresh();
+ output.textContent = 'READ_FAILED';
+});
+button('Recover title refresh', async () => { await usePageTreeStore.getState().refresh(); output.textContent = 'READ_RECOVERED'; });
+button('Arm title composition', () => {
+ const field = document.querySelector('[aria-label="Page title"]');
+ field.focus(); field.setSelectionRange(0, field.value.length);
+ field.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true, data: 'に' }));
+ document.execCommand('insertText', false, 'に');
+ field.addEventListener('blur', () => queueMicrotask(() => {
+  Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(field, '日本語の題名');
+  field.dispatchEvent(new CompositionEvent('compositionend', { bubbles: true, data: '日本語の題名' }));
+  field.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertFromComposition', data: '日本語の題名' }));
+ }), { once: true });
+ output.textContent = 'COMPOSITION_ARMED';
+});
+panel.append(output);
+document.body.append(panel);

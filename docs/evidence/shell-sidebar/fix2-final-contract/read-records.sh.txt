@@ -1,0 +1,35 @@
+#!/bin/bash
+set -euo pipefail
+folder=${1:?synthetic data folder}
+example=crates/core/examples/d1_fix2_read.rs
+test ! -e "$example"
+trap 'rm -f "$example"' EXIT
+cat > "$example" <<'RS'
+use std::time::{Duration, Instant};
+use aelomi_core::storage::{DocId, Store};
+use aelomi_core::workspace::{body, records::read_pages};
+use yrs::{Doc, Transact, Update, updates::decoder::Decode};
+fn main() {
+ let folder = std::path::PathBuf::from(std::env::args().nth(1).unwrap());
+ assert!(folder.to_string_lossy().contains("/aelomi-verify/"));
+ let store = Store::open(&folder).unwrap();
+ let doc = Doc::new();
+ doc.transact_mut().apply_update(Update::decode_v1(&store.load(&DocId::workspace()).unwrap()).unwrap()).unwrap();
+ let records = read_pages(&doc.transact()).unwrap();
+ let mut active: Vec<_> = records.iter().filter(|(_, r)| r.trash.is_none()).collect();
+ active.sort_by_key(|(_,r)| r.title.clone());
+ let mut trashed: Vec<_> = records.iter().filter(|(_,r)|r.trash.is_some()).collect();
+ trashed.sort_by_key(|(_,r)|r.title.clone());
+ assert_eq!(records.len(),4);
+ assert_eq!(active.iter().map(|(_,r)|r.title.as_str()).collect::<Vec<_>>(),vec!["D1 fix2 notes","日本語の題名"]);
+ assert_eq!(trashed.iter().map(|(_,r)|r.title.as_str()).collect::<Vec<_>>(),vec!["Getting started","Recovered native title"]);
+ let page=Doc::new();
+ page.transact_mut().apply_update(Update::decode_v1(&store.load(active[0].0.doc_id()).unwrap()).unwrap()).unwrap();
+ let body=body::read_body(&page.transact());
+ assert_eq!(body.blocks.len(),1);
+ assert_eq!(body.blocks[0].segments,vec![body::Segment::Text("body token".into())]);
+ println!("records=4 active_titles={:?} trashed_titles={:?} body=[Text(\"body token\")]",active.iter().map(|(_,r)|r.title.as_str()).collect::<Vec<_>>(),trashed.iter().map(|(_,r)|r.title.as_str()).collect::<Vec<_>>());
+ assert!(store.close(Instant::now()+Duration::from_secs(5)).is_ok());
+}
+RS
+CARGO_BUILD_JOBS=4 cargo run -p aelomi-core --features test-support --example d1_fix2_read -- "$folder"

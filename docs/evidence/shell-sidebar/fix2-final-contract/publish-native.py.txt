@@ -1,0 +1,29 @@
+from pathlib import Path
+import json,subprocess
+root=Path.cwd()
+entries=[]
+for key,prefix in [('native-run.txt','native'),('reopen-run.txt','reopened'),('nested-expand-run.txt','nested'),('nested-run.txt','nested-reopened'),('scroll-run.txt','scroll'),('subtree-run.txt','subtree')]:
+ run=Path((root/'.local-gate'/key).read_text().strip())
+ for file in sorted(run.glob('*.png')):
+  if prefix == 'subtree' and file.name == 'subtree-recovered-false.png': continue
+  if prefix == 'nested-reopened' and file.name.startswith('subtree-'): continue
+  if prefix == 'nested-reopened' and file.name.startswith('upper-caret'): continue
+  if prefix == 'nested' and file.name.startswith('caret-near-top'): continue
+  if prefix == 'native' and file.name.startswith('caret-scroll'): continue
+  if prefix == 'reopened' and file.name.startswith('body-end'): continue
+  entries.append({'label':prefix+'-'+file.name,'path':str(file)})
+assert 0<len(entries)<=50
+body=['Builder native self-proof for source `907e3bc18058b29f43defa2dd531da6373b72c1c`, on #84 final head `1f94c822078dcbb340f904773366320589f84fd8`.','',
+'Fresh synthetic data only, with the keyboard lock held for every interactive step. The create outage used real filesystem permission denial. Both changed folder modes were restored exactly. Recovery opened one new page with its title focused. Pending and terminal title outcomes, empty state, toggle, palette layering, scroll visibility, and collapse after relaunch were exercised in light and dark. Synthetic composition was followed immediately by native Quit; Rust readback checked the exact Japanese title, trash records, and body text. The real-data directory listings match. These are builder checks, not the independent review gate.','']
+for entry in entries:
+ body.append(f"![{entry['label']}]({entry['path']})")
+ body.append('')
+body_file=root/'.local-gate/native-comment.md'
+body_file.write_text('\n'.join(body))
+(root/'.local-gate/published-files.json').write_text(json.dumps(entries,indent=2)+'\n')
+cmd=[str(root/'.local-gate/gh-cli/gh_2.102.0_macOS_arm64/bin/gh'),'pr','comment','89','--repo','aelomi/aelomi','--body-file',str(body_file)]
+for entry in entries: cmd.extend(['--attach',entry['path']+'#'+entry['label']])
+result=subprocess.run(cmd,text=True,capture_output=True,check=True)
+(root/'.local-gate/native-comment-url.txt').write_text(result.stdout)
+print(result.stdout.strip())
+print(f'Uploaded {len(entries)} screenshots')
