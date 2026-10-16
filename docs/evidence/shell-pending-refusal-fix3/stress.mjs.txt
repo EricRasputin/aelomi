@@ -1,0 +1,143 @@
+import { writeFileSync } from "node:fs";
+export default async function ({ page, expect, shot, out }) {
+  await page.addInitScript(() => {
+    const worst = new URL(location.href).searchParams.get("data") === "worst";
+    const parent = worst
+      ? "/Local/研究と設計 🦊/QuarterlyPlanningAndDocumentationForInternationalCustomerProjects/Archive/Engineering/Design/Research/CustomerSupport/PlatformInfrastructure/2026/October/WorkspaceRecovery/FinalReview"
+      : "/Local";
+    const name = worst
+      ? "InternationalCustomerResearchAndEngineeringDocumentationForThePlatformInfrastructureMigrationProject2026OctoberFinalApprovedWorkspace"
+      : "Aelomi";
+    const source = worst
+      ? "/Cloud/👩🏽‍💻 Đặng Thị Ngọc Hân/研究資料/RecoveryFolderWithTheOriginalPagesForTheInternationalPlatformInfrastructureProject"
+      : "/Cloud/Aelomi Notes";
+    window.__aelomiMockSetup = {
+      storageStatus: {
+        FinishMoving: {
+          destination_exists: true,
+          configured: `${parent}/${name}`,
+          resolved: source,
+          recovery: {
+            LinkAtDataFolder: {
+              configured_parent: parent,
+              configured_name: name,
+              resolved_parent: "/Cloud",
+              resolved_name: worst ? "研究資料 🦊" : "Aelomi Notes",
+            },
+          },
+        },
+      },
+    };
+    addEventListener("DOMContentLoaded", () => {
+      const bar = document.createElement("nav");
+      bar.setAttribute("aria-label", "Recovery demo data");
+      Object.assign(bar.style, {
+        position: "fixed",
+        bottom: "4px",
+        left: "50%",
+        transform: "translateX(-50%)",
+        zIndex: "100",
+        background: "var(--background)",
+        border: "1px solid var(--border)",
+        borderRadius: "6px",
+        padding: "4px",
+        display: "flex",
+        gap: "8px",
+        font: "12px system-ui",
+      });
+      for (const [label, value] of [
+        ["Demo data", "demo"],
+        ["Worst case", "worst"],
+      ]) {
+        const button = document.createElement("button");
+        button.textContent = label;
+        button.type = "button";
+        button.onclick = () => {
+          const url = new URL(location.href);
+          url.searchParams.set("data", value);
+          location.href = url;
+        };
+        bar.append(button);
+      }
+      document.body.append(bar);
+    });
+  });
+  const results = [];
+  for (const scheme of ["dark", "light"]) {
+    await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" });
+    for (const width of [320, 960, 1440]) {
+      await page.setViewportSize({ width, height: 900 });
+      for (const size of [16, 32]) {
+        await page.goto("/?data=demo");
+        await expect(
+          page.getByRole("heading", { name: "Finish moving your pages" }),
+        ).toBeVisible();
+        await page
+          .getByRole("button", { name: "Worst case", exact: true })
+          .click();
+        await expect(page).toHaveURL(/data=worst/);
+        await page.evaluate((font) => {
+          document.documentElement.style.fontSize = `${font}px`;
+        }, size);
+        await expect(
+          page.getByRole("textbox", {
+            name: "Where your pages were last seen",
+          }),
+        ).toHaveValue(
+          "/Cloud/👩🏽‍💻 Đặng Thị Ngọc Hân/研究資料/RecoveryFolderWithTheOriginalPagesForTheInternationalPlatformInfrastructureProject",
+        );
+        const overflow = await page.evaluate(() => ({
+          body: document.documentElement.scrollWidth > innerWidth,
+          chips: [...document.querySelectorAll(".storage-refusal-path")].map(
+            (x) => ({
+              clipped: x.scrollHeight > x.clientHeight + 2,
+              width: x.scrollWidth > x.clientWidth + 2,
+            }),
+          ),
+        }));
+        expect(overflow).toEqual({
+          body: false,
+          chips: [
+            { clipped: false, width: false },
+            { clipped: false, width: false },
+            { clipped: false, width: false },
+            { clipped: false, width: false },
+            { clipped: false, width: false },
+            { clipped: false, width: false },
+          ],
+        });
+        await page
+          .getByRole("button", { name: "Start a new empty workspace here" })
+          .click();
+        await expect(page.getByRole("alertdialog")).toBeVisible();
+        await expect(
+          page.getByText(
+            "Your pages stay where they are. Aelomi won't move or delete them. The new workspace won't contain those pages.",
+            { exact: true },
+          ),
+        ).toBeInViewport();
+        await expect(
+          page.getByRole("heading", { name: "Start a new empty workspace?" }),
+        ).toBeInViewport();
+        const clipped = await page
+          .getByRole("textbox", { name: "New workspace location" })
+          .evaluate((x) => ({
+            height: x.scrollHeight > x.clientHeight + 2,
+            width: x.scrollWidth > x.clientWidth + 2,
+          }));
+        expect(clipped).toEqual({ height: false, width: false });
+        if ((width === 320 && size === 32) || (width === 960 && size === 16))
+          await shot(`${scheme}-${width}-${size}-dialog`);
+        await page
+          .getByRole("button", { name: "Keep moving my pages" })
+          .click();
+        await expect(page.getByRole("alertdialog")).not.toBeVisible();
+        await page.evaluate(() => scrollTo(0, 0));
+        if ((width === 320 && size === 32) || (width === 960 && size === 16))
+          await shot(`${scheme}-${width}-${size}-screen`);
+        results.push({ scheme, width, size, overflow, clipped });
+      }
+    }
+  }
+  writeFileSync(`${out}/stress.json`, JSON.stringify(results, null, 2));
+}
