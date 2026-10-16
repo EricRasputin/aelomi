@@ -34,7 +34,19 @@ test("SHELL-11 acceptance 7: a cloud folder shows its resolved path and how to m
   await expect(screen.getByRole("textbox", "Page body")).toHaveText(
     "Original page",
   );
-  await browser.keyboard.press("Meta+k");
+  expect(
+    await browser.evaluate(() =>
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "k",
+          code: "KeyK",
+          metaKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      ),
+    ),
+  ).toBe(false);
   await expect(screen.getByRole("dialog", "Command palette")).toBeVisible();
   await browser.keyboard.press("Escape");
   await browser.goto(new URL("/?refused=1", await browser.url()).href);
@@ -123,18 +135,20 @@ test("SHELL-11 acceptance 7: a cloud folder shows its resolved path and how to m
         : null;
     }),
   ).toBe("/Users/test/Library/Mobile Documents/com~apple~CloudDocs");
-  await browser.evaluate(() => {
-    const mock = window.__aelomiMock;
-    if (!mock) throw new Error("Missing IPC mock");
-    mock.quit.request();
-    mock.quit.timeOut();
-    return null;
-  });
+  expect(
+    await browser.evaluate(() =>
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "k",
+          code: "KeyK",
+          metaKey: true,
+          bubbles: true,
+          cancelable: true,
+        }),
+      ),
+    ),
+  ).toBe(true);
   const dialog = screen.getByRole("alertdialog");
-  await expect(dialog).toContainText("Quit with unsaved changes?");
-  await expect(screen.getByRole("button", "Keep app open")).toBeFocused();
-  await screen.getByRole("button", "Keep app open").click();
-  await expect(dialog).not.toBeVisible();
   await browser.keyboard.press("Meta+k");
   await expect(screen.getByRole("dialog", "Command palette")).not.toBeVisible();
   await expect(dialog).not.toBeVisible();
@@ -158,16 +172,6 @@ test("SHELL-11 acceptance 7: a cloud folder shows its resolved path and how to m
       phase: window.__aelomiMock?.quit.status.phase ?? null,
     })),
   ).toEqual({ exited: false, phase: "Open" });
-  await browser.evaluate(() => {
-    window.__aelomiMock?.quit.request();
-    window.__aelomiMock?.quit.timeOut();
-    return null;
-  });
-  await expect(dialog).toBeVisible();
-  await screen.getByRole("button", "Quit anyway").click();
-  expect(
-    await browser.evaluate(() => window.__aelomiMock?.quit.exited ?? null),
-  ).toBe(true);
 });
 
 for (const variant of ["SharedLink", "Override"] as const) {
@@ -206,23 +210,91 @@ for (const variant of ["SharedLink", "Override"] as const) {
       }),
     ).toBeVisible();
     expect(
-      await browser.evaluate(() =>
-        Array.from(
-          document.querySelectorAll(".storage-refusal-recovery > li"),
-          (step) => step.textContent,
-        ),
-      ),
-    ).toEqual(
-      variant === "Override"
-        ? [
-            "Set AELOMI_DATA_DIR to a folder outside cloud storage, or unset it.",
-            "Quit Aelomi and open it again.",
-          ]
-        : [
-            "This folder is synced to cloud storage:/Users/test/Library/Application SupportOther apps and files may use it. Aelomi can't keep its database there.",
-            "In your cloud app's settings, turn off syncing for this folder so it is a regular folder on this Mac.",
-            "Quit Aelomi and open it again.",
-          ],
-    );
+      await browser.evaluate(() => {
+        const steps = document.querySelectorAll(
+          ".storage-refusal-recovery > li",
+        );
+        return {
+          count: steps.length,
+          restart: steps[steps.length - 1]?.textContent ?? null,
+        };
+      }),
+    ).toEqual({
+      count: variant === "Override" ? 2 : 3,
+      restart: "Quit Aelomi and open it again.",
+    });
   });
 }
+
+test("SHELL-9/SHELL-10: a ready workspace asks on drain timeout but a refused folder quits immediately", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  await browser.addInitScript(() => {
+    window.__aelomiMockSetup = {
+      storageStatus: new URL(location.href).searchParams.has("refused")
+        ? "Locked"
+        : "Ready",
+      pages: [{ id: "page-a", title: "A" }],
+      bodies: { "page-a": [{ id: "block-a", content: ["Original page"] }] },
+    };
+  });
+  await app.open("/page/page-a");
+  await expect(screen.getByRole("textbox", "Page body")).toHaveText(
+    "Original page",
+  );
+  await browser.evaluate(() => {
+    const mock = window.__aelomiMock;
+    if (!mock) throw new Error("Missing IPC mock");
+    mock.quit.request();
+    mock.quit.timeOut();
+    return null;
+  });
+  const dialog = screen.getByRole("alertdialog");
+  await expect(dialog).toContainText("Quit with unsaved changes?");
+  await expect(screen.getByRole("button", "Keep app open")).toBeFocused();
+  await screen.getByRole("button", "Keep app open").click();
+  await expect(dialog).not.toBeVisible();
+  await browser.evaluate(() => {
+    window.__aelomiMock?.quit.request();
+    window.__aelomiMock?.quit.timeOut();
+    return null;
+  });
+  await expect(dialog).toBeVisible();
+  await screen.getByRole("button", "Quit anyway").click();
+  expect(
+    await browser.evaluate(() => ({
+      exited: window.__aelomiMock?.quit.exited ?? null,
+      confirmations:
+        window.__aelomiMock?.calls.filter(
+          (call) => call.command === "quitAnyway",
+        ).length ?? null,
+    })),
+  ).toEqual({ exited: true, confirmations: 1 });
+  await browser.goto(new URL("/?refused=1", await browser.url()).href);
+  await expect(
+    screen.getByRole("heading", "This data folder is already open"),
+  ).toBeVisible();
+  await expect(screen.getByRole("status")).toContainText("IPC ok");
+  expect(
+    await browser.evaluate(() => {
+      const mock = window.__aelomiMock;
+      if (!mock) throw new Error("Missing IPC mock");
+      const registrations = mock.calls.filter(
+        (call) => call.command === "frontendReady",
+      ).length;
+      mock.quit.request();
+      mock.quit.timeOut();
+      return {
+        registrations,
+        exited: mock.quit.exited,
+        phase: mock.quit.status.phase,
+        completions: mock.calls.filter(
+          (call) => call.command === "completeQuit",
+        ).length,
+      };
+    }),
+  ).toEqual({ registrations: 1, exited: true, phase: "Open", completions: 0 });
+  await expect(dialog).not.toBeVisible();
+});

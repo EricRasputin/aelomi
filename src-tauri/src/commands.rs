@@ -107,12 +107,14 @@ pub(crate) fn quit_anyway_with<R: Runtime>(app: &AppHandle<R>, exit: impl FnOnce
 
 /// The webview listens for quit status and holds the editor. Call it after the quit listener
 /// is registered and the quit status read, before editing is enabled. From then on every quit
-/// first waits for the webview to deliver its edits (`Draining`).
+/// first waits for the webview to deliver its edits (`Draining`) when the workspace is open.
 #[tauri::command]
 #[specta::specta]
 pub fn frontend_ready(storage: State<'_, Storage>) {
-    storage.quit().register_frontend();
-    println!("quit frontend ready");
+    if storage.workspace().is_ok() {
+        storage.quit().register_frontend();
+        println!("quit frontend ready");
+    }
 }
 
 /// The webview delivered every edit of the drain at `revision`. Flushes the store: with

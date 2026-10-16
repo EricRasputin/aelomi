@@ -20,7 +20,7 @@ export const commands = {
 	/**
 	 *  The webview listens for quit status and holds the editor. Call it after the quit listener
 	 *  is registered and the quit status read, before editing is enabled. From then on every quit
-	 *  first waits for the webview to deliver its edits (`Draining`).
+	 *  first waits for the webview to deliver its edits (`Draining`) when the workspace is open.
 	 */
 	frontendReady: () => __TAURI_INVOKE<void>("frontend_ready"),
 	/**

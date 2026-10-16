@@ -317,8 +317,8 @@ pub(crate) mod tests {
             .mount_events(&app);
         let storage =
             storage::tests::open_on_with(disk, quit::QuitGate::with_drain_timeout(drain_timeout));
-        storage.quit().register_frontend();
         app.manage(storage);
+        commands::frontend_ready(app.state());
         let (quit_events, quit_changed) = record_quit_status(&app);
         BlockedApp {
             app,
@@ -492,6 +492,45 @@ pub(crate) mod tests {
                 ..Default::default()
             }
         );
+    }
+
+    #[test]
+    fn frontend_ready_keeps_refused_storage_on_store_only_quit() {
+        let dir = tempfile::tempdir().unwrap();
+        let cloud = dir.path().join("cloud");
+        std::fs::create_dir(&cloud).unwrap();
+        let storage = Storage::open(
+            &storage::DataLocation {
+                path: cloud.join("Aelomi"),
+                cloud_roots: vec![cloud.clone()],
+            },
+            |_| {},
+        );
+        assert!(matches!(
+            storage.status(),
+            storage::StorageStatus::CloudPath { .. }
+        ));
+        let app = mock_builder().build(mock_context(noop_assets())).unwrap();
+        tauri_specta::Builder::<MockRuntime>::new()
+            .events(tauri_specta::collect_events![QuitStatusChanged])
+            .mount_events(&app);
+        app.manage(storage);
+        let (quit_events, _) = record_quit_status(&app);
+        commands::frontend_ready(app.state());
+        commands::frontend_ready(app.state());
+        assert_eq!(
+            app.state::<Storage>().quit().request(),
+            QuitRequest::FlushStore
+        );
+        for via in ["ExitRequested", "CloseRequested", "Terminate"] {
+            assert!(flush_then_allow_quit(app.handle(), via), "{via}");
+            assert_eq!(
+                commands::quit_status(app.state()),
+                status(0, QuitPhase::Open)
+            );
+        }
+        assert!(quit_events.lock().unwrap().is_empty());
+        assert!(!cloud.join("Aelomi").exists());
     }
 
     #[test]

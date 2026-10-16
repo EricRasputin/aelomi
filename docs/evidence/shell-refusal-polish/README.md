@@ -15,7 +15,7 @@ No Comments was applied directly because the brief forbids nested agents. The re
 
 ## Automated proof
 
-The full source gate passed on macOS 27.0.1, build 26A434, Apple Silicon. The record is `.local-gate/f36bca092f98638f9f9702981d4e53e1ccf635be.checks.json`, with all 11 configured stages complete. The focused runs stay under `.local-gate/e2/`. Acceptance uses its guarded fixture. Playwright covers all three variants in light and dark, including narrow layout, wrapped paths, non-Latin text, emoji, and doubled text size.
+The full source gate passed on macOS 27.0.1, build 26A434, Apple Silicon. The record is `.local-gate/f36bca092f98638f9f9702981d4e53e1ccf635be.checks.json`, with all 11 configured stages complete. The focused runs stay under `.local-gate/e2/`. Acceptance uses its guarded fixture. Playwright covers the leaf variant in light and dark, including narrow layout, wrapped paths, non-Latin text, emoji, and doubled text size. The SharedLink and Override cases in this source snapshot check strings at the default viewport.
 
 The focused checks passed 11 copy tests, three Acceptance 7 cases, six WebKit refusal cases, typecheck, and lint. The full gate passed 220 Vitest tests, 407 ordinary Rust tests, the serial release checks, 23 acceptance tests, 25 WebKit tests, all seven timing cases, the bundle, and cold start. These are configured CI gates, not a before-and-after performance claim.
 
