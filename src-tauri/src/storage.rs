@@ -154,10 +154,10 @@ impl Storage {
         location: &DataLocation,
         on_index: impl Fn(&IndexEvent) + Send + Sync + 'static,
     ) -> Self {
-        let storage = |opened, path| Self {
+        let storage = |opened: Result<Arc<Workspace>, StorageStatus>, path| Self {
+            quit: QuitGate::for_workspace(opened.is_ok()),
             opened,
             path,
-            quit: QuitGate::default(),
             #[cfg(test)]
             _index_dir: None,
         };
@@ -204,7 +204,7 @@ impl Storage {
         Self {
             opened: Err(StorageStatus::Locked),
             path: "/data".into(),
-            quit: QuitGate::default(),
+            quit: QuitGate::for_workspace(false),
             _index_dir: None,
         }
     }
