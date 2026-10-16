@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react";
+import { pageTitleHistory } from "../editor/field-history";
 import { onQuitDrain } from "../editor/quit-drain";
 import { usePageTitlesStore } from "../stores/page-titles";
 import { useQuitStore } from "../stores/quit";
@@ -46,10 +47,12 @@ export function PendingPageTitle() {
               title,
             },
           }));
-          if (intent.stage.kind === "opening")
+          if (intent.stage.kind === "opening") {
+            pageTitleHistory(intent.stage.pageId, "").record(title);
             void usePageTitlesStore
               .getState()
               .rename(intent.stage.pageId, title);
+          }
         }}
       />
       <span role="status">

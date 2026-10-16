@@ -2,6 +2,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect } from "react";
 import { flushSync } from "react-dom";
 import { commandDispatcher } from "../command-dispatcher";
+import { pageTitleHistory } from "../editor/field-history";
 import { commands } from "../ipc";
 import { trackCommand } from "../ipc/pending-commands";
 import { usePageTitlesStore } from "../stores/page-titles";
@@ -77,6 +78,7 @@ export function usePageCommands() {
                 await usePageTreeStore.getState().refresh();
                 const buffered =
                   useShellStore.getState().createIntent?.title ?? "";
+                pageTitleHistory(reply.data, "").record(buffered);
                 useShellStore.setState((state) => ({
                   createIntent: state.createIntent && {
                     ...state.createIntent,

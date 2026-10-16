@@ -66,6 +66,35 @@ test("TREE-1 typing immediately after Command N reaches only the new title", asy
     .toEqual(["Alpha", "Beta", "Immediate title"]);
 });
 
+test("TREE-1 buffered title keeps its insertion point and Undo after creation", async ({
+  page,
+}) => {
+  await page.goto("/page/a");
+  await expect(page.getByRole("textbox", { name: "Page body" })).toHaveText(
+    "Original body",
+  );
+  await page.evaluate(() =>
+    window.__aelomiMock?.storage.refuseRecords({ Io: "held create" }),
+  );
+  await page.keyboard.press("Meta+n");
+  await page.keyboard.type("Buffered");
+  await page.evaluate(() => window.__aelomiMock?.storage.refuseRecords(null));
+  const title = page.getByRole("textbox", { name: "Page title", exact: true });
+  await expect(title).toHaveValue("Buffered");
+  await expect(title).toBeFocused();
+  await page.keyboard.type(" end");
+  await expect(title).toHaveValue("Buffered end");
+  for (let i = 0; i < 4; i++) await title.press("Meta+z");
+  await expect(title).toHaveValue("Buffered");
+  await title.press("Meta+z");
+  await expect(title).toHaveValue("");
+  await title.press("Meta+Shift+z");
+  await expect(title).toHaveValue("Buffered");
+  expect(await page.evaluate(() => window.__aelomiMock?.bodies.text("a"))).toBe(
+    "Original body",
+  );
+});
+
 test("CMD-3 Move to trash requires explicit selection after to and content replies", async ({
   page,
 }) => {

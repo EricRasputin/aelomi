@@ -148,10 +148,16 @@ function PageTitle({
         createIntent.stage.pageId === pageId &&
         createIntent.title !== title
       ) {
+        history.current.record(createIntent.title);
         void usePageTitlesStore.getState().rename(pageId, createIntent.title);
         return;
       }
       input.current?.focus();
+      if (
+        createIntent?.stage.kind === "opening" &&
+        createIntent.stage.pageId === pageId
+      )
+        input.current?.setSelectionRange(title.length, title.length);
       useShellStore.setState((state) => ({
         focusRequest: null,
         createIntent:
