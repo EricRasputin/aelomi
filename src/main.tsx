@@ -8,10 +8,12 @@ import { connectPageTreeEvents } from "./stores/page-tree";
 import { connectPalette } from "./stores/palette";
 import { connectStorageEvents } from "./stores/storage-events";
 import { connectStorageStartup } from "./stores/storage-startup";
+import { connectTheme } from "./stores/theme";
 import "./styles.css";
 
 const root = document.getElementById("root");
 if (!root) throw new Error("Missing app root");
+const stopTheme = connectTheme();
 const stopDrain = connectQuitDrain();
 const storageEvents = connectStorageEvents();
 const storageStartup = connectStorageStartup();
@@ -34,6 +36,7 @@ import.meta.hot?.dispose(() => {
   pageTreeEvents.dispose();
   stopPalette();
   stopDrain();
+  stopTheme();
 });
 createRoot(root).render(
   <StrictMode>

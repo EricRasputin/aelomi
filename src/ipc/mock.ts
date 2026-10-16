@@ -24,7 +24,6 @@ import {
   type QuitStatus,
   type SearchScope,
   type Settings,
-  type SettingsPatch,
   type StorageError,
   type StorageStatus,
 } from "./bindings";
@@ -39,7 +38,7 @@ import {
   type SearchablePage,
   searchPages,
 } from "./mock-search";
-import { defaultSettings, patchSettings, seedSettings } from "./mock-settings";
+import { createSettingsMock } from "./mock-settings";
 import {
   type PageRecord,
   pagesRootProblem,
@@ -59,9 +58,10 @@ type MockCall = {
     args: Parameters<Commands[Name]>;
   };
 }[keyof Commands];
-
 export type MockSetup = {
   settings?: Partial<Settings>;
+  appearance?: "light" | "dark";
+  holdRegistration?: boolean;
   storageStatus?: StorageStatus;
   recovery?: RecoverySetup;
   failWrites?: FailReason;
@@ -81,12 +81,9 @@ declare global {
     __aelomiMockSetup?: MockSetup;
   }
 }
-
 const calls: MockCall[] = [];
 const errors: string[] = [];
-
 type MockDoc = { doc: Y.Doc; updates: Uint8Array[]; pending: boolean };
-
 const storage: {
   status: StorageStatus;
   appendError: StorageError | null;
@@ -108,18 +105,27 @@ const storage: {
 };
 let exited = false;
 let indexStatus: IndexStatus = "Ready";
-let settings = defaultSettings();
-let settingsPending = false;
-
+let settings: ReturnType<typeof createSettingsMock> | undefined;
+function settingsMock() {
+  settings ??= createSettingsMock({
+    ready: () => setupReady,
+    status: () => storage.status,
+    writeFailure: () => (storage.failWrites ? storage.reason : null),
+    changed: () => refreshHealth(),
+    record: (call) => calls.push(call),
+  });
+  return settings;
+}
+let registration = Promise.resolve();
+let releaseRegistration = () => {};
+let appearance: "light" | "dark" | null = null;
 type FixturePage = { id: string; title: string; lines: string[] };
 const fixtureBodies = new Map<string, string[]>();
-
 const quit: { revision: number; phase: QuitPhase; frontendReady: boolean } = {
   revision: 0,
   phase: "Open",
   frontendReady: false,
 };
-
 const listeners = new Map<string, Set<EventCallback<unknown>>>();
 let eventId = 0;
 
@@ -154,7 +160,6 @@ function mockSignal(name: string) {
   const base = { ...event(), emit: () => event.emit(null) };
   return Object.assign(() => base, base);
 }
-
 export const events = {
   menuCommand: mockEvent<MenuCommand>("menu-command"),
   pageRecordsChanged: mockSignal("page-records-changed"),
@@ -163,64 +168,59 @@ export const events = {
   quitStatusChanged: mockEvent<QuitStatus>("quit-status-changed"),
   storageHealthChanged: mockEvent<Health>("storage-health-changed"),
 } satisfies Events;
-
 function quitStatus(): QuitStatus {
   return { revision: quit.revision, phase: structuredClone(quit.phase) };
 }
-
 function changeQuit(phase: QuitPhase) {
   quit.revision += 1;
   quit.phase = phase;
   void events.quitStatusChanged.emit(quitStatus());
 }
-
 function pendingDocs(): string[] {
   return [...storage.docs]
     .filter(([, doc]) => doc.pending)
     .map(([id]) => id)
     .sort();
 }
-
 function flushThenQuit() {
   const pending = pendingDocs();
-  if (pending.length === 0 && !settingsPending) {
+  if (pending.length === 0 && !settingsMock().pending) {
     changeQuit("Confirmed");
     exited = true;
   } else
     changeQuit({
-      Asking: { pending_docs: pending, pending_settings: settingsPending },
+      Asking: {
+        pending_docs: pending,
+        pending_settings: settingsMock().pending,
+      },
     });
 }
-
 function refreshHealth() {
   const pending = pendingDocs();
   const next: Health =
-    pending.length === 0 && !settingsPending
+    pending.length === 0 && !settingsMock().pending
       ? "Healthy"
       : {
           Failing: {
             reason: storage.reason,
             pending_docs: pending,
-            pending_settings: settingsPending,
+            pending_settings: settingsMock().pending,
           },
         };
   if (JSON.stringify(next) === JSON.stringify(storage.health)) return;
   storage.health = next;
   void events.storageHealthChanged.emit(next);
 }
-
 function refusal(docId: string): StorageError | null {
   if (storage.status !== "Ready") return "Unavailable";
   if (!/^[0-9a-z-]{1,64}$/.test(docId)) return "InvalidDocId";
   return null;
 }
-
 function queryFailure(): QueryError | null {
   if (storage.status !== "Ready") return "Unavailable";
   if (typeof indexStatus === "object") return structuredClone(indexStatus);
   return null;
 }
-
 function mockDoc(docId: string): MockDoc {
   let doc = storage.docs.get(docId);
   if (!doc) {
@@ -431,7 +431,6 @@ const recordCommands = createRecordCommands({
     return doc !== undefined && Y.encodeStateAsUpdate(doc).length > 2;
   },
 });
-
 let recovery: ReturnType<typeof createRecoveryMock> | undefined;
 function recoveryMock() {
   if (recovery) return recovery;
@@ -451,27 +450,13 @@ function recoveryMock() {
 }
 
 export const commands = {
-  settingsGet: async () => {
-    calls.push({ command: "settingsGet", args: [] });
-    await setupReady;
-    if (storage.status !== "Ready")
-      return { status: "error", error: "Unavailable" };
-    return { status: "ok", data: structuredClone(settings) };
+  closeWindow: async () => {
+    calls.push({ command: "closeWindow", args: [] });
+    control.quit.request();
+    return { status: "ok", data: null };
   },
-  settingsUpdate: async (patch) => {
-    calls.push({ command: "settingsUpdate", args: [structuredClone(patch)] });
-    await setupReady;
-    if (storage.status !== "Ready")
-      return { status: "error", error: "Unavailable" };
-    const result = patchSettings(settings, patch);
-    if (result.status === "error") return result;
-    settings = result.data;
-    settingsPending = storage.failWrites;
-    refreshHealth();
-    if (settingsPending)
-      return { status: "error", error: { Write: storage.reason } };
-    return structuredClone(result);
-  },
+  settingsGet: () => settingsMock().commands.settingsGet(),
+  settingsUpdate: (patch) => settingsMock().commands.settingsUpdate(patch),
   ping: async (request) => {
     calls.push({ command: "ping", args: [structuredClone(request)] });
     return { seq: request.seq, core_version: "0.1.0-mock" };
@@ -568,6 +553,8 @@ export const commands = {
   },
   frontendReady: async () => {
     calls.push({ command: "frontendReady", args: [] });
+    await setupReady;
+    await registration;
     if (storage.status === "Ready") quit.frontendReady = true;
   },
   completeQuit: async (revision) => {
@@ -576,8 +563,11 @@ export const commands = {
       flushThenQuit();
     return quitStatus();
   },
-  quitDrainFailed: async (revision, docIds) => {
-    calls.push({ command: "quitDrainFailed", args: [revision, [...docIds]] });
+  quitDrainFailed: async (revision, docIds, pendingSettings) => {
+    calls.push({
+      command: "quitDrainFailed",
+      args: [revision, [...docIds], pendingSettings],
+    });
     const invalid = docIds.find((id) => !/^[0-9a-z-]{1,64}$/.test(id));
     if (invalid !== undefined)
       return { status: "error", error: "InvalidDocId" };
@@ -585,7 +575,7 @@ export const commands = {
       changeQuit({
         Asking: {
           pending_docs: [...new Set([...docIds, ...pendingDocs()])].sort(),
-          pending_settings: settingsPending,
+          pending_settings: settingsMock().pending || pendingSettings,
         },
       });
     return { status: "ok", data: quitStatus() };
@@ -729,7 +719,12 @@ async function loadSearchFixture() {
 
 async function applySetup(setup: MockSetup | undefined) {
   if (!setup) return;
-  if (setup.settings) settings = seedSettings(setup.settings);
+  if (setup.holdRegistration)
+    registration = new Promise<void>((resolve) => {
+      releaseRegistration = resolve;
+    });
+  if (setup.settings) settingsMock().seed(setup.settings);
+  if (setup.appearance) appearance = setup.appearance;
   if (setup.storageStatus)
     storage.status = structuredClone(setup.storageStatus);
   if (setup.failWrites) {
@@ -770,8 +765,10 @@ function restoreKept(): boolean {
 function resetState() {
   calls.length = 0;
   errors.length = 0;
-  settings = defaultSettings();
-  settingsPending = false;
+  settingsMock().reset();
+  releaseRegistration();
+  registration = Promise.resolve();
+  appearance = null;
   storage.status = "Ready";
   storage.appendError = null;
   storage.recordError = null;
@@ -801,7 +798,6 @@ function pageWrite(update: () => void) {
   update();
   markChanged({ workspace: true, pages: [] });
 }
-
 const control = {
   recovery: { releaseTree: () => recoveryMock().control.releaseTree() },
   menu: {
@@ -820,6 +816,7 @@ const control = {
     resetState();
   },
   quit: {
+    releaseRegistration: () => releaseRegistration(),
     get exited() {
       return exited;
     },
@@ -835,12 +832,12 @@ const control = {
       }
       if (!quit.frontendReady) {
         const pending = pendingDocs();
-        if (pending.length === 0 && !settingsPending) exited = true;
+        if (pending.length === 0 && !settingsMock().pending) exited = true;
         else
           changeQuit({
             Asking: {
               pending_docs: pending,
-              pending_settings: settingsPending,
+              pending_settings: settingsMock().pending,
             },
           });
         return;
@@ -853,7 +850,7 @@ const control = {
       changeQuit({
         Asking: {
           pending_docs: pendingDocs(),
-          pending_settings: settingsPending,
+          pending_settings: settingsMock().pending,
         },
       });
     },
@@ -902,8 +899,19 @@ const control = {
       return toBase64(Y.encodeStateAsUpdate(mockDoc(pageId).doc));
     },
   },
-  settings: {
-    update: (patch: SettingsPatch) => commands.settingsUpdate(patch),
+  appearance: {
+    current: () =>
+      appearance ??
+      (window.matchMedia("(prefers-color-scheme: dark)").matches
+        ? "dark"
+        : "light"),
+    set(value: "light" | "dark") {
+      appearance = value;
+      window.dispatchEvent(new Event("aelomi-test-appearance"));
+    },
+  },
+  get settings() {
+    return settingsMock().control;
   },
   storage: {
     refuseRecords(error: import("./bindings").PageError | null) {
@@ -918,7 +926,7 @@ const control = {
       storage.reason = reason;
       if (!on) {
         for (const doc of storage.docs.values()) doc.pending = false;
-        settingsPending = false;
+        settingsMock().recover();
       }
       refreshHealth();
     },

@@ -159,7 +159,7 @@ test("SHELL-10 a failed frontend drain retains both refused documents and settin
     await commands.settingsUpdate({ theme: "Dark" });
     window.__aelomiMock?.quit.request();
     expect(
-      await commands.quitDrainFailed(1, ["page-b", "page-a", "page-b"]),
+      await commands.quitDrainFailed(1, ["page-b", "page-a", "page-b"], false),
     ).toEqual({
       status: "ok",
       data: {

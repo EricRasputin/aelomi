@@ -18,9 +18,9 @@ export function createCommandDispatcher(available: () => boolean = () => true) {
     context: CommandContext,
     beforeRun?: () => void,
   ): boolean {
-    if (context.isComposing || !available()) return false;
+    if (context.isComposing) return false;
     const entry = shortcuts.find((entry) => entry.command === command);
-    if (entry?.owner !== "webview") return false;
+    if (entry?.owner !== "webview" || !available()) return false;
     const handler = handlers.get(entry.command);
     if (!handler || handler.enabled?.(context) === false) return false;
     beforeRun?.();

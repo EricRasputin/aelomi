@@ -83,15 +83,39 @@ impl From<aelomi_core::workspace::SettingsError> for SettingsError {
     }
 }
 
+pub(crate) fn initial_theme(storage: &crate::storage::Storage) -> Theme {
+    storage
+        .workspace()
+        .ok()
+        .and_then(|workspace| workspace.settings().ok())
+        .map(|settings| Theme::from(&settings.theme))
+        .unwrap_or(Theme::System)
+}
+
+pub(crate) fn initial_theme_script(
+    storage: &crate::storage::Storage,
+) -> serde_json::Result<String> {
+    Ok(format!(
+        "window.__aelomiInitialTheme = {};",
+        serde_json::to_string(&initial_theme(storage))?
+    ))
+}
+
+impl From<&core::Theme> for Theme {
+    fn from(theme: &core::Theme) -> Self {
+        match theme {
+            core::Theme::System => Self::System,
+            core::Theme::Light => Self::Light,
+            core::Theme::Dark => Self::Dark,
+            core::Theme::Unknown(value) => Self::Unknown(value.clone()),
+        }
+    }
+}
+
 impl From<&core::Settings> for Settings {
     fn from(settings: &core::Settings) -> Self {
         Self {
-            theme: match &settings.theme {
-                core::Theme::System => Theme::System,
-                core::Theme::Light => Theme::Light,
-                core::Theme::Dark => Theme::Dark,
-                core::Theme::Unknown(value) => Theme::Unknown(value.clone()),
-            },
+            theme: Theme::from(&settings.theme),
             open_page: settings.open_page.as_ref().map(|page| SettingsOpenPage {
                 page_id: page.page_id.to_string(),
                 top_visible_block_id: page.top_visible_block_id.clone(),

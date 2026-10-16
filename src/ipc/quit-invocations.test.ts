@@ -108,7 +108,7 @@ test("SHELL-10 a record failure after command collection while deliveries are he
     useQuitStore.getState().receiveQuit({ revision: 1, phase: "Draining" });
     await vi.advanceTimersByTimeAsync(0);
     await drainCommands();
-    expect(commandFailures()).toEqual([]);
+    expect(commandFailures()).toEqual({ docs: [], settings: false });
     void commands.pageRename("page-a", "While held");
     await vi.advanceTimersByTimeAsync(0);
     release(1);
@@ -393,7 +393,7 @@ test("SHELL-9 one command drain waits for both a rename and settings before both
     acceptRename();
     expect(await rename).toEqual({ status: "ok", data: null });
     await drain;
-    expect(commandFailures()).toEqual([]);
+    expect(commandFailures()).toEqual({ docs: [], settings: false });
     await vi.waitFor(() =>
       expect(useQuitStore.getState().decision.kind).toBe("quitting"),
     );

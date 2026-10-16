@@ -450,3 +450,76 @@ fn data_4_reads_do_not_wait_for_disk_and_quick_patches_coalesce() {
         owner(&storage).get()
     );
 }
+
+#[test]
+fn shell_5_initial_theme_uses_system_for_refused_storage() {
+    let storage = Storage::not_open();
+    assert_eq!(initial_theme(&storage), Theme::System);
+    assert_eq!(
+        initial_theme_script(&storage).unwrap(),
+        "window.__aelomiInitialTheme = \"System\";"
+    );
+}
+
+#[test]
+fn shell_5_initial_theme_uses_system_on_read_error_and_retries_later() {
+    let disk = SimDisk::default();
+    {
+        let storage = crate::storage::tests::open_on(&disk);
+        owner(&storage).update(session_patch()).unwrap();
+    }
+    disk.fail_settings_reads();
+    let storage = crate::storage::tests::open_on(&disk);
+    assert_eq!(initial_theme(&storage), Theme::System);
+    disk.clear_faults();
+    assert_eq!(initial_theme(&storage), Theme::Dark);
+    assert_eq!(
+        initial_theme_script(&storage).unwrap(),
+        "window.__aelomiInitialTheme = \"Dark\";"
+    );
+}
+
+#[test]
+fn shell_5_initial_theme_uses_system_for_missing_and_malformed_settings() {
+    for bytes in [None, Some("{broken settings")] {
+        let dir = tempfile::tempdir().unwrap();
+        if let Some(bytes) = bytes {
+            std::fs::write(dir.path().join("settings.json"), bytes).unwrap();
+        }
+        let storage = Storage::open(
+            &DataLocation {
+                path: dir.path().into(),
+                cloud_roots: vec![],
+            },
+            |_| {},
+        );
+        assert_eq!(initial_theme(&storage), Theme::System);
+        assert_eq!(
+            initial_theme_script(&storage).unwrap(),
+            "window.__aelomiInitialTheme = \"System\";"
+        );
+    }
+}
+
+#[test]
+fn shell_5_initial_theme_preserves_unknown_and_serializes_the_script() {
+    let dir = tempfile::tempdir().unwrap();
+    let value = "Sepia \"warm\"\n\u{2028}";
+    std::fs::write(
+        dir.path().join("settings.json"),
+        serde_json::to_vec(&serde_json::json!({ "theme": value })).unwrap(),
+    )
+    .unwrap();
+    let storage = Storage::open(
+        &DataLocation {
+            path: dir.path().into(),
+            cloud_roots: vec![],
+        },
+        |_| {},
+    );
+    assert_eq!(initial_theme(&storage), Theme::Unknown(value.into()));
+    assert_eq!(
+        initial_theme_script(&storage).unwrap(),
+        "window.__aelomiInitialTheme = {\"Unknown\":\"Sepia \\\"warm\\\"\\n\u{2028}\"};"
+    );
+}

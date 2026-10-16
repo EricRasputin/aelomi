@@ -1,9 +1,9 @@
 import { create } from "zustand";
 import type { PageError, StorageError, TreePage } from "../ipc";
+import type { TransportFailure } from "../ipc/command-retry";
 
 export type OperationId = string;
 export type PageId = TreePage["id"];
-export type TransportFailure = { Transport: string };
 export type RecordCommandError =
   | PageError
   | StorageError

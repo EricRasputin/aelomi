@@ -1,0 +1,44 @@
+ObjC.import("CoreGraphics");
+
+function run(args) {
+  const [pidText, action, ...rest] = args;
+  const pid = Number(pidText);
+  const se = Application("System Events");
+  const procs = se.processes.whose({ unixId: pid });
+  if (!procs.length) throw new Error(`No process ${pid}`);
+  const p = procs[0];
+  const attr = (e, key) => { try { return e[key](); } catch (_) { return null; } };
+  const walk = () => {
+    const elements = [];
+    const queue = Array.from({ length: p.windows.length }, (_, i) => p.windows[i]);
+    while (queue.length) {
+      const e = queue.shift();
+      elements.push(e);
+      try { for (let i = 0; i < e.uiElements.length; i++) queue.push(e.uiElements[i]); } catch (_) {}
+    }
+    return elements;
+  };
+  if (action === "menu") {
+    p.frontmost = true;
+    const item = p.menuBars[0].menuBarItems.whose({ name: rest[0] })[0];
+    item.actions.whose({ name: "AXPress" })[0].perform();
+    item.menus[0].menuItems.whose({ name: rest[1] })[0].actions.whose({ name: "AXPress" })[0].perform();
+    return `menu ${rest.join(" > ")}`;
+  }
+  if (action === "escape") { p.frontmost = true; se.keyCode(53); return "Escape"; }
+  if (action === "click-radio") {
+    p.frontmost = true;
+    const radio = walk().find(e => attr(e, "role") === "AXRadioButton" && (attr(e, "name") || attr(e, "description")) === rest[0]);
+    if (!radio) throw new Error(`No radio ${rest[0]}`);
+    const [x, y] = radio.position();
+    const [width, height] = radio.size();
+    const point = $.CGPointMake(x + width / 2, y + height / 2);
+    for (const type of [$.kCGEventMouseMoved, $.kCGEventLeftMouseDown, $.kCGEventLeftMouseUp]) {
+      $.CGEventPost($.kCGHIDEventTap, $.CGEventCreateMouseEvent(null, type, point, $.kCGMouseButtonLeft));
+    }
+    return `clicked ${rest[0]}`;
+  }
+  if (action === "windows") return JSON.stringify(p.windows().map(w => ({ name: attr(w,"name"), role: attr(w,"subrole") })));
+  if (action === "focused") return JSON.stringify(walk().filter(e => attr(e,"focused") === true).map(e => ({ name: attr(e,"name"), description: attr(e,"description"), role: attr(e,"role"), value: attr(e,"value") })));
+  throw new Error(`Unknown action ${action}`);
+}

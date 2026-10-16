@@ -6,6 +6,7 @@
     "moduleResolution": "Bundler",
     "jsx": "react-jsx",
     "strict": true,
+    "allowJs": true,
     "noUncheckedIndexedAccess": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
@@ -16,6 +17,7 @@
   },
   "include": [
     "src",
+    "public",
     "e2e",
     "fixtures",
     "perf",

@@ -11,6 +11,7 @@ import {
 } from "@tanstack/react-router";
 import { useEffect, useId, useLayoutEffect } from "react";
 import { CommandPalette } from "./components/command-palette";
+import { SettingsDialog } from "./components/settings-dialog";
 import {
   QuitConfirmation,
   SaveFailureBanner,
@@ -21,7 +22,10 @@ import { markIndexCommit, resolveEntry } from "./perf/cold-start";
 import { usePageTreeStore } from "./stores/page-tree";
 import { usePingStore } from "./stores/ping";
 import { useStorageStartupStore } from "./stores/storage-startup";
-import { useShortcutCommands } from "./use-shortcut-commands";
+import {
+  useShortcutCommands,
+  useWorkspaceShortcutCommands,
+} from "./use-shortcut-commands";
 
 function pingText(status: ReturnType<typeof usePingStore.getState>["status"]) {
   return status.kind === "ready"
@@ -45,6 +49,7 @@ function ShellStatus({ landmark }: { landmark: boolean }) {
 }
 
 function RootLayout() {
+  useShortcutCommands();
   const startup = useStorageStartupStore((state) => state.startup);
   if (startup.kind !== "ready")
     return (
@@ -57,10 +62,10 @@ function RootLayout() {
 }
 
 function WorkspaceLayout() {
+  useWorkspaceShortcutCommands();
   const onIndex = useRouterState({
     select: (state) => state.location.pathname === "/",
   });
-  useShortcutCommands();
   return (
     <Tooltip.Provider delay={700} timeout={300}>
       <div className="flex h-screen flex-col">
@@ -91,6 +96,7 @@ function WorkspaceLayout() {
         >
           <Outlet />
         </main>
+        <SettingsDialog />
         <CommandPalette />
         <QuitConfirmation />
       </div>

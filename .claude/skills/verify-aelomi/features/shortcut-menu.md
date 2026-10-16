@@ -41,7 +41,7 @@ Preconditions:
 
 ## Gotchas
 
-- Toggle Sidebar and Settings… have table entries but no handler until their section-1 follow-up PRs. Their keys must remain uncancelled here.
+- Toggle Sidebar has a table entry but no handler until its follow-up PR. Settings… opens the modal described in [Settings appearance](settings-appearance.md).
 - A palette input owns its native history. Keyboard Undo must never affect the page behind it.
 - Field keyboard history runs directly in the webview and cancels the key. The menu event listener is not on that path.
 - Two separate typing groups expose a double undo. A single group cannot distinguish one undo from two.

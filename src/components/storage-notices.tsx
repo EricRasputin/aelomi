@@ -3,12 +3,14 @@ import { useRef } from "react";
 import { useDeliveryStore } from "../editor/delivery";
 import {
   recordErrorText,
+  settingsErrorText,
   storageCopy,
   storageErrorText,
   storageFailureReason,
 } from "../storage-copy";
 import { quitDialogOpen, useQuitStore } from "../stores/quit";
 import { failing, useRecordCommandStore } from "../stores/record-commands";
+import { useSettingsWriteStore } from "../stores/settings";
 import { useStorageHealthStore } from "../stores/storage-health";
 
 export function SaveFailureBanner() {
@@ -25,6 +27,8 @@ export function SaveFailureBanner() {
   const dismissFailed = useRecordCommandStore((state) => state.dismissFailed);
   const recordFailing = useRecordCommandStore(failing);
   const recordFailure = record ?? failed;
+  const settingsFailure = useSettingsWriteStore((state) => state.failure);
+  const dismissSettings = useSettingsWriteStore((state) => state.dismissFailed);
   const reason =
     health && health !== "Healthy"
       ? storageFailureReason(health.Failing.reason)
@@ -32,14 +36,30 @@ export function SaveFailureBanner() {
         ? storageErrorText(refused)
         : recordFailing && recordFailure
           ? recordErrorText(recordFailure.error)
-          : null;
+          : settingsFailure
+            ? settingsErrorText(settingsFailure.error)
+            : null;
   if (reason === null) return null;
   return (
     <div role="alert" className="save-failure-banner">
       <p>
         <span className="font-medium">{storageCopy.banner}</span> {reason}
       </p>
-      {record || !failed ? <p className="mt-1">{storageCopy.retry}</p> : null}
+      {record ||
+      refused ||
+      (health && health !== "Healthy") ||
+      settingsFailure?.kind === "retrying" ? (
+        <p className="mt-1">{storageCopy.retry}</p>
+      ) : null}
+      {settingsFailure?.kind === "failed" ? (
+        <button
+          type="button"
+          className="quit-button mt-1"
+          onClick={dismissSettings}
+        >
+          Dismiss failed settings change
+        </button>
+      ) : null}
       {failed ? (
         <button
           type="button"

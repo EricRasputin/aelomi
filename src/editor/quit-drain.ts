@@ -42,11 +42,12 @@ async function drain(revision: number) {
   if (quit.decision.kind !== "draining" || quit.decision.revision !== revision)
     return;
   setCommandAdmission("completing");
-  failed = [...new Set([...failed, ...commandFailures()])];
+  const failures = commandFailures();
+  failed = [...new Set([...failed, ...failures.docs])];
   const reply =
-    failed.length === 0
+    failed.length === 0 && !failures.settings
       ? await commands.completeQuit(revision)
-      : await commands.quitDrainFailed(revision, failed);
+      : await commands.quitDrainFailed(revision, failed, failures.settings);
   if ("status" in reply) {
     if (reply.status === "ok") quit.receiveQuit(reply.data);
   } else quit.receiveQuit(reply);

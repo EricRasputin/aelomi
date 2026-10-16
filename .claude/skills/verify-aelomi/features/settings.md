@@ -1,6 +1,6 @@
 # Settings persistence
 
-The dev Settings probe shows the cached session settings and writes a synthetic session through real IPC. Settings survive quitting and reopening the app. Theme controls and session restoration UI arrive in later PRs.
+The dev Settings probe shows the cached session settings and writes a synthetic session through real IPC. Settings survive quitting and reopening the app. The modal and theme controls are covered in [Settings appearance](settings-appearance.md). Session restoration UI arrives in a later PR.
 
 ## Sub-features
 

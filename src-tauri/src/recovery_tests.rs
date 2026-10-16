@@ -102,6 +102,10 @@ fn every_cloud_variant_records_paths_variant_and_timestamp_outside_the_workspace
         else {
             panic!("cloud refusal")
         };
+        assert_eq!(
+            crate::settings::initial_theme(&storage),
+            crate::settings::Theme::System
+        );
         let record = home.pending();
         assert_eq!(record.configured, PathBuf::from(configured));
         assert_eq!(record.resolved, PathBuf::from(resolved));
@@ -145,6 +149,10 @@ fn misplaced_drop_blocks_creation_for_missing_and_markerless_destinations() {
                 resolved: pending.resolved.to_string_lossy().into_owned(),
                 recovery: pending.recovery().unwrap(),
             }
+        );
+        assert_eq!(
+            crate::settings::initial_theme(&storage),
+            crate::settings::Theme::System
         );
         assert_eq!(home.pending(), pending);
         assert_eq!(home.location.path.exists(), exists);
@@ -222,7 +230,9 @@ fn unreadable_records_keep_the_guard_without_overwriting_them() {
         let home = Home::new();
         fs::create_dir_all(home.record.0.as_path()).unwrap();
         fs::write(&home.file().path, bytes).unwrap();
-        assert_eq!(serde_json::to_value(home.open().status()).unwrap(), serde_json::json!({"RecoveryRecordUnreadable": {"configured": home.location.path}}));
+        let storage = home.open();
+        assert_eq!(serde_json::to_value(storage.status()).unwrap(), serde_json::json!({"RecoveryRecordUnreadable": {"configured": home.location.path}}));
+        assert_eq!(crate::settings::initial_theme(&storage), crate::settings::Theme::System);
         assert_eq!(home.location.path.exists(), false);
         assert_eq!(fs::read(&home.file().path).unwrap(), bytes);
     }

@@ -39,6 +39,14 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             macos::setup(app)?;
             open_storage(app);
+            let script = settings::initial_theme_script(&app.state::<Storage>())?;
+            let window =
+                app.config().app.windows.first().ok_or_else(|| {
+                    std::io::Error::other("the main window configuration is missing")
+                })?;
+            tauri::WebviewWindowBuilder::from_config(app.handle(), window)?
+                .initialization_script(script)
+                .build()?;
             Ok(())
         });
     if perf::report_path().is_some() {
@@ -118,10 +126,6 @@ pub(crate) fn prepare_workspace<R: Runtime>(
     app: &AppHandle<R>,
     workspace: std::sync::Arc<aelomi_core::workspace::Workspace>,
 ) {
-    let settings_workspace = workspace.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        let _ = settings_workspace.settings();
-    });
     warm_tree(workspace.clone());
     let app = app.clone();
     workspace.subscribe_health(move |health| {
