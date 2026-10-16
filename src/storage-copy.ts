@@ -65,7 +65,7 @@ export type StorageStartup =
 function cloudRecovery(
   cloud: Extract<StorageStatus, { CloudPath: object }>["CloudPath"],
 ) {
-  const { resolved, recovery } = cloud;
+  const { configured, resolved, recovery } = cloud;
   let steps: RecoveryStep[];
   if (recovery === "Override") {
     steps = [
@@ -101,19 +101,22 @@ function cloudRecovery(
     steps = [
       {
         kind: "folder",
-        text: "In Finder, choose Go > Go to Folder (⇧⌘G) and copy and paste:",
+        text: "Copy this path. In Finder, choose Go > Go to Folder (⇧⌘G) and paste it:",
         path: configured_parent,
-        after: `Find "${configured_name}". It has a small arrow because it is a link. Drag it to the Trash. This removes only the link, not your pages. Leave this Finder window open.`,
+        after: `Find "${configured_name}". It has a small arrow because it is a link. Drag it to the Trash. This removes only the link, not your pages. Choose View > as Icons. Leave this Finder window open.`,
       },
       {
         kind: "folder",
-        text: "In Finder, choose File > New Finder Window (⌘N). Then choose Go > Go to Folder and copy and paste:",
+        text: "Copy this path. In Finder, choose File > New Finder Window (⌘N). Then choose Go > Go to Folder and paste it:",
         path: resolved_parent,
-        after: `Move the new window so the window from step 1 shows. Drag "${resolved_name}" onto an empty area of the window from step 1, not onto a folder.${rename}`,
+        after: `Move the new window aside so you can see the window from step 1. Drag "${resolved_name}" onto an empty area of the window from step 1, not onto a folder.${rename}`,
       },
       {
-        kind: "text",
-        text: `Check that "${configured_name}" is now in the window from step 1, without an arrow.`,
+        kind: "folder",
+        text: "Choose Go > Go to Folder and paste:",
+        path: configured,
+        after:
+          "Finder should open your data folder. If it can't find it, choose Edit > Undo in Finder and repeat step 2.",
       },
       { kind: "text", text: storageCopy.restart },
     ];

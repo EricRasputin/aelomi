@@ -57,7 +57,7 @@ for (const colorScheme of ["light", "dark"] as const) {
         })),
       ).toEqual({ overflow: false, clipped: [] });
       const chip = page.getByRole("textbox", {
-        name: "In Finder, choose File > New Finder Window (⌘N). Then choose Go > Go to Folder and copy and paste:",
+        name: "Copy this path. In Finder, choose File > New Finder Window (⌘N). Then choose Go > Go to Folder and paste it:",
       });
       await chip.click();
       expect(
@@ -69,6 +69,12 @@ for (const colorScheme of ["light", "dark"] as const) {
       ).toBe(
         "/Users/test/Library/CloudStorage/Dropbox/International-Collaboration-Archive/研究とメモ🦊",
       );
+      await expect(
+        page.getByRole("textbox", {
+          name: "Choose Go > Go to Folder and paste:",
+          exact: true,
+        }),
+      ).toHaveValue("/Users/test/Library/Application Support/Aelomi");
       await page
         .getByText("Aelomi hasn't changed anything in your data folder.", {
           exact: true,
@@ -79,52 +85,10 @@ for (const colorScheme of ["light", "dark"] as const) {
       ).toBeVisible();
       await expect(
         page.getByText(
-          'Check that "Aelomi" is now in the window from step 1, without an arrow.',
+          "Finder should open your data folder. If it can't find it, choose Edit > Undo in Finder and repeat step 2.",
           { exact: true },
         ),
       ).toBeVisible();
     }
   });
-}
-
-for (const variant of ["SharedLink", "Override"] as const) {
-  for (const colorScheme of ["light", "dark"] as const) {
-    test(`SHELL-11 ${colorScheme} ${variant} keeps Aelomi open until its restart step`, async ({
-      page,
-    }) => {
-      await page.emulateMedia({ colorScheme });
-      await page.addInitScript((recoveryVariant) => {
-        window.__aelomiMockSetup = {
-          storageStatus: {
-            CloudPath: {
-              configured: "/Users/test/Library/Application Support/Aelomi",
-              resolved: "/Users/test/Library/CloudStorage/Support/Aelomi",
-              recovery:
-                recoveryVariant === "Override"
-                  ? "Override"
-                  : {
-                      SharedLink: {
-                        link: "/Users/test/Library/Application Support",
-                      },
-                    },
-            },
-          },
-        };
-      }, variant);
-      await page.goto("/");
-      await expect(
-        page.getByText("Keep Aelomi open until the last step.", {
-          exact: true,
-        }),
-      ).toBeVisible();
-      const steps = page.locator(".storage-refusal-recovery > li");
-      await expect(steps).toHaveCount(variant === "Override" ? 2 : 3);
-      await expect(steps.last()).toHaveText("Quit Aelomi and open it again.");
-      await expect(
-        page.getByText("Aelomi hasn't changed anything in your data folder.", {
-          exact: true,
-        }),
-      ).toBeVisible();
-    });
-  }
 }

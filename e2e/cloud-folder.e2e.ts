@@ -40,7 +40,7 @@ test("SHELL-11 acceptance 7: a cloud folder shows its resolved path and how to m
   await browser.goto(new URL("/?refused=1", await browser.url()).href);
   await expect(
     screen.getByText(
-      'Check that "Aelomi" is now in the window from step 1, without an arrow.',
+      "Finder should open your data folder. If it can't find it, choose Edit > Undo in Finder and repeat step 2.",
       { exact: true },
     ),
   ).toBeVisible();
@@ -62,13 +62,13 @@ test("SHELL-11 acceptance 7: a cloud folder shows its resolved path and how to m
   ).toBeVisible();
   await expect(
     screen.getByText(
-      'Find "Aelomi". It has a small arrow because it is a link. Drag it to the Trash. This removes only the link, not your pages. Leave this Finder window open.',
+      'Find "Aelomi". It has a small arrow because it is a link. Drag it to the Trash. This removes only the link, not your pages. Choose View > as Icons. Leave this Finder window open.',
       { exact: true },
     ),
   ).toBeVisible();
   await expect(
     screen.getByText(
-      'Move the new window so the window from step 1 shows. Drag "Aelomi Notes" onto an empty area of the window from step 1, not onto a folder. Then rename it "Aelomi".',
+      'Move the new window aside so you can see the window from step 1. Drag "Aelomi Notes" onto an empty area of the window from step 1, not onto a folder. Then rename it "Aelomi".',
       { exact: true },
     ),
   ).toBeVisible();
@@ -93,11 +93,12 @@ test("SHELL-11 acceptance 7: a cloud folder shows its resolved path and how to m
     "/Users/test/Library/Mobile Documents/com~apple~CloudDocs/Aelomi Notes",
     "/Users/test/Library/Application Support",
     "/Users/test/Library/Mobile Documents/com~apple~CloudDocs",
+    "/Users/test/Library/Application Support/Aelomi",
   ]);
   await screen
     .getByRole(
       "textbox",
-      "In Finder, choose Go > Go to Folder (⇧⌘G) and copy and paste:",
+      "Copy this path. In Finder, choose Go > Go to Folder (⇧⌘G) and paste it:",
     )
     .click();
   expect(
@@ -111,7 +112,7 @@ test("SHELL-11 acceptance 7: a cloud folder shows its resolved path and how to m
   await screen
     .getByRole(
       "textbox",
-      "In Finder, choose File > New Finder Window (⌘N). Then choose Go > Go to Folder and copy and paste:",
+      "Copy this path. In Finder, choose File > New Finder Window (⌘N). Then choose Go > Go to Folder and paste it:",
     )
     .focus();
   expect(

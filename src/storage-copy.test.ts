@@ -35,21 +35,24 @@ test.each([
     steps: [
       {
         kind: "folder",
-        text: "In Finder, choose Go > Go to Folder (⇧⌘G) and copy and paste:",
+        text: "Copy this path. In Finder, choose Go > Go to Folder (⇧⌘G) and paste it:",
         path: "/Users/test/Library/Application Support",
         after:
-          'Find "Aelomi". It has a small arrow because it is a link. Drag it to the Trash. This removes only the link, not your pages. Leave this Finder window open.',
+          'Find "Aelomi". It has a small arrow because it is a link. Drag it to the Trash. This removes only the link, not your pages. Choose View > as Icons. Leave this Finder window open.',
       },
       {
         kind: "folder",
-        text: "In Finder, choose File > New Finder Window (⌘N). Then choose Go > Go to Folder and copy and paste:",
+        text: "Copy this path. In Finder, choose File > New Finder Window (⌘N). Then choose Go > Go to Folder and paste it:",
         path: "/Users/test/Library/Mobile Documents",
         after:
-          'Move the new window so the window from step 1 shows. Drag "Aelomi" onto an empty area of the window from step 1, not onto a folder.',
+          'Move the new window aside so you can see the window from step 1. Drag "Aelomi" onto an empty area of the window from step 1, not onto a folder.',
       },
       {
-        kind: "text",
-        text: 'Check that "Aelomi" is now in the window from step 1, without an arrow.',
+        kind: "folder",
+        text: "Choose Go > Go to Folder and paste:",
+        path: "/Users/test/Library/Application Support/Aelomi",
+        after:
+          "Finder should open your data folder. If it can't find it, choose Edit > Undo in Finder and repeat step 2.",
       },
       { kind: "text", text: "Quit Aelomi and open it again." },
     ],
@@ -71,21 +74,24 @@ test.each([
     steps: [
       {
         kind: "folder",
-        text: "In Finder, choose Go > Go to Folder (⇧⌘G) and copy and paste:",
+        text: "Copy this path. In Finder, choose Go > Go to Folder (⇧⌘G) and paste it:",
         path: "/Users/test/Library/Application Support",
         after:
-          'Find "Aelomi". It has a small arrow because it is a link. Drag it to the Trash. This removes only the link, not your pages. Leave this Finder window open.',
+          'Find "Aelomi". It has a small arrow because it is a link. Drag it to the Trash. This removes only the link, not your pages. Choose View > as Icons. Leave this Finder window open.',
       },
       {
         kind: "folder",
-        text: "In Finder, choose File > New Finder Window (⌘N). Then choose Go > Go to Folder and copy and paste:",
+        text: "Copy this path. In Finder, choose File > New Finder Window (⌘N). Then choose Go > Go to Folder and paste it:",
         path: "/Users/test/Library/CloudStorage/Dropbox/Apps",
         after:
-          'Move the new window so the window from step 1 shows. Drag "Aelomi Notes" onto an empty area of the window from step 1, not onto a folder. Then rename it "Aelomi".',
+          'Move the new window aside so you can see the window from step 1. Drag "Aelomi Notes" onto an empty area of the window from step 1, not onto a folder. Then rename it "Aelomi".',
       },
       {
-        kind: "text",
-        text: 'Check that "Aelomi" is now in the window from step 1, without an arrow.',
+        kind: "folder",
+        text: "Choose Go > Go to Folder and paste:",
+        path: "/Users/test/Library/Application Support/Aelomi",
+        after:
+          "Finder should open your data folder. If it can't find it, choose Edit > Undo in Finder and repeat step 2.",
       },
       { kind: "text", text: "Quit Aelomi and open it again." },
     ],
@@ -146,21 +152,24 @@ test.each([
     steps: [
       {
         kind: "folder",
-        text: "In Finder, choose Go > Go to Folder (⇧⌘G) and copy and paste:",
+        text: "Copy this path. In Finder, choose Go > Go to Folder (⇧⌘G) and paste it:",
         path: "/Users/test/Library/Application Support",
         after:
-          'Find "Aelomi Dev". It has a small arrow because it is a link. Drag it to the Trash. This removes only the link, not your pages. Leave this Finder window open.',
+          'Find "Aelomi Dev". It has a small arrow because it is a link. Drag it to the Trash. This removes only the link, not your pages. Choose View > as Icons. Leave this Finder window open.',
       },
       {
         kind: "folder",
-        text: "In Finder, choose File > New Finder Window (⌘N). Then choose Go > Go to Folder and copy and paste:",
+        text: "Copy this path. In Finder, choose File > New Finder Window (⌘N). Then choose Go > Go to Folder and paste it:",
         path: "/Users/test/Library/Mobile Documents",
         after:
-          'Move the new window so the window from step 1 shows. Drag "Aelomi Dev" onto an empty area of the window from step 1, not onto a folder.',
+          'Move the new window aside so you can see the window from step 1. Drag "Aelomi Dev" onto an empty area of the window from step 1, not onto a folder.',
       },
       {
-        kind: "text",
-        text: 'Check that "Aelomi Dev" is now in the window from step 1, without an arrow.',
+        kind: "folder",
+        text: "Choose Go > Go to Folder and paste:",
+        path: "/Users/test/Library/Application Support/Aelomi Dev",
+        after:
+          "Finder should open your data folder. If it can't find it, choose Edit > Undo in Finder and repeat step 2.",
       },
       { kind: "text", text: "Quit Aelomi and open it again." },
     ],
