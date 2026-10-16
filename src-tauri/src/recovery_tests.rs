@@ -501,7 +501,15 @@ fn unknown_record_versions_and_unreadable_files_require_explicit_creation() {
         if directory {
             fs::create_dir(&home.file().path).unwrap();
         } else {
-            fs::write(&home.file().path, br#"{"version":99,"configured":"/old","resolved":"/cloud","kind":"Override","refused_at_unix_ms":1}"#).unwrap();
+            fs::write(
+                &home.file().path,
+                serde_json::to_vec(&serde_json::json!({
+                    "version": 99, "configured": home.location.path, "resolved": "/cloud",
+                    "kind": "Override", "refused_at_unix_ms": 1
+                }))
+                .unwrap(),
+            )
+            .unwrap();
         }
         let storage = home.open();
         assert_eq!(
