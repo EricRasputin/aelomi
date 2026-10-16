@@ -1,5 +1,7 @@
 # Pending refusal guard, fix round 1 after workspace seeding
 
+Historical evidence only. These scripts change the Mac's appearance and **must not be rerun as is**, per [#95](https://github.com/aelomi/aelomi/issues/95). Follow the current verify-aelomi rules, keep system settings unchanged, and use app theme controls or mock-browser color-scheme emulation for appearance variants.
+
 Source commit `decccf106294a73af247409e291ab773cd368fad`.
 Recorded merge base `7a285d85bca3da5da66990f546471d703850d812` against `origin/main`.
 Verbatim patch-id `b5fa953fc14a2a09baff5892dfce31dd6dd0a84c`.

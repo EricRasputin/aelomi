@@ -1,5 +1,7 @@
 # Settings fix round 2
 
+The lock path in the historical scripts is an old orchestrator-private path. Use `.claude/skills/verify-aelomi/scripts/ui-lock.sh` instead.
+
 This record proves source commit `d422ffce9a3480f2c78d45718276bad24c1aa8e7` for [PR #94](https://github.com/aelomi/aelomi/pull/94).
 The merge base is `7a285d85bca3da5da66990f546471d703850d812`.
 The patch-id is `2115d02a1da4d14b87d4fd879fab66692fe2c024`.

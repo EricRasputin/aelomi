@@ -1,5 +1,7 @@
 # Pending cloud-refusal guard, fix round 3
 
+The lock path in the historical scripts is an old orchestrator-private path. Use `.claude/skills/verify-aelomi/scripts/ui-lock.sh` instead.
+
 Source commit `1926783281ebce819db36ab7a9e7eeb0bc2645a3`.
 Recorded merge base `7a285d85bca3da5da66990f546471d703850d812`.
 Verbatim patch-id `f767ef88d303583fd908f4da94bf610f23adf405`.

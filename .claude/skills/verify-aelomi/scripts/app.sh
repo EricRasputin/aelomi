@@ -11,6 +11,7 @@ usage() {
   cat <<'EOF'
 Usage: app.sh <command> [args]
   launch dev|app [--timeout S]   start the app, wait for "ping seq=1", print the run directory
+  frontmost RUN                  exit 0 only when this run's app PID is frontmost
   doctor RUN                     check that the instance in RUN is worth driving
   tree RUN                       print the web content's accessibility tree
   status RUN                     print the text of the role="status" region
@@ -153,6 +154,16 @@ launch() {
   echo "$RUN"
 }
 
+frontmost() {
+  load "$1"
+  require_app
+  local pid
+  pid=$(osascript -e 'with timeout of 60 seconds
+    tell application "System Events" to get unix id of first process whose frontmost is true
+  end timeout') || return 1
+  [ "$pid" = "$APP_PID" ] || die "frontmost PID $pid is not this run's app PID $APP_PID; send no input."
+}
+
 doctor() {
   load "$1"
   local failed=0 out="$RUN/doctor.txt"
@@ -234,6 +245,7 @@ command=${1:-}
 shift || true
 case $command in
   launch) launch "$@" ;;
+  frontmost) frontmost "$@" ;;
   doctor) doctor "$@" ;;
   tree | status | menus) load "${1:-}"; require_app; ax "$command" "$APP_PID" ;;
   wait-status) load "${1:-}"; require_app; ax wait-status "$APP_PID" "${2:?wait-status needs TEXT}" "${3:-10}" ;;

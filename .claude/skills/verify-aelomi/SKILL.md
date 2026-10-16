@@ -20,10 +20,14 @@ Run every command from the repo root. The examples use `S=.claude/skills/verify-
 
 ## Rules
 
+- Acquire the keyboard lock with `$S/ui-lock.sh acquire <label>` before `app.sh launch`, because a launch takes focus. Hold it before every key, click, menu press, focus change, or transient screenshot. Use a unique run label and release with `$S/ui-lock.sh release <label>` on every success, failure, and interruption path. Build outside the lock and release it between scenarios that need a rebuild.
+- Run `$S/app.sh frontmost "$RUN"` immediately before every key or click, including `press`, `focus`, native menu AXPress, and direct System Events input. It compares the frontmost process PID with the run's app PID. If it fails, send nothing. A process name such as `aelomi` cannot identify the owned instance.
+- Use only `ui-lock.sh` to manage `/tmp/aelomi-ui.lock`. It writes the owner only after its own `mkdir` succeeds, reclaims locks older than 30 minutes, and waits at most 45 minutes. Report a timeout as INCONCLUSIVE. Keep each interactive session under about 20 minutes.
 - Never change the Mac's appearance or any other system setting, even to restore it. The maintainer uses this Mac during verification.
 - If a system setting changes unexpectedly during your run or was left changed by a failed script, report it. Do not restore it. For appearance evidence, capture the current state and name it, even if historical evidence shows another appearance.
-- If macOS shows a permission prompt, do not answer it. Stop and report it.
-- If a required permission is missing or denied, do not grant it. Stop and report it. Signs include an `osascript` error `-1743`, an Apple event that hangs, or a failed doctor System Events check.
+- Never touch an open system prompt. If one appears, run `$S/app.sh cleanup "$RUN"` for every owned run, release the keyboard lock, stop, and report it.
+- If a required permission is missing or denied, run `$S/app.sh cleanup "$RUN"` before you stop, release the lock, and report it. Do not grant permission. Signs include `osascript` error `-1743`, "not allowed assistive access", or a failed doctor System Events check. Limit each Apple event to 60 seconds. If one hangs for 60 seconds, terminate only that owned helper, clean up the run, and stop.
+- Before each variant's launch, run the appearance mapping below. After launch and any app-theme selection, capture an unlabeled check screenshot and inspect it before assigning a light or dark label. Never infer appearance from a filename.
 - For either light or dark captures, use the app's theme controls where the branch has them. SHELL-5 specifies **System**, **Light**, and **Dark** in **Settings**. CMD-8 specifies **Toggle theme** in ⌘K. Label these as app-theme captures. The native menu bar and title bar still follow the Mac's appearance.
 - Alternatively, use the mock browser with Playwright's `page.emulateMedia({ colorScheme: "light" })` or `page.emulateMedia({ colorScheme: "dark" })`. If neither route is available, capture only the current appearance and name it in the evidence.
 
@@ -35,17 +39,37 @@ Run every command from the repo root. The examples use `S=.claude/skills/verify-
 
 ## Launch the real app
 
-To launch the dev build, run:
+Build first without the keyboard lock, for example with `pnpm build` and `cargo build -p aelomi`. Before each variant's launch, map the current Mac appearance without changing it:
 
 ```bash
+MAC_APPEARANCE=$(defaults read -g AppleInterfaceStyle 2>/dev/null || true)
+case "$MAC_APPEARANCE" in
+  Dark) MAC_SCHEME=dark ;;
+  "") MAC_SCHEME=light ;;
+  *) echo "Unrecognized appearance: $MAC_APPEARANCE" >&2; exit 1 ;;
+esac
+printf 'System theme maps to %s\n' "$MAC_SCHEME"
+```
+
+System uses that mapping. An explicit app theme uses its selected Light or Dark value. Confirm either mapping against an unlabeled check screenshot after launch.
+
+To launch the dev build, acquire the lock and install the release trap first. Run the session in a shell that exits on failed commands, such as a subshell with `set -e`:
+
+```bash
+set -e
+LABEL="verify-$$"
+$S/ui-lock.sh acquire "$LABEL"
+trap '$S/ui-lock.sh release "$LABEL"' EXIT
+trap 'exit 1' HUP INT TERM
 RUN=$($S/app.sh launch dev)
+trap '$S/app.sh cleanup "$RUN"; $S/ui-lock.sh release "$LABEL"' EXIT
 ```
 
 `launch dev` runs `pnpm dev:app`, which prints `AELOMI_DEV_PORT=N` and runs `tauri dev` with the UI on port N. `launch` waits for the line `ping seq=1` in the shell log. The UI sends its first `ping` command when it mounts, and the Rust handler prints that line. So the line means the window, the UI, and the IPC round trip are up. `launch` then waits until the web content appears in the accessibility tree, and prints the run directory on stdout, for example `~/.local/state/aelomi-verify/20261011-064618-dev-ik2v`. Pass that directory to every other command.
 
 Each launch sets `AELOMI_RECOVERY_DIR=<run dir>/recovery` unless explicitly supplied. Pass the same recovery directory when relaunching a refused synthetic path. The directory stays outside the data folder.
 
-Each launch sets `AELOMI_DATA_DIR=<run dir>/data`, so every run, dev or release, keeps its data in its own folder and never touches `~/Library/Application Support`. The shell log's first storage line names the resolved folder, for example `storage status=Ready path=/Users/<you>/.local/state/aelomi-verify/<run>/data`. To launch on an existing folder, set the variable yourself. For example, `AELOMI_DATA_DIR=$OLD_RUN/data $S/app.sh launch dev` relaunches on an earlier run's data, or, while that run is still open, logs `storage status=Locked`. Debug builds also read `AELOMI_CLOUD_ROOTS`, a `:`-separated list that replaces `~/Library/Mobile Documents` and `~/Library/CloudStorage`. Point it at a fake folder to prove the cloud folder refusal without touching the real `~/Library`.
+Each launch sets `AELOMI_DATA_DIR=<run dir>/data`, so every run, dev or release, keeps its data in its own folder and never touches `~/Library/Application Support`. The shell log's first storage line names the resolved folder, for example `storage status=Ready path=$HOME/.local/state/aelomi-verify/<run>/data`. To launch on an existing folder, set the variable yourself. For example, `AELOMI_DATA_DIR=$OLD_RUN/data $S/app.sh launch dev` relaunches on an earlier run's data, or, while that run is still open, logs `storage status=Locked`. Debug builds also read `AELOMI_CLOUD_ROOTS`, a `:`-separated list that replaces `~/Library/Mobile Documents` and `~/Library/CloudStorage`. Point it at a fake folder to prove the cloud folder refusal without touching the real `~/Library`.
 
 The first build compiles about 350 crates and took 59 s on an Apple Silicon Mac. Later launches reuse it. `launch` waits up to 900 s. Change the limit with `--timeout S`. It fails early, and prints the end of the log, if the launch process exits, Rust fails to compile, or the app panics.
 
@@ -54,8 +78,14 @@ Each `launch dev` serves the UI on its own free port and records it as `DEV_PORT
 To launch the release build, run:
 
 ```bash
+set -e
 pnpm tauri build --bundles app
+LABEL="verify-$$"
+$S/ui-lock.sh acquire "$LABEL"
+trap '$S/ui-lock.sh release "$LABEL"' EXIT
+trap 'exit 1' HUP INT TERM
 RUN=$($S/app.sh launch app)
+trap '$S/app.sh cleanup "$RUN"; $S/ui-lock.sh release "$LABEL"' EXIT
 ```
 
 `launch app` runs the executable inside `target/release/bundle/macos/Aelomi.app` directly, so its stdout lands in the shell log and its PID is known. `open Aelomi.app` loses both. The release app uses no port, so it can run beside a dev instance. `doctor` fails when a source file is newer than the bundle.
@@ -74,7 +104,7 @@ Run it after launch and whenever a command behaves oddly. It changes nothing, wr
 - For `dev`, a process from this run listens on the run's `DEV_PORT`. For `app`, the bundle is newer than `src/`, `src-tauri/src/`, `crates/`, and `index.html`.
 - The shell log has `ping seq=1`.
 
-If the System Events (Accessibility and Automation) check fails, stop and report as required by the [rules](#rules). A relaunch cannot grant permission. For other failed checks, do not drive the instance. Run cleanup and launch again. Apply the [rules](#rules) if a permission prompt appears during any check.
+If the System Events (Accessibility and Automation) check fails, run cleanup before you stop and report as required by the [rules](#rules). A relaunch cannot grant permission. For other failed checks, do not drive the instance. Run cleanup and launch again. Apply the [rules](#rules) if a permission prompt appears during any check.
 
 ## Drive the real app
 
@@ -82,6 +112,7 @@ If the System Events (Accessibility and Automation) check fails, stop and report
 
 | Command | Effect |
 |---|---|
+| `$S/app.sh frontmost "$RUN"` | Exit 0 only when the frontmost process has this run's app PID. On failure, send no input |
 | `$S/app.sh tree "$RUN"` | Print the web content's accessibility tree |
 | `$S/app.sh status "$RUN"` | Print the text of the `role="status"` region |
 | `$S/app.sh wait-status "$RUN" TEXT [S]` | Wait up to S seconds (default 10) until the status reads TEXT. On timeout, exit 1 and print the last text |
@@ -105,23 +136,31 @@ Use `tree` to find names. In this app, WebKit maps the DOM to these accessibilit
 
 `press` and `focus` match an element's accessibility name or description and skip static text. If nothing matches, they exit 1 and list the named elements.
 
-Prefer `press`. It works while the window is in the background, and it does not take focus from the person at the keyboard. The exception is a window on another Space, which accessibility cannot see. The `ax.js` commands that inspect a window or act on its content then make Aelomi frontmost and wait up to 5 s for its window. Use `focus` and `keys` only to prove a keyboard path. `keys` brings Aelomi to the front and types into the focused element. Tab and Option-Tab did not move focus to the button in this WKWebView, so set focus with `focus` first.
+Prefer `press` for named elements. Although AXPress can act on a background window, require the lock and a successful `frontmost` check before acting. The `ax.js` commands that inspect a window or act on its content then make Aelomi frontmost and wait up to 5 s for its window. Use `focus` and `keys` only to prove a keyboard path. `keys` brings Aelomi to the front and types into the focused element. Tab and Option-Tab did not move focus to the button in this WKWebView, so set focus with `focus` first.
 
 Wait for state with `wait-status`, not `sleep`. The IPC reply arrives after `press` returns.
 
 This example proves the IPC round trip from [`features/ipc-status.md`](features/ipc-status.md):
 
 ```bash
+(
+set -e
 S=.claude/skills/verify-aelomi/scripts
+LABEL="ipc-proof-$$"
+$S/ui-lock.sh acquire "$LABEL"
+trap '$S/ui-lock.sh release "$LABEL"' EXIT
+trap 'exit 1' HUP INT TERM
 RUN=$($S/app.sh launch dev)
+trap '$S/app.sh cleanup "$RUN"; $S/ui-lock.sh release "$LABEL"' EXIT
 $S/app.sh doctor "$RUN"
 $S/app.sh wait-status "$RUN" "IPC ok · core 0.1.0 · seq 1"
 $S/app.sh screenshot "$RUN" before
+$S/app.sh frontmost "$RUN"
 $S/app.sh press "$RUN" "Ping again"
 $S/app.sh wait-status "$RUN" "IPC ok · core 0.1.0 · seq 2"
 $S/app.sh screenshot "$RUN" after
 grep '^ping seq=' "$RUN/shell.log"
-$S/app.sh cleanup "$RUN"
+)
 ```
 
 The `0.1.0` is `aelomi_core::VERSION`, the workspace version in `Cargo.toml`. If the version changes, read the current text with `status` first.
@@ -202,9 +241,9 @@ Hold every proof to these standards:
 $S/app.sh cleanup "$RUN"
 ```
 
-To quit the way a user does, run `$S/app.sh keys "$RUN" q command` and wait for the app PID to exit. The shell log then shows `quit flush via=ExitRequested pending=[]`. `cleanup` is not a quit: its SIGTERM skips that flush.
+With the lock held, run `$S/app.sh frontmost "$RUN"` first. If it succeeds, run `$S/app.sh keys "$RUN" q command` and wait for the app PID to exit. The shell log then shows `quit flush via=ExitRequested pending=[]`. `cleanup` is not a quit: its SIGTERM skips that flush.
 
-`cleanup` stops every process the launch started: pnpm, the `dev:app` launcher, the Tauri CLI, Vite, and the app. It reads the process list that `launch` recorded, and it signals a PID only while that PID still runs the recorded command. It sends SIGTERM, and SIGKILL to anything left after 10 s. It keeps the run directory and lists its files. Running it twice is safe. Run it after every attempt, including a failed launch, before you launch again.
+`cleanup` stops every process the launch started: pnpm, the `dev:app` launcher, the Tauri CLI, Vite, and the app. It reads the process list that `launch` recorded, and it signals a PID only while that PID still runs the recorded command. It sends SIGTERM, and SIGKILL to anything left after 10 s. It keeps the run directory and lists its files. Running it twice is safe. Run it after every attempt, including a failed launch, before you launch again. For a failed launch, use the run directory printed in its error. Release the keyboard lock after cleanup.
 
 Never kill Aelomi, Vite, or node by name. Another agent or the maintainer may be running their own instance.
 
@@ -212,6 +251,7 @@ Never kill Aelomi, Vite, or node by name. Another agent or the maintainer may be
 
 ## Helpers
 
+- `scripts/ui-lock.sh` manages the keyboard lock and requires Python 3. `status` prints `free` or the owner label. For isolated tests, set `AELOMI_UI_LOCK` to a temporary path and optionally shorten `AELOMI_UI_LOCK_WAIT_SECONDS`. A persistent sibling `.guard` file serializes filesystem transitions. Its advisory lock releases automatically if a helper exits.
 - `scripts/app.sh` drives the real app. Run `$S/app.sh` with no arguments for usage.
 - `scripts/ax.js` is the JXA script behind `app.sh`. It takes a PID instead of a run directory, for example `osascript -l JavaScript $S/ax.js press <pid> "Ping again"`. Run it with no arguments for usage.
 - `scripts/mock-drive.mjs` runs one mock-browser flow. Run it with `--help` for usage.
