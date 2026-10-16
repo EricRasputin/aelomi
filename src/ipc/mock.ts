@@ -490,10 +490,8 @@ export const commands = {
     )
       return { status: "error", error: "Unavailable" };
     storage.status = "Ready";
-    if (window.__aelomiMockSetup?.recovery) {
-      indexStatus = "Ready";
-      await events.indexStatusChanged.emit("Ready");
-    }
+    indexStatus = "Ready";
+    await events.indexStatusChanged.emit("Ready");
     quit.frontendReady = true;
     return { status: "ok", data: "Ready" };
   },
