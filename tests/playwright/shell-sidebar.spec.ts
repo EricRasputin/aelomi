@@ -492,75 +492,122 @@ test("TREE-7 whitespace titles stay named and IME confirmation Return keeps titl
   ).toBe("   ");
 });
 
-test("TREE-1 a retrying create keeps its returned route until the record arrives and then focuses the title", async ({
+test("TREE-1 a create pending through a long outage navigates only after durable ok", async ({
   page,
 }) => {
   await page.addInitScript(() => {
     window.__aelomiMockSetup = { pages: [{ id: "a", title: "A" }] };
   });
   await page.goto("/page/a");
-  await expect(
-    page.getByRole("textbox", { name: "Page title", exact: true }),
-  ).toHaveValue("A");
+  const title = page.getByRole("textbox", { name: "Page title", exact: true });
+  await expect(title).toHaveValue("A");
+  await page.clock.install();
   await page.evaluate(() =>
     window.__aelomiMock?.storage.refuseRecords({
       Io: "synthetic read failure",
     }),
   );
-  await page.keyboard.press("Meta+n");
-  await expect
-    .poll(async () =>
-      page.evaluate(
-        () =>
-          window.__aelomiMock?.calls.find(
-            (call) => call.command === "pageCreate",
-          )?.args[1],
-      ),
-    )
-    .toBeTruthy();
-  const pageId = await page.evaluate(
-    () =>
-      window.__aelomiMock?.calls.find((call) => call.command === "pageCreate")
-        ?.args[1],
+  await page.getByRole("button", { name: "New page", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText(
+    "Changes aren't being saved",
   );
-  expect(typeof pageId).toBe("string");
-  await expect(page).toHaveURL(new RegExp(`/page/${String(pageId)}$`));
-  await expect(
-    page.getByRole("region", { name: "Creating page" }),
-  ).toContainText("Aelomi will keep trying");
-  await expect(
-    page.getByText("A new page couldn't be created. Try again.", {
-      exact: true,
-    }),
-  ).toHaveCount(0);
+  await page.clock.runFor(15_000);
+  const pending = page.getByRole("button", { name: "New page", exact: true });
+  await expect(pending).toBeDisabled();
+  await expect(pending).toHaveAttribute("aria-busy", "true");
+  await expect(page).toHaveURL(/\/page\/a$/);
+  await expect(title).toHaveValue("A");
   expect(
     await page.evaluate(() =>
       window.__aelomiMock?.workspace.tree().pages.map((p) => p.title),
     ),
   ).toEqual(["A"]);
+  await page.evaluate(() => {
+    window.__aelomiMock?.storage.failWrites(true);
+    window.__aelomiMock?.storage.refuseRecords(null);
+  });
+  await page.clock.runFor(6_000);
+  expect(
+    await page.evaluate(() =>
+      window.__aelomiMock?.workspace.tree().pages.map((p) => p.title),
+    ),
+  ).toEqual(["A", ""]);
+  await expect(page).toHaveURL(/\/page\/a$/);
+  await expect(pending).toBeDisabled();
+  const created = await page.evaluate(
+    () =>
+      window.__aelomiMock?.workspace.tree().pages.find((p) => p.id !== "a")?.id,
+  );
   expect(
     await page.evaluate(
       (id) =>
         window.__aelomiMock?.calls.filter(
-          (call) => call.command === "docLoad" && call.args[0] === id,
-        ),
-      pageId,
+          (call) =>
+            (call.command === "docLoad" || call.command === "docAppend") &&
+            call.args[0] === id,
+        ).length,
+      created,
     ),
-  ).toEqual([]);
-  await page.evaluate(() => window.__aelomiMock?.storage.refuseRecords(null));
-  const title = page.getByRole("textbox", { name: "Page title", exact: true });
+  ).toBe(0);
+  await page.evaluate(() => window.__aelomiMock?.storage.failWrites(false));
+  await page.clock.runFor(6_000);
+  await expect(page).toHaveURL(new RegExp(`/page/${created}$`));
   await expect(title).toBeFocused();
-  await page.keyboard.type("Created after retry");
+  await expect(title).toHaveValue("");
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await page.keyboard.type("Created after recovery");
   await expect
     .poll(() =>
       page.evaluate(() =>
         window.__aelomiMock?.workspace.tree().pages.map((p) => p.title),
       ),
     )
-    .toEqual(["A", "Created after retry"]);
+    .toEqual(["A", "Created after recovery"]);
 });
 
-test("CMD-6 final create and trash errors show failures while a retrying trash waits for source recovery", async ({
+test("TREE-1 repeated New page buttons, shortcut and menu while pending create exactly one page", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const empty = page.getByRole("region", { name: "No page open" });
+  await expect(empty).toBeVisible();
+  await page.evaluate(() =>
+    window.__aelomiMock?.storage.refuseRecords({ Io: "synthetic outage" }),
+  );
+  const buttons = page.getByRole("button", { name: "New page", exact: true });
+  await empty.getByRole("button", { name: "New page" }).click();
+  await expect(buttons.nth(0)).toBeDisabled();
+  await expect(buttons.nth(1)).toBeDisabled();
+  await expect(buttons.nth(0)).toHaveAttribute("aria-busy", "true");
+  await expect(buttons.nth(1)).toHaveAttribute("aria-busy", "true");
+  for (let i = 0; i < 3; i++) {
+    await buttons.nth(i % 2).click({ force: true });
+    await page.keyboard.press("Meta+n");
+    await page.evaluate(() => window.__aelomiMock?.menu.activate("newPage"));
+  }
+  await expect(empty).toBeVisible();
+  await page.evaluate(() => window.__aelomiMock?.storage.refuseRecords(null));
+  const title = page.getByRole("textbox", { name: "Page title", exact: true });
+  await expect(title).toBeFocused();
+  await expect(title).toHaveValue("");
+  expect(
+    await page.evaluate(() =>
+      window.__aelomiMock?.workspace.tree().pages.map((p) => p.title),
+    ),
+  ).toEqual([""]);
+  expect(
+    await page.evaluate(
+      () =>
+        new Set(
+          window.__aelomiMock?.calls
+            .filter((call) => call.command === "pageCreate")
+            .map((call) => call.args[1]),
+        ).size,
+    ),
+  ).toBe(1);
+});
+
+test("CMD-6 final create and trash errors show failures while a pending trash waits for durable ok", async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -610,7 +657,20 @@ test("CMD-6 final create and trash errors show failures while a retrying trash w
   await expect(
     page.getByRole("textbox", { name: "Page title", exact: true }),
   ).toHaveValue("A");
-  await page.evaluate(() => window.__aelomiMock?.storage.refuseRecords(null));
+  await page.evaluate(() => {
+    window.__aelomiMock?.storage.failWrites(true);
+    window.__aelomiMock?.storage.refuseRecords(null);
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.__aelomiMock?.workspace.tree().pages.length),
+    )
+    .toBe(0);
+  await expect(page).toHaveURL(/\/page\/a$/);
+  await expect(
+    page.getByRole("textbox", { name: "Page title", exact: true }),
+  ).toHaveValue("A");
+  await page.evaluate(() => window.__aelomiMock?.storage.failWrites(false));
   await expect(
     page.getByRole("region", { name: "No page open" }),
   ).toBeVisible();
@@ -619,7 +679,7 @@ test("CMD-6 final create and trash errors show failures while a retrying trash w
   ).toEqual([]);
 });
 
-test("TREE-1 a retained create that becomes terminal returns to the existing page with a final failure", async ({
+test("TREE-1 a pending create ending in terminal error keeps the existing page and failure banner", async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -636,8 +696,9 @@ test("TREE-1 a retained create that becomes terminal returns to the existing pag
   );
   await page.keyboard.press("Meta+n");
   await expect(
-    page.getByRole("region", { name: "Creating page" }),
-  ).toBeVisible();
+    page.getByRole("button", { name: "New page", exact: true }),
+  ).toBeDisabled();
+  await expect(page).toHaveURL(/\/page\/a$/);
   await page.evaluate(() =>
     window.__aelomiMock?.storage.refuseRecords({
       Internal: "synthetic final failure",

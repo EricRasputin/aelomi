@@ -25,6 +25,7 @@ Preconditions: launch only through app.sh with a fresh synthetic `AELOMI_DATA_DI
 
 - **Initial state.** Run `$S/app.sh doctor "$RUN"`, then `tree`. Expect Sidebar, Getting started, Page title, Page body, and the IPC status landmark.
 - **Create and rename.** Press New page with `press`, then type `D1 notes` with `keys`. Expect Page title and the sidebar row to read D1 notes. Capture before and after.
+- **Create outage.** On the synthetic data folder, record its exact permission mode, then remove write permission. Press New page. Expect the save-failure banner, the current page still open, and New page disabled with a busy state. Press ⌘N again. Restore the recorded mode on every exit path. Expect exactly one new page to open with Page title focused after recovery.
 - **Title Return.** Send Return with the native key-code helper. Type `body token`. Expect Page body to contain body token.
 - **Toggle.** Run `$S/app.sh keys "$RUN" '\' command` twice. Capture the hidden and restored states. The editor occupies the released width.
 - **Trash.** On a folder containing only one active page, open the palette with `$S/app.sh keys "$RUN" k command`, type Move to trash, and send Return. Expect No page open and New page. Press New page and type a title without focusing another field. Expect the title and row to update.
@@ -45,4 +46,4 @@ Preconditions: launch only through app.sh with a fresh synthetic `AELOMI_DATA_DI
 - The stress picker exists only in mock builds. It clears synthetic mock data when changing datasets.
 - Native proof uses real buttons and keys. Read settings afterward to confirm persistence.
 
-- A retrying New page navigates to the returned page ID and shows Creating page while its record is absent. On recovery, its title becomes focused. A retrying Move to trash waits for source change without a final failure message. Final error replies show the action failure and preserve the source. Both use #84's record-command store and typed results; D1 adds no observer API.
+- Pending New page leaves the current page or empty state visible. Every New page control stays disabled and busy until the final result. Recovery opens the new page with its title focused. Pending Move to trash keeps the page open until durable success. A final error keeps the page open and shows a failure. The banner includes retained operations and terminal failures.

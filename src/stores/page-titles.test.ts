@@ -39,12 +39,18 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-test("TREE-7 a retained rename stays a draft without an error until retry acknowledgement", async () => {
-  vi.spyOn(transport, "pageRename").mockResolvedValueOnce({
-    status: "error",
-    error: { Io: "read failed" },
-  });
-  await usePageTitlesStore.getState().rename("a", "Retried title");
+test("TREE-7 a rename pending through an outage keeps its draft without an error then clears on ok", async () => {
+  const native = transport.pageRename;
+  let failing = true;
+  vi.spyOn(transport, "pageRename").mockImplementation((id, title) =>
+    failing
+      ? Promise.resolve({ status: "error", error: { Io: "read failed" } })
+      : native(id, title),
+  );
+  const rename = usePageTitlesStore.getState().rename("a", "Retried title");
+  await vi.waitFor(() =>
+    expect(useRecordCommandStore.getState().retained.size).toBe(1),
+  );
   expect(usePageTitlesStore.getState().drafts.get("a")?.error).toBe(null);
   expect([...useRecordCommandStore.getState().retained.values()]).toMatchObject(
     [{ op: "rename", pageId: "a", attempts: 1 }],
@@ -52,6 +58,12 @@ test("TREE-7 a retained rename stays a draft without an error until retry acknow
   expect(usePageTitlesStore.getState().drafts.get("a")?.title).toBe(
     "Retried title",
   );
+  expect(usePageTitlesStore.getState().drafts.get("a")?.result).toBe(null);
+  expect(window.__aelomiMock?.workspace.tree().pages[0]?.title).toBe(
+    "Original",
+  );
+  failing = false;
+  await rename;
   await vi.waitFor(() =>
     expect(usePageTitlesStore.getState().drafts.size).toBe(0),
   );
@@ -127,7 +139,7 @@ test("TREE-7 a matching source title stays a draft until the retained operation 
         finish = done;
       }),
   );
-  await usePageTitlesStore.getState().rename("a", "Durable title");
+  const rename = usePageTitlesStore.getState().rename("a", "Durable title");
   try {
     await vi.waitFor(() =>
       expect(
@@ -141,8 +153,39 @@ test("TREE-7 a matching source title stays a draft until the retained operation 
   } finally {
     finish({ status: "ok", data: true });
   }
+  await rename;
   await vi.waitFor(() =>
     expect(usePageTitlesStore.getState().drafts.size).toBe(0),
   );
   expect(useRecordCommandStore.getState().retained.size).toBe(0);
+});
+
+test("TREE-7 a pending rename ending in a terminal error keeps the exact text and failure", async () => {
+  vi.spyOn(transport, "pageRename")
+    .mockResolvedValueOnce({ status: "error", error: { Io: "read failed" } })
+    .mockResolvedValueOnce({
+      status: "error",
+      error: { Internal: "planner failed" },
+    });
+  const rename = usePageTitlesStore.getState().rename("a", "未保存 👩🏽‍💻");
+  await vi.waitFor(() =>
+    expect(useRecordCommandStore.getState().retained.size).toBe(1),
+  );
+  expect(usePageTitlesStore.getState().drafts.get("a")).toMatchObject({
+    title: "未保存 👩🏽‍💻",
+    result: null,
+    error: null,
+  });
+  await rename;
+  expect(usePageTitlesStore.getState().drafts.get("a")).toMatchObject({
+    title: "未保存 👩🏽‍💻",
+    result: { status: "error", error: { Internal: "planner failed" } },
+    error: "This title couldn't be changed. Your text is kept here.",
+  });
+  expect(window.__aelomiMock?.workspace.tree().pages[0]?.title).toBe(
+    "Original",
+  );
+  expect([...useRecordCommandStore.getState().failed.values()]).toMatchObject([
+    { op: "rename", pageId: "a", error: { Internal: "planner failed" } },
+  ]);
 });

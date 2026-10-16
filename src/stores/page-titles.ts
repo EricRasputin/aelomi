@@ -3,7 +3,6 @@ import { commands, type RecordCommandResult } from "../ipc";
 import { commandsAccepted } from "../ipc/pending-commands";
 import { usePageTreeStore } from "./page-tree";
 import { useQuitStore } from "./quit";
-import { useRecordCommandStore } from "./record-commands";
 
 type Draft = {
   title: string;
@@ -54,12 +53,8 @@ function reconcile() {
   const drafts = new Map(current);
   for (const [pageId, draft] of current) {
     const result = draft.result;
-    const acknowledged =
-      result?.status === "ok" ||
-      (result?.status === "retrying" &&
-        !useRecordCommandStore.getState().retained.has(result.operationId));
     if (
-      acknowledged &&
+      result?.status === "ok" &&
       source.kind === "ready" &&
       source.byId.get(pageId)?.title === draft.title
     ) {
@@ -77,7 +72,6 @@ function reconcile() {
 }
 
 usePageTreeStore.subscribe(reconcile);
-useRecordCommandStore.subscribe(reconcile);
 
 export function usePageTitle(pageId: string) {
   const title = usePageTreeStore((state) =>

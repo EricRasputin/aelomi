@@ -6,6 +6,7 @@ import { newPage } from "../shell/use-page-commands";
 import { usePageTitle } from "../stores/page-titles";
 import { displayTitle, usePageTreeStore } from "../stores/page-tree";
 import { canEdit, useQuitStore } from "../stores/quit";
+import { useRecordCommandStore } from "../stores/record-commands";
 import { useShellStore } from "../stores/shell";
 import { useTreeExpansionStore } from "../stores/tree-expansion";
 
@@ -82,12 +83,15 @@ function PageRow({
 
 export function NewPageButton() {
   const editable = useQuitStore(canEdit);
-  const creating = useShellStore((state) => state.creating);
+  const creating = useRecordCommandStore((state) =>
+    state.pendingCreates.has(null),
+  );
   const ready = usePageTreeStore((state) => state.source.kind === "ready");
   return (
     <Button
       className="shell-button"
       disabled={!editable || !ready || creating}
+      aria-busy={creating}
       onClick={newPage}
     >
       New page

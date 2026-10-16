@@ -7,8 +7,7 @@ type ShellStore = {
   activePageId: string | null;
   focusRequest: FocusRequest | null;
   message: string | null;
-  creating: boolean;
-  pendingCreation: { pageId: string; operationId: string } | null;
+  trashRequest: { pageId: string; status: "pending" | "error" } | null;
   toggleSidebar: () => void;
   requestFocus: (request: FocusRequest) => void;
 };
@@ -18,8 +17,7 @@ export const useShellStore = create<ShellStore>((set) => ({
   activePageId: null,
   focusRequest: null,
   message: null,
-  creating: false,
-  pendingCreation: null,
+  trashRequest: null,
   toggleSidebar: () =>
     set((state) => ({ sidebarVisible: !state.sidebarVisible })),
   requestFocus: (focusRequest) => set({ focusRequest }),

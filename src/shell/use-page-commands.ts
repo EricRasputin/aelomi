@@ -6,31 +6,11 @@ import { commands } from "../ipc";
 import { usePageTreeStore } from "../stores/page-tree";
 import { usePaletteStore } from "../stores/palette";
 import { acceptsUserCommands, canEdit, useQuitStore } from "../stores/quit";
-import { useRecordCommandStore } from "../stores/record-commands";
+import { pendingCreate } from "../stores/record-commands";
 import { useShellStore } from "../stores/shell";
 
 export function usePageCommands() {
   const navigate = useNavigate();
-  const pendingCreation = useShellStore((state) => state.pendingCreation);
-  const retained = useRecordCommandStore((state) => state.retained);
-  useEffect(() => {
-    if (!pendingCreation || retained.has(pendingCreation.operationId)) return;
-    let current = true;
-    void usePageTreeStore
-      .getState()
-      .refresh()
-      .then((source) => {
-        if (!current || source.kind !== "ready") return;
-        if (!source.byId.has(pendingCreation.pageId))
-          useShellStore.setState({
-            pendingCreation: null,
-            message: "A new page couldn't be created. Try again.",
-          });
-      });
-    return () => {
-      current = false;
-    };
-  }, [pendingCreation, retained]);
   const open = useCallback(
     (pageId: string, target: "body" | "title" = "body") => {
       useShellStore.getState().requestFocus({ pageId, target });
@@ -61,34 +41,22 @@ export function usePageCommands() {
         },
       }),
       commandDispatcher.register("newPage", {
-        enabled: () => ready() && !useShellStore.getState().creating,
+        enabled: () => ready() && !pendingCreate(null),
         run: () => {
           if (usePaletteStore.getState().open)
             flushSync(() => usePaletteStore.getState().hide());
-          useShellStore.setState({ creating: true, message: null });
+          useShellStore.setState({ message: null });
           void (async () => {
             try {
               const reply = await commands.pageCreate(null);
               if (reply.status === "error")
                 throw new Error(JSON.stringify(reply.error));
-              if (reply.status === "retrying") {
-                useShellStore.setState({
-                  pendingCreation: {
-                    pageId: reply.pageId,
-                    operationId: reply.operationId,
-                  },
-                });
-                open(reply.pageId, "title");
-              } else {
-                await usePageTreeStore.getState().refresh();
-                open(reply.data, "title");
-              }
+              await usePageTreeStore.getState().refresh();
+              open(reply.data, "title");
             } catch {
               useShellStore.setState({
                 message: "A new page couldn't be created. Try again.",
               });
-            } finally {
-              useShellStore.setState({ creating: false });
             }
           })();
         },
@@ -99,6 +67,7 @@ export function usePageCommands() {
           const { activePageId } = useShellStore.getState();
           return (
             ready() &&
+            useShellStore.getState().trashRequest?.status !== "pending" &&
             activePageId !== null &&
             source.kind === "ready" &&
             source.byId.has(activePageId)
@@ -107,20 +76,24 @@ export function usePageCommands() {
         run: () => {
           const { activePageId } = useShellStore.getState();
           if (!activePageId) return;
-          useShellStore.setState({ message: null });
-          void commands
-            .pageTrash(activePageId)
-            .then((reply) => {
+          useShellStore.setState({
+            message: null,
+            trashRequest: { pageId: activePageId, status: "pending" },
+          });
+          void (async () => {
+            try {
+              const reply = await commands.pageTrash(activePageId);
               if (reply.status === "error")
-                useShellStore.setState({
-                  message: "This page couldn't be moved to trash. Try again.",
-                });
-            })
-            .catch(() =>
+                throw new Error(JSON.stringify(reply.error));
+              await usePageTreeStore.getState().refresh();
+              useShellStore.setState({ trashRequest: null });
+            } catch {
               useShellStore.setState({
                 message: "This page couldn't be moved to trash. Try again.",
-              }),
-            );
+                trashRequest: { pageId: activePageId, status: "error" },
+              });
+            }
+          })();
         },
       }),
     ];
