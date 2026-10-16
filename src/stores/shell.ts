@@ -2,26 +2,12 @@ import { create } from "zustand";
 
 type FocusRequest = { pageId: string; target: "title" | "body" | "bodyStart" };
 
-export type CreateIntent = {
-  originPageId: string | null;
-  existingPageIds: ReadonlySet<string>;
-  editorFocus: number;
-  title: string;
-  source: "button" | "keyboard" | "menu" | "palette";
-  stage:
-    | { kind: "pending" }
-    | { kind: "opening"; pageId: string }
-    | { kind: "failed" };
-};
-
 type ShellStore = {
   sidebarVisible: boolean;
   activePageId: string | null;
   focusRequest: FocusRequest | null;
   message: string | null;
-  createIntent: CreateIntent | null;
-  editorFocus: number;
-  revealedPageId: string | null;
+  trashed: ReadonlySet<string>;
   trashRequest: {
     pageId: string;
     affected: ReadonlySet<string>;
@@ -36,9 +22,7 @@ export const useShellStore = create<ShellStore>((set) => ({
   activePageId: null,
   focusRequest: null,
   message: null,
-  createIntent: null,
-  editorFocus: 0,
-  revealedPageId: null,
+  trashed: new Set(),
   trashRequest: null,
   toggleSidebar: () =>
     set((state) => ({ sidebarVisible: !state.sidebarVisible })),

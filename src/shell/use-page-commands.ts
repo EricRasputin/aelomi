@@ -2,33 +2,58 @@ import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect } from "react";
 import { flushSync } from "react-dom";
 import { commandDispatcher } from "../command-dispatcher";
-import { pageTitleHistory } from "../editor/field-history";
 import { commands } from "../ipc";
-import { trackCommand } from "../ipc/pending-commands";
 import { usePageTitlesStore } from "../stores/page-titles";
 import { usePageTreeStore } from "../stores/page-tree";
 import { usePaletteStore } from "../stores/palette";
-import { acceptsUserCommands, canEdit, useQuitStore } from "../stores/quit";
-import { pendingCreate } from "../stores/record-commands";
+import { canEdit, useQuitStore } from "../stores/quit";
 import { useShellStore } from "../stores/shell";
+import {
+  createNewPage,
+  forgetNewPage,
+  retryNewPage,
+  useNewPagesStore,
+} from "./new-pages";
 import { subtreeIds } from "./page-navigation";
-import { canOpenPage } from "./page-opening";
+import { bodyReady, canOpenPage, pagePresence } from "./page-presence";
 
-export function usePageCommands() {
+export function useOpenPage() {
   const navigate = useNavigate();
   const open = useCallback(
-    (pageId: string, target: "body" | "title" = "body") => {
+    (
+      pageId: string,
+      target: "body" | "title" = "body",
+      search: { block?: string } = {},
+    ) => {
       if (!canOpenPage(pageId)) return;
-      useShellStore.setState({ revealedPageId: null });
-      useShellStore.getState().requestFocus({ pageId, target });
-      void navigate({ to: "/page/$pageId", params: { pageId }, search: {} });
+      for (const [id, stage] of useNewPagesStore.getState().pages) {
+        if (
+          id !== pageId &&
+          stage === "failed" &&
+          !usePageTitlesStore.getState().drafts.get(id)?.title
+        )
+          forgetNewPage(id);
+      }
+      flushSync(() =>
+        useShellStore.setState({
+          activePageId: pageId,
+          focusRequest:
+            target === "body" && !bodyReady(pagePresence(pageId))
+              ? null
+              : { pageId, target },
+          message: null,
+        }),
+      );
+      void navigate({ to: "/page/$pageId", params: { pageId }, search });
     },
     [navigate],
   );
+  return open;
+}
+
+export function usePageCommands() {
+  const open = useOpenPage();
   useEffect(() => {
-    const ready = () =>
-      canEdit(useQuitStore.getState()) &&
-      usePageTreeStore.getState().source.kind === "ready";
     const unregister = [
       commandDispatcher.register("toggleSidebar", {
         run: () => {
@@ -48,78 +73,22 @@ export function usePageCommands() {
         },
       }),
       commandDispatcher.register("newPage", {
-        enabled: () =>
-          ready() &&
-          !pendingCreate(null) &&
-          useShellStore.getState().createIntent?.stage.kind !== "opening",
-        run: (context) => {
+        enabled: newPageEnabled,
+        run: () => {
           if (usePaletteStore.getState().open)
             flushSync(() => usePaletteStore.getState().hide());
-          const shell = useShellStore.getState();
-          const { source } = usePageTreeStore.getState();
-          const intent = {
-            originPageId: shell.activePageId,
-            existingPageIds: new Set(
-              source.kind === "ready" ? source.byId.keys() : [],
-            ),
-            editorFocus: shell.editorFocus,
-            title:
-              shell.createIntent?.stage.kind === "failed"
-                ? shell.createIntent.title
-                : "",
-            source: context.source,
-            stage: { kind: "pending" as const },
-          };
-          flushSync(() =>
-            useShellStore.setState({ message: null, createIntent: intent }),
-          );
-          void trackCommand(
-            (async () => {
-              try {
-                const reply = await commands.pageCreate(null);
-                if (reply.status === "error")
-                  throw new Error(JSON.stringify(reply.error));
-                await usePageTreeStore.getState().refresh();
-                const buffered =
-                  useShellStore.getState().createIntent?.title ?? "";
-                pageTitleHistory(reply.data, "").record(buffered);
-                useShellStore.setState((state) => ({
-                  createIntent: state.createIntent && {
-                    ...state.createIntent,
-                    stage: { kind: "opening", pageId: reply.data },
-                  },
-                }));
-                if (buffered)
-                  await usePageTitlesStore
-                    .getState()
-                    .rename(reply.data, buffered);
-                const current = useShellStore.getState();
-                const stillHere =
-                  current.activePageId === intent.originPageId &&
-                  current.editorFocus === intent.editorFocus;
-                if (
-                  stillHere &&
-                  acceptsUserCommands(useQuitStore.getState().decision)
-                ) {
-                  open(reply.data, "title");
-                } else {
-                  useShellStore.setState({
-                    createIntent: null,
-                    revealedPageId: reply.data,
-                    message: "New page created.",
-                  });
-                }
-              } catch {
-                useShellStore.setState((state) => ({
-                  createIntent: state.createIntent && {
-                    ...state.createIntent,
-                    stage: { kind: "failed" },
-                  },
-                  message: "A new page couldn't be created. Try again.",
-                }));
-              }
-            })(),
-          );
+          const current = useShellStore.getState().activePageId;
+          const presence = current ? pagePresence(current) : null;
+          let id: string;
+          if (
+            current &&
+            presence?.kind === "new" &&
+            !usePageTitlesStore.getState().drafts.get(current)?.title
+          ) {
+            id = current;
+            if (presence.stage === "failed") retryNewPage(id);
+          } else id = createNewPage();
+          open(id, "title");
         },
       }),
       commandDispatcher.register("trashPage", {
@@ -127,11 +96,11 @@ export function usePageCommands() {
           const { source } = usePageTreeStore.getState();
           const { activePageId } = useShellStore.getState();
           return (
-            ready() &&
+            newPageEnabled() &&
             useShellStore.getState().trashRequest?.status !== "pending" &&
             activePageId !== null &&
             source.kind === "ready" &&
-            source.byId.has(activePageId)
+            pagePresence(activePageId).kind === "listed"
           );
         },
         run: () => {
@@ -149,10 +118,14 @@ export function usePageCommands() {
           void (async () => {
             try {
               const reply = await commands.pageTrash(activePageId);
-              if (reply.status === "error")
+              if (reply.status === "error" && reply.error === "Abandoned")
+                return;
+              if (reply.status === "error" && reply.error !== "NotActive")
                 throw new Error(JSON.stringify(reply.error));
-              await usePageTreeStore.getState().refresh();
-              useShellStore.setState({ trashRequest: null });
+              useShellStore.setState((state) => ({
+                trashed: new Set([...state.trashed, ...affected]),
+                trashRequest: null,
+              }));
             } catch {
               useShellStore.setState({
                 message: "This page couldn't be moved to trash. Try again.",
@@ -175,15 +148,16 @@ export function usePageCommands() {
 }
 
 export function newPage() {
-  if (!acceptsUserCommands(useQuitStore.getState().decision)) {
-    useShellStore.setState({
-      message: "Aelomi is closing. Keep the app open to create a page.",
-    });
-    return;
-  }
   commandDispatcher.dispatch("newPage", {
     source: "button",
     target: document.activeElement,
     isComposing: false,
   });
+}
+
+export function newPageEnabled() {
+  return (
+    canEdit(useQuitStore.getState()) &&
+    usePageTreeStore.getState().source.kind === "ready"
+  );
 }

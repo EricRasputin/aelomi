@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { commands } from "../ipc";
 import { installMock, commands as transport } from "../ipc/mock";
 import { drainCommands, setCommandAdmission } from "../ipc/pending-commands";
-import { usePageTitlesStore } from "./page-titles";
+import { decideTitle, usePageTitlesStore } from "./page-titles";
 import { connectPageTreeEvents, usePageTreeStore } from "./page-tree";
 import { useQuitStore } from "./quit";
 import { useRecordCommandStore } from "./record-commands";
@@ -115,7 +115,8 @@ test("TREE-7 a final rename refusal keeps the draft and shows a failure", async 
     status: "error",
     error: "NotActive",
   });
-  await usePageTitlesStore.getState().rename("a", "Unsaved title");
+  expect(usePageTitlesStore.getState().rename("a", "Unsaved title")).toBe(null);
+  await drainCommands();
   expect(usePageTitlesStore.getState().drafts.get("a")).toMatchObject({
     title: "Unsaved title",
     error: "This title couldn't be changed. Your text is kept here.",
@@ -167,7 +168,7 @@ test("TREE-7 a pending rename ending in a terminal error keeps the exact text an
       status: "error",
       error: { Internal: "planner failed" },
     });
-  const rename = usePageTitlesStore.getState().rename("a", "未保存 👩🏽‍💻");
+  usePageTitlesStore.getState().rename("a", "未保存 👩🏽‍💻");
   await vi.waitFor(() =>
     expect(useRecordCommandStore.getState().retained.size).toBe(1),
   );
@@ -176,7 +177,11 @@ test("TREE-7 a pending rename ending in a terminal error keeps the exact text an
     result: null,
     error: null,
   });
-  await rename;
+  await vi.waitFor(() =>
+    expect(usePageTitlesStore.getState().drafts.get("a")?.result?.status).toBe(
+      "error",
+    ),
+  );
   expect(usePageTitlesStore.getState().drafts.get("a")).toMatchObject({
     title: "未保存 👩🏽‍💻",
     result: { status: "error", error: { Internal: "planner failed" } },
@@ -232,4 +237,60 @@ test("TREE-7 the latest coalesced rename stays pending behind another page's ret
   expect(
     window.__aelomiMock?.workspace.tree().pages.map((page) => page.title),
   ).toEqual(["Latest title", "Other recovered"]);
+});
+
+test("TREE-7 title admission shares one rule for listed, new, closing and trashed pages", () => {
+  const input = {
+    registered: true,
+    accepted: true,
+    decision: "open",
+    trashing: false,
+  } as const;
+  expect([
+    decideTitle({ ...input, presence: { kind: "new", stage: "creating" } }),
+    decideTitle({ ...input, presence: { kind: "new", stage: "created" } }),
+    decideTitle({ ...input, presence: { kind: "new", stage: "failed" } }),
+    decideTitle({ ...input, presence: { kind: "listed", fresh: false } }),
+    decideTitle({ ...input, presence: { kind: "missing", fresh: true } }),
+    decideTitle({
+      ...input,
+      presence: { kind: "listed", fresh: true },
+      trashing: true,
+    }),
+    decideTitle({
+      ...input,
+      presence: { kind: "new", stage: "creating" },
+      decision: "asking",
+    }),
+    decideTitle({
+      ...input,
+      presence: { kind: "new", stage: "creating" },
+      registered: false,
+    }),
+  ]).toEqual([
+    null,
+    null,
+    "notCreated",
+    "stale",
+    "missing",
+    "trashing",
+    "closing",
+    "connecting",
+  ]);
+});
+test("TREE-7 a refused rename sends no command while an admitted rename writes a draft", async () => {
+  const rename = vi.spyOn(commands, "pageRename");
+  useQuitStore.setState({ registered: false });
+  expect(usePageTitlesStore.getState().rename("a", "Refused")).toBe(
+    "connecting",
+  );
+  expect(rename.mock.calls).toEqual([]);
+  useQuitStore.setState({ registered: true });
+  expect(usePageTitlesStore.getState().rename("a", "Admitted")).toBe(null);
+  expect(rename.mock.calls).toEqual([["a", "Admitted"]]);
+  expect(usePageTitlesStore.getState().drafts.get("a")?.title).toBe("Admitted");
+  await drainCommands();
+  expect(
+    window.__aelomiMock?.workspace.tree().pages.map((p) => p.title),
+  ).toEqual(["Admitted"]);
 });

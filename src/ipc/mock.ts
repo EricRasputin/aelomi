@@ -883,9 +883,9 @@ const control = {
       const { commands } = await import("./index");
       return commands.pageRename(pageId, title);
     },
-    failReads(on: boolean) {
+    failReads(on: boolean, notify = true) {
       failTreeRead = on;
-      void events.pageRecordsChanged.emit();
+      if (notify) void events.pageRecordsChanged.emit();
     },
     seed(pages: SeedPage[]) {
       pageWrite(() => writeRecords(workspaceDoc(), pages));

@@ -14,7 +14,6 @@ import {
 import { useEffect, useId, useLayoutEffect, useRef } from "react";
 import { CommandPalette } from "./components/command-palette";
 import { SettingsDialog } from "./components/settings-dialog";
-import { PendingPageTitle } from "./components/pending-page-title";
 import { NewPageButton, Sidebar } from "./components/sidebar";
 import {
   QuitConfirmation,
@@ -22,8 +21,11 @@ import {
 } from "./components/storage-notices";
 import { StorageRefusal } from "./components/storage-refusal";
 import { formatPingReply } from "./ipc/format-ping";
+import { PageFrame } from "./pages/page-frame";
 import { markIndexCommit, resolveEntry } from "./perf/cold-start";
+import { useNewPagesStore } from "./shell/new-pages";
 import { pageAfterTrash } from "./shell/page-navigation";
+import { canOpenPage, presenceOf, visiblePages } from "./shell/page-presence";
 import { usePageCommands } from "./shell/use-page-commands";
 import { usePageTreeStore } from "./stores/page-tree";
 import { usePingStore } from "./stores/ping";
@@ -80,8 +82,20 @@ function WorkspaceLayout() {
   });
   const sidebarVisible = useShellStore((state) => state.sidebarVisible);
   const message = useShellStore((state) => state.message);
+  const movingToTrash = useShellStore(
+    (s) =>
+      s.trashRequest?.status === "pending" &&
+      s.activePageId !== null &&
+      s.trashRequest.affected.has(s.activePageId),
+  );
   const closing = useQuitStore((state) => state.decision.kind === "draining");
+  const workspacePage = useRouterState({
+    select: (s) =>
+      s.location.pathname === "/" || s.location.pathname.startsWith("/page/"),
+  });
   const openPage = usePageCommands();
+  const activePageId = useShellStore((s) => s.activePageId);
+  const match = useMatch({ from: "/page/$pageId", shouldThrow: false });
   useWorkspaceNavigation();
   useEffect(() => {
     void useTreeExpansionStore.getState().load();
@@ -110,21 +124,32 @@ function WorkspaceLayout() {
         </header>
         <ShellStatus landmark={!diagnostic} />
         <SaveFailureBanner />
-        <SettingsDialog />
-        <PendingPageTitle />
-        {(message || closing) && (
-          <p role="status" className="shell-notice">
-            {closing
-              ? "Aelomi is closing. New actions are paused while pending changes finish."
+        <p role="status" className="shell-notice">
+          {closing
+            ? "Aelomi is closing. New actions are paused while pending changes finish."
+            : movingToTrash
+              ? "Moving to trash…"
               : message}
-          </p>
-        )}
+        </p>
         <div className="workspace" data-workspace>
           {!stress && <Sidebar openPage={openPage} hidden={!sidebarVisible} />}
           <main tabIndex={-1} className="editor-pane">
-            <Outlet />
+            {activePageId && workspacePage ? (
+              <PageFrame
+                key={activePageId}
+                pageId={activePageId}
+                focusBlock={
+                  match?.params.pageId === activePageId
+                    ? match.search.block
+                    : undefined
+                }
+              />
+            ) : (
+              <Outlet />
+            )}
           </main>
         </div>
+        <SettingsDialog />
         <CommandPalette />
         <QuitConfirmation />
       </div>
@@ -141,6 +166,9 @@ function useWorkspaceNavigation() {
   });
   const source = usePageTreeStore((state) => state.source);
   const trashRequest = useShellStore((state) => state.trashRequest);
+  const activePageId = useShellStore((s) => s.activePageId);
+  const trashed = useShellStore((s) => s.trashed);
+  const newPages = useNewPagesStore((s) => s.pages);
   const decision = useQuitStore((state) => state.decision);
   const previous = useRef(source);
   const entered = useRef(false);
@@ -148,10 +176,10 @@ function useWorkspaceNavigation() {
     useShellStore.setState({ activePageId: pageId });
   }, [pageId]);
   useEffect(() => {
+    if (pathname !== "/" && !pathname.startsWith("/page/")) return;
     if (!acceptsUserCommands(decision)) return;
     if (source.kind !== "ready") return;
-    if (trashRequest?.status === "pending" || trashRequest?.pageId === pageId)
-      return;
+    if (trashRequest?.status === "pending") return;
     const before = previous.current;
     if (!pageId || source.byId.has(pageId)) previous.current = source;
     if (!entered.current) {
@@ -170,23 +198,45 @@ function useWorkspaceNavigation() {
       }
       resolveEntry(pageId ? "page" : "index");
     }
-    if (!pageId || source.byId.has(pageId)) return;
+    if (!activePageId) return;
+    const presence = presenceOf(activePageId, source, newPages, trashed);
+    if (
+      presence.kind !== "trashed" &&
+      !(presence.kind === "missing" && presence.fresh)
+    )
+      return;
     const next = pageAfterTrash({
-      pageId,
+      pageId: activePageId,
       before: before.kind === "ready" ? before.tree.pages : [],
-      active: source.tree.pages,
+      active: visiblePages(source, newPages, trashed),
       openedAt: useRecentPagesStore.getState().openedAt,
     });
     if (next) {
-      useShellStore.getState().requestFocus({ pageId: next, target: "body" });
+      useShellStore.setState({
+        activePageId: next,
+        focusRequest: { pageId: next, target: "body" },
+      });
       void navigate({
         to: "/page/$pageId",
         params: { pageId: next },
         search: {},
         replace: true,
       });
-    } else void navigate({ to: "/", replace: true });
-  }, [source, pageId, pathname, navigate, trashRequest, decision]);
+    } else {
+      useShellStore.setState({ activePageId: null });
+      void navigate({ to: "/", replace: true });
+    }
+  }, [
+    source,
+    pageId,
+    pathname,
+    navigate,
+    trashRequest,
+    decision,
+    activePageId,
+    trashed,
+    newPages,
+  ]);
 }
 
 export const workspaceCopy = {
@@ -268,10 +318,7 @@ const pageRoute = createRoute({
   path: "/page/$pageId",
   beforeLoad: ({ params }) => {
     const { activePageId } = useShellStore.getState();
-    if (
-      !acceptsUserCommands(useQuitStore.getState().decision) &&
-      params.pageId !== activePageId
-    )
+    if (!canOpenPage(params.pageId) && params.pageId !== activePageId)
       throw redirect(
         activePageId
           ? {
@@ -284,7 +331,6 @@ const pageRoute = createRoute({
   },
   validateSearch: (search: Record<string, unknown>): PageSearch =>
     typeof search.block === "string" ? { block: search.block } : {},
-  component: lazyRouteComponent(() => import("./pages/page-route")),
 });
 
 const mockRoutes =

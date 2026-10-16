@@ -1,4 +1,3 @@
-import { useNavigate } from "@tanstack/react-router";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { createPortal, flushSync } from "react-dom";
@@ -9,7 +8,9 @@ import { HighlightedText } from "../pages/highlighted-text";
 import { type ContentResult, shownContent } from "../palette/content";
 import type { PageCommand } from "../palette/page-commands";
 import type { TitleMatch } from "../palette/title-match";
-import { canOpenPage, pageCreatePending } from "../shell/page-opening";
+import { useNewPagesStore } from "../shell/new-pages";
+import { canOpenPage } from "../shell/page-presence";
+import { useOpenPage } from "../shell/use-page-commands";
 import { useIndexStatusStore } from "../stores/index-status";
 import {
   displayTitle,
@@ -19,7 +20,6 @@ import {
 } from "../stores/page-tree";
 import { usePaletteStore } from "../stores/palette";
 import { acceptsUserCommands, useQuitStore } from "../stores/quit";
-import { useRecordCommandStore } from "../stores/record-commands";
 import { useShellStore } from "../stores/shell";
 
 export const paletteCopy = {
@@ -84,8 +84,10 @@ export function CommandPalette() {
   const settled = usePaletteStore((state) => state.answered === state.request);
   const status = useIndexStatusStore((state) => state.status);
   const source = usePageTreeStore((state) => state.source);
-  const recordCommands = useRecordCommandStore();
-  const navigate = useNavigate();
+  useNewPagesStore((s) => s.pages);
+  useShellStore((s) => s.trashed);
+  useQuitStore((s) => s.decision.kind);
+  const openPage = useOpenPage();
   const input = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLDivElement>(null);
   // The one owner of what opening and closing do to the page: the store only
@@ -135,19 +137,8 @@ export function CommandPalette() {
       });
       return;
     }
-    useShellStore.setState({ revealedPageId: null });
-    if (row.kind === "title")
-      void navigate({
-        to: "/page/$pageId",
-        params: { pageId: row.match.id },
-        search: {},
-      });
-    else
-      void navigate({
-        to: "/page/$pageId",
-        params: { pageId: row.hit.page_id },
-        search: { block: row.hit.block?.block_id },
-      });
+    if (row.kind === "title") openPage(row.match.id, "body");
+    else openPage(row.hit.page_id, "body", { block: row.hit.block?.block_id });
   };
 
   const onKeyDown = (event: React.KeyboardEvent) => {
@@ -255,9 +246,9 @@ export function CommandPalette() {
                   aria-selected={isSelected}
                   aria-disabled={
                     row.kind === "title"
-                      ? pageCreatePending(recordCommands, row.match.id)
+                      ? !canOpenPage(row.match.id)
                       : row.kind === "content"
-                        ? pageCreatePending(recordCommands, row.hit.page_id)
+                        ? !canOpenPage(row.hit.page_id)
                         : undefined
                   }
                   tabIndex={-1}

@@ -1,6 +1,7 @@
 import { test as base, expect } from "@playwright/test";
 import { isLocalUrl } from "../is-local-url";
 
+export type { Page } from "@playwright/test";
 export { expect };
 export const test = base.extend<{ nonLocalRequests: string[] }>({
   nonLocalRequests: [

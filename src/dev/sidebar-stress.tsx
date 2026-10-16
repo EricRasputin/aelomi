@@ -2,7 +2,7 @@ import { Button } from "@base-ui/react/button";
 import { useCallback, useEffect, useState } from "react";
 import { Sidebar } from "../components/sidebar";
 import type { SeedPage } from "../ipc/mock-workspace";
-import { PageView } from "../pages/page-view";
+import { PageFrame } from "../pages/page-frame";
 import { usePageTreeStore } from "../stores/page-tree";
 import { useShellStore } from "../stores/shell";
 import { useTreeExpansionStore } from "../stores/tree-expansion";
@@ -74,7 +74,7 @@ export default function SidebarStress() {
         <Sidebar openPage={setPageId} />
         <div className="editor-pane">
           {pageId ? (
-            <PageView key={pageId} pageId={pageId} focusBlock={undefined} />
+            <PageFrame key={pageId} pageId={pageId} focusBlock={undefined} />
           ) : (
             <section className="empty-state">
               <h1>No page open</h1>

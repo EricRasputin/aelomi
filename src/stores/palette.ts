@@ -12,12 +12,14 @@ import {
   type PageCommand,
 } from "../palette/page-commands";
 import {
-  type PreparedTitles,
   prepareTitles,
   rankTitles,
   type TitleMatch,
 } from "../palette/title-match";
+import { useNewPagesStore } from "../shell/new-pages";
+import { pagePresence, visiblePages } from "../shell/page-presence";
 import { useIndexStatusStore } from "./index-status";
+import { usePageTitlesStore } from "./page-titles";
 import { displayTitle, type SourceTree, usePageTreeStore } from "./page-tree";
 import { useRecentPagesStore } from "./recent-pages";
 import { useShellStore } from "./shell";
@@ -42,21 +44,18 @@ type PaletteStore = {
   select: (index: number) => void;
 };
 
-let prepared: { source: SourceTree; titles: PreparedTitles } | null = null;
-
-function titlesOf(source: SourceTree): PreparedTitles {
-  if (source.kind !== "ready") return [];
-  if (prepared?.source !== source)
-    prepared = {
-      source,
-      titles: prepareTitles(
-        source.tree.pages.map((page) => ({
-          id: page.id,
-          title: displayTitle(page.title),
-        })),
-      ),
-    };
-  return prepared.titles;
+function titlesOf(source: SourceTree) {
+  return prepareTitles(
+    visiblePages(source, useNewPagesStore.getState().pages, new Set()).map(
+      (page) => ({
+        id: page.id,
+        title: displayTitle(
+          usePageTitlesStore.getState().drafts.get(page.id)?.title ??
+            page.title,
+        ),
+      }),
+    ),
+  );
 }
 
 export function resultCount(
@@ -93,7 +92,9 @@ export const usePaletteStore = create<PaletteStore>((set, get) => {
     const active = useShellStore.getState().activePageId;
     const pageCommands = matchingPageCommands(
       query,
-      source.kind === "ready" && active !== null && source.byId.has(active),
+      active !== null &&
+        pagePresence(active).kind === "listed" &&
+        useShellStore.getState().trashRequest?.status !== "pending",
     );
     const request = get().request + 1;
     if (query.trim() === "") {
@@ -197,7 +198,11 @@ export function connectPalette(): () => void {
   const stopTree = usePageTreeStore.subscribe((state, previous) => {
     if (state.source !== previous.source) rerun();
   });
+  const stopNewPages = useNewPagesStore.subscribe(rerun);
+  const stopTitles = usePageTitlesStore.subscribe(rerun);
   return () => {
+    stopNewPages();
+    stopTitles();
     stopStatus();
     stopTree();
   };

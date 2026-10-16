@@ -1,36 +1,40 @@
 import { Button } from "@base-ui/react/button";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useNewPagesStore } from "../shell/new-pages";
 import { flattenPages } from "../shell/page-navigation";
-import { pageCreatePending } from "../shell/page-opening";
+import {
+  canOpenPage,
+  usePagePresence,
+  visiblePages,
+} from "../shell/page-presence";
 import { newPage } from "../shell/use-page-commands";
 import { usePageTitle } from "../stores/page-titles";
 import { displayTitle, usePageTreeStore } from "../stores/page-tree";
 import { canEdit, useQuitStore } from "../stores/quit";
-import { useRecordCommandStore } from "../stores/record-commands";
 import { useShellStore } from "../stores/shell";
 import { useTreeExpansionStore } from "../stores/tree-expansion";
 
-function RowTitle({ title }: { title: string }) {
+function RowTitle({
+  title,
+  onTruncated,
+}: {
+  title: string;
+  onTruncated: (truncated: boolean) => void;
+}) {
   const label = useRef<HTMLSpanElement>(null);
-  const [truncated, setTruncated] = useState(false);
   useLayoutEffect(() => {
     const element = label.current;
     if (!element) return;
     const measure = () =>
-      setTruncated(element.scrollWidth > element.clientWidth);
+      onTruncated(element.scrollWidth > element.clientWidth);
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(element);
     return () => observer.disconnect();
   });
   return (
-    <span
-      ref={label}
-      className="sidebar-title"
-      dir="auto"
-      title={truncated ? title : undefined}
-    >
+    <span ref={label} className="sidebar-title" dir="auto">
       {title}
     </span>
   );
@@ -54,10 +58,10 @@ function PageRow({
   openPage: (pageId: string) => void;
 }) {
   const title = displayTitle(usePageTitle(pageId) ?? fallback);
-  const editable = useQuitStore(canEdit);
-  const pending = useRecordCommandStore((state) =>
-    pageCreatePending(state, pageId),
-  );
+  useQuitStore((s) => s.decision.kind);
+  const presence = usePagePresence(pageId);
+  const openable = canOpenPage(pageId);
+  const [truncated, setTruncated] = useState(false);
   return (
     <>
       {hasChildren ? (
@@ -78,11 +82,18 @@ function PageRow({
       <Button
         className="sidebar-page"
         aria-current={active ? "page" : undefined}
-        aria-disabled={!editable || pending}
-        aria-busy={pending}
-        onClick={() => openPage(pageId)}
+        aria-disabled={!openable}
+        aria-description={
+          presence.kind === "new" && presence.stage === "failed"
+            ? "Not created"
+            : undefined
+        }
+        title={truncated ? title : undefined}
+        onClick={() => {
+          if (openable) openPage(pageId);
+        }}
       >
-        <RowTitle title={title} />
+        <RowTitle title={title} onTruncated={setTruncated} />
       </Button>
     </>
   );
@@ -90,40 +101,16 @@ function PageRow({
 
 export function NewPageButton() {
   const editable = useQuitStore(canEdit);
-  const creating = useRecordCommandStore((state) =>
-    state.pendingCreates.has(null),
-  );
-  const opening = useShellStore(
-    (state) => state.createIntent?.stage.kind === "opening",
-  );
-  const busy = creating || opening;
-  const ready = usePageTreeStore((state) => state.source.kind === "ready");
+  const ready = usePageTreeStore((s) => s.source.kind === "ready");
   return (
-    <Button
+    <button
+      type="button"
       className="shell-button"
-      disabled={!editable || !ready || busy}
-      focusableWhenDisabled
-      aria-busy={busy}
-      onClick={(event) => {
-        event.currentTarget.focus();
-        newPage();
-      }}
-      onKeyDownCapture={(event) => {
-        if (
-          !busy ||
-          event.metaKey ||
-          event.ctrlKey ||
-          event.altKey ||
-          event.key.length !== 1
-        )
-          return;
-        event.preventDefault();
-        document.getElementById("new-page-title")?.focus();
-        document.execCommand("insertText", false, event.key);
-      }}
+      disabled={!editable || !ready}
+      onClick={newPage}
     >
-      {busy ? "Creating page…" : "New page"}
-    </Button>
+      New page
+    </button>
   );
 }
 
@@ -138,18 +125,19 @@ export function Sidebar({
   const expansion = useTreeExpansionStore((state) => state.expansion);
   const editable = useQuitStore(canEdit);
   const activePageId = useShellStore((state) => state.activePageId);
-  const revealedPageId = useShellStore((state) => state.revealedPageId);
-  const revealPageId = revealedPageId ?? activePageId;
+  const revealPageId = activePageId;
+  const newPages = useNewPagesStore((s) => s.pages);
+  const trashed = useShellStore((s) => s.trashed);
   const scroll = useRef<HTMLDivElement>(null);
   const rows = useMemo(
     () =>
       source.kind === "ready"
         ? flattenPages(
-            source.tree.pages,
+            visiblePages(source, newPages, trashed),
             expansion.kind === "ready" ? expansion.rows : new Set(),
           )
         : [],
-    [source, expansion],
+    [source, expansion, newPages, trashed],
   );
   const virtualizer = useVirtualizer({
     count: rows.length,
@@ -238,6 +226,7 @@ export function Sidebar({
                 className="sidebar-row"
                 data-active={activePageId === row.page.id || undefined}
                 data-depth={row.depth}
+                data-state={newPages.get(row.page.id)}
                 style={{
                   position: "absolute",
                   top: 0,
