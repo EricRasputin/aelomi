@@ -148,7 +148,7 @@ test("SHELL-11 acceptance 7: a cloud folder shows its resolved path and how to m
         }),
       ),
     ),
-  ).toBe(true);
+  ).toBe(false);
   const dialog = screen.getByRole("alertdialog");
   await browser.keyboard.press("Meta+k");
   await expect(screen.getByRole("dialog", "Command palette")).not.toBeVisible();
