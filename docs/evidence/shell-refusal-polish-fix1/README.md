@@ -35,6 +35,8 @@ Both owned Finder windows were closed. Appearance and clipboard were restored. T
 
 ## Reproduce
 
+(see the warning above)
+
 Copy the text scripts into `.local-gate/e2-fix1/`, removing the final `.txt` suffix except from `seed.rs.txt`. Run `prepare-proof.sh`, then `native-proof.sh` against the recorded source. The scripts use fresh synthetic folders and a fake cloud root. They take the keyboard lock, preserve existing Finder windows, and clean up owned launches. The negative checks now exit explicitly on a match.
 
 ## Published screenshots

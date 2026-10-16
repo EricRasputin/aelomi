@@ -1,5 +1,7 @@
 # SHELL-10 native evidence
 
+This record's appearance-capture recipe changes the Mac's appearance and must not be rerun as is. Follow the current [verify-aelomi rules](../../../.claude/skills/verify-aelomi/SKILL.md#rules) instead.
+
 This folder keeps only this README and its scripts, under the [evidence policy](../../native-verification-evidence.md). Every file it names is in the [complete record at 9b44d57](https://github.com/aelomi/aelomi/tree/9b44d575e43efa1170b743cc54b019b5faf7a8cf/docs/evidence/shell-10).
 
 These screenshots come from the real Tauri WKWebView, driven with `verify-aelomi` through macOS accessibility. Each run used its own `AELOMI_DATA_DIR` under `/tmp/aelomi-verify`; no normal app data was touched. The app source was unchanged from `6ef389f` during verification. Later commits changed tests, verification helpers, and docs.

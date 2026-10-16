@@ -21,12 +21,15 @@ Run every command from the repo root. The examples use `S=.claude/skills/verify-
 ## Rules
 
 - Never change the Mac's appearance or any other system setting, even to restore it. The maintainer uses this Mac during verification.
-- For a dark capture, use the app's own **Settings > Appearance** where the branch has it, or the mock browser with Playwright's `page.emulateMedia({ colorScheme: "dark" })`. Otherwise capture the current appearance only and say so in the evidence.
+- If the appearance or another system setting differs from what the evidence expects, stop and report it. Do not restore it.
+- If macOS shows a permission prompt, do not answer it. Stop and report it.
+- For either light or dark captures, use the app's theme controls where the branch has them. SHELL-5 specifies **System**, **Light**, and **Dark** in **Settings**. CMD-8 specifies **Toggle theme** in ⌘K. Label these as app-theme captures. The native menu bar and title bar still follow the Mac's appearance.
+- Alternatively, use the mock browser with Playwright's `page.emulateMedia({ colorScheme: "light" })` or `page.emulateMedia({ colorScheme: "dark" })`. If neither route is available, capture only the current appearance and name it in the evidence.
 
 ## Before the first run
 
 - Run `pnpm install --frozen-lockfile`.
-- The app that runs your shell (Terminal, an IDE, or an agent host) must already have **Accessibility** and **Screen Recording** permissions. `app.sh doctor` checks Accessibility. Screen Recording has no check, so look at every screenshot. If a screenshot does not show the Aelomi window, Screen Recording is missing. Stop and report missing permissions without changing system settings.
+- The app that runs your shell (Terminal, an IDE, or an agent host) must already have **Accessibility**, **Screen Recording**, and **Automation (System Events)** permissions. `app.sh doctor` checks Accessibility. Screen Recording has no check, so look at every screenshot. If a screenshot does not show the Aelomi window, Screen Recording is missing. For missing permissions or a macOS permission prompt, stop and report as required by the [rules](#rules).
 - For the mock browser, install WebKit once with `pnpm exec e2e-web install webkit`.
 
 ## Launch the real app
@@ -68,7 +71,7 @@ Run it after launch and whenever a command behaves oddly. It changes nothing, wr
 - For `dev`, a process from this run listens on the run's `DEV_PORT`. For `app`, the bundle is newer than `src/`, `src-tauri/src/`, `crates/`, and `index.html`.
 - The shell log has `ping seq=1`.
 
-If a check fails, do not drive the instance. Run cleanup and launch again.
+If the Accessibility check fails, stop and report as required by the [rules](#rules). A relaunch cannot grant permission. For other failed checks, do not drive the instance. Run cleanup and launch again. Apply the [rules](#rules) if a permission prompt appears during any check.
 
 ## Drive the real app
 
@@ -222,7 +225,7 @@ Never kill Aelomi, Vite, or node by name. Another agent or the maintainer may be
 - Accessibility lists only windows on the current Space. When Aelomi's window is on another Space, `ax.js` commands that inspect a window or act on its content make Aelomi frontmost, which switches Spaces, and wait up to 5 s for the window. The switch took about 2 s in the proof run. Another app can take the front back between two commands, so a command can still fail with `The window has no web content yet.` Rerun it. This is not a product failure. `screencapture -l` captures the window from any Space, but the tree in `NAME.ax.txt` needs the switch.
 - During a `launch dev` run, the dev server reloads the app's UI when an HTML file under `playwright-report/`, `.e2e/`, or `dist-mock/` changes. The reload clears in-memory UI state, such as an open dialog. Don't run the WebKit suite, `pnpm test:e2e`, `pnpm build:mock`, or `mock-drive.mjs` until that run is cleaned up.
 - `pnpm build:mock` empties `dist-mock/` before it writes the new build. Do not pass `--rebuild` while another mock run in the same checkout is serving `dist-mock/`.
-- Never change the Mac's appearance or any other system setting, even to restore it. For a dark capture, use the app's own **Settings > Appearance** where the branch has it, or the mock browser with Playwright's `page.emulateMedia({ colorScheme: "dark" })`. Otherwise capture the current appearance only and say so in the evidence.
+- The mock browser renders light unless the flow emulates dark. By default, the real app follows the Mac's current appearance. Read it without changing it with `defaults read -g AppleInterfaceStyle`. The command prints `Dark` in dark mode and exits non-zero in light mode. For capture choices, follow the [rules](#rules).
 - An accessibility query takes 1 to 2 s, because each element read is a separate System Events call. Expect `tree` to slow down as pages grow.
 
 To keep the feature map current as the app changes, use `/maintain-verification-skill`.

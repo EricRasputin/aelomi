@@ -27,6 +27,8 @@ Model the Domain kept the existing enum and step union. Laziness Protocol remove
 
 ## Reproduce the native proof
 
+(see the warning above)
+
 Use macOS 27.0.1 on Apple Silicon. Run from the repository root. Do not launch a default Aelomi instance.
 
 ```bash

@@ -86,6 +86,8 @@ GitHub CLI 2.102.0 was downloaded and its archive matched the published SHA-256 
 
 ## Reproduce
 
+(see the warning above)
+
 Copy the text scripts into `.local-gate/e2-fix2/`, dropping the final `.txt` suffix except from `seed.rs.txt`. `capture-ui-only.sh` creates fresh synthetic cloud paths and captures every refusal variant without sending keys or calling Finder. `stress.mjs` runs through `mock-drive.mjs`. Run `hoisted-hook-proof.sh` only when no native dev instance is active, then rebuild the mock before positive checks.
 
 `prepare-proof.sh` and `attempted-finder-proof.sh` preserve the attempted recovery driver for diagnosis. The latter takes the keyboard lock, closes only its owned Finder windows and stops owned Aelomi launches on failure. It has not completed successfully. Do not run it while the user's stop instruction applies. The record makes no passing recovery claim for it.
