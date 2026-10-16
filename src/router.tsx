@@ -151,7 +151,8 @@ function useWorkspaceNavigation() {
   }, [pageId]);
   useEffect(() => {
     if (source.kind !== "ready") return;
-    if (trashRequest?.pageId === pageId) return;
+    if (trashRequest?.status === "pending" || trashRequest?.pageId === pageId)
+      return;
     const before = previous.current;
     if (!pageId || source.byId.has(pageId)) previous.current = source;
     if (!entered.current) {

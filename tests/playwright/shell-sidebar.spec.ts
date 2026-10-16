@@ -719,3 +719,52 @@ test("TREE-1 a pending create ending in terminal error keeps the existing page a
     ),
   ).toEqual(["A"]);
 });
+
+test("TREE-9 opening a child during retained parent trash waits for durable ok before fallback", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.__aelomiMockSetup = {
+      pages: [
+        { id: "p", title: "Parent" },
+        { id: "child", title: "Child", parentId: "p" },
+      ],
+      settings: { expanded_rows: ["p"] },
+    };
+  });
+  await page.goto("/page/p");
+  const title = page.getByRole("textbox", { name: "Page title", exact: true });
+  await expect(title).toHaveValue("Parent");
+  await page.evaluate(() =>
+    window.__aelomiMock?.storage.refuseRecords({ Io: "synthetic outage" }),
+  );
+  await page.keyboard.press("Meta+k");
+  await page.getByRole("combobox").fill("trash");
+  await page.getByRole("option", { name: "Move to trash" }).click();
+  await expect(page.getByRole("alert")).toContainText(
+    "Changes aren't being saved",
+  );
+  await page
+    .getByRole("navigation", { name: "Pages" })
+    .getByRole("button", { name: "Child", exact: true })
+    .click();
+  await expect(title).toHaveValue("Child");
+  await page.evaluate(() => {
+    window.__aelomiMock?.storage.failWrites(true);
+    window.__aelomiMock?.storage.refuseRecords(null);
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.__aelomiMock?.workspace.tree().pages.length),
+    )
+    .toBe(0);
+  await expect(page).toHaveURL(/\/page\/child$/);
+  await expect(title).toHaveValue("Child");
+  await page.evaluate(() => window.__aelomiMock?.storage.failWrites(false));
+  await expect(
+    page.getByRole("region", { name: "No page open" }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(() => window.__aelomiMock?.workspace.tree().pages),
+  ).toEqual([]);
+});
