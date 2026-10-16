@@ -1,0 +1,37 @@
+#!/bin/bash
+set -euo pipefail
+run=${1:?}
+S=.claude/skills/verify-aelomi/scripts
+LOCK="$HOME/.local/state/aelomi-orchestrator/audit/gate/ui-lock.sh"
+label=pr89-fix4-final-head
+mode=$(stat -f %Lp "$run/data/docs")
+"$LOCK" acquire "$label"
+trap 'chmod "$mode" "$run/data/docs"; "$LOCK" release "$label"' EXIT
+source "$run/run.env"
+"$S/app.sh" doctor "$run"
+"$S/app.sh" tree "$run" > "$run/initial-tree.txt"
+"$S/app.sh" focus "$run" 'Page body'
+chmod 000 "$run/data/docs"
+osascript -l JavaScript "${AELOMI_FIX4_KEYS:?}" "$APP_PID" new 'Final held'
+"$S/app.sh" press "$run" 'Preview light'
+"$S/app.sh" press "$run" 'Read proof'
+"$S/app.sh" screenshot "$run" final-held-light
+"$S/app.sh" press "$run" 'Preview dark'
+"$S/app.sh" screenshot "$run" final-held-dark
+"$S/app.sh" keys "$run" q command
+"$S/app.sh" wait-dialog "$run" 'Quit with unsaved changes?' 15
+"$S/app.sh" press "$run" 'Keep app open'
+chmod "$mode" "$run/data/docs"
+for attempt in {1..3}; do
+  "$S/app.sh" tree "$run" > "$run/recovered-tree.txt"
+  rg -q 'AXTextArea "Page body"' "$run/recovered-tree.txt" && break
+done
+rg -q 'AXTextArea "Page body"' "$run/recovered-tree.txt"
+"$S/app.sh" focus "$run" 'Page title'
+osascript -l JavaScript "${AELOMI_FIX4_KEYS:?}" "$APP_PID" return
+"$S/app.sh" keys "$run" 'Final body'
+"$S/app.sh" press "$run" 'Read proof'
+"$S/app.sh" screenshot "$run" final-recovered
+osascript -l JavaScript "${AELOMI_FIX4_KEYS:?}" "$APP_PID" new-quit 'Final head quit'
+for attempt in {1..75}; do kill -0 "$APP_PID" 2>/dev/null || break; sleep 0.2; done
+if kill -0 "$APP_PID" 2>/dev/null; then echo 'app did not quit'; exit 1; fi

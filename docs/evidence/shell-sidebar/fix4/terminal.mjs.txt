@@ -1,0 +1,16 @@
+export default async function ({page,expect,shot}) {
+  await page.addInitScript(()=>{window.__aelomiMockSetup={pages:[{id:'a',title:'Alpha'},{id:'b',title:'Beta'}]};});
+  await page.goto('/page/a');
+  const title=page.getByRole('textbox',{name:'Page title',exact:true});
+  await expect(title).toHaveValue('Alpha');
+  await page.evaluate(()=>window.__aelomiMock.storage.refuseRecords({Io:'synthetic create outage'}));
+  await page.keyboard.press('Meta+n');await page.keyboard.type('Kept title');
+  await page.evaluate(()=>window.__aelomiMock.storage.refuseRecords({Internal:'synthetic terminal create failure'}));
+  await expect(page.getByText("This page couldn't be created. Its title is kept here.",{exact:true})).toBeVisible();
+  await expect(title).toHaveValue('Kept title');await expect(title).toHaveJSProperty('readOnly',true);
+  for(const colorScheme of ['light','dark']){await page.emulateMedia({colorScheme});await shot(`terminal-create-${colorScheme}`);}
+  await page.evaluate(()=>window.__aelomiMock.storage.refuseRecords(null));
+  await page.getByRole('button',{name:'Try again',exact:true}).click();
+  await expect.poll(()=>page.evaluate(()=>window.__aelomiMock.workspace.tree().pages.map(p=>p.title))).toEqual(['Alpha','Beta','Kept title']);
+  await expect(title).toBeFocused();
+}

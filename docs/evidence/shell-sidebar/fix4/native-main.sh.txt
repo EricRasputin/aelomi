@@ -1,0 +1,30 @@
+#!/bin/bash
+set -euo pipefail
+run=${1:?}
+S=.claude/skills/verify-aelomi/scripts
+LOCK="$HOME/.local/state/aelomi-orchestrator/audit/gate/ui-lock.sh"
+label=pr89-fix4-main
+"$LOCK" acquire "$label"
+trap '"$LOCK" release "$label"' EXIT
+source "$run/run.env"
+"$S/app.sh" doctor "$run"
+"$S/app.sh" tree "$run" > "$run/initial-tree.txt"
+"$S/app.sh" press "$run" 'Preview light'
+"$S/app.sh" screenshot "$run" initial-light
+"$S/app.sh" focus "$run" 'Page body'
+osascript -l JavaScript "${AELOMI_FIX4_KEYS:?}" "$APP_PID" new 'Immediate native'
+"$S/app.sh" press "$run" 'Read proof'
+"$S/app.sh" tree "$run" > "$run/immediate-tree.txt"
+rg -q 'Immediate native' "$run/immediate-tree.txt"
+"$S/app.sh" screenshot "$run" sidebar-light
+"$S/app.sh" press "$run" 'Preview dark'
+"$S/app.sh" screenshot "$run" sidebar-dark
+"$S/app.sh" focus "$run" 'Page title'
+"$S/app.sh" keys "$run" a command
+"$S/app.sh" keys "$run" 'Round4 renamed'
+"$S/app.sh" press "$run" 'Read proof'
+"$S/app.sh" tree "$run" > "$run/renamed-tree.txt"
+rg -q 'Round4 renamed' "$run/renamed-tree.txt"
+"$S/app.sh" keys "$run" q command
+for attempt in {1..75}; do kill -0 "$APP_PID" 2>/dev/null || break; sleep 0.2; done
+if kill -0 "$APP_PID" 2>/dev/null; then echo 'app did not quit'; exit 1; fi

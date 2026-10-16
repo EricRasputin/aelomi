@@ -1,0 +1,17 @@
+function run(argv){
+ const se=Application('System Events');
+ const proc=se.processes.whose({unixId:Number(argv[0])})[0];
+ proc.frontmost=true;
+ if(argv[1]==='new'){se.keyCode(45,{using:['command down']});se.keystroke(argv[2]);}
+ if(argv[1]==='new-quit'){se.keyCode(45,{using:['command down']});se.keystroke(argv[2]);se.keyCode(12,{using:['command down']});}
+ if(argv[1]==='select-return'){se.keyCode(125);se.keyCode(36);}
+ if(argv[1]==='escape')se.keyCode(53);
+ if(argv[1]==='end')se.keyCode(124,{using:['command down']});
+ if(argv[1]==='return')se.keyCode(36);
+ if(argv[1]==='trash'){se.keyCode(40,{using:['command down']});se.keystroke('Move to trash');se.keyCode(125);se.keyCode(36);}
+ if(argv[1]==='empty'){
+  const queue=[proc.windows[0]],buttons=[];
+  while(queue.length){const x=queue.shift();try{if(x.role()==='AXButton' && (x.name()==='New page'||x.description()==='New page'))buttons.push(x); queue.push(...x.uiElements());}catch{}}
+  if(!buttons.length)throw Error('New page missing'); buttons[buttons.length-1].actions.whose({name:'AXPress'})[0].perform();se.keystroke(argv[2]);
+ }
+}

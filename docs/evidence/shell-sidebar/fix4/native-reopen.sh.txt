@@ -1,0 +1,32 @@
+#!/bin/bash
+set -euo pipefail
+run=${1:?}
+S=.claude/skills/verify-aelomi/scripts
+LOCK="$HOME/.local/state/aelomi-orchestrator/audit/gate/ui-lock.sh"
+label=pr89-fix4-reopen
+"$LOCK" acquire "$label"
+trap '"$LOCK" release "$label"' EXIT
+source "$run/run.env"
+"$S/app.sh" doctor "$run"
+"$S/app.sh" press "$run" 'Round4 renamed'
+"$S/app.sh" tree "$run" > "$run/rename-relaunch-tree.txt"
+rg -q 'AXTextArea "Page title" = "Round4 renamed"' "$run/rename-relaunch-tree.txt"
+"$S/app.sh" screenshot "$run" rename-relaunch
+osascript -l JavaScript "${AELOMI_FIX4_KEYS:?}" "$APP_PID" trash
+"$S/app.sh" tree "$run" > "$run/trash-fallback-tree.txt"
+rg -q 'AXTextArea "Page title" = "Getting started"' "$run/trash-fallback-tree.txt"
+"$S/app.sh" screenshot "$run" trash-fallback
+osascript -l JavaScript "${AELOMI_FIX4_KEYS:?}" "$APP_PID" trash
+"$S/app.sh" tree "$run" > "$run/empty-tree.txt"
+rg -q 'No page open' "$run/empty-tree.txt"
+"$S/app.sh" screenshot "$run" empty-state
+osascript -l JavaScript "${AELOMI_FIX4_KEYS:?}" "$APP_PID" empty 'From empty'
+"$S/app.sh" tree "$run" > "$run/from-empty-tree.txt"
+rg -q 'AXTextArea "Page title" = "From empty"' "$run/from-empty-tree.txt"
+"$S/app.sh" screenshot "$run" from-empty
+"$S/app.sh" keys "$run" '\' command
+"$S/app.sh" screenshot "$run" sidebar-hidden
+"$S/app.sh" keys "$run" '\' command
+osascript -l JavaScript "${AELOMI_FIX4_KEYS:?}" "$APP_PID" new-quit 'Quit exact'
+for attempt in {1..75}; do kill -0 "$APP_PID" 2>/dev/null || break; sleep 0.2; done
+if kill -0 "$APP_PID" 2>/dev/null; then echo 'app did not quit'; exit 1; fi
