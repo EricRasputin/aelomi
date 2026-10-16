@@ -13,7 +13,13 @@ test.beforeEach(async ({ page }) => {
       ],
       bodies: {
         a: [{ id: "one", content: ["Alpha body"] }],
-        b: [{ id: "two", content: ["Beta needle body"] }],
+        b: [
+          ...Array.from({ length: 40 }, (_, i) => ({
+            id: `context-${i}`,
+            content: ["Context"],
+          })),
+          { id: "two", content: ["Beta needle body"] },
+        ],
       },
     };
   });
@@ -26,7 +32,12 @@ for (const path of ["content hit", "Return during load"]) {
   test(`TREE-7 ${path} defers body focus and preserves title typing`, async ({
     page,
   }) => {
+    const renderedBody = `${"Context".repeat(40)}Beta needle body`;
+    const storedBody = `${"Context\n".repeat(40)}Beta needle body`;
     if (path === "content hit") {
+      await page.addStyleTag({
+        content: ".block-flash { animation-play-state: paused; }",
+      });
       await page.keyboard.press("Meta+k");
       await page.getByRole("combobox").fill("needle");
       await page
@@ -58,14 +69,20 @@ for (const path of ["content hit", "Return during load"]) {
     await expect(title(page)).toHaveValue("Beta draft");
     await expect(title(page)).toBeFocused();
     await page.evaluate(() => window.__aelomiMock?.bodies.releaseLoad("b"));
-    await expect(body(page)).toHaveText("Beta needle body");
+    await expect(body(page)).toHaveText(renderedBody);
+    if (path === "content hit") {
+      await expect(
+        page.locator('[data-node-type="blockOuter"][data-id="two"]'),
+      ).toBeInViewport({ ratio: 1 });
+      await expect(page.locator(".block-flash")).toHaveCount(1);
+    }
     await page.keyboard.type(" complete");
     await expect(title(page)).toHaveValue("Beta draft complete");
     await expect(title(page)).toBeFocused();
-    await expect(body(page)).toHaveText("Beta needle body");
+    await expect(body(page)).toHaveText(renderedBody);
     expect(
       await page.evaluate(() => window.__aelomiMock?.bodies.text("b")),
-    ).toBe("Beta needle body");
+    ).toBe(storedBody);
     await expect
       .poll(() =>
         page.evaluate(

@@ -47,6 +47,24 @@ test("TREE-7 immediate Return enters a mounted body from its focused title", () 
   ).toBeNull();
 });
 
+test("TREE-7 an immediate block request wins over a focused title", () => {
+  expect(
+    resolvePageFocus(
+      { pageId: "a", target: "block", blockId: "two" },
+      { kind: "bodyFocus", deferred: false, textFieldFocused: true },
+    ),
+  ).toEqual({ pageId: "a", target: "block", blockId: "two" });
+});
+
+test("TREE-1 a gated block request redirects to the title without its block ID", () => {
+  expect(
+    resolvePageFocus(
+      { pageId: "a", target: "block", blockId: "two" },
+      { kind: "request", bodyReady: false },
+    ),
+  ).toEqual({ pageId: "a", target: "title" });
+});
+
 test("TREE-1 gated Return is dropped and a title focus cancels pending body targets", () => {
   expect(
     resolvePageFocus(

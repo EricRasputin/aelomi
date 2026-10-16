@@ -46,6 +46,7 @@ export default function PageView({
   const [view, setView] = useState<ViewState>({ kind: "loading" });
   const host = useRef<HTMLDivElement>(null);
   const focusReady = useRef(false);
+  const mountFocusConsumed = useRef(false);
   const editable = useQuitStore(canEdit);
   const registered = useQuitStore((state) => state.registered);
   const focusRequest = useShellStore((state) => state.focusRequest);
@@ -130,11 +131,13 @@ export default function PageView({
     const deferred = !focusReady.current;
     focusReady.current = editor !== null && editable;
     if (!editor || !editable) return;
+    const firstReady = !mountFocusConsumed.current;
+    mountFocusConsumed.current = true;
     const pending = focusRequest;
     const intent: FocusRequest | null =
       pending?.pageId === pageId
         ? pending
-        : deferred && autoFocus
+        : firstReady && autoFocus
           ? focusBlock
             ? { pageId, target: "block", blockId: focusBlock }
             : { pageId, target: "body" }

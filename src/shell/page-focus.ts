@@ -23,7 +23,7 @@ export function resolvePageFocus(
       return null;
     case "bodyFocus":
       return context.textFieldFocused &&
-        (context.deferred || request.target !== "bodyStart")
+        (context.deferred || request.target === "body")
         ? null
         : request;
   }
