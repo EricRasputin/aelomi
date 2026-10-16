@@ -1,0 +1,43 @@
+from pathlib import Path
+import tempfile
+helper = Path('docs/evidence/shell-pending-refusal-fix3/native-proof.py.txt').read_text()
+exec(helper[:helper.index('\ntry:\n')])
+ROOT = Path(tempfile.mkdtemp(prefix='aelomi-e3-live-occupied-', dir='/tmp')).resolve()
+CLOUD = ROOT/'cloud'
+CLOUD.mkdir()
+RUNS = {}
+Path('.local-gate/e3-fix3/occupied-refresh-root').write_text(str(ROOT))
+configured = ROOT/'local'/'Aelomi'
+source, recovery = setup('original', configured)
+original = files(source)
+try:
+    cloud = launch('cloud', configured, recovery)
+    stop(cloud)
+    configured.unlink()
+    directory = launch('live-occupied', configured, recovery)
+    assert 'destination_exists: false' in (directory/'shell.log').read_text()
+    record = record_bytes(recovery)
+    with keyboard():
+        shot(directory, 'live-before')
+        configured.mkdir()
+        source.rename(configured/'Aelomi Notes')
+        (configured/'.DS_Store').write_bytes(b'Finder metadata')
+        before = files(configured)
+        press(directory, 'Start a new empty workspace here')
+        press(directory, 'Create empty workspace')
+        content = until(directory, 'These may be your pages.')
+        assert 'already contains: Aelomi Notes.' in content
+        shot(directory, 'live-refused')
+        press(directory, 'Keep moving my pages')
+        until(directory, 'Before you rename anything')
+        resize(directory)
+        shot(directory, 'live-rename')
+    assert record_bytes(recovery) == record
+    assert files(configured) == before
+    assert files(configured/'Aelomi Notes') == original
+    stop(directory)
+    print('PASS: destination appeared after startup; refusal shows the rename step; every destination and record byte matches', flush=True)
+finally:
+    for directory in ACTIVE[:]:
+        stop(directory)
+    run(LOCK, 'release', LABEL)
