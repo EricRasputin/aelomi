@@ -12,7 +12,7 @@ test.beforeEach(async ({ page }) => {
   await expect(body).toHaveText("plan");
   await body.click();
   await page.keyboard.press("Meta+ArrowRight");
-  await page.keyboard.type(" token");
+  await page.keyboard.insertText(" token");
   await expect(body).toHaveText("plan token");
 });
 

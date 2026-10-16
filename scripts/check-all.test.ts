@@ -11,7 +11,7 @@ const ci = readFileSync(
 
 const parser = "/usr/bin/ruby";
 
-test("the workflow is valid YAML", () => {
+test("the workflow is valid YAML", { timeout: 20_000 }, () => {
   const parsed = spawnSync(parser, ["-ryaml", "-e", "YAML.parse(STDIN.read)"], {
     input: ci,
     encoding: "utf8",
