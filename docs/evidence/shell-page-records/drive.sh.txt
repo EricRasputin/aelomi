@@ -10,7 +10,7 @@ restore_folder=
 restore_mode=
 finish() {
   if [ -n "$restore_folder" ]; then chmod "$restore_mode" "$restore_folder"; fi
-  if $owned; then rm -rf "$lock"; fi
+  if $owned; then rm -rf "$lock"; owned=false; fi
 }
 trap finish EXIT INT TERM
 started=$(date +%s)
@@ -20,7 +20,7 @@ until mkdir "$lock" 2>/dev/null; do
   sleep 15
 done
 owned=true
-echo "$$ $(date -u +%FT%TZ) PR84-round4-$scenario" > "$lock/owner"
+echo "$$ $(date -u +%FT%TZ) PR84-round5-$scenario" > "$lock/owner"
 wait_exit() {
   source "$run/run.env"
   for ((attempt=0;attempt<100;attempt++)); do
@@ -30,11 +30,12 @@ wait_exit() {
   echo "owned app still alive after normal quit" >&2
   exit 1
 }
+"$S/app.sh" doctor "$run"
 case "$scenario" in
   first)
     "$S/app.sh" screenshot "$run" seed-before
     "$S/app.sh" focus "$run" 'Page body'
-    "$S/app.sh" keys "$run" ' fix round four'
+    "$S/app.sh" keys "$run" ' fix round five'
     "$S/app.sh" screenshot "$run" typed-before-quit
     "$S/app.sh" press "$run" 'Storage probe'
     "$S/app.sh" rename-quit "$run"
@@ -43,7 +44,7 @@ case "$scenario" in
   both)
     "$S/app.sh" screenshot "$run" immediate-rename-reopened
     "$S/app.sh" tree "$run" > "$run/reopened-tree.txt"
-    rg 'Quit rename proof|fix round four' "$run/reopened-tree.txt"
+    rg 'Quit rename proof|fix round five' "$run/reopened-tree.txt"
     "$S/app.sh" press "$run" 'Settings probe'
     for ((attempt=0;attempt<5;attempt++)); do
       if "$S/app.sh" tree "$run" > "$run/settings-ready.ax.txt" && rg -q 'AXButton "Write session settings"' "$run/settings-ready.ax.txt"; then break; fi
@@ -56,7 +57,7 @@ case "$scenario" in
   settings-reopened)
     "$S/app.sh" screenshot "$run" settings-rename-reopened
     "$S/app.sh" tree "$run" > "$run/reopened-tree.txt"
-    rg 'Settings and rename quit proof|fix round four' "$run/reopened-tree.txt"
+    rg 'Settings and rename quit proof|fix round five' "$run/reopened-tree.txt"
     "$S/app.sh" keys "$run" q command
     wait_exit
     ;;
@@ -68,6 +69,9 @@ case "$scenario" in
     printf '%s\n' "$restore_mode" > "$run/workspace-original-mode.txt"
     chmod 000 "$restore_folder"
     "$S/app.sh" press "$run" 'Rename Getting started'
+    "$S/app.sh" tree "$run" > "$run/failed-rename.ax.txt"
+    rg "Changes aren't being saved" "$run/failed-rename.ax.txt"
+    "$S/app.sh" screenshot "$run" retained-rename-banner
     "$S/app.sh" keys "$run" q command
     "$S/app.sh" wait-dialog "$run" 'Quit with unsaved changes?'
     "$S/app.sh" screenshot "$run" first-refused-quit
@@ -76,14 +80,16 @@ case "$scenario" in
     "$S/app.sh" screenshot "$run" second-refused-quit
     [ "$(rg -c '^quit draining via=' "$run/shell.log")" -ge 2 ]
     if rg -q 'quit confirmed' "$run/shell.log"; then echo 'confirmed while rename failed' >&2; exit 1; fi
+    "$S/app.sh" press "$run" 'Keep app open'
     chmod "$restore_mode" "$restore_folder"
     restore_folder=
     source "$run/run.env"
-    for ((attempt=0;attempt<100;attempt++)); do
-      if sqlite3 -readonly "$data/index.sqlite" "select title from pages where page_id='getting-started';" 2>/dev/null | rg -q '^Quit rename proof$'; then break; fi
-      sleep 0.2
+    for ((attempt=0;attempt<10;attempt++)); do
+      "$S/app.sh" tree "$run" > "$run/recovered.ax.txt"
+      if ! rg -q "Changes aren't being saved" "$run/recovered.ax.txt"; then break; fi
     done
-    sqlite3 -readonly "$data/index.sqlite" "select title from pages where page_id='getting-started';" | tee "$run/retry-title.txt" | rg '^Quit rename proof$'
+    if rg -q "Changes aren't being saved" "$run/recovered.ax.txt"; then exit 1; fi
+    "$S/app.sh" screenshot "$run" recovered-banner-cleared
     "$S/app.sh" keys "$run" q command
     wait_exit
     ;;

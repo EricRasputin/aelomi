@@ -1,14 +1,41 @@
 #!/usr/bin/env bash
 set -euo pipefail
-record=docs/evidence/shell-page-records
-mkdir -p .audit/fix4
-for script in drive run-phase failure-run; do
-  cp "$record/$script.sh.txt" ".audit/fix4/$script.sh"
-  chmod u+x ".audit/fix4/$script.sh"
-done
-cp "$record/run-rest.sh.txt" .audit/fix4/post-main-rest.sh
-chmod u+x .audit/fix4/post-main-rest.sh
-ls -la ~/Library/Application\ Support/Aelomi > .audit/fix4/real-data-before.txt
-df -h /System/Volumes/Data
-.audit/fix4/run-phase.sh first one > .audit/fix4/post-main-first.log 2>&1
-.audit/fix4/post-main-rest.sh
+S=.claude/skills/verify-aelomi/scripts
+driver=${1:?pass the absolute path to a copy of drive.sh.txt}
+out=${2:?pass an absolute local output directory outside the checkout}
+mkdir -p "$out"
+run=
+data=
+mode=
+cleanup() {
+  if [ -n "$mode" ] && [ -n "$data" ]; then chmod "$mode" "$data/docs/workspace"; fi
+  if [ -n "$run" ]; then "$S/app.sh" cleanup "$run"; fi
+}
+trap cleanup EXIT INT TERM
+ls -la "$HOME/Library/Application Support/Aelomi" > "$out/default-before.txt"
+run=$("$S/app.sh" launch dev)
+printf '%s\n' "$run" > "$out/runs.txt"
+data="$run/data"
+bash "$driver" "$run" first
+"$S/app.sh" cleanup "$run"
+run=$(AELOMI_DATA_DIR="$data" "$S/app.sh" launch dev)
+printf '%s\n' "$run" >> "$out/runs.txt"
+bash "$driver" "$run" both
+"$S/app.sh" cleanup "$run"
+run=$(AELOMI_DATA_DIR="$data" "$S/app.sh" launch dev)
+printf '%s\n' "$run" >> "$out/runs.txt"
+bash "$driver" "$run" settings-reopened
+"$S/app.sh" cleanup "$run"
+mode=$(stat -f %Lp "$data/docs/workspace")
+chmod 000 "$data/docs/workspace"
+run=$(AELOMI_DATA_DIR="$data" "$S/app.sh" launch dev)
+printf '%s\n' "$run" >> "$out/runs.txt"
+bash "$driver" "$run" failure "$data" "$mode"
+[ "$(stat -f %Lp "$data/docs/workspace")" = "$mode" ]
+"$S/app.sh" cleanup "$run"
+run=$(AELOMI_DATA_DIR="$data" "$S/app.sh" launch dev)
+printf '%s\n' "$run" >> "$out/runs.txt"
+bash "$driver" "$run" recovery-reopened
+"$S/app.sh" cleanup "$run"
+ls -la "$HOME/Library/Application Support/Aelomi" > "$out/default-after.txt"
+diff -u "$out/default-before.txt" "$out/default-after.txt"

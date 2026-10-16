@@ -1,33 +1,67 @@
-# Page records and retained quit failures
+# Observable record retries and native recovery
 
-This record proves source commit `a61adebb12dd1f215d0edd5042757d658a2c059b` against merge base `96cdc94ccb48be742d5bdc907de1f609f4a747fe`. Its patch-id is `fa1db9f69addf85850c26c9406f8d72153dace44`.
+This record proves source commit `12a203541ecc461ee541f005006a06672a0046ab` against merge base `6d64d683d5bf02bea2f67e8038428caef1ab4d62`. Its patch-id is `d00219ecea4fe34607cf30b61d31ab0b6fe700b2`.
 
-The proved pathspecs are `crates/core/src/workspace/`, `crates/core/src/storage/`, `src/ipc/`, `src/editor/quit-drain*`, `src-tauri/src/commands.rs`, `src-tauri/src/commands/page_records_tests.rs`, `src-tauri/src/quit.rs`, `src-tauri/src/storage.rs`, `src/dev/`, `src/router.tsx`, `src/main.tsx`, `src/stores/page-tree*`, `src/stores/index-status.ts`, `scripts/check-all*`, `scripts/wait-for-quiet.ts`, `.github/workflows/ci.yml`, `perf/budgets*`, `perf/cold-start*`, `perf/fixtures/`, `perf/stats.test.ts`, `ARCHITECTURE.md`, and `.claude/skills/verify-aelomi/scripts/`.
+The proved pathspecs are `crates/core/src/workspace/`, `crates/core/src/storage/`, `src/ipc/`, `src/editor/quit-drain*`, `src-tauri/src/commands.rs`, `src-tauri/src/commands/page_records_tests.rs`, `src-tauri/src/quit.rs`, `src-tauri/src/storage.rs`, `src/dev/`, `src/router.tsx`, `src/main.tsx`, `src/stores/page-tree*`, `src/stores/record-commands.ts`, `src/stores/index-status.ts`, `src/components/storage-notices.tsx`, `src/storage-copy.ts`, `tests/playwright/save-failure.spec.ts`, `scripts/check-all*`, `scripts/wait-for-quiet.ts`, `.github/workflows/ci.yml`, `perf/budgets*`, `perf/cold-start*`, `perf/fixtures/`, `perf/stats.test.ts`, `ARCHITECTURE.md`, and `.claude/skills/verify-aelomi/`.
 
-This single record replaces the earlier shell-page-records records at the round-4 brief's request. Their historical contents remain in Git. The calibration provenance below stays because the accepted performance ceilings depend on it.
+This updates the single final-head record requested by the fix briefs. Git retains earlier versions. The hosted-series provenance below remains the source of the unchanged 712 ms and 2783 ms page ceilings.
 
-## Data shape and guarantees
+## Data shape and decisions
 
-Each FIFO job owns its invocation and first reply promise, with queued, running, or failed state. Failure retains that exact job independently of the promise, blocks newer record jobs, and registers a retry with the shared command tracker. Every drain retries retained jobs and reads current failures when admission closes. The next record command and a timer also retry them. Timer delays use the shared `storageRetry` policy from main. They start at 100 ms, double, and cap at 5 s. The FIFO still owns its timer because record operations must serialize, while document byte updates commute. A successful retry removes only its own failure. Quit anyway explicitly permits exit with outstanding operations.
+`useRecordCommandStore` holds `retained: Map<OperationId, RetainedRecordOp>` and a `failing` selector derived from its size. Each retained value has exactly this shape:
 
-A document-level failure set alone cannot recover independent edits, and clearing it after any successful edit could hide an older failed operation. The FIFO keeps the operations and their order. Model the Domain chose FIFO ownership. Make Operations Idempotent required client-chosen create IDs. Test Behavior, Not Implementation chose exact invocation payloads and recovered titles. Prove It Works requires native relaunches. Sequence Work into Verifiable Units kept detecting tests before the fix. Laziness Protocol removed the obsolete promise-failure callback channel.
+```ts
+type RetainedRecordOp = {
+  id: OperationId;
+  op: "create" | "rename" | "move" | "trash" | "restore";
+  pageId: PageId;
+  error: PageError | string;
+  attempts: number;
+  since: number;
+};
+```
 
-The exported TypeScript wrappers remain `pageCreate(parentId)`, `pageRename(pageId, title)`, and `pageTrash(pageId)`. Only the native create transport and generated binding add an optional `pageId`, supplied once by the boundary. Native callers may still omit it.
+One FIFO still owns record retry. The store publishes a new map on retain, attempt and forget. The banner reads it alongside native health and document deliveries. A retried operation stays retained after acceptance until `storage_flush` confirms durability. Later confirmation attempts do not replay an accepted edit. This closes the healthy-storage, pre-acceptance failure gap without moving command retry native.
 
-Create replays return the existing client-chosen ID without replacing its record. Rename replays preserve an unchanged title and timestamp. Move replays see the same parent and position and leave placement unchanged. Trash replays return the existing batch. Restore replays with no remaining batch members change nothing. Core tests advance the clock between attempts and compare every record field. Unknown fields remain preserved by the existing field-delta writer. Empty core transactions still append an empty delta, the previously deferred no-op-history cleanup.
+The public wrappers keep their argument lists and now resolve with `RecordCommandResult<T>`:
+
+```ts
+type RecordCommandResult<T> =
+  | { status: "ok"; data: T }
+  | { status: "error"; error: PageError | string }
+  | { status: "retrying"; pageId: PageId; operationId: OperationId };
+```
+
+Create chooses a page ID once. A second user create for the same parent while that create is retained returns the same operation and ID, so recovery creates exactly one page. Rename and trash also tell callers `retrying` rather than reporting a final failure for a live operation. Move and restore remain core-only.
+
+Only typed record `Io` and uncertain invokes retry. `Internal` now identifies a blocking-pool JoinError or panic. Every terminal record error dequeues, including refusals on retry; only retry-time `Quitting` stays retained. Terminal storage-flush refusals dequeue too. The next queued operation can then run. The generic command tracker stores `{ retry, docs }`, sorts and deduplicates failure docs, and `drainCommands()` returns void so quit reads current retained failures after all in-flight work settles.
+
+All three Consider items were accepted. Create replay requires the original parent, active trash state and title. A new record cannot reattach an ID with existing body state; mismatches return terminal `AlreadyExists`. Dead `MissingBatch` was removed from core, IPC and generated bindings. Restoring an unknown batch is a successful no-op. Record validation, order allocation, create, rename and trash now live in `mock-records.ts`; `mock.ts` is 964 lines.
+
+Model the Domain kept FIFO ownership and added operation identity. Make Operations Idempotent kept create IDs stable and required matching replay content. Test Behavior, Not Implementation chose exact recovered titles and page counts. Prove It Works required the native permission and relaunch proof. Sequence Work into Verifiable Units put detecting tests before the implementation commit. A direct no-comments pass added no comments or suppressions. The builder spawned no agents and ran no review gate or independent verifier.
 
 ## Detecting tests
 
-All four required frontend tests failed before the fix by reaching Confirmed with the rename unsaved. They now pass in `src/ipc/quit-invocations.test.ts`:
+Tests were committed before implementation in `0f45212`, `eb36d3c` and `cfba23a`. The initial result/store tests failed against the previous replies. The create-conflict and orphan-body tests failed against the previous core writer. Isolated regression checks also failed with the old banner, terminal-error retry policy and Io panic mapping restored. The corrected native panic injector targets a new body document, so the index thread cannot consume its fault.
 
-- `SHELL-10 a record failure during the drain's initial yield is reported`.
-- `SHELL-10 a record failure after command collection while deliveries are held is reported`.
-- `SHELL-10 a second normal quit retains a refused rename until recovery saves it`.
-- `SHELL-10 a drain superseded by the five second timer retains a failure that settles afterward`.
+`src/ipc/record-recovery.test.ts` covers these cases:
 
-That file also adds `SHELL-9 a new drain after Asking admits both rename and settings before completion`.
+- `SHELL-10 a second user create reuses the retained page and lands exactly once`.
+- `SHELL-10 retained rename publishes every attempt and stays visible until durable recovery`.
+- `SHELL-10 trash reports retrying before the retained operation lands`.
+- `a terminal head %j lets the next queued operation run`, for Unavailable, InvalidUpdate, Malformed and Internal.
+- `a %s refusal on retry dequeues the operation`, for NotActive and OrderExhausted.
+- `Quitting on retry retains the operation until admission recovers`.
 
-`src/ipc/record-commands.test.ts` adds FIFO recovery, uncertain create and trash replies, and the exact capped timer schedule. `crates/core/src/workspace/tests/ack.rs` adds `rename_move_trash_and_restore_replays_preserve_records_with_a_later_clock`. `src-tauri/src/commands/page_records_tests.rs` adds `client_chosen_create_and_trash_replays_return_the_same_ids_and_records`. Both core timestamp and native client-ID tests failed before their fixes. `src-tauri/src/storage.rs` adds `record_wait_timeout_keeps_all_failing_documents_sorted_and_deduplicated`, which failed with only workspace in its Asking list before the timeout fix.
+Additional cases are:
+
+- `src/ipc/quit-invocations.test.ts`, `SHELL-10 Keep open preserves a failed head and queued edit until both recover in order`.
+- `tests/playwright/save-failure.spec.ts`, `SHELL-10 a pre-acceptance rename failure shows the banner with healthy storage and clears on recovery`.
+- `crates/core/src/workspace/tests/edits.rs`, `create_replay_requires_matching_parent_title_and_active_record` and `create_cannot_reattach_an_orphaned_body_document`.
+- `src-tauri/src/commands/page_records_tests.rs`, `a_record_planner_panic_returns_terminal_internal_and_releases_admission`.
+- `src/stores/page-tree.test.ts`, `mock create replays require the original active placement and empty title and reject orphaned bodies`.
+
+Existing FIFO, coalescing, lost-reply create/trash, backoff, late-failure and repeated-quit cases now assert the new reply contract. Focused runs passed 76 TypeScript cases, 17 core edit cases, seven native IPC cases and five WebKit warning cases. `pnpm bindings`, `pnpm typecheck` and lint passed. The PR Verification section names the final committed-head `check:all` artifact, produced after this evidence commit.
 
 The complete branch retains these SPEC tests:
 
@@ -38,13 +72,6 @@ The complete branch retains these SPEC tests:
 - TREE-5 and TREE-9. `crates/core/src/workspace/tests/edits.rs`, `moving_out_of_a_repaired_cycle_keeps_both_pages_roots_and_trashes_only_the_moved_page` and `random_create_move_trash_restore_keeps_an_ordered_tree`.
 - TREE-12. The same file's `trash_restore_preserves_tree_sibling_order_and_favorites_field_by_field` and `trash_restore_round_trips_self_parent_and_two_page_cycles_field_by_field`.
 
-## Round-4 scope decisions
-
-- Settings failure retention is deferred. Settings already retain snapshots after a native Write failure, but Io before native acceptance, Internal, and rejected invokes need their own retained patch model and a frontend pending-settings failure channel. Sending a fake settings doc ID through the record channel would mislabel the quit warning. This inherited gap remains open.
-- The record-wait timeout now merges all failing docs with workspace, sorts, and deduplicates. Native admission is named explicitly in ARCHITECTURE. The new drain test covers frontend reopen without Keep app open.
-- All performance budget values are unchanged, including 712 and 2783 ms. Index ceiling descriptions now state that the stored-empty fixture inherits the earlier calibration.
-- The dev Settings probe link has the Storage probe spacing. Shared verify helpers now own rename-quit and both-quit. The forked combined.js.txt was removed.
-- No nested agents, independent verifier, review gate, or merge ran. A direct no-comments pass found no newly added comments, suppressions, or constraint comments to remove. The implementation brief forbids nested agents.
 
 ## Source provenance and calibration
 
@@ -66,60 +93,61 @@ The method yields `ceil(1.5 × max(474.5, 443.5, 424)) = 712 ms` for `hostedPage
 
 Run the summary from the repository root with `python3 <copy of hosted-summary.py.txt> <series-1> <series-2> <series-3>`. The downloaded series directories remain in the prior builder’s local `.audit/fix3/`.
 
-## Rebase onto storage refusal and delivery retry
-
-PR #86 landed while this round was in progress. The branch was rebased onto main at `96cdc94ccb48be742d5bdc907de1f609f4a747fe`. The sole conflict was `src/main.tsx`. The resolution keeps `connectStorageStartup` and its disposal, plus `connectPageTreeEvents` and its subscribe-before-snapshot refresh. It removes the older direct refresh to avoid a second startup owner. Records now share `storageRetry.firstMs` and `storageRetry.maxMs` with #86’s refused-byte delivery. Pre-rebase native runs are superseded. The native runs below use this merged source.
-
-## Source checks
-
-`pnpm bindings` regenerated no differences after the rebase, and `pnpm typecheck` passed. Focused quit, queue, page-sync, storage-event, startup and page-tree cases pass after integration. The final clean committed-head `pnpm check:all` record is cited in the PR Verification section after the evidence commit.
-
 ## Native self-proof
 
-All five post-rebase launches passed doctor on macOS 27.0.1 build 26A434, arm64 Apple M1. They used one fresh synthetic data folder and explicit AELOMI_DATA_DIR on every reuse. All key, focus, press, combined quit, and screenshot steps held the keyboard lock. It was released between scenarios and on failure. No default-folder instance was launched.
+The completed runs use source `12a2035` on macOS 27.0.1 build 26A434, arm64 Apple M1. Each passed doctor. Every launch went through verify-aelomi with synthetic `AELOMI_DATA_DIR`; every key, press, focus and screenshot held `/tmp/aelomi-ui.lock`. Locks were released between scenarios. The synthetic workspace folder's exact original mode, 755, was restored. All owned app processes were cleaned up. Read-only listings of the real data folder before the first and after the last launch are identical.
 
-The final local run directories under `~/.local/state/aelomi-verify/` are:
+Run directories under `~/.local/state/aelomi-verify/` are:
 
-- `20261016-052301-dev-1m9x`.
-- `20261016-052437-dev-4FAS`.
-- `20261016-052544-dev-77HC`.
-- `20261016-052624-dev-rahF`.
-- `20261016-052728-dev-Qjpd`.
+- `20261016-062313-dev-aAuI`, the fresh folder, typing and immediate rename quit.
+- `20261016-062400-dev-hVrF`, immediate-rename relaunch and mixed settings/rename quit.
+- `20261016-062452-dev-CJ40`, mixed-write relaunch.
+- `20261016-062743-dev-iB9M`, a baseline reset to a different title before repeating the failure scenario.
+- `20261016-062832-dev-ZmXU`, the completed permission failure and recovery scenario.
+- `20261016-062952-dev-DvCy`, recovered-rename relaunch.
 
-The first screenshot shows the original three editable instructions. The second adds synthetic text. Relaunch shows `Quit rename proof` and that text. The combined run writes settings and a distinct title just before normal quit, then relaunch shows `Settings and rename quit proof`. The persisted settings compare exactly to:
+The fresh folder showed the three Getting started lines and accepted ` fix round five`. Immediate rename before native ⌘Q reopened as **Quit rename proof** with that body. The mixed quit reopened as **Settings and rename quit proof**. Disk settings exactly matched Dark, open page probe-page and block probe-block, recent pages probe-page and older-page, and expanded rows parent-page and probe-page.
 
-```json
-{"expandedRows":["parent-page","probe-page"],"openPage":{"pageId":"probe-page","topVisibleBlockId":"probe-block"},"recentPages":["probe-page","older-page"],"theme":"Dark"}
-```
+For pre-acceptance failure, the synthetic workspace folder was made inaccessible before relaunch. The seed deferred and page-tree read failed without changing source history. The dev Storage probe then submitted the rename. The banner showed `Permission denied (os error 13)` and the probe reported `page rename retrying title=Quit rename proof`, with no native storage failure event. Two normal quits asked with workspace pending. Keep app open preserved the operation. Restoring mode 755 let the retry land and the banner disappear. Normal quit confirmed, and the last relaunch showed **Quit rename proof** with the original typed body.
 
-The failure run revokes workspace-directory access before relaunch, because a warm source doc could otherwise accept an edit from memory. The startup screenshot shows the intended Permission denied page-list error. The rename is rejected before Store acceptance. Both normal quits remain refused, with separate Asking revisions visible in the screenshots. The folder’s original 755 mode is restored. A read-only index query must see the timer-retried `Quit rename proof` before the script sends the final normal quit. Relaunch preserves that title, the original page ID and typed body. No Keep app open or Quit anyway button is pressed.
-
-The failure run logs:
+The completed failure run's shell log contains:
 
 ```text
-storage probe failed: {"Io":"Permission denied (os error 13)"}
+page rename retrying title=Quit rename proof
 quit draining via=ExitRequested revision=1
 quit drain failed pending=Pending { docs: [DocId(workspace)], settings: false }
 quit draining via=ExitRequested revision=3
 quit drain failed pending=Pending { docs: [DocId(workspace)], settings: false }
-quit draining via=ExitRequested revision=5
+quit draining via=ExitRequested revision=6
 quit flush via=CompleteQuit pending=None
 quit confirmed via=drain
 quit flush via=Exit pending=None
 ```
 
-The exact mode and the read-only real-data-folder listing match their originals after the last launch. All owned processes are cleaned up. The final source app files are unchanged after these runs. `run-native.sh.txt` copies the recorded drivers and reruns all scenarios. The shared verify skill owns the combined actions, so no forked accessibility helper is required.
+One earlier proof attempt stopped because the Apple SQLite CLI could not open the derived cache for its read-only recovery query. Relaunch showed that the retry had reached the workspace log. The completed proof uses the banner and native relaunch instead; it does not wait for a derived-index query. A first standalone launch also lost its process before doctor when its tool session ended. The completed scenarios keep launch, drive and cleanup in one session. Neither failed attempt is counted as proof.
 
-All nine screenshots were inspected. [The PR comment](https://github.com/aelomi/aelomi/pull/84#issuecomment-6204803918) publishes them. Each anonymous attachment download is byte-identical to its local PNG, with the same size and SHA-256. The CLI 2.102.0 archive matched its published SHA-256 `da922c20d1792e5b2cbf375593d7a658acf034c12c84e007e71c76ef959c337e` before extraction. Logs and accessibility trees remain local.
+`drive.sh.txt` owns the per-scenario keyboard lock and permission-restoration trap. `run-native.sh.txt` launches and cleans up each scenario on one synthetic folder. To reproduce from the repository root, copy the driver to a temporary `.sh` file and run `bash docs/evidence/shell-page-records/run-native.sh.txt /absolute/path/to/driver.sh /absolute/path/to/local-output`. Keep the terminal session alive until it finishes. Build and launch happen before each scenario takes the lock.
 
-| Screenshot | Bytes | SHA-256 |
-|---|---:|---|
-| `seed-before.png` | 101129 | `59a183cdae8071718e77f7a53d5113526b3b7367c6e2409ab652bc48ff75b6fd` |
-| `typed-before-quit.png` | 102711 | `94ab034fa4f274572574c41286bdf34a3866025c90e2d0def7ba3cf92fc125c6` |
-| `immediate-rename-reopened.png` | 103141 | `eb6453efc95cc7679fd7a0b978fd3b2225db1b462805b20fb14f8a5fd24037f6` |
-| `settings-before.png` | 106109 | `42d5cd75f205c0f074a05adf389b461277632e5cf075188b47d2020e41121710` |
-| `settings-rename-reopened.png` | 107525 | `6d79776ca6d454195c27d9587e7c5aa52a797e59a8efa2ad7904cf3b209a0a43` |
-| `failure-before.png` | 114472 | `21fb5c9a07e2dce332c9ccf57af00e6169c242cc3861c5478083d68226623824` |
-| `first-refused-quit.png` | 195537 | `6e7e79e71ac7db62bbaba54f4e6351a341b4d1246d60c7462362f8bda2f97909` |
-| `second-refused-quit.png` | 195089 | `380eb3cea2d52f6f19b8d257ea632c2eea57a980d13a2b8657758f43062e3099` |
-| `recovered-rename-reopened.png` | 103165 | `38e7d5d456ddbdf7ffb763c798954f6d14beb63e6cb51af12615a1785a4e5719` |
+## Screenshots
+
+All eleven images were inspected. They show the seeded lines, typed text, durable immediate and mixed renames, the inaccessible baseline, the retained-operation banner, both quit questions, the cleared banner and the recovered relaunch. The probe keeps displaying its original `retrying` reply after recovery; the cleared banner and final relaunch show the current state.
+
+[PR screenshot comment](https://github.com/aelomi/aelomi/pull/84#issuecomment-6205607095). Every attachment was downloaded anonymously and matched its local PNG byte-for-byte by size and SHA-256.
+
+| Run | Filename | Bytes | SHA-256 |
+|---|---|---:|---|
+| `20261016-062313-dev-aAuI` | `seed-before.png` | 101298 | `af099bfb411268075f74c8eb35d795d113bca9e3204e4d83a6d990bbc34a40ca` |
+| `20261016-062313-dev-aAuI` | `typed-before-quit.png` | 103230 | `8cd95f75d41ad5238f3c45115a7735b9160228ab88e39c24d922dfdccf2cd6e6` |
+| `20261016-062400-dev-hVrF` | `immediate-rename-reopened.png` | 103455 | `f9da4f255d8d6f4c0b8af5d935bfa7302800ec77dc2755644910b9654eef0a75` |
+| `20261016-062400-dev-hVrF` | `settings-before.png` | 106109 | `42d5cd75f205c0f074a05adf389b461277632e5cf075188b47d2020e41121710` |
+| `20261016-062452-dev-CJ40` | `settings-rename-reopened.png` | 108000 | `1775261f7fafd0e57a2e2c7b010d40f39eab996d32a7a4cb7c005a0fc1c8d1a0` |
+| `20261016-062832-dev-ZmXU` | `failure-before.png` | 114472 | `21fb5c9a07e2dce332c9ccf57af00e6169c242cc3861c5478083d68226623824` |
+| `20261016-062832-dev-ZmXU` | `retained-rename-banner.png` | 128970 | `012498dc646ed15519d52519cb0c1c777418cd801e0495c7b73acd12c56cfd1e` |
+| `20261016-062832-dev-ZmXU` | `first-refused-quit.png` | 208382 | `1dfcabf2d3fd95eb4330d2e4ace537bd7dff6994cdffdba3722bba620acb0609` |
+| `20261016-062832-dev-ZmXU` | `second-refused-quit.png` | 208054 | `1003de72c6e43004b98411b20ea5198432f9f8f85197b90c9d5f53578b0cac53` |
+| `20261016-062832-dev-ZmXU` | `recovered-banner-cleared.png` | 109832 | `17ebdb9f19591812d9090cd41c1337969c5dd55f4ed3944fd9ffbf1dce21119f` |
+| `20261016-062952-dev-DvCy` | `recovered-rename-reopened.png` | 103626 | `1a3866a66797ae175872b3f036e836d6c740e92b9b23b11eba7dd67403e3df5c` |
+
+## Boundaries left for follow-ups
+
+The settings snapshot writer still owns native write retry. Settings failures before native acceptance need their own retained patch model; this round only makes the generic tracker reusable for it. Sidebar actions and move/restore commands remain follow-ups. Optional native create IDs, empty no-op appends, trash replay distinctions, the unused second-quit probe and shared listener-delay cleanup remain the previously deferred #87 work. The fixed seed body needs its sync-specific deterministic identity before v3. No performance budget changed and no new calibration or countersign is claimed. The orchestrator owns fresh review and independent verification.
