@@ -1,0 +1,23 @@
+ObjC.import('CoreGraphics');
+function run(argv) {
+ const se = Application('System Events');
+ const p = se.processes.whose({ unixId: Number(argv[0]) })[0];
+ p.frontmost = true;
+ const deadline = Date.now() + 5000;
+ while (!p.frontmost() && Date.now() < deadline) delay(0.1);
+ delay(0.2);
+ const get = (e, key) => { try { return e[key](); } catch (_) { return null; } };
+ const queue = [p.windows[0]];
+ while (queue.length) {
+  const e = queue.shift();
+  const label = get(e, 'name') || get(e, 'description');
+  if (get(e, 'role') === 'AXButton' && label === argv[1]) {
+   const pos = get(e, 'position'), size = get(e, 'size');
+   const point = $.CGPointMake(pos[0] + size[0]/2, pos[1] + size[1]/2);
+   $.CGEventPost($.kCGHIDEventTap, $.CGEventCreateMouseEvent(null, $.kCGEventMouseMoved, point, $.kCGMouseButtonLeft));
+   return label;
+  }
+  try { for (let i=0; i<e.uiElements.length; i++) queue.push(e.uiElements[i]); } catch (_) {}
+ }
+ throw new Error('row not found');
+}

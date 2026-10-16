@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+set -euo pipefail
+case "${1:-}" in
+  perf/cold-start.ts|*/perf/cold-start.ts)
+    python3 /tmp/aelomi-d1-lock.py
+    trap 'python3 /tmp/aelomi-d1-lock.py release' EXIT
+    /usr/local/bin/node "$@"
+    ;;
+  *) exec /usr/local/bin/node "$@" ;;
+esac

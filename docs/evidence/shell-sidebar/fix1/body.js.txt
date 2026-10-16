@@ -1,0 +1,9 @@
+function run(argv) {
+ const se = Application('System Events');
+ const p = se.processes.whose({ unixId: Number(argv[0]) })[0];
+ p.frontmost = true;
+ for (let i=0; i<20; i++) { se.keystroke(`Body line ${i}`); if (i<19) se.keyCode(36); }
+ for (let i=0; i<13; i++) se.keyCode(126);
+ se.keystroke(' visible caret');
+ return 'typed 20 body lines, moved up 13, and typed visible caret';
+}

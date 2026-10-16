@@ -1,0 +1,35 @@
+export default async function ({ page, expect, shot }) {
+  await page.setViewportSize({ width: 960, height: 720 });
+  await page.goto('/dev/sidebar-stress');
+  await expect(page.getByRole('textbox', { name: 'Page title', exact: true })).toHaveValue('Projects');
+  await shot('stress-demo');
+  await page.getByRole('button', { name: 'Worst case', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: 'Page title', exact: true })).toHaveValue('Quarterly planning notes for the platform infrastructure and product design teams');
+  const rows = page.getByRole('navigation', { name: 'Pages' });
+  await rows.getByRole('button', { name: '王秀英', exact: true }).hover();
+  for (const theme of ['light', 'dark']) {
+    await page.emulateMedia({ colorScheme: theme });
+    await shot(`stress-${theme}-960`);
+    await page.setViewportSize({ width: 320, height: 720 });
+    await shot(`stress-${theme}-320`);
+    await page.setViewportSize({ width: 960, height: 720 });
+    await page.evaluate(() => { document.body.style.zoom = '2'; });
+    await shot(`stress-${theme}-zoom200`);
+    await page.evaluate(() => { document.body.style.zoom = ''; });
+  }
+  await page.setViewportSize({ width: 2560, height: 1000 });
+  await shot('stress-wide');
+  await rows.evaluate((element) => { element.scrollTop = element.scrollHeight; element.scrollLeft = element.scrollWidth; });
+  await shot('stress-deep');
+  await page.setViewportSize({ width: 960, height: 720 });
+  await page.getByRole('button', { name: 'Empty', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'No page open' })).toBeVisible();
+  await shot('stress-empty');
+  await page.getByRole('button', { name: 'One', exact: true }).click();
+  await expect(rows.getByRole('button', { name: 'Untitled', exact: true })).toBeVisible();
+  await shot('stress-one');
+  await page.getByRole('button', { name: '10,000 rows', exact: true }).click();
+  await expect(rows.getByRole('button', { name: 'Project notes 1', exact: true })).toBeVisible();
+  expect(await rows.locator('.sidebar-row').count()).toBeLessThan(60);
+  await shot('stress-10000');
+}
