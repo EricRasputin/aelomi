@@ -6,7 +6,7 @@ use objc2::runtime::{AnyClass, AnyObject, Imp, MethodImplementation, Sel};
 use objc2::{MainThreadMarker, sel};
 use objc2_app_kit::{NSApplication, NSApplicationTerminateReply};
 use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
-use tauri::{AppHandle, Runtime};
+use tauri::{AppHandle, Manager, Runtime};
 use tauri_specta::Event;
 
 use crate::storage::DataLocation;
@@ -173,6 +173,9 @@ pub fn setup(app: &tauri::App) -> tauri::Result<()> {
                 role: NativeRole::Quit,
             } => app.exit(0),
             MenuAction::Webview => {
+                if entry.command == "closeWindow" && !route_close_window(app) {
+                    return;
+                }
                 if let Err(error) = (crate::commands::MenuCommand {
                     command: entry.command.clone(),
                 })
@@ -186,6 +189,21 @@ pub fn setup(app: &tauri::App) -> tauri::Result<()> {
     });
     hold_terminate(app);
     Ok(())
+}
+
+fn route_close_window(app: &AppHandle) -> bool {
+    if app
+        .get_webview_window("main")
+        .is_some_and(|window| window.is_focused().unwrap_or(false))
+    {
+        return true;
+    }
+    if let Some(mtm) = MainThreadMarker::new()
+        && let Some(window) = NSApplication::sharedApplication(mtm).keyWindow()
+    {
+        window.performClose(None);
+    }
+    false
 }
 
 /// Logout, the Dock's Quit, and AppleScript `quit` send `terminate:`. tao's app delegate has no
