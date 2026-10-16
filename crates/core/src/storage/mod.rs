@@ -42,3 +42,21 @@ pub use doc_id::{DocId, InvalidDocId};
 pub use health::{FailReason, Health};
 pub use state::Seq;
 pub use store::{AppendError, OpenError, Pending, Store};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WorkspacePresence {
+    NotArrived,
+    Arrived,
+    Unrecognized,
+}
+
+/// Inspects the marker and document store without preparing or changing the folder.
+pub fn workspace_presence(path: &std::path::Path) -> std::io::Result<WorkspacePresence> {
+    let marker = path.join("format.json").try_exists()?;
+    let docs = path.join("docs").try_exists()?;
+    Ok(match (marker, docs && path.join("docs").is_dir()) {
+        (true, true) => WorkspacePresence::Arrived,
+        (false, true) => WorkspacePresence::Unrecognized,
+        _ => WorkspacePresence::NotArrived,
+    })
+}

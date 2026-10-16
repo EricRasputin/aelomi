@@ -69,9 +69,9 @@ pub fn storage_health(storage: State<'_, Storage>) -> Health {
 #[specta::specta]
 pub fn show_recovery_folder(storage: State<'_, Storage>) -> Result<(), StorageError> {
     show_recovery_folder_with(&storage, |path| {
-        tauri_plugin_opener::open_path(path, None::<&str>).map_err(|error| error.to_string())
+        tauri_plugin_opener::reveal_item_in_dir(path).map_err(|error| error.to_string())
     })?;
-    println!("recovery folder opener launched=true");
+    println!("recovery folder revealed=true");
     Ok(())
 }
 
@@ -586,6 +586,20 @@ mod tests {
             super::show_recovery_folder_with(&ready, |_| panic!("no folder on Ready")),
             Err(crate::storage::StorageError::Unavailable)
         ));
+    }
+
+    #[test]
+    fn recovery_command_reveals_instead_of_opening() {
+        let source = include_str!("commands.rs");
+        let adapter = source
+            .split("pub fn show_recovery_folder(")
+            .nth(1)
+            .unwrap()
+            .split("fn show_recovery_folder_with(")
+            .next()
+            .unwrap();
+        assert!(adapter.contains("tauri_plugin_opener::reveal_item_in_dir(path)"));
+        assert_eq!(adapter.contains("open_path"), false);
     }
 
     #[test]

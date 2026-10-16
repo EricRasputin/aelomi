@@ -267,15 +267,15 @@ pub fn data_location() -> DataLocation {
     }
 }
 
-pub fn recovery_file() -> std::path::PathBuf {
-    std::env::var_os("AELOMI_RECOVERY_FILE")
+pub fn recovery_directory() -> std::path::PathBuf {
+    std::env::var_os("AELOMI_RECOVERY_DIR")
         .filter(|path| !path.is_empty())
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| {
             let name = if cfg!(debug_assertions) {
-                "Aelomi Dev Recovery.json"
+                "Aelomi Dev Recovery"
             } else {
-                "Aelomi Recovery.json"
+                "Aelomi Recovery"
             };
             std::env::home_dir()
                 .unwrap_or_default()

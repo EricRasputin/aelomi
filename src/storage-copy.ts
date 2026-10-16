@@ -31,11 +31,16 @@ export const storageCopy = {
   lastSeen: "Where your pages were last seen",
   showFolder: "Show in Finder",
   showFolderError:
-    "Aelomi couldn't show that folder. It may have moved. Use the path above to find your pages.",
+    "Aelomi couldn't show that folder. Look inside the folders where you moved it, or search Finder for its name.",
   startEmpty: "Start a new empty workspace here",
   startEmptyTitle: "Start a new empty workspace?",
   startEmptyWarning:
     "Your pages stay where they are. Aelomi won't move or delete them. The new workspace won't contain those pages.",
+  newLocation: "The new empty workspace will be created at:",
+  lostTrack:
+    "Aelomi lost track of where your pages were. Find the folder you moved before you restart, or explicitly choose a new empty workspace.",
+  locationForgotten:
+    "Aelomi will forget this last-seen location after you continue.",
   cancelEmpty: "Keep moving my pages",
   confirmEmpty: "Create empty workspace",
   cloudTitle: "Move your data folder out of cloud storage",
@@ -64,7 +69,13 @@ export const storageCopy = {
 
 export type RecoveryStep =
   | { kind: "text"; text: string }
-  | { kind: "folder"; text: string; path: string; after: string }
+  | {
+      kind: "folder";
+      text: string;
+      path: string;
+      after: string;
+      remedy?: { text: string; path: string; after: string };
+    }
   | { kind: "show"; text: string };
 
 type Refusal = {
@@ -78,7 +89,11 @@ export type StorageStartup =
   | { kind: "loading" }
   | { kind: "ready" }
   | ({ kind: "refused" } & Refusal)
-  | ({ kind: "finish-moving"; configured: string } & Refusal);
+  | ({
+      kind: "finish-moving";
+      configured: string;
+      lastSeen: string | null;
+    } & Refusal);
 
 function cloudRecovery(
   cloud: Extract<StorageStatus, { CloudPath: object }>["CloudPath"],
@@ -133,7 +148,7 @@ function cloudRecovery(
         kind: "folder",
         text: "Copy this path. In Finder, choose Go > Go to Folder and paste it. Press Return:",
         path: configured,
-        after: configuredPathCheck(
+        ...configuredPathCheck(
           configured_parent,
           configured_name,
           resolved_name,
@@ -153,7 +168,7 @@ function configuredPathCheck(
   previousName: string,
   moveStep: number,
   restartStep: number,
-): string {
+): { after: string; remedy: { text: string; path: string; after: string } } {
   const rename =
     name === previousName
       ? ""
@@ -162,7 +177,14 @@ function configuredPathCheck(
     name === previousName
       ? ""
       : ` Select the moved folder, press Return, type "${name}", and press Return.`;
-  return `Finder must open "${name}" directly inside "${parent}", with format.json and docs. Continue to step ${restartStep} only after this exact path opens with those files.\n\nIf Finder can't find it, close Go to Folder.${rename}\n\nIf the folder is elsewhere, locate the folder you moved and select it. Choose Edit > Copy (⌘C). Open "${parent}" with Go > Go to Folder and press Return. Choose Edit > Move Item Here (⌥⌘V).${afterMove} If you haven't moved the folder yet, repeat step ${moveStep}. Repeat this path check before you restart Aelomi.`;
+  return {
+    after: `Finder must open "${name}" directly inside "${parent}", with format.json and docs. Continue to step ${restartStep} only after this exact path opens with those files.\n\nIf Finder can't find it, close Go to Folder.${rename}`,
+    remedy: {
+      text: "If the folder is elsewhere, copy this path. In Finder, choose File > New Finder Window (⌘N), then Go > Go to Folder (⇧⌘G). Paste the path and press Return:",
+      path: parent,
+      after: `In the other Finder window, select the folder that holds your pages and press ⌘C. Return to the destination window. Hold Option and choose Edit > Move Item Here (⌥⌘V).${afterMove} If you haven't moved the folder yet, repeat step ${moveStep}. Repeat this path check before you restart Aelomi.`,
+    },
+  };
 }
 
 function finishRecovery(
@@ -172,7 +194,7 @@ function finishRecovery(
   const steps: RecoveryStep[] = [
     {
       kind: "show",
-      text: "Find the folder that holds your pages. If it has moved, locate the folder you moved.",
+      text: "Find the folder that holds your pages. If it has moved, look inside the folders where you moved it, or search Finder for its name.",
     },
   ];
   if (recovery !== "Override" && recovery.LinkAtDataFolder !== undefined) {
@@ -185,15 +207,15 @@ function finishRecovery(
     steps.push(
       {
         kind: "folder",
-        text: "Select the folder that holds your pages in Finder. Choose Edit > Copy (⌘C). Open this destination with Go > Go to Folder (⇧⌘G). Paste the path and press Return:",
+        text: "Copy this destination path. In Finder, choose File > New Finder Window (⌘N), then Go > Go to Folder (⇧⌘G). Paste the path and press Return:",
         path: configured_parent,
-        after: `Choose Edit > Move Item Here (⌥⌘V).${rename} Your pages move to this Mac.`,
+        after: `In the other Finder window, select the folder that holds your pages and press ⌘C. Return to the destination window. Hold Option and choose Edit > Move Item Here (⌥⌘V).${rename} Your pages move to this Mac.`,
       },
       {
         kind: "folder",
         text: "Copy this path. In Finder, choose Go > Go to Folder and paste it. Press Return:",
         path: configured,
-        after: configuredPathCheck(
+        ...configuredPathCheck(
           configured_parent,
           configured_name,
           resolved_name,
@@ -217,10 +239,21 @@ function finishRecovery(
 
 export function storageStartup(status: StorageStatus): StorageStartup {
   if (typeof status === "object") {
+    if (status.RecoveryRecordUnreadable !== undefined)
+      return {
+        kind: "finish-moving",
+        configured: status.RecoveryRecordUnreadable.configured,
+        lastSeen: null,
+        title: storageCopy.finishTitle,
+        message: storageCopy.lostTrack,
+        detail: null,
+        recovery: null,
+      };
     if (status.FinishMoving !== undefined)
       return {
         kind: "finish-moving",
         configured: status.FinishMoving.configured,
+        lastSeen: status.FinishMoving.resolved,
         title: storageCopy.finishTitle,
         message: storageCopy.finishMessage,
         detail: null,

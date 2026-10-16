@@ -6,7 +6,6 @@ import {
   storageCopy,
   storageErrorText,
 } from "../storage-copy";
-import { useIndexStatusStore } from "../stores/index-status";
 import { usePageTreeStore } from "../stores/page-tree";
 import { useStorageStartupStore } from "../stores/storage-startup";
 
@@ -97,6 +96,20 @@ export function StorageRefusal({
                                 {paragraph}
                               </p>
                             ))}
+                          {step.remedy && (
+                            <>
+                              <p className="storage-recovery-paragraph">
+                                {step.remedy.text}
+                              </p>
+                              <PathChip
+                                path={step.remedy.path}
+                                label={step.remedy.text}
+                              />
+                              <p className="storage-recovery-paragraph">
+                                {step.remedy.after}
+                              </p>
+                            </>
+                          )}
                         </>
                       )}
                     </li>
@@ -108,7 +121,10 @@ export function StorageRefusal({
               </>
             )}
             {startup.kind === "finish-moving" && (
-              <NewWorkspaceConfirmation configured={startup.configured} />
+              <NewWorkspaceConfirmation
+                configured={startup.configured}
+                lastSeen={startup.lastSeen}
+              />
             )}
             {startup.detail !== null && (
               <div className="storage-refusal-detail">
@@ -159,7 +175,13 @@ type EmptyChoice =
   | { kind: "creating" }
   | { kind: "error"; message: string };
 
-function NewWorkspaceConfirmation({ configured }: { configured: string }) {
+function NewWorkspaceConfirmation({
+  configured,
+  lastSeen,
+}: {
+  configured: string;
+  lastSeen: string | null;
+}) {
   const [choice, setChoice] = useState<EmptyChoice>({ kind: "closed" });
   const keepMoving = useRef<HTMLButtonElement>(null);
   const creating = choice.kind === "creating";
@@ -171,14 +193,8 @@ function NewWorkspaceConfirmation({ configured }: { configured: string }) {
         setChoice({ kind: "error", message: storageErrorText(reply.error) });
         return;
       }
-      if (reply.data === "Ready") {
-        const [, status] = await Promise.all([
-          usePageTreeStore.getState().refresh(),
-          commands.indexStatus(),
-        ]);
-        useIndexStatusStore.getState().receiveStatus(status);
-      }
       useStorageStartupStore.getState().receive(reply.data);
+      if (reply.data === "Ready") void usePageTreeStore.getState().refresh();
       setChoice({ kind: "closed" });
     } catch (error: unknown) {
       setChoice({
@@ -212,7 +228,17 @@ function NewWorkspaceConfirmation({ configured }: { configured: string }) {
             <AlertDialog.Description className="mt-3 text-sm leading-6 text-[var(--muted)]">
               {storageCopy.startEmptyWarning}
             </AlertDialog.Description>
+            <p className="mt-3 text-sm">{storageCopy.newLocation}</p>
             <PathChip path={configured} label="New workspace location" />
+            {lastSeen !== null && (
+              <>
+                <p className="mt-3 text-sm">{storageCopy.lastSeen}</p>
+                <PathChip path={lastSeen} label={storageCopy.lastSeen} />
+                <p className="mt-3 text-sm text-[var(--muted)]">
+                  {storageCopy.locationForgotten}
+                </p>
+              </>
+            )}
             {choice.kind === "error" && (
               <p
                 role="alert"

@@ -62,6 +62,11 @@ type MockCall = {
 export type MockSetup = {
   settings?: Partial<Settings>;
   storageStatus?: StorageStatus;
+  recovery?: {
+    snapshot: "reject" | "stale";
+    holdTree: boolean;
+    revealError?: string;
+  };
   failWrites?: FailReason;
   indexStatus?: IndexStatus;
   pages?: SeedPage[];
@@ -466,6 +471,8 @@ export const commands = {
   showRecoveryFolder: async () => {
     calls.push({ command: "showRecoveryFolder", args: [] });
     await setupReady;
+    const revealError = window.__aelomiMockSetup?.recovery?.revealError;
+    if (revealError) return { status: "error", error: { Io: revealError } };
     return typeof storage.status === "object" &&
       ("CloudPath" in storage.status || "FinishMoving" in storage.status)
       ? { status: "ok", data: null }
@@ -476,10 +483,17 @@ export const commands = {
     await setupReady;
     if (
       typeof storage.status !== "object" ||
-      !("FinishMoving" in storage.status)
+      !(
+        "FinishMoving" in storage.status ||
+        "RecoveryRecordUnreadable" in storage.status
+      )
     )
       return { status: "error", error: "Unavailable" };
     storage.status = "Ready";
+    if (window.__aelomiMockSetup?.recovery) {
+      indexStatus = "Ready";
+      await events.indexStatusChanged.emit("Ready");
+    }
     quit.frontendReady = true;
     return { status: "ok", data: "Ready" };
   },
@@ -491,11 +505,21 @@ export const commands = {
     calls.push({ command: "indexStatus", args: [] });
     if (storage.status !== "Ready")
       return { Failed: { reason: "the data folder is not open" } };
+    const snapshot = window.__aelomiMockSetup?.recovery?.snapshot;
+    if (snapshot === "reject") throw new Error("Index snapshot rejected");
+    if (snapshot === "stale") return "Rebuilding";
     return structuredClone(indexStatus);
   },
   pageTree: async () => {
     calls.push({ command: "pageTree", args: [] });
     await setupReady;
+    if (
+      storage.status === "Ready" &&
+      window.__aelomiMockSetup?.recovery?.holdTree
+    )
+      await new Promise<void>((resolve) => {
+        releaseRecoveryTree = resolve;
+      });
     if (storage.status !== "Ready")
       return { status: "error", error: "Unavailable" };
     const problem = pagesRootProblem(workspaceDoc());
@@ -797,7 +821,14 @@ function pageWrite(update: () => void) {
   markChanged({ workspace: true, pages: [] });
 }
 
+let releaseRecoveryTree: (() => void) | undefined;
+
 const control = {
+  recovery: {
+    releaseTree() {
+      releaseRecoveryTree?.();
+    },
+  },
   menu: {
     activate(command: MenuCommand["command"]) {
       return events.menuCommand.emit({ command });

@@ -313,11 +313,13 @@ export type StorageStatus = "Ready" | ({ CloudPath: {
 	configured: string,
 	resolved: string,
 	recovery: CloudRecovery,
-} }) & { FinishMoving?: never; Io?: never } | ({ FinishMoving: {
+} }) & { FinishMoving?: never; Io?: never; RecoveryRecordUnreadable?: never } | ({ FinishMoving: {
 	configured: string,
 	resolved: string,
 	recovery: CloudRecovery,
-} }) & { CloudPath?: never; Io?: never } | "Locked" | "NewerFormat" | "UnknownFormat" | ({ Io: string }) & { CloudPath?: never; FinishMoving?: never };
+} }) & { CloudPath?: never; Io?: never; RecoveryRecordUnreadable?: never } | ({ RecoveryRecordUnreadable: {
+	configured: string,
+} }) & { CloudPath?: never; FinishMoving?: never; Io?: never } | "Locked" | "NewerFormat" | "UnknownFormat" | ({ Io: string }) & { CloudPath?: never; FinishMoving?: never; RecoveryRecordUnreadable?: never };
 
 export type TextPart = {
 	text: string,

@@ -92,13 +92,13 @@ fn open_storage(app: &tauri::App) {
     let handle = app.handle().clone();
     let started = std::time::Instant::now();
     #[cfg(target_os = "macos")]
-    let record = macos::recovery_file();
+    let record = macos::recovery_directory();
     #[cfg(not(target_os = "macos"))]
     let record = app
         .path()
         .app_config_dir()
         .unwrap_or_default()
-        .join("recovery.json");
+        .with_extension("recovery");
     let storage = Storage::open_with_recovery(&location, record, move |event| {
         publish_index(&handle, event)
     });
