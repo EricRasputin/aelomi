@@ -219,10 +219,9 @@ function finishRecovery(
         ? ""
         : ` Select the moved folder, press Return, type "${configured_name}", and press Return.`;
     if (destination_exists)
-      steps.push({
-        kind: "text",
-        text: `In "${configured_parent}", select the existing folder named "${configured_name}", press Return, type "${configured_name} (old)", and press Return. Keep this folder until your pages are back.`,
-      });
+      steps.push(
+        destinationRename(configured, configured_parent, configured_name),
+      );
     steps.push(
       {
         kind: "folder",
@@ -247,10 +246,7 @@ function finishRecovery(
     if (destination_exists) {
       const parent = configured.slice(0, configured.lastIndexOf("/")) || "/";
       const name = configured.slice(configured.lastIndexOf("/") + 1);
-      steps.push({
-        kind: "text",
-        text: `In "${parent}", select the existing folder named "${name}", press Return, type "${name} (old)", and press Return. Keep this folder until your pages are back.`,
-      });
+      steps.push(destinationRename(configured, parent, name));
     }
     steps.push({
       kind: "folder",
@@ -262,6 +258,24 @@ function finishRecovery(
   }
   steps.push({ kind: "text", text: storageCopy.restart });
   return { resolved, steps };
+}
+
+function destinationRename(
+  configured: string,
+  parent: string,
+  name: string,
+): RecoveryStep {
+  return {
+    kind: "folder",
+    text: "Before you rename anything, copy this path. In Finder, choose File > New Finder Window (⌘N), then Go > Go to Folder (⇧⌘G). Paste the path and press Return:",
+    path: configured,
+    after: `Go to Folder must open "${configured}". This is not the folder that Show in Finder selected. If this exact path does not open, stop this rename step and check the location.`,
+    remedy: {
+      text: "Now copy this parent path. In the same Finder window, choose Go > Go to Folder (⇧⌘G). Paste the path and press Return:",
+      path: parent,
+      after: `In this window, select the existing folder named "${name}", press Return, type "${name} (old)", and press Return. Keep this folder until your pages are back.`,
+    },
+  };
 }
 
 export function storageStartup(status: StorageStatus): StorageStartup {
@@ -351,7 +365,7 @@ export function storageStartup(status: StorageStatus): StorageStartup {
 export function storageErrorText(error: StorageError): string {
   if (typeof error === "object") {
     if (error.DestinationNotEmpty !== undefined)
-      return `This folder already contains items: ${error.DestinationNotEmpty.items.join(", ")}. Aelomi can't start an empty workspace here. Nothing was changed.`;
+      return `The new workspace location already contains: ${error.DestinationNotEmpty.items.join(", ")}. These may be your pages. Choose Keep moving my pages, then follow the step that adds "(old)" to the existing folder's name. Keep its contents.`;
     return error.Io;
   }
   switch (error) {

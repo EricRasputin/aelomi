@@ -387,14 +387,24 @@ test.each([false, true])(
       throw new Error("expected pending move");
     expect(
       mapped.recovery?.steps.filter(
-        (step) => step.kind === "text" && step.text.includes("(old)"),
+        (step) =>
+          step.kind === "folder" && step.remedy?.after.includes("(old)"),
       ),
     ).toEqual(
       exists
         ? [
             {
-              kind: "text",
-              text: 'In "/Local", select the existing folder named "Aelomi", press Return, type "Aelomi (old)", and press Return. Keep this folder until your pages are back.',
+              kind: "folder",
+              text: "Before you rename anything, copy this path. In Finder, choose File > New Finder Window (⌘N), then Go > Go to Folder (⇧⌘G). Paste the path and press Return:",
+              path: "/Local/Aelomi",
+              after:
+                'Go to Folder must open "/Local/Aelomi". This is not the folder that Show in Finder selected. If this exact path does not open, stop this rename step and check the location.',
+              remedy: {
+                text: "Now copy this parent path. In the same Finder window, choose Go > Go to Folder (⇧⌘G). Paste the path and press Return:",
+                path: "/Local",
+                after:
+                  'In this window, select the existing folder named "Aelomi", press Return, type "Aelomi (old)", and press Return. Keep this folder until your pages are back.',
+              },
             },
           ]
         : [],

@@ -212,6 +212,9 @@ pub(crate) fn open_workspace(
                 .as_ref()
                 .map(|directory| directory.file_for(&configured));
             if mode == OpenMode::Startup && destination != core::DestinationFolder::Workspace {
+                if matches!(destination, core::DestinationFolder::Unrecognized { .. }) {
+                    return (Err(StorageStatus::UnknownFormat), resolved);
+                }
                 if let Some(record) = &record {
                     let status = match record.load() {
                         Ok(Some(pending)) => Some(StorageStatus::FinishMoving {

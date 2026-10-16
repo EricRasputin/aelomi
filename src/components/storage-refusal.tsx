@@ -192,6 +192,9 @@ function NewWorkspaceConfirmation({
     try {
       const reply = await commands.startEmptyWorkspace();
       if (reply.status === "error") {
+        useStorageStartupStore
+          .getState()
+          .receive(await commands.storageStatus());
         setChoice({ kind: "error", message: storageErrorText(reply.error) });
         return;
       }

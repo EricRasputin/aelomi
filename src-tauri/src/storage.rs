@@ -201,13 +201,25 @@ impl Storage {
         &self,
         on_index: impl Fn(&IndexEvent) + Send + Sync + 'static,
     ) -> Result<StorageStatus, StorageError> {
+        let (location, record) = self.recovery.as_ref().ok_or(StorageError::Unavailable)?;
+        let on_index = Arc::new(on_index);
+        self.start_empty_workspace_with(|mode| {
+            let on_index = Arc::clone(&on_index);
+            open_workspace(location, Some(record), mode, move |event| on_index(event))
+        })
+    }
+
+    fn start_empty_workspace_with(
+        &self,
+        mut open: impl FnMut(OpenMode) -> (Result<Arc<Workspace>, StorageStatus>, PathBuf),
+    ) -> Result<StorageStatus, StorageError> {
         if !matches!(
             self.status(),
             StorageStatus::FinishMoving { .. } | StorageStatus::RecoveryRecordUnreadable { .. }
         ) {
             return Err(StorageError::Unavailable);
         }
-        let (location, record) = self.recovery.as_ref().ok_or(StorageError::Unavailable)?;
+        let (location, _) = self.recovery.as_ref().ok_or(StorageError::Unavailable)?;
         let configured = normalize_configured(&location.path)
             .map_err(|error| StorageError::Io(error.to_string()))?;
         let mode = match core::check_data_path(&configured, &location.cloud_roots) {
@@ -225,13 +237,26 @@ impl Storage {
             },
             Err(_) => OpenMode::CreateEmpty,
         };
-        let (result, _) = open_workspace(location, Some(record), mode, on_index);
+        let (mut result, _) = open(mode);
+        let creation_error = match &result {
+            Err(StorageStatus::Io(error)) if mode == OpenMode::CreateEmpty => Some(error.clone()),
+            _ => None,
+        };
+        if creation_error.is_some() {
+            (result, _) = open(OpenMode::Startup);
+        }
         let mut opened = self
             .opened
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         if opened.is_ok() {
             return Ok(StorageStatus::Ready);
+        }
+        if let Some(error) = creation_error {
+            if result.is_err() {
+                *opened = result;
+                return Err(StorageError::Io(error));
+            }
         }
         match result {
             Err(StorageStatus::Io(error)) => Err(StorageError::Io(error)),

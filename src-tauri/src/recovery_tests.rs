@@ -382,12 +382,7 @@ fn failed_workspace_opens_retain_the_matching_record() {
             if marker.contains('3') {
                 StorageStatus::NewerFormat
             } else {
-                StorageStatus::FinishMoving {
-                    destination_exists: true,
-                    configured: home.location.path.to_string_lossy().into_owned(),
-                    resolved: pending.resolved.to_string_lossy().into_owned(),
-                    recovery: pending.recovery().unwrap(),
-                }
+                StorageStatus::UnknownFormat
             }
         );
         assert_eq!(home.pending(), pending);
@@ -451,7 +446,7 @@ fn marker_only_destination_keeps_guard_and_every_byte_unchanged() {
 }
 
 #[test]
-fn docs_without_marker_keeps_pending_guard_without_changing_destination_or_record() {
+fn docs_without_marker_reports_unknown_format_without_changing_destination_or_record() {
     let home = Home::new();
     home.leaf();
     home.open();
@@ -459,10 +454,7 @@ fn docs_without_marker_keeps_pending_guard_without_changing_destination_or_recor
     fs::create_dir_all(home.location.path.join("docs")).unwrap();
     fs::write(home.location.path.join("docs/page"), b"page bytes").unwrap();
     let record = fs::read(&home.file().path).unwrap();
-    assert!(matches!(
-        home.open().status(),
-        StorageStatus::FinishMoving { .. }
-    ));
+    assert_eq!(home.open().status(), StorageStatus::UnknownFormat);
     assert_eq!(listing(&home.location.path), [OsString::from("docs")]);
     assert_eq!(
         listing(&home.location.path.join("docs")),
@@ -699,20 +691,58 @@ fn failed_empty_initialization_keeps_the_record_guards_relaunch_and_allows_retry
     );
     assert!(matches!(
         storage.status(),
-        StorageStatus::FinishMoving { .. }
+        StorageStatus::FinishMoving {
+            destination_exists: true,
+            ..
+        }
     ));
     assert_eq!(fs::read(&home.file().path).unwrap(), record);
     drop(storage);
     let reopened = home.open();
     assert!(matches!(
         reopened.status(),
-        StorageStatus::FinishMoving { .. }
+        StorageStatus::FinishMoving {
+            destination_exists: true,
+            ..
+        }
     ));
     assert_eq!(
         reopened.start_empty_workspace(|_| {}).unwrap(),
         StorageStatus::Ready
     );
     assert_eq!(reopened.workspace().unwrap().tree().unwrap().pages.len(), 0);
+    assert_eq!(home.file().path.exists(), false);
+}
+
+#[test]
+fn a_landed_empty_frame_after_creation_error_returns_ready() {
+    let home = Home::new();
+    home.leaf();
+    home.open();
+    fs::remove_file(&home.location.path).unwrap();
+    let storage = home.open();
+    let mut attempts = Vec::new();
+    let result = storage.start_empty_workspace_with(|mode| {
+        attempts.push(mode == OpenMode::CreateEmpty);
+        if mode == OpenMode::CreateEmpty {
+            let (opened, path) = open_workspace(&home.location, None, mode, |_| {});
+            assert!(opened.is_ok());
+            drop(opened);
+            assert_eq!(home.file().path.exists(), true);
+            (
+                Err(StorageStatus::Io(
+                    "could not finish creating the empty workspace".into(),
+                )),
+                path,
+            )
+        } else {
+            open_workspace(&home.location, Some(&home.record), mode, |_| {})
+        }
+    });
+    assert_eq!(result.unwrap(), StorageStatus::Ready);
+    assert_eq!(attempts, [true, false]);
+    assert_eq!(storage.status(), StorageStatus::Ready);
+    assert_eq!(storage.workspace().unwrap().tree().unwrap().pages.len(), 0);
     assert_eq!(home.file().path.exists(), false);
 }
 

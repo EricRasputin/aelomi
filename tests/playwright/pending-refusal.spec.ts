@@ -1,5 +1,70 @@
 import { expect, test } from "./fixtures";
 
+test("SHELL-11: failed creation refreshes the destination before returning to the move steps", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.__aelomiMockSetup = {
+      storageStatus: {
+        FinishMoving: {
+          destination_exists: false,
+          configured: "/Local/Aelomi",
+          resolved: "/Cloud/Aelomi",
+          recovery: "Override",
+        },
+      },
+      recovery: {
+        createError: { Io: "could not finish creating the empty workspace" },
+      },
+    };
+  });
+  await page.goto("/");
+  await expect(
+    page.getByText(
+      'In this window, select the existing folder named "Aelomi", press Return, type "Aelomi (old)", and press Return. Keep this folder until your pages are back.',
+      { exact: true },
+    ),
+  ).toHaveCount(0);
+  await page
+    .getByRole("button", { name: "Start a new empty workspace here" })
+    .click();
+  await page.evaluate(() =>
+    window.__aelomiMock?.storage.setStatus({
+      FinishMoving: {
+        destination_exists: true,
+        configured: "/Local/Aelomi",
+        resolved: "/Cloud/Aelomi",
+        recovery: "Override",
+      },
+    }),
+  );
+  await page
+    .getByRole("button", { name: "Create empty workspace", exact: true })
+    .click();
+  await expect(page.getByRole("alert")).toHaveText(
+    "could not finish creating the empty workspace",
+  );
+  await page.getByRole("button", { name: "Keep moving my pages" }).click();
+  await expect(
+    page.getByText(
+      'In this window, select the existing folder named "Aelomi", press Return, type "Aelomi (old)", and press Return. Keep this folder until your pages are back.',
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("textbox", {
+      name: "Before you rename anything",
+      exact: false,
+    }),
+  ).toHaveValue("/Local/Aelomi");
+  await expect(
+    page.getByRole("textbox", {
+      name: "Now copy this parent path",
+      exact: false,
+    }),
+  ).toHaveValue("/Local");
+});
+
 for (const snapshot of ["reject", "stale"] as const) {
   test(`SHELL-11: creation becomes ready before tree refresh and preserves the Ready event with a ${snapshot} snapshot`, async ({
     page,
@@ -139,7 +204,7 @@ test("SHELL-11: a non-empty destination keeps moving controls and names the bloc
   await page.goto("/");
   await expect(
     page.getByText(
-      'In "/Local", select the existing folder named "Aelomi", press Return, type "Aelomi (old)", and press Return. Keep this folder until your pages are back.',
+      'In this window, select the existing folder named "Aelomi", press Return, type "Aelomi (old)", and press Return. Keep this folder until your pages are back.',
       { exact: true },
     ),
   ).toBeVisible();
@@ -150,7 +215,7 @@ test("SHELL-11: a non-empty destination keeps moving controls and names the bloc
     .getByRole("button", { name: "Create empty workspace", exact: true })
     .click();
   await expect(page.getByRole("alert")).toHaveText(
-    "This folder already contains items: notes.txt, Photos. Aelomi can't start an empty workspace here. Nothing was changed.",
+    'The new workspace location already contains: notes.txt, Photos. These may be your pages. Choose Keep moving my pages, then follow the step that adds "(old)" to the existing folder\'s name. Keep its contents.',
   );
   await page.getByRole("button", { name: "Keep moving my pages" }).click();
   await expect(
