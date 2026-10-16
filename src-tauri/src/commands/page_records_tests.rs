@@ -427,3 +427,44 @@ fn complete_quit_waits_for_a_rename_and_settings_and_reopens_with_both() {
         "Just before quit"
     );
 }
+
+#[test]
+fn a_record_planner_panic_returns_terminal_internal_and_releases_admission() {
+    let disk = SimDisk::default();
+    let shell = shell(crate::storage::tests::open_on(&disk));
+    disk.panic_workspace_load();
+    let failure = invoke(
+        &shell,
+        "page_create",
+        json!({"parentId": null, "pageId": "panicked"}),
+    )
+    .unwrap_err();
+    assert!(
+        failure["Internal"]
+            .as_str()
+            .unwrap()
+            .contains("simulated panic")
+    );
+    assert_eq!(
+        invoke(
+            &shell,
+            "page_create",
+            json!({"parentId": null, "pageId": "next"})
+        ),
+        Ok(json!("next"))
+    );
+    assert_eq!(
+        shell
+            .app
+            .state::<Storage>()
+            .workspace()
+            .unwrap()
+            .tree()
+            .unwrap()
+            .pages
+            .iter()
+            .map(|page| page.id.as_str())
+            .collect::<Vec<_>>(),
+        ["next"]
+    );
+}

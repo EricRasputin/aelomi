@@ -53,6 +53,10 @@ impl SimDisk {
         self.0.fail(OpKind::Read, "settings.json", libc::EACCES);
     }
 
+    pub fn panic_workspace_load(&self) {
+        self.0.panic_once(OpKind::List, "/docs/workspace");
+    }
+
     pub fn clear_faults(&self) {
         self.0.clear_faults();
     }

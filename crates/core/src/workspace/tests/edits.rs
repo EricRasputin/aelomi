@@ -3,7 +3,7 @@ use std::sync::Barrier;
 use std::time::{Duration, Instant};
 
 use proptest::prelude::*;
-use yrs::{Any, Map, ReadTxn, Transact, WriteTxn};
+use yrs::{Any, Map, ReadTxn, Text, Transact, WriteTxn};
 
 use super::{doc_of, page};
 use crate::storage::{DocId, Store};
@@ -723,4 +723,63 @@ fn record_edits_add_one_client_per_launch_and_resume_its_clock() {
         assert_eq!(second.get(client), *clock);
     }
     assert_eq!(records(&w)[&id].title, "reopened 19");
+}
+
+#[test]
+fn create_replay_requires_matching_parent_title_and_active_record() {
+    let dir = tempfile::tempdir().unwrap();
+    let w = empty(dir.path());
+    let id = PageId::new("replay").unwrap();
+    let edit = PageEdit::CreateWithId {
+        page: id.clone(),
+        parent: None,
+        title: "Original".into(),
+    };
+    w.edit_page(edit.clone()).unwrap();
+    let before = records(&w);
+    w.edit_page(edit.clone()).unwrap();
+    assert_eq!(records(&w), before);
+    for (parent, title) in [
+        (Some(PageId::new("missing").unwrap()), "Original"),
+        (None, "Changed"),
+    ] {
+        assert_eq!(
+            w.edit_page(PageEdit::CreateWithId {
+                page: id.clone(),
+                parent,
+                title: title.into()
+            })
+            .unwrap_err()
+            .to_string(),
+            "the page ID already belongs to another page"
+        );
+    }
+    w.edit_page(PageEdit::Trash { page: id.clone() }).unwrap();
+    assert_eq!(
+        w.edit_page(edit).unwrap_err().to_string(),
+        "the page ID already belongs to another page"
+    );
+}
+
+#[test]
+fn create_cannot_reattach_an_orphaned_body_document() {
+    let dir = tempfile::tempdir().unwrap();
+    let w = empty(dir.path());
+    let id = PageId::new("orphan-body").unwrap();
+    let mut editor = Editor::new(42);
+    let update = editor.edit(id.doc_id(), |txn| {
+        txn.get_or_insert_text("body").push(txn, "old content");
+    });
+    w.append(id.doc_id(), &update).unwrap();
+    assert_eq!(
+        w.edit_page(PageEdit::CreateWithId {
+            page: id,
+            parent: None,
+            title: String::new()
+        })
+        .unwrap_err()
+        .to_string(),
+        "the page ID already belongs to another page"
+    );
+    assert_eq!(records(&w), BTreeMap::new());
 }
