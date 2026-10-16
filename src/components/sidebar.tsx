@@ -16,12 +16,12 @@ function RowTitle({ title }: { title: string }) {
     const element = label.current;
     if (!element) return;
     const measure = () =>
-      setTruncated(title !== "" && element.scrollWidth > element.clientWidth);
+      setTruncated(element.scrollWidth > element.clientWidth);
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(element);
     return () => observer.disconnect();
-  }, [title]);
+  });
   return (
     <span
       ref={label}
