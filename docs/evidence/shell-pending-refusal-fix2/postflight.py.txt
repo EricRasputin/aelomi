@@ -1,0 +1,29 @@
+import hashlib
+import json
+from pathlib import Path
+
+for theme in ['dark', 'light']:
+    out = Path(f'.local-gate/e3-fix2/native-head-{theme}')
+    base = Path((out / 'base.txt').read_text().strip())
+    explicit = base / 'Explicit workspace'
+    assert sorted(p.name for p in (explicit / 'docs').iterdir()) == ['workspace']
+    assert (explicit / '.DS_Store').read_bytes() == b'Finder metadata'
+    occupied = base / 'Occupied destination'
+    assert sorted(p.name for p in occupied.iterdir()) == ['notes.txt']
+    assert (occupied / 'notes.txt').read_bytes() == b'keep these notes'
+    destination = base / 'Local/Aelomi'
+    assert sorted(p.name for p in destination.iterdir()) == ['docs', 'format.json']
+    assert (destination / 'format.json').read_bytes() == b'{"format":1}'
+    assert list((destination / 'docs').iterdir()) == []
+    record = base / 'Recovery' / (hashlib.sha256(str(destination).encode()).hexdigest() + '.json')
+    assert record.read_bytes() == (out / 'pending.json.txt').read_bytes()
+    original = base / 'Cloud/Aelomi Notes'
+    actual = {str(p.relative_to(original)): hashlib.sha256(p.read_bytes()).hexdigest() for p in original.rglob('*') if p.is_file()}
+    assert actual == json.loads((out / 'original-before.json.txt').read_text())
+    runs = dict(line.split('\t') for line in (out / 'runs.tsv').read_text().splitlines())
+    for scene, directory in runs.items():
+        run = Path(directory)
+        assert 'FAIL' not in (run / 'doctor.txt').read_text(), (scene, directory)
+        assert f'proof app appearance={theme.title()}' in (run / 'shell.log').read_text()
+    assert (out / 'real-data-before.txt').read_bytes() == (out / 'real-data-after.txt').read_bytes()
+    print(f'PASS {theme}: exact empty workspace, metadata, occupied items, partial destination, record, original bytes, doctors, appearance and real-data listing')

@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -euo pipefail
+OUT=.local-gate/e3-fix2
+cat > "$OUT/appearance.m" <<'OBJC'
+#import <AppKit/AppKit.h>
+#import <dispatch/dispatch.h>
+#include <stdlib.h>
+#include <string.h>
+__attribute__((constructor)) static void proofAppearance(void) {
+    if (strcmp(getprogname(), "aelomi") != 0) return;
+    const char *theme = getenv("AELOMI_PROOF_THEME");
+    if (!theme) return;
+    const BOOL dark = strcmp(theme, "Dark") == 0;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NSApplication.sharedApplication.appearance = [NSAppearance appearanceNamed:dark ? NSAppearanceNameDarkAqua : NSAppearanceNameAqua];
+        fprintf(stderr, "proof app appearance=%s\n", dark ? "Dark" : "Light");
+    });
+}
+OBJC
+xcrun clang -dynamiclib -fobjc-arc -fblocks -framework AppKit "$OUT/appearance.m" -o "$OUT/appearance.dylib"
+codesign --force --sign - "$OUT/appearance.dylib"

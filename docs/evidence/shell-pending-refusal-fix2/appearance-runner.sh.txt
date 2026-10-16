@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -euo pipefail
+export DYLD_INSERT_LIBRARIES="$AELOMI_PROOF_REPO/.local-gate/e3-fix2/appearance.dylib"
+exec "$HOME/.cargo/bin/cargo" "$@"

@@ -1,0 +1,19 @@
+import re
+import subprocess
+from pathlib import Path
+
+root = Path.cwd()
+record = root / 'docs/evidence/shell-pending-refusal-fix2/README.md'
+text = record.read_text()
+source = re.search(r'Source commit `([0-9a-f]{40})`', text).group(1)
+base = re.search(r'Recorded merge base `([0-9a-f]{40})`', text).group(1)
+expected = re.search(r'Verbatim patch-id `([0-9a-f]{40})`', text).group(1)
+patch = subprocess.run(['git', 'diff', '--full-index', '--binary', base, source], check=True, capture_output=True).stdout
+actual = subprocess.run(['git', 'patch-id', '--verbatim'], input=patch, check=True, capture_output=True).stdout.decode().split()[0]
+assert actual == expected, (actual, expected)
+paths = ['crates/core/src/storage/mod.rs', 'crates/core/src/storage/store.rs', 'crates/core/src/workspace/seed.rs', 'src-tauri/src/quit.rs', 'src-tauri/src/storage.rs', 'src-tauri/src/recovery.rs', 'src-tauri/src/macos.rs', 'src-tauri/src/commands.rs', 'src-tauri/src/lib.rs', 'src/components/storage-refusal.tsx', 'src/storage-copy.ts', 'src/styles.css', 'src/ipc/bindings.ts', 'src/ipc/mock.ts', 'src/ipc/mock-recovery.ts']
+changed = subprocess.run(['git', 'diff', '--name-only', base, source], check=True, capture_output=True, text=True).stdout.splitlines()
+for path in paths:
+    assert path in changed, path
+subprocess.run(['git', 'diff', '--exit-code', source, 'HEAD', '--', *paths], check=True)
+print('PASS: recorded patch-id and every runtime pathspec match the tested source')

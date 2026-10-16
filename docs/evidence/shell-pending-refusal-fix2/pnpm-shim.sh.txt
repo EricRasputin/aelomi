@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "${1:-}" == dev:app ]]; then
+  shift
+  exec /usr/local/bin/node "$AELOMI_PROOF_REPO/scripts/tauri-dev.ts" --runner "$AELOMI_PROOF_REPO/.local-gate/e3-fix2/appearance-runner" "$@"
+fi
+exec /usr/local/bin/pnpm "$@"
