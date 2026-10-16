@@ -75,10 +75,10 @@ test("SHELL-10 a failed page with text retains a quit retry using the same ID", 
   const id = createNewPage();
   expect(usePageTitlesStore.getState().rename(id, "Kept")).toBe(null);
   settleNewPage(id, { status: "error", error: { Internal: "x" } }, false);
-  expect(commandFailures()).toEqual(["workspace"]);
+  expect(commandFailures()).toEqual({ docs: ["workspace"], settings: false });
   vi.clearAllMocks();
   retryNewPage(id);
-  expect(commandFailures()).toEqual([]);
+  expect(commandFailures()).toEqual({ docs: [], settings: false });
   expect(vi.mocked(commands.pageCreate).mock.calls).toEqual([[null, id]]);
   expect(vi.mocked(commands.pageRename).mock.calls).toEqual([[id, "Kept"]]);
   expect(usePageTitlesStore.getState().drafts.get(id)?.title).toBe("Kept");
@@ -90,7 +90,7 @@ test("SHELL-10 an empty failed page needs no retained title retry", () => {
   expect([...useNewPagesStore.getState().pages]).toEqual([
     [id, { stage: "failed", accepted: false }],
   ]);
-  expect(commandFailures()).toEqual([]);
+  expect(commandFailures()).toEqual({ docs: [], settings: false });
 });
 test("TREE-1 a fresh tree forgets listed settled entries but keeps creating and failed entries", () => {
   useNewPagesStore.setState({

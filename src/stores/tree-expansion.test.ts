@@ -1,14 +1,53 @@
 // @vitest-environment happy-dom
 import { afterEach, expect, test, vi } from "vitest";
 import { commands } from "../ipc";
+import {
+  commandFailures,
+  drainCommands,
+  setCommandAdmission,
+} from "../ipc/pending-commands";
 import { useQuitStore } from "./quit";
+import { updateSettings } from "./settings";
 import { useShellStore } from "./shell";
 import { useTreeExpansionStore } from "./tree-expansion";
 
-afterEach(() => {
+afterEach(async () => {
+  setCommandAdmission("open");
+  await drainCommands();
   vi.restoreAllMocks();
   useQuitStore.setState(useQuitStore.getInitialState(), true);
   useShellStore.setState(useShellStore.getInitialState(), true);
+});
+
+test("TREE-6 SHELL-8 disclosure changes share the latest-field settings job with theme picks", async () => {
+  const update = vi.spyOn(commands, "settingsUpdate").mockResolvedValue({
+    status: "ok",
+    data: {
+      theme: "Dark",
+      open_page: null,
+      recent_pages: [],
+      expanded_rows: ["child", "parent"],
+    },
+  });
+  useTreeExpansionStore.setState({
+    expansion: { kind: "ready", rows: new Set() },
+  });
+  setCommandAdmission("completing");
+  useTreeExpansionStore.getState().toggle("parent");
+  updateSettings({ theme: "Dark" });
+  useTreeExpansionStore.getState().toggle("child");
+  const pending = commandFailures();
+  setCommandAdmission("open");
+  await drainCommands();
+  expect(pending).toEqual({ docs: [], settings: true });
+  expect(update.mock.calls).toEqual([
+    [{ expanded_rows: ["parent", "child"], theme: "Dark" }],
+  ]);
+  expect(commandFailures()).toEqual({ docs: [], settings: false });
+  expect(useTreeExpansionStore.getState().expansion).toEqual({
+    kind: "ready",
+    rows: new Set(["parent", "child"]),
+  });
 });
 
 test("TREE-6 expansion loads persisted IDs and writes the next set without touching other settings", async () => {

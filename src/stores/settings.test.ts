@@ -169,6 +169,73 @@ test("SHELL-8 InvalidPageId drops the rejected fields and saves the pending them
   });
 });
 
+test("SHELL-8 InvalidPageId preserves the theme when local page-ID validation disagrees", async () => {
+  const update = vi
+    .spyOn(commands, "settingsUpdate")
+    .mockResolvedValueOnce({ status: "error", error: "InvalidPageId" });
+  const job = createSettingsWriteJob(
+    (patch) => commands.settingsUpdate(patch),
+    () => {},
+  );
+  job({
+    theme: "Dark",
+    expanded_rows: ["page-a"],
+    recent_pages: ["page-b"],
+    open_page: { Set: { page_id: "page-c", top_visible_block_id: null } },
+  });
+  await drainCommands();
+  expect(update.mock.calls).toEqual([
+    [
+      {
+        theme: "Dark",
+        expanded_rows: ["page-a"],
+        recent_pages: ["page-b"],
+        open_page: { Set: { page_id: "page-c", top_visible_block_id: null } },
+      },
+    ],
+    [{ theme: "Dark" }],
+  ]);
+  expect(await commands.settingsGet()).toEqual({
+    status: "ok",
+    data: {
+      theme: "Dark",
+      open_page: null,
+      recent_pages: [],
+      expanded_rows: [],
+    },
+  });
+});
+
+test("SHELL-9 an expanded-rows patch queued with closed admission is reported and retried on reopening", async () => {
+  const update = vi.spyOn(commands, "settingsUpdate");
+  const job = createSettingsWriteJob(
+    (patch) => commands.settingsUpdate(patch),
+    () => {},
+  );
+  setCommandAdmission("completing");
+  job({ expanded_rows: ["page-parent"] });
+  await drainCommands();
+  const waiting = commandFailures();
+  const attempts = update.mock.calls.length;
+  setCommandAdmission("open");
+  await drainCommands();
+  expect({ waiting, attempts }).toEqual({
+    waiting: { docs: [], settings: true },
+    attempts: 0,
+  });
+  expect(update.mock.calls).toEqual([[{ expanded_rows: ["page-parent"] }]]);
+  expect(commandFailures()).toEqual({ docs: [], settings: false });
+  expect(await commands.settingsGet()).toEqual({
+    status: "ok",
+    data: {
+      theme: "System",
+      open_page: null,
+      recent_pages: [],
+      expanded_rows: ["page-parent"],
+    },
+  });
+});
+
 test("SHELL-10 closed admission preserves the Io reason and reopening retries immediately", async () => {
   const update = vi
     .spyOn(commands, "settingsUpdate")

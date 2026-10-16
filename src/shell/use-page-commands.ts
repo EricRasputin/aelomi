@@ -6,6 +6,7 @@ import { commands } from "../ipc";
 import { usePageTreeStore } from "../stores/page-tree";
 import { usePaletteStore } from "../stores/palette";
 import { canEdit, useQuitStore } from "../stores/quit";
+import { useSettingsDialogStore } from "../stores/settings-dialog";
 import { useShellStore } from "../stores/shell";
 import { activateNewPage, forgetEmptyFailuresExcept } from "./new-pages";
 import { subtreeIds } from "./page-navigation";
@@ -46,6 +47,8 @@ export function usePageCommands() {
   useEffect(() => {
     const unregister = [
       commandDispatcher.register("toggleSidebar", {
+        enabled: () =>
+          useSettingsDialogStore.getState().dialog.kind === "closed",
         run: () => {
           const shell = useShellStore.getState();
           if (
@@ -139,6 +142,7 @@ export function newPage() {
 export function newPageEnabled() {
   return (
     canEdit(useQuitStore.getState()) &&
+    useSettingsDialogStore.getState().dialog.kind === "closed" &&
     usePageTreeStore.getState().source.kind === "ready"
   );
 }

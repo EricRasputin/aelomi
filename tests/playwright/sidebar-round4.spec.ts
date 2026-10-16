@@ -278,7 +278,7 @@ test("SHELL-10 held create asks immediately and retains Q during recovery in Ask
         .filter((c) => c.command === "quitDrainFailed")
         .map((c) => c.args),
     ),
-  ).toEqual([[1, ["workspace"]]]);
+  ).toEqual([[1, ["workspace"], false]]);
   expect(await page.evaluate(() => window.__aelomiMock?.quit.exited)).toBe(
     false,
   );

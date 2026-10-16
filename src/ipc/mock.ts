@@ -38,6 +38,7 @@ import {
   type SearchablePage,
   searchPages,
 } from "./mock-search";
+import { loadSearchFixture } from "./mock-search-fixture";
 import { createSettingsMock } from "./mock-settings";
 import {
   type PageRecord,
@@ -85,7 +86,6 @@ declare global {
 const calls: MockCall[] = [];
 const errors: string[] = [];
 let failTreeRead = false;
-let failSettingsRead = false;
 const heldLoads = new Map<
   string,
   { wait: Promise<void>; release: () => void }
@@ -127,7 +127,6 @@ function settingsMock() {
 let registration = Promise.resolve();
 let releaseRegistration = () => {};
 let appearance: "light" | "dark" | null = null;
-type FixturePage = { id: string; title: string; lines: string[] };
 const fixtureBodies = new Map<string, string[]>();
 const quit: { revision: number; phase: QuitPhase; frontendReady: boolean } = {
   revision: 0,
@@ -463,15 +462,7 @@ export const commands = {
     control.quit.request();
     return { status: "ok", data: null };
   },
-  settingsGet: async () => {
-    await setupReady;
-    if (failSettingsRead)
-      return {
-        status: "error",
-        error: { Io: "synthetic settings read failure" },
-      };
-    return settingsMock().commands.settingsGet();
-  },
+  settingsGet: () => settingsMock().commands.settingsGet(),
   settingsUpdate: (patch) => settingsMock().commands.settingsUpdate(patch),
   ping: async (request) => {
     calls.push({ command: "ping", args: [structuredClone(request)] });
@@ -679,63 +670,6 @@ function seedRawBodies(bodies: Record<string, string>) {
   }
 }
 
-async function loadSearchFixture() {
-  const { default: jsonl } = await import(
-    "../../fixtures/generated/search-10k-pages.jsonl?raw"
-  );
-  const pages: FixturePage[] = jsonl
-    .split("\n")
-    .filter((line) => line.trim() !== "")
-    .map((line) => {
-      const page = JSON.parse(line) as {
-        id: string;
-        title: string;
-        parentId: string | null;
-        trash: { batchId: string; trashedAt: number } | null;
-        body: string;
-      };
-      fixtureBodies.set(page.id, page.body.split("\n"));
-      return { id: page.id, title: page.title, lines: [] };
-    });
-  const parents = new Map<string, string | null>();
-  const trash = new Map<
-    string,
-    { batchId: string; trashedAt: number } | null
-  >();
-  for (const line of jsonl.split("\n")) {
-    if (line.trim() === "") continue;
-    const page = JSON.parse(line) as {
-      id: string;
-      parentId: string | null;
-      trash: { batchId: string; trashedAt: number } | null;
-    };
-    parents.set(page.id, page.parentId);
-    trash.set(page.id, page.trash);
-  }
-  writeRecords(
-    workspaceDoc(),
-    pages.map((page, line) => {
-      const trashed = trash.get(page.id) ?? null;
-      return {
-        id: page.id,
-        title: page.title,
-        parentId: parents.get(page.id) ?? null,
-        order: line,
-        createdAt: 1_700_000_000_000 + line * 1000,
-        updatedAt: 1_700_000_000_000 + line * 1000,
-        trash: trashed && {
-          originalParentId: parents.get(page.id) ?? null,
-          originalOrder: line,
-          batchId: trashed.batchId,
-          trashedAt: trashed.trashedAt,
-        },
-      };
-    }),
-  );
-  markChanged({ workspace: true, pages: [] });
-  orderedPages();
-}
-
 async function applySetup(setup: MockSetup | undefined) {
   if (!setup) return;
   if (setup.holdRegistration)
@@ -746,7 +680,7 @@ async function applySetup(setup: MockSetup | undefined) {
   if (setup.appearance) appearance = setup.appearance;
   if (setup.storageStatus)
     storage.status = structuredClone(setup.storageStatus);
-  failSettingsRead = setup.failSettingsRead ?? false;
+  settingsMock().control.failReads(setup.failSettingsRead ?? false);
   if (setup.failWrites) {
     storage.failWrites = true;
     storage.reason = setup.failWrites;
@@ -762,7 +696,11 @@ async function applySetup(setup: MockSetup | undefined) {
     Y.applyUpdate(workspaceDoc(), fromBase64(setup.rawWorkspace));
     markChanged({ workspace: true, pages: [] });
   }
-  if (setup.searchFixture) await loadSearchFixture();
+  if (setup.searchFixture) {
+    await loadSearchFixture(workspaceDoc(), fixtureBodies);
+    markChanged({ workspace: true, pages: [] });
+    orderedPages();
+  }
 }
 
 let setupReady: Promise<void> = Promise.resolve();
@@ -786,7 +724,6 @@ function resetState() {
   for (const load of heldLoads.values()) load.release();
   heldLoads.clear();
   failTreeRead = false;
-  failSettingsRead = false;
   calls.length = 0;
   errors.length = 0;
   settingsMock().reset();
@@ -951,12 +888,7 @@ const control = {
     },
   },
   get settings() {
-    return {
-      ...settingsMock().control,
-      failReads(on: boolean) {
-        failSettingsRead = on;
-      },
-    };
+    return settingsMock().control;
   },
   storage: {
     refuseRecords(error: import("./bindings").PageError | null) {

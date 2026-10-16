@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { commands } from "../ipc";
-import { trackCommand } from "../ipc/pending-commands";
 import { acceptsUserCommands, useQuitStore } from "./quit";
+import { updateSettings } from "./settings";
 import { useShellStore } from "./shell";
 
 type Expansion =
@@ -12,12 +12,11 @@ type Expansion =
 type ExpansionStore = {
   expansion: Expansion;
   load: () => Promise<void>;
-  toggle: (pageId: string) => Promise<void>;
+  toggle: (pageId: string) => void;
   reveal: (pageIds: readonly string[]) => void;
 };
 
 let loading: Promise<void> | null = null;
-let writes: Promise<void> = Promise.resolve();
 
 export const useTreeExpansionStore = create<ExpansionStore>((set, get) => ({
   expansion: { kind: "loading" },
@@ -52,7 +51,7 @@ export const useTreeExpansionStore = create<ExpansionStore>((set, get) => ({
     if (rows.size !== expansion.rows.size)
       set({ expansion: { kind: "ready", rows } });
   },
-  toggle: async (pageId) => {
+  toggle: (pageId) => {
     if (!acceptsUserCommands(useQuitStore.getState().decision)) {
       useShellStore.setState({
         message: "Aelomi is closing. Keep the app open to change the sidebar.",
@@ -66,21 +65,6 @@ export const useTreeExpansionStore = create<ExpansionStore>((set, get) => ({
     if (rows.has(pageId)) rows.delete(pageId);
     else rows.add(pageId);
     set({ expansion: { kind: "ready", rows } });
-    const write = trackCommand(
-      writes.then(() => commands.settingsUpdate({ expanded_rows: [...rows] })),
-    );
-    writes = (async () => {
-      try {
-        const reply = await write;
-        if (reply.status === "error")
-          throw new Error(JSON.stringify(reply.error));
-      } catch {
-        useShellStore.setState({
-          message:
-            "The sidebar's expanded pages couldn't be saved. Try changing the disclosure again.",
-        });
-      }
-    })();
-    await writes;
+    updateSettings({ expanded_rows: [...rows] });
   },
 }));
