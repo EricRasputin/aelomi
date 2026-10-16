@@ -244,6 +244,12 @@ export function CommandPalette() {
                   id={`palette-row-${item.index}`}
                   role="option"
                   aria-selected={isSelected}
+                  aria-description={
+                    row.kind === "title" &&
+                    newPages.get(row.match.id)?.stage === "failed"
+                      ? "Not created"
+                      : undefined
+                  }
                   aria-disabled={
                     row.kind === "title"
                       ? !canOpenPage(row.match.id)

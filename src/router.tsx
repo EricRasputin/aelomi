@@ -104,7 +104,8 @@ function WorkspaceLayout() {
   return (
     <Tooltip.Provider delay={700} timeout={300}>
       <div className="flex h-screen flex-col">
-        <header className="shrink-0 border-b border-[var(--border)] px-8 py-5 text-sm font-medium">
+        <ShellStatus landmark={!diagnostic} />
+        <header className="shell-header shrink-0 border-b border-[var(--border)] px-8 py-5 text-sm font-medium">
           Aelomi
           {import.meta.env.DEV && (
             <Link
@@ -122,16 +123,15 @@ function WorkspaceLayout() {
               Storage probe
             </Link>
           )}
+          <p role="status" className="shell-notice">
+            {closing
+              ? "Aelomi is closing. New actions are paused while pending changes finish."
+              : movingToTrash
+                ? "Moving to trash…"
+                : message}
+          </p>
         </header>
-        <ShellStatus landmark={!diagnostic} />
         <SaveFailureBanner />
-        <p role="status" className="shell-notice">
-          {closing
-            ? "Aelomi is closing. New actions are paused while pending changes finish."
-            : movingToTrash
-              ? "Moving to trash…"
-              : message}
-        </p>
         <div className="workspace" data-workspace>
           {!stress && <Sidebar openPage={openPage} hidden={!sidebarVisible} />}
           <main tabIndex={-1} className="editor-pane">

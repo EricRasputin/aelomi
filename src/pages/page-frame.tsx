@@ -203,6 +203,7 @@ function PageTitle({
         dir="auto"
         value={shownTitle}
         readOnly={!editable || title === null}
+        onFocus={() => useShellStore.getState().titleFocused(pageId)}
         onCompositionStart={() => {
           composing.current = true;
         }}

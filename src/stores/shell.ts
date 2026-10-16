@@ -1,7 +1,6 @@
 import { create } from "zustand";
+import { type FocusRequest, resolvePageFocus } from "../shell/page-focus";
 import { bodyReady, pagePresence } from "../shell/page-presence";
-
-type FocusRequest = { pageId: string; target: "title" | "body" | "bodyStart" };
 
 type ShellStore = {
   sidebarVisible: boolean;
@@ -16,6 +15,7 @@ type ShellStore = {
   } | null;
   toggleSidebar: () => void;
   requestFocus: (request: FocusRequest) => void;
+  titleFocused: (pageId: string) => void;
 };
 
 export const useShellStore = create<ShellStore>((set) => ({
@@ -29,9 +29,16 @@ export const useShellStore = create<ShellStore>((set) => ({
     set((state) => ({ sidebarVisible: !state.sidebarVisible })),
   requestFocus: (request) =>
     set({
-      focusRequest:
-        request.target !== "title" && !bodyReady(pagePresence(request.pageId))
-          ? { ...request, target: "title" }
-          : request,
+      focusRequest: resolvePageFocus(request, {
+        kind: "request",
+        bodyReady: bodyReady(pagePresence(request.pageId)),
+      }),
     }),
+  titleFocused: (pageId) =>
+    set((state) => ({
+      focusRequest:
+        state.focusRequest?.pageId === pageId
+          ? resolvePageFocus(state.focusRequest, { kind: "titleFocus" })
+          : state.focusRequest,
+    })),
 }));

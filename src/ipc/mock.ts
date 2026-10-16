@@ -86,6 +86,10 @@ const calls: MockCall[] = [];
 const errors: string[] = [];
 let failTreeRead = false;
 let failSettingsRead = false;
+const heldLoads = new Map<
+  string,
+  { wait: Promise<void>; release: () => void }
+>();
 
 type MockDoc = { doc: Y.Doc; updates: Uint8Array[]; pending: boolean };
 const storage: {
@@ -597,6 +601,7 @@ export const commands = {
   docLoad: async (docId) => {
     calls.push({ command: "docLoad", args: [docId] });
     await setupReady;
+    await heldLoads.get(docId)?.wait;
     const error = refusal(docId);
     if (error) return { status: "error", error };
     const { doc } = mockDoc(docId);
@@ -778,6 +783,8 @@ function restoreKept(): boolean {
 }
 
 function resetState() {
+  for (const load of heldLoads.values()) load.release();
+  heldLoads.clear();
   failTreeRead = false;
   failSettingsRead = false;
   calls.length = 0;
@@ -898,6 +905,18 @@ const control = {
     },
   },
   bodies: {
+    holdLoad(pageId: string) {
+      if (heldLoads.has(pageId)) return;
+      let release = () => {};
+      const wait = new Promise<void>((done) => {
+        release = done;
+      });
+      heldLoads.set(pageId, { wait, release });
+    },
+    releaseLoad(pageId: string) {
+      heldLoads.get(pageId)?.release();
+      heldLoads.delete(pageId);
+    },
     seed(pageId: string, blocks: SeedBlock[]) {
       seedBodies({ [pageId]: blocks });
     },

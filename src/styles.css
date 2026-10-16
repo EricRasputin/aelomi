@@ -966,16 +966,19 @@ mark {
   color: var(--muted);
   cursor: default;
 }
+.shell-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
 .shell-notice {
-  position: fixed;
-  inset-inline-start: 16px;
-  bottom: 16px;
-  max-width: calc(100vw - 32px);
-  z-index: 10;
-  pointer-events: none;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--background);
+  min-width: 0;
+  margin-inline-start: auto;
+  padding: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 400;
   color: var(--foreground);
 }
 .sidebar-failure {

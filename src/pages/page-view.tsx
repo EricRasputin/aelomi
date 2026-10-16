@@ -6,6 +6,7 @@ import { renderSegments, type ShownBlock } from "../editor/body-reader";
 import { inCode, type PickerKey, pickerTrigger } from "../editor/page-picker";
 import { openPage, type PageSession } from "../editor/page-session";
 import { markPageContent } from "../perf/cold-start";
+import { resolvePageFocus } from "../shell/page-focus";
 import { editingPausedCopy, storageErrorText } from "../storage-copy";
 import { linkText, usePageTreeStore } from "../stores/page-tree";
 import { usePickerStore } from "../stores/picker";
@@ -148,12 +149,21 @@ export default function PageView({
       focusRequest.target === "title"
     )
       return;
-    if (focusRequest.target === "bodyStart") {
+    const active = document.activeElement;
+    const request = resolvePageFocus(focusRequest, {
+      kind: "bodyMount",
+      textFieldFocused:
+        (active instanceof HTMLTextAreaElement ||
+          active instanceof HTMLInputElement) &&
+        host.current?.closest("article")?.contains(active) === true,
+    });
+    useShellStore.setState({ focusRequest: null });
+    if (!request) return;
+    if (request.target === "bodyStart") {
       const first = editor.document[0];
       if (first) editor.setTextCursorPosition(first, "start");
     }
     editor.focus();
-    useShellStore.setState({ focusRequest: null });
   }, [editor, editable, focusRequest, pageId]);
 
   return (

@@ -262,6 +262,7 @@ test("TREE-7 a long failed palette title leaves its failure label fully visible"
   await page.keyboard.press("Meta+k");
   await page.getByRole("combobox").fill("Quarterly");
   const option = page.getByRole("option", { name: full, exact: true });
+  await expect(option).toHaveAccessibleDescription("Not created");
   const suffix = option.getByText("Not created", { exact: true });
   await expect(suffix).toBeVisible();
   const box = await suffix.boundingBox();
