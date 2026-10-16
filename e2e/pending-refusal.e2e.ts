@@ -88,7 +88,7 @@ test("SHELL-11 issue 92: finish moving keeps pages gated until empty-workspace c
         ) ?? null,
     ),
   ).toEqual([{ command: "startEmptyWorkspace", args: [] }]);
-  await expect(screen.getByRole("button", "Ping again")).toBeVisible();
+  await expect(screen.getByRole("heading", "No page open")).toBeVisible();
   expect(
     await browser.evaluate(
       () => document.querySelectorAll('[data-testid="page-editor"]').length,
