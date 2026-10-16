@@ -1,0 +1,80 @@
+#!/bin/bash
+set -euo pipefail
+E=docs/evidence/shell-sidebar/fix3
+S=.claude/skills/verify-aelomi/scripts
+W=.local-gate/round3
+mkdir -p "$W"
+for file in native-main.sh native-extra.sh native-nested.sh read-records.sh shortcut.js immediate.js compact-tree.js; do cp "$E/$file.txt" "$W/$file"; done
+cp "$E/native-probe.mjs.txt" "$W/probe.ts"
+cp "$E/extra-probe.mjs.txt" "$W/extra-probe.ts"
+cp index.html "$W/index-before.html"
+runs=()
+owned=false
+finish() {
+ cp "$W/index-before.html" index.html
+ for run in "${runs[@]}"; do bash "$S/app.sh" cleanup "$run"; done
+ if $owned && [ "$(cat /tmp/aelomi-ui.lock/owner 2>/dev/null)" = "$token" ]; then rm -rf /tmp/aelomi-ui.lock; fi
+}
+trap finish EXIT
+launch_locked() {
+ local target=$1 data=${2:-}
+ local started=$(date +%s)
+ until mkdir /tmp/aelomi-ui.lock 2>/dev/null; do
+  if [ -f /tmp/aelomi-ui.lock/owner ] && [ $(( $(date +%s) - $(stat -f %m /tmp/aelomi-ui.lock/owner) )) -gt 1800 ]; then rm -rf /tmp/aelomi-ui.lock; fi
+  if [ $(( $(date +%s)-started )) -ge 2700 ]; then echo 'INCONCLUSIVE keyboard lock'; return 1; fi
+  sleep 15
+ done
+ token="$$ $(date -u +%FT%TZ) D1-fix3-launch"
+ printf '%s\n' "$token" > /tmp/aelomi-ui.lock/owner
+ owned=true
+ if [ -z "$data" ]; then env -u AELOMI_DATA_DIR bash "$S/app.sh" launch dev --timeout 900 > "$target";
+ else AELOMI_DATA_DIR="$data" bash "$S/app.sh" launch dev --timeout 900 > "$target"; fi
+ runs+=("$(cat "$target")")
+ if [ "$(cat /tmp/aelomi-ui.lock/owner 2>/dev/null)" = "$token" ]; then rm -rf /tmp/aelomi-ui.lock; fi
+ owned=false
+}
+probe() {
+ cp "$W/index-before.html" index.html
+ python3 - "$1" <<'PY'
+from pathlib import Path
+import sys
+p=Path('index.html')
+p.write_text(p.read_text().replace('</body>',f'<script type="module" src="/.local-gate/round3/{sys.argv[1]}.ts"></script>\n</body>'))
+PY
+}
+ls -la ~/Library/Application\ Support/Aelomi > "$W/real-data-before.txt"
+df -h /System/Volumes/Data
+probe probe
+launch_locked "$W/main-run.txt"
+main=$(cat "$W/main-run.txt")
+bash "$W/native-main.sh" > "$main/native-proof.log" 2>&1
+bash "$S/app.sh" cleanup "$main"
+bash "$W/read-records.sh" "$main/data" > "$main/read-records.log" 2>&1
+probe extra-probe
+for theme in light dark; do
+ launch_locked "$W/reopen-run.txt" "$main/data"
+ reopened=$(cat "$W/reopen-run.txt")
+ cp "$W/reopen-run.txt" "$W/extra-$theme-run.txt"
+ bash "$W/native-extra.sh" "$theme" > "$reopened/native-proof.log" 2>&1
+ bash "$S/app.sh" cleanup "$reopened"
+ bash "$W/read-records.sh" "$main/data" > "$reopened/read-records.log" 2>&1
+done
+cp "$W/index-before.html" index.html
+fixture=$(mktemp -d "$HOME/.local/state/aelomi-verify/$(date +%Y%m%d-%H%M%S)-d1-fix3-nested-XXXX")
+printf '%s\n' "$fixture" > "$W/nested-fixture.txt"
+CARGO_BUILD_JOBS=4 cargo run -p aelomi-core --features test-support --example seed_index -- "$fixture/data" missing > "$fixture/seed.log" 2>&1
+for stage in expand reopen; do
+ launch_locked "$W/nested-run.txt" "$fixture/data"
+ nested=$(cat "$W/nested-run.txt")
+ cp "$W/nested-run.txt" "$W/nested-$stage-run.txt"
+ bash "$W/native-nested.sh" "$stage" > "$nested/native-proof.log" 2>&1
+ bash "$S/app.sh" cleanup "$nested"
+ python3 - "$fixture/data/settings.json" <<'PY'
+import json,sys
+assert json.load(open(sys.argv[1]))['expandedRows']==[]
+print('PASS expandedRows=[] after normal quit')
+PY
+done
+ls -la ~/Library/Application\ Support/Aelomi > "$W/real-data-after.txt"
+cmp "$W/real-data-before.txt" "$W/real-data-after.txt"
+echo 'PASS native proof and exact real-data listings'

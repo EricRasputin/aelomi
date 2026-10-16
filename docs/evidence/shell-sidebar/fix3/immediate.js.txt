@@ -1,0 +1,7 @@
+function run(argv) {
+ const se = Application('System Events');
+ const proc = se.processes.whose({ unixId: Number(argv[0]) })[0];
+ proc.frontmost = true;
+ se.keyCode(45, {using: ['command down']});
+ se.keystroke(argv[1]);
+}

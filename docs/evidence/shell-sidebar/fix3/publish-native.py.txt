@@ -1,0 +1,21 @@
+from pathlib import Path
+import json,subprocess
+root=Path.cwd();work=root/'.local-gate/round3'
+entries=[]
+for key,prefix in [('main','main'),('extra-light','extra-light'),('extra-dark','extra-dark'),('nested-expand','nested-expanded'),('nested-reopen','nested-reopened')]:
+ run=Path((work/f'{key}-run.txt').read_text().strip())
+ for file in sorted(run.glob('*.png')):
+  entries.append({'label':prefix+'-'+file.name,'path':str(file)})
+assert 0<len(entries)<=50
+source=(work/'source-metadata.txt').read_text().splitlines()[0]
+body=[f'Builder native self-proof for source `{source}`, rebased onto #84 at `3fd585586dd6593cb9876367a0a786223e0414eb`.','',
+'Fresh synthetic data only; every interactive step held the keyboard lock. Both folder modes and appearance were restored, and the read-only real-data listings match. The New page button outage used real filesystem permission denial. Native Command N immediately followed by typing, title Undo across navigation, safe Return after `to`, and quit-drain navigation admission passed in light and dark. Rust readback before and after relaunch checks five records, four exact active titles, the trashed Getting started page, and the exact one-block body. Collapse remains persisted after relaunch.','',
+'The labeled test panels hold body transport or tree reads and synthesize composition/timing. Drain attempts click a real sidebar row and send synthetic Command K/Command N during a real native Quit. Preserved-page frames show the captured drain snapshot after Keep app open. The additional panel positions the selected body block before native upper-edge typing. All storage writes use real Rust IPC. These probes are temporary and do not ship. Hardware IME conversion remains unverified.','']
+for entry in entries: body.extend([f"![{entry['label']}]({entry['path']})",''])
+body_file=work/'native-comment.md';body_file.write_text('\n'.join(body))
+(work/'published-files.json').write_text(json.dumps(entries,indent=2)+'\n')
+cmd=[str(work/'gh-cli/gh_2.102.0_macOS_arm64/bin/gh'),'pr','comment','89','--repo','aelomi/aelomi','--body-file',str(body_file)]
+for entry in entries: cmd.extend(['--attach',entry['path']+'#'+entry['label']])
+result=subprocess.run(cmd,text=True,capture_output=True,check=True)
+(work/'native-comment-url.txt').write_text(result.stdout)
+print(result.stdout.strip());print(f'Uploaded {len(entries)} screenshots')

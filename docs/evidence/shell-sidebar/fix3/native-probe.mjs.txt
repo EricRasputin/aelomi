@@ -1,0 +1,39 @@
+import { commands } from '/src/ipc/index.ts';
+import { useQuitStore } from '/src/stores/quit.ts';
+const panel = document.createElement('div');
+panel.style.cssText = 'position:fixed;bottom:8px;right:8px;z-index:1000;background:var(--background);padding:6px;font:11px system-ui;border:1px solid var(--border);display:flex;gap:4px;max-width:80vw;flex-wrap:wrap';
+const output = document.createElement('span');
+function button(label, action) {
+ const b = document.createElement('button'); b.textContent = label; b.type = 'button'; b.addEventListener('click', action); panel.append(b);
+}
+const realAppend = commands.docAppend;
+const heldDocs = new Set();
+let releaseDelivery = () => {};
+button('Hold body delivery', () => {
+ heldDocs.clear();
+ const held = new Promise(resolve => { releaseDelivery = resolve; });
+ commands.docAppend = async (...args) => { heldDocs.add(args[0]); await held; return realAppend(...args); };
+ output.textContent = 'DELIVERY_HELD';
+});
+button('Release body delivery', () => { commands.docAppend = realAppend; releaseDelivery(); output.textContent = 'DELIVERY_RELEASED'; });
+button('Arm drain navigation attempt', () => {
+ const activeId = location.pathname.split('/').at(-1);
+ if (!heldDocs.has(activeId)) { output.textContent = 'NO_HELD_ACTIVE_DELIVERY'; return; }
+ const stop = useQuitStore.subscribe(state => {
+  if (state.decision.kind !== 'draining') return;
+  stop();
+  setTimeout(() => {
+   const row = [...document.querySelectorAll('.sidebar-page')].find(row => row.getAttribute('aria-current') !== 'page');
+   if (!row) { output.textContent = 'NO_ALTERNATE_ROW'; return; }
+   row.click();
+   document.dispatchEvent(new KeyboardEvent('keydown', {key:'k',metaKey:true,bubbles:true,cancelable:true}));
+   document.dispatchEvent(new KeyboardEvent('keydown', {key:'n',metaKey:true,bubbles:true,cancelable:true}));
+   setTimeout(() => {
+    const field = document.querySelector('[aria-label="Page title"]');
+    output.textContent = `ATTEMPTED=row,k,n;ROUTE=${location.pathname};TITLE=${field?.value};FROZEN=${field?.readOnly};QUIT=${useQuitStore.getState().decision.kind};PALETTE=${!!document.querySelector('[role="combobox"]')}`;
+   },100);
+  },0);
+ });
+ output.textContent = 'DRAIN_ATTEMPT_ARMED';
+});
+panel.append(output); document.body.append(panel);

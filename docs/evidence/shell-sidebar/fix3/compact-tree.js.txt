@@ -1,0 +1,20 @@
+function run(argv) {
+ const se=Application('System Events');
+ const p=se.processes.whose({unixId:Number(argv[0])})[0];
+ p.frontmost=true;
+ const get=(e,key)=>{try{return e[key]();}catch(_){return null;}};
+ const queue=[[p.windows[0],0]],lines=[];
+ while(queue.length){
+  const [e,depth]=queue.shift();
+  const role=get(e,'role');
+  const label=get(e,'name')||get(e,'description');
+  const value=get(e,'value');
+  let line=' '.repeat(depth*2)+(role||'');
+  if(label)line+=' '+JSON.stringify(label);
+  if(value!==null&&value!==undefined&&value!=='')line+=' = '+JSON.stringify(value);
+  lines.push(line);
+  if(role==='AXTextArea'||role==='AXTextField'||role==='AXComboBox')continue;
+  try{const children=e.uiElements;for(let i=0;i<children.length;i++)queue.push([children[i],depth+1]);}catch(_){}
+ }
+ return lines.join('\n');
+}

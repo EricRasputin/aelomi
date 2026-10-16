@@ -1,0 +1,11 @@
+function run(argv) {
+ const se = Application('System Events');
+ const proc = se.processes.whose({ unixId: Number(argv[0]) })[0];
+ proc.frontmost = true;
+ const codes = { k: 40, n: 45, a: 0, z: 6, q: 12, '\\': 42 };
+ const code = codes[argv[1]];
+ if (code === undefined) throw new Error('unknown shortcut');
+ const using = ['command down'];
+ if (argv[2] === 'command,shift') using.push('shift down');
+ se.keyCode(code, {using});
+}
