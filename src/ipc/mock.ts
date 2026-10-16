@@ -30,6 +30,7 @@ import {
 } from "./bindings";
 import { type SeedBlock, writeBody } from "./mock-body";
 import { createRecordCommands } from "./mock-records";
+import { createRecoveryMock, type RecoverySetup } from "./mock-recovery";
 import {
   type MockHit,
   PageIndex,
@@ -62,11 +63,7 @@ type MockCall = {
 export type MockSetup = {
   settings?: Partial<Settings>;
   storageStatus?: StorageStatus;
-  recovery?: {
-    snapshot: "reject" | "stale";
-    holdTree: boolean;
-    revealError?: string;
-  };
+  recovery?: RecoverySetup;
   failWrites?: FailReason;
   indexStatus?: IndexStatus;
   pages?: SeedPage[];
@@ -435,6 +432,19 @@ const recordCommands = createRecordCommands({
   },
 });
 
+const recoveryMock = createRecoveryMock({
+  ready: () => setupReady,
+  status: () => storage.status,
+  setup: () => window.__aelomiMockSetup?.recovery,
+  record: (command) => calls.push({ command, args: [] }),
+  open: async () => {
+    storage.status = "Ready";
+    indexStatus = "Ready";
+    await events.indexStatusChanged.emit("Ready");
+    quit.frontendReady = true;
+  },
+});
+
 export const commands = {
   settingsGet: async () => {
     calls.push({ command: "settingsGet", args: [] });
@@ -468,33 +478,7 @@ export const commands = {
     calls.push({ command: "storageStatus", args: [] });
     return storage.status;
   },
-  showRecoveryFolder: async () => {
-    calls.push({ command: "showRecoveryFolder", args: [] });
-    await setupReady;
-    const revealError = window.__aelomiMockSetup?.recovery?.revealError;
-    if (revealError) return { status: "error", error: { Io: revealError } };
-    return typeof storage.status === "object" &&
-      ("CloudPath" in storage.status || "FinishMoving" in storage.status)
-      ? { status: "ok", data: null }
-      : { status: "error", error: "Unavailable" };
-  },
-  startEmptyWorkspace: async () => {
-    calls.push({ command: "startEmptyWorkspace", args: [] });
-    await setupReady;
-    if (
-      typeof storage.status !== "object" ||
-      !(
-        "FinishMoving" in storage.status ||
-        "RecoveryRecordUnreadable" in storage.status
-      )
-    )
-      return { status: "error", error: "Unavailable" };
-    storage.status = "Ready";
-    indexStatus = "Ready";
-    await events.indexStatusChanged.emit("Ready");
-    quit.frontendReady = true;
-    return { status: "ok", data: "Ready" };
-  },
+  ...recoveryMock.commands,
   storageHealth: async () => {
     calls.push({ command: "storageHealth", args: [] });
     return storage.health;
@@ -503,21 +487,14 @@ export const commands = {
     calls.push({ command: "indexStatus", args: [] });
     if (storage.status !== "Ready")
       return { Failed: { reason: "the data folder is not open" } };
-    const snapshot = window.__aelomiMockSetup?.recovery?.snapshot;
-    if (snapshot === "reject") throw new Error("Index snapshot rejected");
-    if (snapshot === "stale") return "Rebuilding";
+    const snapshot = recoveryMock.snapshot();
+    if (snapshot) return snapshot;
     return structuredClone(indexStatus);
   },
   pageTree: async () => {
     calls.push({ command: "pageTree", args: [] });
     await setupReady;
-    if (
-      storage.status === "Ready" &&
-      window.__aelomiMockSetup?.recovery?.holdTree
-    )
-      await new Promise<void>((resolve) => {
-        releaseRecoveryTree = resolve;
-      });
+    await recoveryMock.waitForTree();
     if (storage.status !== "Ready")
       return { status: "error", error: "Unavailable" };
     const problem = pagesRootProblem(workspaceDoc());
@@ -819,14 +796,8 @@ function pageWrite(update: () => void) {
   markChanged({ workspace: true, pages: [] });
 }
 
-let releaseRecoveryTree: (() => void) | undefined;
-
 const control = {
-  recovery: {
-    releaseTree() {
-      releaseRecoveryTree?.();
-    },
-  },
+  recovery: recoveryMock.control,
   menu: {
     activate(command: MenuCommand["command"]) {
       return events.menuCommand.emit({ command });

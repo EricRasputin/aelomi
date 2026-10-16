@@ -4,13 +4,13 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use aelomi_core::index::IndexEvent;
-use aelomi_core::storage::{self as core, DataPathError, DocId, OpenError, Pending};
+use aelomi_core::storage::{self as core, DocId, OpenError, Pending};
 use aelomi_core::workspace::Workspace;
 use serde::Serialize;
 use specta::Type;
 
 use crate::quit::QuitGate;
-use crate::recovery::{PendingCloudRefusal, RecoveryDirectory};
+use crate::recovery::{OpenMode, RecoveryDirectory, open_workspace};
 
 pub const QUIT_FLUSH_TIMEOUT: Duration = Duration::from_secs(2);
 
@@ -46,6 +46,7 @@ pub enum StorageStatus {
         recovery: CloudRecovery,
     },
     FinishMoving {
+        destination_exists: bool,
         configured: String,
         resolved: String,
         recovery: CloudRecovery,
@@ -111,7 +112,7 @@ impl CloudRecovery {
     }
 }
 
-fn normalize_configured(path: &Path) -> std::io::Result<PathBuf> {
+pub(crate) fn normalize_configured(path: &Path) -> std::io::Result<PathBuf> {
     let mut normalized = PathBuf::new();
     for component in std::path::absolute(path)?.components() {
         if component == Component::ParentDir {
@@ -144,6 +145,9 @@ pub enum Health {
 
 #[derive(Debug, Serialize, Type)]
 pub enum StorageError {
+    DestinationNotEmpty {
+        items: Vec<String>,
+    },
     /// The store is not open. `storage_status` says why.
     Unavailable,
     InvalidDocId,
@@ -158,132 +162,6 @@ pub struct Storage {
     quit: QuitGate,
     #[cfg(test)]
     _index_dir: Option<tempfile::TempDir>,
-}
-
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum OpenMode {
-    Startup,
-    CreateEmpty,
-}
-
-type OpenedWorkspace = Result<Arc<Workspace>, StorageStatus>;
-
-fn open_workspace(
-    location: &DataLocation,
-    record: Option<&RecoveryDirectory>,
-    mode: OpenMode,
-    on_index: impl Fn(&IndexEvent) + Send + Sync + 'static,
-) -> (OpenedWorkspace, PathBuf) {
-    let storage = |opened, path| (opened, path);
-    let configured = match normalize_configured(&location.path) {
-        Ok(path) => path,
-        Err(error) => {
-            return storage(
-                Err(StorageStatus::Io(error.to_string())),
-                location.path.clone(),
-            );
-        }
-    };
-    let directory = match record
-        .map(|directory| directory.validated(location))
-        .transpose()
-    {
-        Ok(directory) => directory,
-        Err(error) => return storage(Err(StorageStatus::Io(error.to_string())), configured),
-    };
-    let record = directory
-        .as_ref()
-        .map(|directory| directory.file_for(&configured));
-    match core::check_data_path(&configured, &location.cloud_roots) {
-        Ok(resolved) => {
-            let presence = match core::workspace_presence(&resolved) {
-                Ok(presence) => presence,
-                Err(error) => return storage(Err(StorageStatus::Io(error.to_string())), resolved),
-            };
-            if mode == OpenMode::CreateEmpty {
-                match std::fs::read_dir(&resolved) {
-                    Ok(mut entries) => match entries.next().transpose() {
-                        Ok(Some(_)) => return storage(Err(StorageStatus::UnknownFormat), resolved),
-                        Ok(None) => {}
-                        Err(error) => {
-                            return storage(Err(StorageStatus::Io(error.to_string())), resolved);
-                        }
-                    },
-                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-                    Err(error) => {
-                        return storage(Err(StorageStatus::Io(error.to_string())), resolved);
-                    }
-                }
-            } else if let Some(record) = &record {
-                let pending = record.load();
-                if presence == core::WorkspacePresence::Unrecognized {
-                    return storage(Err(StorageStatus::UnknownFormat), resolved);
-                }
-                if presence != core::WorkspacePresence::Arrived {
-                    let status = match pending {
-                        Ok(Some(pending)) => Some(StorageStatus::FinishMoving {
-                            configured: configured.to_string_lossy().into_owned(),
-                            resolved: pending.resolved.to_string_lossy().into_owned(),
-                            recovery: pending.recovery().expect("validated recovery record"),
-                        }),
-                        Err(error) => {
-                            if cfg!(debug_assertions) {
-                                eprintln!("recovery record unreadable: {error}");
-                            }
-                            Some(StorageStatus::RecoveryRecordUnreadable {
-                                configured: configured.to_string_lossy().into_owned(),
-                            })
-                        }
-                        Ok(None) => None,
-                    };
-                    if let Some(status) = status {
-                        return storage(Err(status), resolved);
-                    }
-                }
-            }
-            let opened = Workspace::prepare(&resolved)
-                .map_err(StorageStatus::from)
-                .and_then(|mut prepared| {
-                    let deadline = Instant::now() + QUIT_FLUSH_TIMEOUT;
-                    match mode {
-                        OpenMode::Startup => prepared.seed_getting_started(deadline),
-                        OpenMode::CreateEmpty => prepared
-                            .initialize_empty(deadline)
-                            .map_err(|error| StorageStatus::Io(error.to_string()))?,
-                    }
-                    Ok(Arc::new(prepared.start(on_index)))
-                });
-            if opened.is_ok() {
-                if let Some(record) = &record {
-                    record.clear();
-                }
-            }
-            storage(opened, resolved)
-        }
-        Err(DataPathError::CloudFolder { resolved, link, .. }) => {
-            let refusal = || -> std::io::Result<StorageStatus> {
-                let recovery = CloudRecovery::from_paths(&configured, &resolved, link.as_deref())?;
-                if let Some(record) = &record {
-                    record.save(&PendingCloudRefusal::new(
-                        &configured,
-                        &resolved,
-                        recovery.clone(),
-                    ))?;
-                }
-                Ok(StorageStatus::CloudPath {
-                    configured: configured.to_string_lossy().into_owned(),
-                    resolved: resolved.to_string_lossy().into_owned(),
-                    recovery,
-                })
-            };
-            let status = refusal().unwrap_or_else(|error| StorageStatus::Io(error.to_string()));
-            storage(Err(status), resolved)
-        }
-        Err(DataPathError::Io(error)) => storage(
-            Err(StorageStatus::Io(error.to_string())),
-            location.path.clone(),
-        ),
-    }
 }
 
 impl Storage {
@@ -330,7 +208,24 @@ impl Storage {
             return Err(StorageError::Unavailable);
         }
         let (location, record) = self.recovery.as_ref().ok_or(StorageError::Unavailable)?;
-        let (result, _) = open_workspace(location, Some(record), OpenMode::CreateEmpty, on_index);
+        let configured = normalize_configured(&location.path)
+            .map_err(|error| StorageError::Io(error.to_string()))?;
+        let mode = match core::check_data_path(&configured, &location.cloud_roots) {
+            Ok(resolved) => match core::classify_destination(&resolved)
+                .map_err(|error| StorageError::Io(error.to_string()))?
+            {
+                core::DestinationFolder::Absent | core::DestinationFolder::Empty => {
+                    OpenMode::CreateEmpty
+                }
+                core::DestinationFolder::Workspace => OpenMode::Startup,
+                core::DestinationFolder::NotEmpty { items }
+                | core::DestinationFolder::Unrecognized { items } => {
+                    return Err(StorageError::DestinationNotEmpty { items });
+                }
+            },
+            Err(_) => OpenMode::CreateEmpty,
+        };
+        let (result, _) = open_workspace(location, Some(record), mode, on_index);
         let mut opened = self
             .opened
             .lock()
@@ -340,6 +235,9 @@ impl Storage {
         }
         match result {
             Err(StorageStatus::Io(error)) => Err(StorageError::Io(error)),
+            Err(status) if !matches!(status, StorageStatus::CloudPath { .. }) => Err(
+                StorageError::Io(format!("could not open the destination: {status:?}")),
+            ),
             other => {
                 let ready = other.is_ok();
                 *opened = other;

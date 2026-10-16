@@ -1,13 +1,20 @@
 use std::fs::{self, OpenOptions};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
+
+use aelomi_core::index::IndexEvent;
+use aelomi_core::storage::{self as core, DataPathError};
+use aelomi_core::workspace::Workspace;
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::storage::{CloudRecovery, DataLocation};
+use crate::storage::{
+    CloudRecovery, DataLocation, QUIT_FLUSH_TIMEOUT, StorageStatus, normalize_configured,
+};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 enum RefusalKind {
@@ -59,10 +66,10 @@ impl PendingCloudRefusal {
 pub(crate) struct RecoveryDirectory(pub PathBuf);
 
 impl RecoveryDirectory {
-    pub fn validated(&self, location: &DataLocation) -> io::Result<Self> {
+    pub fn validated(&self, location: &DataLocation, configured: &Path) -> io::Result<Self> {
         let directory = aelomi_core::storage::check_data_path(&self.0, &location.cloud_roots)
             .map_err(|error| io::Error::other(format!("invalid recovery directory: {error}")))?;
-        let data = aelomi_core::storage::check_data_path(&location.path, &[]).map_err(|error| {
+        let data = aelomi_core::storage::check_data_path(configured, &[]).map_err(|error| {
             io::Error::other(format!("cannot validate recovery directory: {error}"))
         })?;
         if directory.starts_with(data) {
@@ -156,5 +163,123 @@ impl RecoveryFile {
                 eprintln!("recovery record not cleared: {error}");
             }
         }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum OpenMode {
+    Startup,
+    CreateEmpty,
+}
+
+type OpenedWorkspace = Result<Arc<Workspace>, StorageStatus>;
+
+pub(crate) fn open_workspace(
+    location: &DataLocation,
+    record: Option<&RecoveryDirectory>,
+    mode: OpenMode,
+    on_index: impl Fn(&IndexEvent) + Send + Sync + 'static,
+) -> (OpenedWorkspace, PathBuf) {
+    let configured = match normalize_configured(&location.path) {
+        Ok(path) => path,
+        Err(error) => {
+            return (
+                Err(StorageStatus::Io(error.to_string())),
+                location.path.clone(),
+            );
+        }
+    };
+    let directory = record
+        .map(|directory| directory.validated(location, &configured))
+        .transpose();
+    match core::check_data_path(&configured, &location.cloud_roots) {
+        Ok(resolved) => {
+            let destination = match core::classify_destination(&resolved) {
+                Ok(destination) => destination,
+                Err(error) => return (Err(StorageStatus::from(error)), resolved),
+            };
+            let directory = if destination == core::DestinationFolder::Workspace {
+                directory.ok().flatten()
+            } else {
+                match directory {
+                    Ok(directory) => directory,
+                    Err(error) => {
+                        return (Err(StorageStatus::Io(error.to_string())), resolved);
+                    }
+                }
+            };
+            let record = directory
+                .as_ref()
+                .map(|directory| directory.file_for(&configured));
+            if mode == OpenMode::Startup && destination != core::DestinationFolder::Workspace {
+                if let Some(record) = &record {
+                    let status = match record.load() {
+                        Ok(Some(pending)) => Some(StorageStatus::FinishMoving {
+                            destination_exists: destination != core::DestinationFolder::Absent,
+                            configured: configured.to_string_lossy().into_owned(),
+                            resolved: pending.resolved.to_string_lossy().into_owned(),
+                            recovery: pending.recovery().expect("validated recovery record"),
+                        }),
+                        Err(error) => {
+                            if cfg!(debug_assertions) {
+                                eprintln!("recovery record unreadable: {error}");
+                            }
+                            Some(StorageStatus::RecoveryRecordUnreadable {
+                                configured: configured.to_string_lossy().into_owned(),
+                            })
+                        }
+                        Ok(None) => None,
+                    };
+                    if let Some(status) = status {
+                        return (Err(status), resolved);
+                    }
+                }
+            }
+            let opened = Workspace::prepare(&resolved)
+                .map_err(StorageStatus::from)
+                .and_then(|mut prepared| {
+                    let deadline = Instant::now() + QUIT_FLUSH_TIMEOUT;
+                    match mode {
+                        OpenMode::Startup => prepared.seed_getting_started(deadline),
+                        OpenMode::CreateEmpty => prepared
+                            .initialize_empty(deadline)
+                            .map_err(|error| StorageStatus::Io(error.to_string()))?,
+                    }
+                    Ok(Arc::new(prepared.start(on_index)))
+                });
+            if opened.is_ok() {
+                if let Some(record) = &record {
+                    record.clear();
+                }
+            }
+            (opened, resolved)
+        }
+        Err(DataPathError::CloudFolder { resolved, link, .. }) => {
+            let refusal = || -> std::io::Result<StorageStatus> {
+                let directory = directory?;
+                let record = directory
+                    .as_ref()
+                    .map(|directory| directory.file_for(&configured));
+                let recovery = CloudRecovery::from_paths(&configured, &resolved, link.as_deref())?;
+                if let Some(record) = &record {
+                    record.save(&PendingCloudRefusal::new(
+                        &configured,
+                        &resolved,
+                        recovery.clone(),
+                    ))?;
+                }
+                Ok(StorageStatus::CloudPath {
+                    configured: configured.to_string_lossy().into_owned(),
+                    resolved: resolved.to_string_lossy().into_owned(),
+                    recovery,
+                })
+            };
+            let status = refusal().unwrap_or_else(|error| StorageStatus::Io(error.to_string()));
+            (Err(status), resolved)
+        }
+        Err(DataPathError::Io(error)) => (
+            Err(StorageStatus::Io(error.to_string())),
+            location.path.clone(),
+        ),
     }
 }

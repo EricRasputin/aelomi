@@ -29,9 +29,9 @@ export const storageCopy = {
   finishMessage:
     "Aelomi last found your pages in cloud storage. The destination has no workspace yet, so Aelomi hasn't opened a new one.",
   lastSeen: "Where your pages were last seen",
+  expectedLocation: "Aelomi expects your pages at:",
   showFolder: "Show in Finder",
-  showFolderError:
-    "Aelomi couldn't show that folder. Look inside the folders where you moved it, or search Finder for its name.",
+  showFolderError: "Aelomi couldn't show that folder.",
   startEmpty: "Start a new empty workspace here",
   startEmptyTitle: "Start a new empty workspace?",
   startEmptyWarning:
@@ -82,7 +82,7 @@ type Refusal = {
   title: string;
   message: string;
   detail: string | null;
-  recovery: { resolved: string; steps: readonly RecoveryStep[] } | null;
+  recovery: { resolved: string | null; steps: readonly RecoveryStep[] } | null;
 };
 
 export type StorageStartup =
@@ -187,14 +187,28 @@ function configuredPathCheck(
   };
 }
 
+function lostFolderGuidance(
+  pending: Extract<StorageStatus, { FinishMoving: object }>["FinishMoving"],
+): string {
+  const { configured, resolved, recovery } = pending;
+  const parent = configured.slice(0, configured.lastIndexOf("/")) || "/";
+  const configuredName = configured.slice(configured.lastIndexOf("/") + 1);
+  const resolvedName = resolved.slice(resolved.lastIndexOf("/") + 1);
+  const names =
+    recovery !== "Override" && recovery.LinkAtDataFolder !== undefined
+      ? recovery.LinkAtDataFolder
+      : { configured_name: configuredName, resolved_name: resolvedName };
+  return `Look inside each folder in "${parent}" for "${names.resolved_name}" or "${names.configured_name}". Finder search skips Library folders by default.`;
+}
+
 function finishRecovery(
   pending: Extract<StorageStatus, { FinishMoving: object }>["FinishMoving"],
 ) {
-  const { configured, resolved, recovery } = pending;
+  const { configured, resolved, recovery, destination_exists } = pending;
   const steps: RecoveryStep[] = [
     {
       kind: "show",
-      text: "Find the folder that holds your pages. If it has moved, look inside the folders where you moved it, or search Finder for its name.",
+      text: lostFolderGuidance(pending),
     },
   ];
   if (recovery !== "Override" && recovery.LinkAtDataFolder !== undefined) {
@@ -204,6 +218,11 @@ function finishRecovery(
       configured_name === resolved_name
         ? ""
         : ` Select the moved folder, press Return, type "${configured_name}", and press Return.`;
+    if (destination_exists)
+      steps.push({
+        kind: "text",
+        text: `In "${configured_parent}", select the existing folder named "${configured_name}", press Return, type "${configured_name} (old)", and press Return. Keep this folder until your pages are back.`,
+      });
     steps.push(
       {
         kind: "folder",
@@ -219,12 +238,20 @@ function finishRecovery(
           configured_parent,
           configured_name,
           resolved_name,
-          2,
-          4,
+          destination_exists ? 3 : 2,
+          destination_exists ? 5 : 4,
         ),
       },
     );
   } else {
+    if (destination_exists) {
+      const parent = configured.slice(0, configured.lastIndexOf("/")) || "/";
+      const name = configured.slice(configured.lastIndexOf("/") + 1);
+      steps.push({
+        kind: "text",
+        text: `In "${parent}", select the existing folder named "${name}", press Return, type "${name} (old)", and press Return. Keep this folder until your pages are back.`,
+      });
+    }
     steps.push({
       kind: "folder",
       text: "Move the folder that holds your pages to this exact destination on this Mac. In Finder, use Go > Go to Folder to check it. Paste this path and press Return:",
@@ -247,7 +274,19 @@ export function storageStartup(status: StorageStatus): StorageStartup {
         title: storageCopy.finishTitle,
         message: storageCopy.lostTrack,
         detail: null,
-        recovery: null,
+        recovery: {
+          resolved: null,
+          steps: [
+            {
+              kind: "folder",
+              text: storageCopy.expectedLocation,
+              path: status.RecoveryRecordUnreadable.configured,
+              after:
+                "Move the folder that contains your pages to this exact path. Copy this path. In Finder, choose Go > Go to Folder (⇧⌘G), paste it, and press Return. Continue only after this exact path opens with format.json and docs.",
+            },
+            { kind: "text", text: storageCopy.restart },
+          ],
+        },
       };
     if (status.FinishMoving !== undefined)
       return {
@@ -310,7 +349,11 @@ export function storageStartup(status: StorageStatus): StorageStartup {
 }
 
 export function storageErrorText(error: StorageError): string {
-  if (typeof error === "object") return error.Io;
+  if (typeof error === "object") {
+    if (error.DestinationNotEmpty !== undefined)
+      return `This folder already contains items: ${error.DestinationNotEmpty.items.join(", ")}. Aelomi can't start an empty workspace here. Nothing was changed.`;
+    return error.Io;
+  }
   switch (error) {
     case "Unavailable":
       return storageCopy.notOpen;
@@ -346,6 +389,7 @@ export function storageFailureReason(reason: FailReason): string {
 export function recordErrorText(error: RecordCommandError): string {
   if (typeof error === "string") return error;
   if ("Transport" in error) return error.Transport;
+  if ("DestinationNotEmpty" in error) return storageErrorText(error);
   if (error.Io !== undefined) return error.Io;
   if (error.Internal !== undefined) return error.Internal;
   return error.Malformed.reason;

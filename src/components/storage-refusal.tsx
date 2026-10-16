@@ -56,21 +56,23 @@ export function StorageRefusal({
             <p className="storage-refusal-message">{startup.message}</p>
             {startup.recovery !== null && (
               <>
-                <div className="storage-refusal-location">
-                  <p>
-                    {startup.kind === "finish-moving"
-                      ? storageCopy.lastSeen
-                      : storageCopy.cloudDataPath}
-                  </p>
-                  <PathChip
-                    path={startup.recovery.resolved}
-                    label={
-                      startup.kind === "finish-moving"
+                {startup.recovery.resolved !== null && (
+                  <div className="storage-refusal-location">
+                    <p>
+                      {startup.kind === "finish-moving"
                         ? storageCopy.lastSeen
-                        : storageCopy.cloudDataPath
-                    }
-                  />
-                </div>
+                        : storageCopy.cloudDataPath}
+                    </p>
+                    <PathChip
+                      path={startup.recovery.resolved}
+                      label={
+                        startup.kind === "finish-moving"
+                          ? storageCopy.lastSeen
+                          : storageCopy.cloudDataPath
+                      }
+                    />
+                  </div>
+                )}
                 <p>{storageCopy.recoveryKeepOpen}</p>
                 <ol className="storage-refusal-recovery">
                   {startup.recovery.steps.map((step, index) => (
@@ -80,7 +82,7 @@ export function StorageRefusal({
                       ) : step.kind === "show" ? (
                         <>
                           <p>{step.text}</p>
-                          <ShowRecoveryFolder />
+                          <ShowRecoveryFolder guidance={step.text} />
                         </>
                       ) : (
                         <>
@@ -139,7 +141,7 @@ export function StorageRefusal({
   );
 }
 
-function ShowRecoveryFolder() {
+function ShowRecoveryFolder({ guidance }: { guidance: string }) {
   const [state, setState] = useState<"idle" | "opening" | "error">("idle");
   async function showFolder() {
     setState("opening");
@@ -162,7 +164,7 @@ function ShowRecoveryFolder() {
       </button>
       {state === "error" && (
         <p role="alert" className="mt-2 text-[var(--warning-text)]">
-          {storageCopy.showFolderError}
+          {storageCopy.showFolderError} {guidance}
         </p>
       )}
     </div>

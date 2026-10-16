@@ -250,6 +250,7 @@ test("maps a pending leaf refusal to only the remaining move steps", () => {
   expect(
     storageStartup({
       FinishMoving: {
+        destination_exists: false,
         configured: "/Local/Aelomi",
         resolved: "/Cloud/Aelomi Notes",
         recovery: {
@@ -275,7 +276,7 @@ test("maps a pending leaf refusal to only the remaining move steps", () => {
       steps: [
         {
           kind: "show",
-          text: "Find the folder that holds your pages. If it has moved, look inside the folders where you moved it, or search Finder for its name.",
+          text: 'Look inside each folder in "/Local" for "Aelomi Notes" or "Aelomi". Finder search skips Library folders by default.',
         },
         {
           kind: "folder",
@@ -308,6 +309,7 @@ test.each(["Override", { SharedLink: { link: "/Local" } }] as const)(
   (recovery) => {
     const startup = storageStartup({
       FinishMoving: {
+        destination_exists: false,
         configured: "/Local/Aelomi",
         resolved: "/Cloud/Aelomi",
         recovery,
@@ -318,7 +320,7 @@ test.each(["Override", { SharedLink: { link: "/Local" } }] as const)(
       steps: [
         {
           kind: "show",
-          text: "Find the folder that holds your pages. If it has moved, look inside the folders where you moved it, or search Finder for its name.",
+          text: 'Look inside each folder in "/Local" for "Aelomi" or "Aelomi". Finder search skips Library folders by default.',
         },
         {
           kind: "folder",
@@ -346,6 +348,56 @@ test("an unreadable record explains the lost location and keeps explicit creatio
     message:
       "Aelomi lost track of where your pages were. Find the folder you moved before you restart, or explicitly choose a new empty workspace.",
     detail: null,
-    recovery: null,
+    recovery: {
+      resolved: null,
+      steps: [
+        {
+          kind: "folder",
+          text: "Aelomi expects your pages at:",
+          path: "/Local/Aelomi",
+          after:
+            "Move the folder that contains your pages to this exact path. Copy this path. In Finder, choose Go > Go to Folder (⇧⌘G), paste it, and press Return. Continue only after this exact path opens with format.json and docs.",
+        },
+        { kind: "text", text: "Quit Aelomi and open it again." },
+      ],
+    },
   });
 });
+
+test.each([false, true])(
+  "destination exists %s drives the exact rename step",
+  (exists) => {
+    const status = {
+      FinishMoving: {
+        configured: "/Local/Aelomi",
+        resolved: "/Cloud/Aelomi Notes",
+        destination_exists: exists,
+        recovery: {
+          LinkAtDataFolder: {
+            configured_parent: "/Local",
+            configured_name: "Aelomi",
+            resolved_parent: "/Cloud",
+            resolved_name: "Aelomi Notes",
+          },
+        },
+      },
+    };
+    const mapped = storageStartup(status);
+    if (mapped.kind !== "finish-moving")
+      throw new Error("expected pending move");
+    expect(
+      mapped.recovery?.steps.filter(
+        (step) => step.kind === "text" && step.text.includes("(old)"),
+      ),
+    ).toEqual(
+      exists
+        ? [
+            {
+              kind: "text",
+              text: 'In "/Local", select the existing folder named "Aelomi", press Return, type "Aelomi (old)", and press Return. Keep this folder until your pages are back.',
+            },
+          ]
+        : [],
+    );
+  },
+);

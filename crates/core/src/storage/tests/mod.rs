@@ -2,6 +2,7 @@ mod ack;
 mod compaction;
 mod crash;
 mod decode_guard;
+mod destination;
 mod dirs;
 mod failures;
 mod fingerprint;

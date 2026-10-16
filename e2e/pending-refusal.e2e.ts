@@ -10,6 +10,7 @@ test("SHELL-11 issue 92: finish moving keeps pages gated until empty-workspace c
     window.__aelomiMockSetup = {
       storageStatus: {
         FinishMoving: {
+          destination_exists: false,
           configured: "/Users/test/Local/Aelomi",
           resolved: "/Users/test/Cloud/Aelomi Notes",
           recovery: {

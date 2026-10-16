@@ -3,6 +3,7 @@ use std::fs;
 use std::path::PathBuf;
 
 use super::*;
+use crate::recovery::PendingCloudRefusal;
 
 struct Home {
     _dir: tempfile::TempDir,
@@ -42,6 +43,9 @@ impl Home {
                 &core::DocId::new("original").unwrap(),
                 &tests::update("Original pages stay here"),
             )
+            .unwrap();
+        workspace
+            .append(&core::DocId::workspace(), &[0, 0])
             .unwrap();
         assert!(
             workspace
@@ -136,6 +140,7 @@ fn misplaced_drop_blocks_creation_for_missing_and_markerless_destinations() {
         assert_eq!(
             storage.status(),
             StorageStatus::FinishMoving {
+                destination_exists: exists,
                 configured: home.location.path.to_string_lossy().into_owned(),
                 resolved: pending.resolved.to_string_lossy().into_owned(),
                 recovery: pending.recovery().unwrap(),
@@ -273,12 +278,19 @@ fn explicit_creation_rechecks_cloud_and_never_overwrites_unrecognized_files() {
             fs::create_dir(home.location.path.join("docs")).unwrap();
             fs::write(home.location.path.join("docs/sentinel"), b"never overwrite").unwrap();
         }
-        let status = storage.start_empty_workspace(|_| {}).unwrap();
+        let result = storage.start_empty_workspace(|_| {});
         if cloud_again {
-            assert!(matches!(status, StorageStatus::CloudPath { .. }));
+            assert!(matches!(result.unwrap(), StorageStatus::CloudPath { .. }));
             assert_eq!(fs::read_link(&home.location.path).unwrap(), target);
         } else {
-            assert_eq!(status, StorageStatus::UnknownFormat);
+            assert_eq!(
+                serde_json::to_value(result.unwrap_err()).unwrap(),
+                serde_json::json!({"DestinationNotEmpty": {"items": ["docs"]}})
+            );
+            assert!(matches!(
+                storage.status(),
+                StorageStatus::FinishMoving { .. }
+            ));
             assert_eq!(
                 fs::read(home.location.path.join("docs/sentinel")).unwrap(),
                 b"never overwrite"
@@ -296,7 +308,14 @@ fn record_failure_refuses_recovery_instructions_and_does_not_touch_pages() {
     use std::os::unix::fs::PermissionsExt;
     fs::create_dir_all(&home.record.0).unwrap();
     fs::set_permissions(&home.record.0, fs::Permissions::from_mode(0o500)).unwrap();
-    assert!(home.record.validated(&home.location).is_ok());
+    assert!(
+        home.record
+            .validated(
+                &home.location,
+                &normalize_configured(&home.location.path).unwrap()
+            )
+            .is_ok()
+    );
     let before = listing(&target);
     assert_eq!(
         home.open().status(),
@@ -312,7 +331,7 @@ fn records_cannot_be_written_inside_cloud_or_the_data_folder() {
     for cloud in [false, true] {
         let mut home = Home::new();
         let target = if cloud {
-            home.leaf()
+            home.cloud.clone()
         } else {
             fs::create_dir_all(&home.location.path).unwrap();
             fs::write(home.location.path.join("sentinel"), b"local pages").unwrap();
@@ -322,16 +341,25 @@ fn records_cannot_be_written_inside_cloud_or_the_data_folder() {
         let before = listing(&target);
         let error = home
             .record
-            .validated(&home.location)
+            .validated(
+                &home.location,
+                &normalize_configured(&home.location.path).unwrap(),
+            )
             .err()
             .unwrap()
             .to_string();
-        if !cloud {
-            assert_eq!(
-                error,
-                "the recovery directory must be outside the data folder"
-            );
-        }
+        assert_eq!(
+            error,
+            if cloud {
+                format!(
+                    "invalid recovery directory: the data folder resolves to {}, inside the cloud-synced folder {}",
+                    home.cloud.join("recovery").display(),
+                    home.cloud.display()
+                )
+            } else {
+                "the recovery directory must be outside the data folder".into()
+            }
+        );
         assert!(matches!(home.open().status(), StorageStatus::Io(_)));
         assert_eq!(listing(&target), before);
         assert_eq!(home.record.0.try_exists().unwrap(), false);
@@ -354,7 +382,12 @@ fn failed_workspace_opens_retain_the_matching_record() {
             if marker.contains('3') {
                 StorageStatus::NewerFormat
             } else {
-                StorageStatus::UnknownFormat
+                StorageStatus::FinishMoving {
+                    destination_exists: true,
+                    configured: home.location.path.to_string_lossy().into_owned(),
+                    resolved: pending.resolved.to_string_lossy().into_owned(),
+                    recovery: pending.recovery().unwrap(),
+                }
             }
         );
         assert_eq!(home.pending(), pending);
@@ -403,6 +436,7 @@ fn marker_only_destination_keeps_guard_and_every_byte_unchanged() {
     assert_eq!(
         home.open().status(),
         StorageStatus::FinishMoving {
+            destination_exists: true,
             configured: home.location.path.to_string_lossy().into_owned(),
             resolved: pending.resolved.to_string_lossy().into_owned(),
             recovery: pending.recovery().unwrap(),
@@ -417,7 +451,7 @@ fn marker_only_destination_keeps_guard_and_every_byte_unchanged() {
 }
 
 #[test]
-fn docs_without_marker_reports_unknown_format_without_changing_destination_or_record() {
+fn docs_without_marker_keeps_pending_guard_without_changing_destination_or_record() {
     let home = Home::new();
     home.leaf();
     home.open();
@@ -425,7 +459,10 @@ fn docs_without_marker_reports_unknown_format_without_changing_destination_or_re
     fs::create_dir_all(home.location.path.join("docs")).unwrap();
     fs::write(home.location.path.join("docs/page"), b"page bytes").unwrap();
     let record = fs::read(&home.file().path).unwrap();
-    assert_eq!(home.open().status(), StorageStatus::UnknownFormat);
+    assert!(matches!(
+        home.open().status(),
+        StorageStatus::FinishMoving { .. }
+    ));
     assert_eq!(listing(&home.location.path), [OsString::from("docs")]);
     assert_eq!(
         listing(&home.location.path.join("docs")),
@@ -453,9 +490,13 @@ fn explicit_creation_refuses_unrecognized_items_and_keeps_the_record() {
     .unwrap();
     let record = fs::read(&home.file().path).unwrap();
     assert_eq!(
-        storage.start_empty_workspace(|_| {}).unwrap(),
-        StorageStatus::UnknownFormat
+        serde_json::to_value(storage.start_empty_workspace(|_| {}).unwrap_err()).unwrap(),
+        serde_json::json!({"DestinationNotEmpty": {"items": ["misplaced-page.ylog"]}})
     );
+    assert!(matches!(
+        storage.status(),
+        StorageStatus::FinishMoving { .. }
+    ));
     assert_eq!(
         listing(&home.location.path),
         [OsString::from("misplaced-page.ylog")]
@@ -580,4 +621,196 @@ fn explicit_creation_enables_the_store_only_record_edit_quit_barrier() {
         crate::quit::QuitRequest::FlushStore
     );
     assert_eq!(storage.quit().record_edit().is_none(), true);
+}
+
+#[test]
+fn finder_metadata_only_destination_accepts_explicit_creation() {
+    let home = Home::new();
+    home.leaf();
+    home.open();
+    fs::remove_file(&home.location.path).unwrap();
+    fs::create_dir(&home.location.path).unwrap();
+    fs::write(home.location.path.join(".DS_Store"), b"Finder metadata").unwrap();
+    let storage = home.open();
+    assert_eq!(
+        storage.start_empty_workspace(|_| {}).unwrap(),
+        StorageStatus::Ready
+    );
+    assert_eq!(storage.workspace().unwrap().tree().unwrap().pages.len(), 0);
+    assert_eq!(
+        fs::read(home.location.path.join(".DS_Store")).unwrap(),
+        b"Finder metadata"
+    );
+    assert_eq!(home.file().path.exists(), false);
+}
+
+#[test]
+fn marker_and_empty_docs_keep_the_guard_and_all_bytes() {
+    let home = Home::new();
+    home.leaf();
+    home.open();
+    fs::remove_file(&home.location.path).unwrap();
+    fs::create_dir_all(home.location.path.join("docs")).unwrap();
+    fs::write(home.location.path.join("format.json"), b"{\"format\":1}").unwrap();
+    let record = fs::read(&home.file().path).unwrap();
+    assert!(matches!(
+        home.open().status(),
+        StorageStatus::FinishMoving { .. }
+    ));
+    assert_eq!(
+        listing(&home.location.path),
+        [OsString::from("docs"), OsString::from("format.json")]
+    );
+    assert_eq!(
+        listing(&home.location.path.join("docs")),
+        Vec::<OsString>::new()
+    );
+    assert_eq!(
+        fs::read(home.location.path.join("format.json")).unwrap(),
+        b"{\"format\":1}"
+    );
+    assert_eq!(fs::read(&home.file().path).unwrap(), record);
+}
+
+#[test]
+fn failed_empty_initialization_keeps_the_record_guards_relaunch_and_allows_retry() {
+    use std::os::unix::fs::PermissionsExt;
+    let home = Home::new();
+    home.leaf();
+    home.open();
+    fs::remove_file(&home.location.path).unwrap();
+    let storage = home.open();
+    fs::create_dir_all(home.location.path.join("docs")).unwrap();
+    fs::write(home.location.path.join("format.json"), b"{\"format\":1}").unwrap();
+    let record = fs::read(&home.file().path).unwrap();
+    fs::set_permissions(
+        home.location.path.join("docs"),
+        fs::Permissions::from_mode(0o500),
+    )
+    .unwrap();
+    let result = storage.start_empty_workspace(|_| {});
+    fs::set_permissions(
+        home.location.path.join("docs"),
+        fs::Permissions::from_mode(0o700),
+    )
+    .unwrap();
+    assert!(
+        matches!(result, Err(StorageError::Io(ref message)) if message == "could not finish creating the empty workspace")
+    );
+    assert!(matches!(
+        storage.status(),
+        StorageStatus::FinishMoving { .. }
+    ));
+    assert_eq!(fs::read(&home.file().path).unwrap(), record);
+    drop(storage);
+    let reopened = home.open();
+    assert!(matches!(
+        reopened.status(),
+        StorageStatus::FinishMoving { .. }
+    ));
+    assert_eq!(
+        reopened.start_empty_workspace(|_| {}).unwrap(),
+        StorageStatus::Ready
+    );
+    assert_eq!(reopened.workspace().unwrap().tree().unwrap().pages.len(), 0);
+    assert_eq!(home.file().path.exists(), false);
+}
+
+#[test]
+fn arrived_workspace_opens_even_when_recovery_directory_is_invalid() {
+    let mut home = Home::new();
+    let target = home.leaf();
+    home.open();
+    fs::remove_file(&home.location.path).unwrap();
+    fs::rename(target, &home.location.path).unwrap();
+    home.record = RecoveryDirectory(home.location.path.join("recovery"));
+    let storage = home.open();
+    assert_eq!(storage.status(), StorageStatus::Ready);
+    assert_eq!(
+        tests::text_of(
+            &storage
+                .workspace()
+                .unwrap()
+                .load(&core::DocId::new("original").unwrap())
+                .unwrap()
+        ),
+        "Original pages stay here"
+    );
+    assert_eq!(home.record.0.exists(), false);
+}
+
+#[test]
+fn recovery_validation_uses_the_normalized_configured_path() {
+    let mut home = Home::new();
+    fs::create_dir_all(home.root.join("elsewhere/child")).unwrap();
+    fs::create_dir_all(home.root.join("local")).unwrap();
+    std::os::unix::fs::symlink(
+        home.root.join("elsewhere/child"),
+        home.root.join("local/link"),
+    )
+    .unwrap();
+    home.location.path = home.root.join("local/link/../Aelomi");
+    home.record = RecoveryDirectory(home.root.join("local/Aelomi/recovery"));
+    assert_eq!(
+        home.open().status(),
+        StorageStatus::Io("the recovery directory must be outside the data folder".into())
+    );
+    assert_eq!(home.root.join("local/Aelomi").exists(), false);
+}
+
+fn copy_fixture(from: &Path, to: &Path) {
+    fs::create_dir_all(to).unwrap();
+    for entry in fs::read_dir(from).unwrap() {
+        let entry = entry.unwrap();
+        if entry.file_type().unwrap().is_dir() {
+            copy_fixture(&entry.path(), &to.join(entry.file_name()));
+        } else {
+            fs::copy(entry.path(), to.join(entry.file_name())).unwrap();
+        }
+    }
+}
+
+#[test]
+fn older_format_fixture_opens_through_the_guard_with_original_bytes() {
+    let home = Home::new();
+    home.leaf();
+    home.open();
+    fs::remove_file(&home.location.path).unwrap();
+    let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("../fixtures/data-folders/format-1");
+    copy_fixture(&fixture, &home.location.path);
+    let files = [
+        "docs/workspace/log-0000000000-0000000000.ylog",
+        "docs/page-1/snapshot-0000000001.ysnap",
+        "docs/page-1/log-0000000001-0000000000.ylog",
+        "docs/page-1/log-0000000002-0000000000.ylog",
+    ];
+    let storage = home.open();
+    assert_eq!(storage.status(), StorageStatus::Ready);
+    use yrs::updates::decoder::Decode;
+    use yrs::{Doc, GetString, Transact};
+    let doc = Doc::new();
+    doc.transact_mut()
+        .apply_update(
+            yrs::Update::decode_v1(
+                &storage
+                    .workspace()
+                    .unwrap()
+                    .load(&core::DocId::new("page-1").unwrap())
+                    .unwrap(),
+            )
+            .unwrap(),
+        )
+        .unwrap();
+    assert_eq!(
+        doc.get_or_insert_xml_fragment("content")
+            .get_string(&doc.transact()),
+        "<paragraph>Storage keeps every edit. Even after a crash.</paragraph><paragraph>Snapshots replace old logs.</paragraph><paragraph>This line is in generation two.</paragraph>"
+    );
+    for file in files {
+        assert_eq!(
+            fs::read(home.location.path.join(file)).unwrap(),
+            fs::read(fixture.join(file)).unwrap()
+        );
+    }
+    assert_eq!(home.file().path.exists(), false);
 }

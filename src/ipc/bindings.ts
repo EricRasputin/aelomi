@@ -303,9 +303,11 @@ export type SettingsPatch = {
 	expanded_rows?: string[] | null,
 };
 
-export type StorageError = 
+export type StorageError = ({ DestinationNotEmpty: {
+	items: string[],
+} }) & { Io?: never } | 
 /**  The store is not open. `storage_status` says why. */
-"Unavailable" | "InvalidDocId" | "InvalidUpdate" | { Io: string };
+"Unavailable" | "InvalidDocId" | "InvalidUpdate" | ({ Io: string }) & { DestinationNotEmpty?: never };
 
 export type StorageHealthChanged = Health;
 
@@ -314,6 +316,7 @@ export type StorageStatus = "Ready" | ({ CloudPath: {
 	resolved: string,
 	recovery: CloudRecovery,
 } }) & { FinishMoving?: never; Io?: never; RecoveryRecordUnreadable?: never } | ({ FinishMoving: {
+	destination_exists: boolean,
 	configured: string,
 	resolved: string,
 	recovery: CloudRecovery,

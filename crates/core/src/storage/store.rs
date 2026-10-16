@@ -133,49 +133,8 @@ impl Store {
     pub(crate) fn is_pristine(&self, doc: &DocId) -> io::Result<bool> {
         let slot = self.shared.slot(doc);
         let files = slot.files_waking_writer(&self.shared);
-        let names = match self.shared.fs.list(&self.shared.layout.doc_dir(doc)) {
-            Ok(names) => names,
-            Err(e) if e.kind() == io::ErrorKind::NotFound => Vec::new(),
-            Err(e) => return Err(e),
-        };
-        if names
-            .iter()
-            .filter_map(|name| super::layout::DocFile::parse(name))
-            .any(|file| {
-                matches!(
-                    file,
-                    super::layout::DocFile::Snapshot(..) | super::layout::DocFile::SnapshotTmp(..)
-                )
-            })
-        {
+        if !doc_is_pristine(self.shared.fs.as_ref(), &self.shared.layout, doc)? {
             return Ok(false);
-        }
-        match self.shared.fs.list(&self.shared.layout.quarantine_dir(doc)) {
-            Ok(files) if !files.is_empty() => return Ok(false),
-            Ok(_) => {}
-            Err(e) if e.kind() == io::ErrorKind::NotFound => {}
-            Err(e) => return Err(e),
-        }
-        for name in names {
-            let Some(file @ super::layout::DocFile::Log(_, _, format)) =
-                super::layout::DocFile::parse(&name)
-            else {
-                continue;
-            };
-            let path = self.shared.layout.doc_file(doc, file);
-            let prefix = self.shared.fs.read_prefix(&path, 4096)?;
-            let contents = super::log::read(format, &prefix);
-            if !contents.records.is_empty() {
-                return Ok(false);
-            }
-            let contents = if prefix.len() == 4096 {
-                super::log::read(format, &self.shared.fs.read(&path)?)
-            } else {
-                contents
-            };
-            if !contents.records.is_empty() || contents.end == super::log::LogEnd::Corrupt {
-                return Ok(false);
-            }
         }
         drop(files);
         self.shared.with_doc(doc, |ydoc, state| {
@@ -765,6 +724,137 @@ pub(super) fn refuse_before_writing(
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(()),
         Err(e) => Err(e.into()),
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DestinationFolder {
+    Absent,
+    Empty,
+    NotEmpty { items: Vec<String> },
+    Workspace,
+    Unrecognized { items: Vec<String> },
+}
+
+pub fn classify_destination(path: &Path) -> Result<DestinationFolder, OpenError> {
+    destination_folder(&OsFs, &Layout::new(path))
+}
+
+pub(super) fn destination_folder(
+    fs: &dyn Fs,
+    layout: &Layout,
+) -> Result<DestinationFolder, OpenError> {
+    let names = match fs.list(layout.root()) {
+        Ok(names) => names,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            return Ok(DestinationFolder::Absent);
+        }
+        Err(error) => return Err(error.into()),
+    };
+    let version = match check_format(fs, layout, &names, FORMAT_VERSION) {
+        Ok(version) => version,
+        Err(OpenError::UnknownFormat) => {
+            return Ok(DestinationFolder::Unrecognized { items: names });
+        }
+        Err(error) => return Err(error),
+    };
+    if version.is_some() && !doc_is_pristine(fs, layout, &DocId::workspace())? {
+        return Ok(DestinationFolder::Workspace);
+    }
+    let mut items = Vec::new();
+    for name in names {
+        let empty_skeleton = match name.as_str() {
+            "format.json" => version.is_some(),
+            ".lock" => fs.read(&layout.lock())?.is_empty(),
+            "docs" => empty_document_skeleton(fs, layout)?,
+            _ => false,
+        };
+        if !finder_metadata(&name) && !empty_skeleton {
+            items.push(name);
+        }
+    }
+    Ok(if items.is_empty() {
+        DestinationFolder::Empty
+    } else {
+        DestinationFolder::NotEmpty { items }
+    })
+}
+
+fn empty_document_skeleton(fs: &dyn Fs, layout: &Layout) -> io::Result<bool> {
+    for name in fs.list(&layout.docs())? {
+        if finder_metadata(&name) {
+            continue;
+        }
+        if name != DocId::workspace().as_str() {
+            return Ok(false);
+        }
+        for name in fs.list(&layout.doc_dir(&DocId::workspace()))? {
+            if finder_metadata(&name) {
+                continue;
+            }
+            let Some(file @ super::layout::DocFile::Log(_, _, format)) =
+                super::layout::DocFile::parse(&name)
+            else {
+                return Ok(false);
+            };
+            let bytes = fs.read(&layout.doc_file(&DocId::workspace(), file))?;
+            if bytes.len() > format.file_header_len() {
+                return Ok(false);
+            }
+        }
+    }
+    Ok(true)
+}
+
+fn finder_metadata(name: &str) -> bool {
+    matches!(name, ".DS_Store" | ".localized" | "Icon\r")
+}
+
+fn doc_is_pristine(fs: &dyn Fs, layout: &Layout, doc: &DocId) -> io::Result<bool> {
+    let names = match fs.list(&layout.doc_dir(doc)) {
+        Ok(names) => names,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => Vec::new(),
+        Err(error) => return Err(error),
+    };
+    if names
+        .iter()
+        .filter_map(|name| super::layout::DocFile::parse(name))
+        .any(|file| {
+            matches!(
+                file,
+                super::layout::DocFile::Snapshot(..) | super::layout::DocFile::SnapshotTmp(..)
+            )
+        })
+    {
+        return Ok(false);
+    }
+    match fs.list(&layout.quarantine_dir(doc)) {
+        Ok(files) if !files.is_empty() => return Ok(false),
+        Ok(_) => {}
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
+    }
+    for name in names {
+        let Some(file @ super::layout::DocFile::Log(_, _, format)) =
+            super::layout::DocFile::parse(&name)
+        else {
+            continue;
+        };
+        let path = layout.doc_file(doc, file);
+        let prefix = fs.read_prefix(&path, 4096)?;
+        let contents = super::log::read(format, &prefix);
+        if !contents.records.is_empty() {
+            return Ok(false);
+        }
+        let contents = if prefix.len() == 4096 {
+            super::log::read(format, &fs.read(&path)?)
+        } else {
+            contents
+        };
+        if !contents.records.is_empty() || contents.end == super::log::LogEnd::Corrupt {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 fn check_format(
