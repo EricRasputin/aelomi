@@ -58,7 +58,6 @@ type MockCall = {
     args: Parameters<Commands[Name]>;
   };
 }[keyof Commands];
-
 export type MockSetup = {
   settings?: Partial<Settings>;
   appearance?: "light" | "dark";
@@ -85,7 +84,6 @@ declare global {
 const calls: MockCall[] = [];
 const errors: string[] = [];
 type MockDoc = { doc: Y.Doc; updates: Uint8Array[]; pending: boolean };
-
 const storage: {
   status: StorageStatus;
   appendError: StorageError | null;
@@ -107,13 +105,17 @@ const storage: {
 };
 let exited = false;
 let indexStatus: IndexStatus = "Ready";
-const settings = createSettingsMock({
-  ready: () => setupReady,
-  status: () => storage.status,
-  writeFailure: () => (storage.failWrites ? storage.reason : null),
-  changed: () => refreshHealth(),
-  record: (call) => calls.push(call),
-});
+let settings: ReturnType<typeof createSettingsMock> | undefined;
+function settingsMock() {
+  settings ??= createSettingsMock({
+    ready: () => setupReady,
+    status: () => storage.status,
+    writeFailure: () => (storage.failWrites ? storage.reason : null),
+    changed: () => refreshHealth(),
+    record: (call) => calls.push(call),
+  });
+  return settings;
+}
 let registration = Promise.resolve();
 let releaseRegistration = () => {};
 let appearance: "light" | "dark" | null = null;
@@ -166,64 +168,59 @@ export const events = {
   quitStatusChanged: mockEvent<QuitStatus>("quit-status-changed"),
   storageHealthChanged: mockEvent<Health>("storage-health-changed"),
 } satisfies Events;
-
 function quitStatus(): QuitStatus {
   return { revision: quit.revision, phase: structuredClone(quit.phase) };
 }
-
 function changeQuit(phase: QuitPhase) {
   quit.revision += 1;
   quit.phase = phase;
   void events.quitStatusChanged.emit(quitStatus());
 }
-
 function pendingDocs(): string[] {
   return [...storage.docs]
     .filter(([, doc]) => doc.pending)
     .map(([id]) => id)
     .sort();
 }
-
 function flushThenQuit() {
   const pending = pendingDocs();
-  if (pending.length === 0 && !settings.pending) {
+  if (pending.length === 0 && !settingsMock().pending) {
     changeQuit("Confirmed");
     exited = true;
   } else
     changeQuit({
-      Asking: { pending_docs: pending, pending_settings: settings.pending },
+      Asking: {
+        pending_docs: pending,
+        pending_settings: settingsMock().pending,
+      },
     });
 }
-
 function refreshHealth() {
   const pending = pendingDocs();
   const next: Health =
-    pending.length === 0 && !settings.pending
+    pending.length === 0 && !settingsMock().pending
       ? "Healthy"
       : {
           Failing: {
             reason: storage.reason,
             pending_docs: pending,
-            pending_settings: settings.pending,
+            pending_settings: settingsMock().pending,
           },
         };
   if (JSON.stringify(next) === JSON.stringify(storage.health)) return;
   storage.health = next;
   void events.storageHealthChanged.emit(next);
 }
-
 function refusal(docId: string): StorageError | null {
   if (storage.status !== "Ready") return "Unavailable";
   if (!/^[0-9a-z-]{1,64}$/.test(docId)) return "InvalidDocId";
   return null;
 }
-
 function queryFailure(): QueryError | null {
   if (storage.status !== "Ready") return "Unavailable";
   if (typeof indexStatus === "object") return structuredClone(indexStatus);
   return null;
 }
-
 function mockDoc(docId: string): MockDoc {
   let doc = storage.docs.get(docId);
   if (!doc) {
@@ -458,7 +455,8 @@ export const commands = {
     control.quit.request();
     return { status: "ok", data: null };
   },
-  ...settings.commands,
+  settingsGet: () => settingsMock().commands.settingsGet(),
+  settingsUpdate: (patch) => settingsMock().commands.settingsUpdate(patch),
   ping: async (request) => {
     calls.push({ command: "ping", args: [structuredClone(request)] });
     return { seq: request.seq, core_version: "0.1.0-mock" };
@@ -577,7 +575,7 @@ export const commands = {
       changeQuit({
         Asking: {
           pending_docs: [...new Set([...docIds, ...pendingDocs()])].sort(),
-          pending_settings: settings.pending || pendingSettings,
+          pending_settings: settingsMock().pending || pendingSettings,
         },
       });
     return { status: "ok", data: quitStatus() };
@@ -725,7 +723,7 @@ async function applySetup(setup: MockSetup | undefined) {
     registration = new Promise<void>((resolve) => {
       releaseRegistration = resolve;
     });
-  if (setup.settings) settings.seed(setup.settings);
+  if (setup.settings) settingsMock().seed(setup.settings);
   if (setup.appearance) appearance = setup.appearance;
   if (setup.storageStatus)
     storage.status = structuredClone(setup.storageStatus);
@@ -767,7 +765,7 @@ function restoreKept(): boolean {
 function resetState() {
   calls.length = 0;
   errors.length = 0;
-  settings.reset();
+  settingsMock().reset();
   releaseRegistration();
   registration = Promise.resolve();
   appearance = null;
@@ -834,12 +832,12 @@ const control = {
       }
       if (!quit.frontendReady) {
         const pending = pendingDocs();
-        if (pending.length === 0 && !settings.pending) exited = true;
+        if (pending.length === 0 && !settingsMock().pending) exited = true;
         else
           changeQuit({
             Asking: {
               pending_docs: pending,
-              pending_settings: settings.pending,
+              pending_settings: settingsMock().pending,
             },
           });
         return;
@@ -852,7 +850,7 @@ const control = {
       changeQuit({
         Asking: {
           pending_docs: pendingDocs(),
-          pending_settings: settings.pending,
+          pending_settings: settingsMock().pending,
         },
       });
     },
@@ -912,7 +910,9 @@ const control = {
       window.dispatchEvent(new Event("aelomi-test-appearance"));
     },
   },
-  settings: settings.control,
+  get settings() {
+    return settingsMock().control;
+  },
   storage: {
     refuseRecords(error: import("./bindings").PageError | null) {
       storage.recordError = error;
@@ -926,7 +926,7 @@ const control = {
       storage.reason = reason;
       if (!on) {
         for (const doc of storage.docs.values()) doc.pending = false;
-        settings.recover();
+        settingsMock().recover();
       }
       refreshHealth();
     },
