@@ -126,6 +126,67 @@ impl Store {
         self.shared.settings.wait(seq)
     }
 
+    pub(crate) fn unix_ms(&self) -> u64 {
+        self.shared.clock.unix_ms()
+    }
+
+    pub(crate) fn is_pristine(&self, doc: &DocId) -> io::Result<bool> {
+        let slot = self.shared.slot(doc);
+        let files = slot.files_waking_writer(&self.shared);
+        let names = match self.shared.fs.list(&self.shared.layout.doc_dir(doc)) {
+            Ok(names) => names,
+            Err(e) if e.kind() == io::ErrorKind::NotFound => Vec::new(),
+            Err(e) => return Err(e),
+        };
+        if names
+            .iter()
+            .filter_map(|name| super::layout::DocFile::parse(name))
+            .any(|file| {
+                matches!(
+                    file,
+                    super::layout::DocFile::Snapshot(..) | super::layout::DocFile::SnapshotTmp(..)
+                )
+            })
+        {
+            return Ok(false);
+        }
+        match self.shared.fs.list(&self.shared.layout.quarantine_dir(doc)) {
+            Ok(files) if !files.is_empty() => return Ok(false),
+            Ok(_) => {}
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e),
+        }
+        for name in names {
+            let Some(file @ super::layout::DocFile::Log(_, _, format)) =
+                super::layout::DocFile::parse(&name)
+            else {
+                continue;
+            };
+            let path = self.shared.layout.doc_file(doc, file);
+            let prefix = self.shared.fs.read_prefix(&path, 4096)?;
+            let contents = super::log::read(format, &prefix);
+            if !contents.records.is_empty() {
+                return Ok(false);
+            }
+            let contents = if prefix.len() == 4096 {
+                super::log::read(format, &self.shared.fs.read(&path)?)
+            } else {
+                contents
+            };
+            if !contents.records.is_empty() || contents.end == super::log::LogEnd::Corrupt {
+                return Ok(false);
+            }
+        }
+        drop(files);
+        self.shared.with_doc(doc, |ydoc, state| {
+            let txn = ydoc.transact();
+            txn.state_vector().is_empty()
+                && !txn.has_missing_updates()
+                && state.queue.is_empty()
+                && state.corrupt.is_empty()
+        })
+    }
+
     pub fn open(root: impl AsRef<Path>) -> Result<Self, OpenError> {
         let clock = Arc::new(SystemClock::new());
         let fs = Arc::new(OsFs);

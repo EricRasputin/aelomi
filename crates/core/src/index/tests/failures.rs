@@ -109,23 +109,24 @@ fn a_malformed_body_reports_an_issue_and_keeps_every_other_result() {
     assert_eq!(issues, std::slice::from_ref(&issue));
     assert_eq!(opened.workspace.load(&daily).unwrap(), source);
 
-    opened.edit_records(|records| {
-        records.get_mut(&page("daily")).unwrap().trash = Some(crate::workspace::records::Trash {
-            original_parent: None,
-            original_order: 1,
-            batch_id: "b".into(),
-            trashed_at: 5,
-        });
-    });
+    let batch = opened
+        .workspace
+        .edit_page(crate::workspace::PageEdit::Trash {
+            page: page("daily"),
+        })
+        .unwrap()
+        .trash_batch()
+        .unwrap();
     opened.settle();
     assert_eq!(
         ready_with_issues(opened.workspace.search(&all("", 10)).unwrap()).1,
         [],
         "a trashed page's issue is not shown"
     );
-    opened.edit_records(|records| {
-        records.get_mut(&page("daily")).unwrap().trash = None;
-    });
+    opened
+        .workspace
+        .edit_page(crate::workspace::PageEdit::Restore { batch })
+        .unwrap();
     opened.settle();
     assert_eq!(
         ready_with_issues(opened.workspace.search(&all("", 10)).unwrap()).1,

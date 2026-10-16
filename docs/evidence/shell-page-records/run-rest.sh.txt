@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -euo pipefail
+.audit/fix4/run-phase.sh both two > .audit/fix4/post-main-both.log 2>&1
+.audit/fix4/run-phase.sh settings-reopened three > .audit/fix4/post-main-settings-reopened.log 2>&1
+.audit/fix4/failure-run.sh > .audit/fix4/post-main-failure.log 2>&1
+.audit/fix4/run-phase.sh recovery-reopened five > .audit/fix4/post-main-recovery-reopened.log 2>&1
+ls -la ~/Library/Application\ Support/Aelomi > .audit/fix4/real-data-after.txt
+cmp .audit/fix4/real-data-before.txt .audit/fix4/real-data-after.txt

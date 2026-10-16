@@ -1,0 +1,36 @@
+import json
+import math
+import re
+import statistics
+import sys
+from pathlib import Path
+
+navigation = []
+end_to_end = []
+for series in sys.argv[1:]:
+    paths = sorted(Path(series).rglob('results.json'))
+    assert len(paths) == 2, paths
+    variants = set()
+    for path in paths:
+        result = json.loads(path.read_text())
+        variant = result['expectedVariant']
+        variants.add(variant)
+        runs = result['runs']
+        assert len(runs) == 10
+        assert all(run['exit'] == 'exit 0' and run['variant'] == variant for run in runs)
+        nav = statistics.median(run['navToPaint'] for run in runs)
+        total = statistics.median(run['endToEnd'] for run in runs)
+        assert nav == result['navToPaintMedian']
+        assert total == result['endToEndMedian']
+        harness = path.with_name('harness.log').read_text()
+        match = re.search(r', load ([0-9.]+) ', harness)
+        assert match, path
+        print(Path(series).name, variant, 'start load1', match[1], 'navigation median', nav, 'end-to-end median', total, 'successful timed runs', len(runs))
+        if variant == 'page':
+            navigation.append(nav)
+            end_to_end.append(total)
+    assert variants == {'index', 'page'}
+assert len(navigation) == 3, navigation
+assert len(end_to_end) == 3, end_to_end
+print('page navigation medians', navigation, 'ceiling', math.ceil(1.5 * max(navigation)))
+print('page end-to-end medians', end_to_end, 'ceiling', math.ceil(1.5 * max(end_to_end)))

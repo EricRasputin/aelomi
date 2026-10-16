@@ -1,4 +1,9 @@
-import type { FailReason, StorageError, StorageStatus } from "./ipc";
+import type {
+  FailReason,
+  RecordCommandError,
+  StorageError,
+  StorageStatus,
+} from "./ipc";
 
 export const storageCopy = {
   banner: "Changes aren't being saved.",
@@ -213,4 +218,12 @@ export function storageFailureReason(reason: FailReason): string {
       return exhaustive;
     }
   }
+}
+
+export function recordErrorText(error: RecordCommandError): string {
+  if (typeof error === "string") return error;
+  if ("Transport" in error) return error.Transport;
+  if (error.Io !== undefined) return error.Io;
+  if (error.Internal !== undefined) return error.Internal;
+  return error.Malformed.reason;
 }

@@ -501,6 +501,9 @@ fn shell_10_a_panic_in_settings_failure_bookkeeping_does_not_stop_the_writer() {
         panic_next: AtomicBool,
     }
     impl Clock for TailClock {
+        fn unix_ms(&self) -> u64 {
+            self.clock.unix_ms()
+        }
         fn now(&self) -> Duration {
             assert!(
                 !self.panic_next.swap(false, Ordering::SeqCst),

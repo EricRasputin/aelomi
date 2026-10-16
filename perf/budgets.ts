@@ -5,7 +5,9 @@ export type Budgets = {
   coldStart: {
     specMs: Budget;
     hostedCiMs: Budget;
+    hostedPageCiMs: Budget;
     hostedNavToPaintMs: Budget;
+    hostedPageNavToPaintMs: Budget;
     warmupRuns: Budget;
     timedRuns: Budget;
   };
@@ -75,9 +77,15 @@ export function readBudgets(): Budgets {
     coldStart: {
       specMs: budget(coldStart, "coldStart.specMs", isNumber),
       hostedCiMs: budget(coldStart, "coldStart.hostedCiMs", isNumber),
+      hostedPageCiMs: budget(coldStart, "coldStart.hostedPageCiMs", isNumber),
       hostedNavToPaintMs: budget(
         coldStart,
         "coldStart.hostedNavToPaintMs",
+        isNumber,
+      ),
+      hostedPageNavToPaintMs: budget(
+        coldStart,
+        "coldStart.hostedPageNavToPaintMs",
         isNumber,
       ),
       warmupRuns: budget(coldStart, "coldStart.warmupRuns", isNumber),

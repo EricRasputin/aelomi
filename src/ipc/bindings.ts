@@ -42,6 +42,9 @@ export const commands = {
 	 *  below 2^53 exactly.
 	 */
 	docAppend: (docId: string, update: string) => typedError<number | null, StorageError>(__TAURI_INVOKE("doc_append", { docId, update })),
+	pageCreate: (parentId: string | null, pageId: string | null) => typedError<string, PageError>(__TAURI_INVOKE("page_create", { parentId, pageId })),
+	pageRename: (pageId: string, title: string) => typedError<null, PageError>(__TAURI_INVOKE("page_rename", { pageId, title })),
+	pageTrash: (pageId: string) => typedError<string, PageError>(__TAURI_INVOKE("page_trash", { pageId })),
 	/**  Never touches SQLite, so it answers at once on any thread. */
 	indexStatus: () => __TAURI_INVOKE<IndexStatus>("index_status"),
 	/**  Reads the workspace doc, not the index, so it works while the index rebuilds. */
@@ -65,6 +68,7 @@ export const events = {
 	indexChanged: makeEvent<IndexChanged>("index-changed"),
 	indexStatusChanged: makeEvent<IndexStatusChanged>("index-status-changed"),
 	menuCommand: makeEvent<MenuCommand>("menu-command"),
+	pageRecordsChanged: makeEvent<PageRecordsChanged>("page-records-changed"),
 	quitStatusChanged: makeEvent<QuitStatusChanged>("quit-status-changed"),
 	storageHealthChanged: makeEvent<StorageHealthChanged>("storage-health-changed"),
 };
@@ -157,6 +161,10 @@ export type MenuCommand = {
 
 export type OpenPagePatch = { Set: SettingsOpenPage } | "Clear";
 
+export type PageError = "Unavailable" | "Quitting" | "InvalidPageId" | "NotActive" | "AlreadyExists" | "Cycle" | "OrderExhausted" | "InvalidTime" | "InvalidUpdate" | ({ Malformed: {
+	reason: string,
+} }) & { Internal?: never; Io?: never } | ({ Io: string }) & { Internal?: never; Malformed?: never } | ({ Internal: string }) & { Io?: never; Malformed?: never };
+
 /**  An active page whose body the index could read only in part. Its doc is unchanged. */
 export type PageIssue = {
 	page_id: string,
@@ -179,6 +187,8 @@ export type PageProblem =
 "MissingBlockId" | 
 /**  A page link has no valid target. It reads as a space. */
 "InvalidPageLink";
+
+export type PageRecordsChanged = null;
 
 export type PageTree = {
 	/**  Every active page, depth-first, parents before children. */

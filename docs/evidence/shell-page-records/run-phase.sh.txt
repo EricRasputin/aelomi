@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+phase=$1
+number=$2
+S=.claude/skills/verify-aelomi/scripts
+path_file=".audit/fix4/launch-$number.path"
+: > "$path_file"
+finish() {
+  if [ -s "$path_file" ]; then "$S/app.sh" cleanup "$(cat "$path_file")"; fi
+}
+trap finish EXIT INT TERM
+if [ "$phase" = first ]; then
+  env -u AELOMI_DATA_DIR "$S/app.sh" launch dev > "$path_file"
+else
+  AELOMI_DATA_DIR="$(cat .audit/fix4/launch-one.path)/data" "$S/app.sh" launch dev > "$path_file"
+fi
+run=$(cat "$path_file")
+"$S/app.sh" doctor "$run"
+.audit/fix4/drive.sh "$run" "$phase"

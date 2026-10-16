@@ -1,6 +1,11 @@
 pub mod body;
+mod edit;
 pub mod records;
+mod seed;
 pub mod tree;
+mod write;
+
+pub use edit::{PageChange, PageEdit, PageEditError, PageEditReply};
 
 #[cfg(any(test, feature = "test-support"))]
 pub mod fixture;
@@ -31,6 +36,8 @@ pub struct Workspace {
     revision: AtomicU64,
     tree: Mutex<TreeMemo>,
     tree_projected: Condvar,
+    record_edits: Mutex<()>,
+    record_client: yrs::ClientID,
     settings: Mutex<Option<crate::settings::Settings>>,
 }
 
@@ -57,6 +64,32 @@ impl Drop for SettingsAdmission {
 impl SettingsUpdate {
     pub fn run(self) -> Result<crate::settings::Settings, SettingsError> {
         self.workspace.update_settings(self.patch)
+    }
+}
+
+/// An open store before any index reader starts. The shell may seed it, then start the workspace.
+pub struct PreparedWorkspace {
+    store: Store,
+    index_path: PathBuf,
+    record_client: yrs::ClientID,
+}
+
+impl PreparedWorkspace {
+    fn new(store: Store, index_path: PathBuf) -> Self {
+        Self {
+            store,
+            index_path,
+            record_client: yrs::ClientID::random(),
+        }
+    }
+
+    pub fn start(self, on_index: impl Fn(&IndexEvent) + Send + Sync + 'static) -> Workspace {
+        Workspace::start_prepared(
+            self,
+            index::Config::DEFAULT,
+            Arc::new(on_index),
+            Arc::default(),
+        )
     }
 }
 
@@ -106,15 +139,19 @@ impl Workspace {
         root: impl AsRef<Path>,
         on_index: impl Fn(&IndexEvent) + Send + Sync + 'static,
     ) -> Result<Self, OpenError> {
+        Ok(Self::prepare(root)?.start(on_index))
+    }
+
+    /// Opens only the store, before the shell's optional first-run seed and index startup.
+    pub fn prepare(root: impl AsRef<Path>) -> Result<PreparedWorkspace, OpenError> {
         let store = Store::open(root.as_ref())?;
         let root = std::fs::canonicalize(root)?;
-        Ok(Self::start(
-            store,
-            root.join(index::FILE),
-            index::Config::DEFAULT,
-            Arc::new(on_index),
-            Arc::default(),
-        ))
+        Ok(PreparedWorkspace::new(store, root.join(index::FILE)))
+    }
+
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn prepare_with_store(store: Store, index_path: PathBuf) -> PreparedWorkspace {
+        PreparedWorkspace::new(store, index_path)
     }
 
     /// Indexes `store`, such as one on a simulated disk, into the file at `index_path`.
@@ -134,6 +171,7 @@ impl Workspace {
         )
     }
 
+    #[cfg(any(test, feature = "test-support"))]
     pub(crate) fn start(
         store: Store,
         index_path: PathBuf,
@@ -141,6 +179,25 @@ impl Workspace {
         on_index: Arc<dyn Fn(&IndexEvent) + Send + Sync>,
         gate: Arc<index::gate::Gate>,
     ) -> Self {
+        Self::start_prepared(
+            PreparedWorkspace::new(store, index_path),
+            config,
+            on_index,
+            gate,
+        )
+    }
+
+    fn start_prepared(
+        prepared: PreparedWorkspace,
+        config: index::Config,
+        on_index: Arc<dyn Fn(&IndexEvent) + Send + Sync>,
+        gate: Arc<index::gate::Gate>,
+    ) -> Self {
+        let PreparedWorkspace {
+            store,
+            index_path,
+            record_client,
+        } = prepared;
         let store = Arc::new(store);
         let index = Index::start(
             Arc::new(StoreSource(store.clone())),
@@ -156,6 +213,8 @@ impl Workspace {
             tree: Mutex::default(),
             tree_projected: Condvar::new(),
             settings: Mutex::default(),
+            record_edits: Mutex::new(()),
+            record_client,
         }
     }
 
@@ -198,6 +257,13 @@ impl Workspace {
         Ok(snapshot)
     }
 
+    #[cfg(any(test, feature = "test-support"))]
+    pub fn hold_record_edits(&self) -> MutexGuard<'_, ()> {
+        self.record_edits
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+    }
+
     /// See [`Store::load`].
     pub fn load(&self, doc: &DocId) -> io::Result<Vec<u8>> {
         self.store.load(doc)
@@ -205,6 +271,23 @@ impl Workspace {
 
     /// See [`Store::append`]. Once the store accepts the update, marks the doc for the index.
     pub fn append(&self, doc: &DocId, update: &[u8]) -> Result<Seq, AppendError> {
+        let _held = (*doc == DocId::workspace()).then(|| {
+            self.record_edits
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+        });
+        self.append_unlocked(doc, update)
+    }
+
+    fn append_record_update(
+        &self,
+        _held: &MutexGuard<'_, ()>,
+        update: &[u8],
+    ) -> Result<Seq, AppendError> {
+        self.append_unlocked(&DocId::workspace(), update)
+    }
+
+    fn append_unlocked(&self, doc: &DocId, update: &[u8]) -> Result<Seq, AppendError> {
         let seq = self.store.append(doc, update)?;
         if *doc == DocId::workspace() {
             self.revision.fetch_add(1, Ordering::SeqCst);

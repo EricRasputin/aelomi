@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import * as Y from "yjs";
+import { onQuitDrain } from "../editor/quit-drain";
 import { commands, events } from "../ipc";
 import { fromBase64, toBase64 } from "../ipc/base64";
 
@@ -78,9 +79,33 @@ async function measureTransport(): Promise<string> {
   return `storage transport load_bytes=${state.length} load_ms_median=${ms(median(loads))} append_bytes=${bytes} append_ms_median=${ms(median(appends))}`;
 }
 
+async function renameSeed(title = "Quit rename proof"): Promise<string> {
+  const reply = await commands.pageRename("getting-started", title);
+  if (reply.status === "error") throw new Error(JSON.stringify(reply.error));
+  return `page rename accepted title=${title}`;
+}
+
 export default function StorageProbe() {
   const [text, setText] = useState("Storage probe idle");
   const [busy, setBusy] = useState(false);
+  const [renameOnRetry, setRenameOnRetry] = useState(false);
+
+  useEffect(() => {
+    if (!renameOnRetry) return;
+    let drains = 0;
+    return onQuitDrain({
+      finish: () => {
+        drains += 1;
+        if (drains !== 2) return;
+        void renameSeed("Retried quit rename proof").then(
+          (line) => commands.devProbeLog(line),
+          (error: unknown) =>
+            commands.devProbeLog(`retry rename refused ${String(error)}`),
+        );
+      },
+      freeze: () => {},
+    });
+  }, [renameOnRetry]);
   const [heard, setHeard] = useState("No storage events yet");
 
   useEffect(() => {
@@ -128,6 +153,25 @@ export default function StorageProbe() {
           className="rounded-md border border-[var(--border)] bg-[var(--button)] px-3 py-1.5 text-sm font-medium hover:bg-[var(--button-hover)] disabled:opacity-50"
         >
           Run probe
+        </button>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={run(renameSeed)}
+          className="rounded-md border border-[var(--border)] bg-[var(--button)] px-3 py-1.5 text-sm font-medium hover:bg-[var(--button-hover)] disabled:opacity-50"
+        >
+          Rename Getting started
+        </button>
+        <button
+          type="button"
+          disabled={busy || renameOnRetry}
+          onClick={() => {
+            setRenameOnRetry(true);
+            setText("Rename armed for second quit");
+          }}
+          className="rounded-md border border-[var(--border)] bg-[var(--button)] px-3 py-1.5 text-sm font-medium hover:bg-[var(--button-hover)] disabled:opacity-50"
+        >
+          Rename during second quit
         </button>
         <button
           type="button"

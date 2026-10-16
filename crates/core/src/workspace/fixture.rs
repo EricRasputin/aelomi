@@ -5,12 +5,12 @@ use std::sync::Arc;
 use yrs::types::Attrs;
 use yrs::updates::decoder::Decode;
 use yrs::{
-    Any, Doc, Map, MapPrelim, MapRef, Out, ReadTxn, Text, Transact, TransactionMut, WriteTxn, Xml,
-    XmlElementPrelim, XmlElementRef, XmlFragment, XmlFragmentRef, XmlTextPrelim,
+    Any, Doc, Map, ReadTxn, Text, Transact, TransactionMut, WriteTxn, Xml, XmlElementPrelim,
+    XmlElementRef, XmlFragment, XmlFragmentRef, XmlTextPrelim,
 };
 
 use super::body::{BODY_ROOT, node};
-use super::records::{PAGES, PageId, PageRecord, key};
+use super::records::{PAGES, PageId, PageRecord};
 use crate::storage::DocId;
 
 /// Local copies of docs that turn each edit into the Yjs update the app would append.
@@ -68,90 +68,13 @@ impl Editor {
     }
 }
 
-fn pages(txn: &mut TransactionMut) -> MapRef {
-    txn.get_or_insert_map(PAGES)
-}
-
-/// Writes `record` as page `id`'s record, keeping every key and object field it does not know.
 pub fn put_page(txn: &mut TransactionMut, id: &PageId, record: &PageRecord) {
-    let pages = pages(txn);
-    let map = match pages.get(txn, id.as_str()) {
-        Some(Out::YMap(map)) => map,
-        _ => pages.insert(txn, id.as_str(), MapPrelim::default()),
-    };
-    map.insert(txn, key::TITLE, record.title.as_str());
-    let placement = merge(
-        &map,
-        txn,
-        key::PLACEMENT,
-        [
-            (
-                key::PARENT_ID,
-                page_or_null(record.placement.parent.as_ref()),
-            ),
-            (key::ORDER, number(record.placement.order)),
-        ],
-    );
-    map.insert(txn, key::PLACEMENT, placement);
-    let favorite = match &record.favorite {
-        None => Any::Null,
-        Some(favorite) => merge(
-            &map,
-            txn,
-            key::FAVORITE,
-            [(key::ORDER, number(favorite.order))],
-        ),
-    };
-    map.insert(txn, key::FAVORITE, favorite);
-    let trash = match &record.trash {
-        None => Any::Null,
-        Some(trash) => merge(
-            &map,
-            txn,
-            key::TRASH,
-            [
-                (
-                    key::ORIGINAL_PARENT_ID,
-                    page_or_null(trash.original_parent.as_ref()),
-                ),
-                (key::ORIGINAL_ORDER, number(trash.original_order)),
-                (key::BATCH_ID, Any::from(trash.batch_id.as_str())),
-                (key::TRASHED_AT, number(trash.trashed_at)),
-            ],
-        ),
-    };
-    map.insert(txn, key::TRASH, trash);
-    map.insert(txn, key::CREATED_AT, number(record.created_at));
-    map.insert(txn, key::UPDATED_AT, number(record.updated_at));
+    super::write::put_page(txn, id, None, record);
 }
 
 /// Removes page `id`'s record, as erasing does (TREE-14).
 pub fn erase_page(txn: &mut TransactionMut, id: &PageId) {
-    pages(txn).remove(txn, id.as_str());
-}
-
-fn merge<const N: usize>(
-    map: &MapRef,
-    txn: &TransactionMut,
-    name: &str,
-    fields: [(&str, Any); N],
-) -> Any {
-    let mut object: HashMap<String, Any> = match map.get(txn, name) {
-        Some(Out::Any(Any::Map(old))) => (*old).clone(),
-        _ => HashMap::new(),
-    };
-    for (field, value) in fields {
-        object.insert(field.to_owned(), value);
-    }
-    Any::from(object)
-}
-
-fn number(n: u64) -> Any {
-    Any::Number(yrs::any::Number::Int(n as i64))
-}
-
-fn page_or_null(page: Option<&PageId>) -> Any {
-    page.map_or(Any::Null, |p| Any::from(p.as_str()))
+    txn.get_or_insert_map(PAGES).remove(txn, id.as_str());
 }
 
 /// A block as BlockNote's binding stores it: `kind` is its content node's name.

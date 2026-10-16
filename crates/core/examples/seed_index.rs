@@ -10,7 +10,7 @@ use aelomi_core::workspace::fixture::{
 };
 use aelomi_core::workspace::records::{PageId, PageRecord, Placement};
 
-const USAGE: &str = "usage: seed_index <new folder> <missing|garbage|old-schema|valid|not-a-fragment|foreign-pages-root>
+const USAGE: &str = "usage: seed_index <new folder> <missing|garbage|old-schema|valid|not-a-fragment|foreign-pages-root|empty-workspace>
        seed_index <new folder> search-10k [--copies <n>] [--big-page]
 then launch the app with AELOMI_DATA_DIR=<folder>";
 
@@ -21,6 +21,18 @@ fn main() {
     };
     let folder = new_folder(folder);
     match rest {
+        [state] if state == "empty-workspace" => {
+            let store = Store::open(&folder).unwrap_or_else(|e| fail(&e.to_string()));
+            store
+                .append(&DocId::workspace(), &[0, 0])
+                .unwrap_or_else(|e| fail(&e.to_string()));
+            if !store
+                .flush(Instant::now() + Duration::from_secs(10))
+                .is_empty()
+            {
+                fail("could not flush the empty workspace update");
+            }
+        }
         [state] if state != "search-10k" => seed_fixture(&folder, state),
         [state, options @ ..] if state == "search-10k" => seed_search(&folder, options),
         _ => fail(USAGE),

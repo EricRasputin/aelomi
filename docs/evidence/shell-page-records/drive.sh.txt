@@ -1,0 +1,107 @@
+#!/usr/bin/env bash
+set -euo pipefail
+S=.claude/skills/verify-aelomi/scripts
+run=$1
+scenario=$2
+data=${3:-$run/data}
+lock=/tmp/aelomi-ui.lock
+owned=false
+restore_folder=
+restore_mode=
+finish() {
+  if [ -n "$restore_folder" ]; then chmod "$restore_mode" "$restore_folder"; fi
+  if $owned; then rm -rf "$lock"; owned=false; fi
+}
+trap finish EXIT INT TERM
+started=$(date +%s)
+until mkdir "$lock" 2>/dev/null; do
+  if [ -f "$lock/owner" ] && [ $(( $(date +%s) - $(stat -f %m "$lock/owner") )) -gt 1800 ]; then rm -rf "$lock"; fi
+  if [ $(( $(date +%s) - started )) -gt 2700 ]; then echo 'INCONCLUSIVE: keyboard lock unavailable after 45 minutes' >&2; exit 1; fi
+  sleep 15
+done
+owned=true
+echo "$$ $(date -u +%FT%TZ) PR84-round6-$scenario" > "$lock/owner"
+wait_exit() {
+  source "$run/run.env"
+  for ((attempt=0;attempt<100;attempt++)); do
+    if ! kill -0 "$APP_PID" 2>/dev/null; then return; fi
+    sleep 0.2
+  done
+  echo "owned app still alive after normal quit" >&2
+  exit 1
+}
+"$S/app.sh" doctor "$run"
+case "$scenario" in
+  first)
+    "$S/app.sh" screenshot "$run" seed-before
+    "$S/app.sh" focus "$run" 'Page body'
+    "$S/app.sh" keys "$run" ' fix round six'
+    "$S/app.sh" screenshot "$run" typed-before-quit
+    "$S/app.sh" press "$run" 'Storage probe'
+    source "$run/run.env"
+    osascript -l JavaScript .audit/pr84-r6-builder/ax-focus.js rename-quit "$APP_PID"
+    wait_exit
+    ;;
+  both)
+    "$S/app.sh" screenshot "$run" immediate-rename-reopened
+    "$S/app.sh" tree "$run" > "$run/reopened-tree.txt"
+    rg 'Quit rename proof|fix round six' "$run/reopened-tree.txt"
+    "$S/app.sh" press "$run" 'Settings probe'
+    for ((attempt=0;attempt<5;attempt++)); do
+      if "$S/app.sh" tree "$run" > "$run/settings-ready.ax.txt" && rg -q 'AXButton "Write session settings"' "$run/settings-ready.ax.txt"; then break; fi
+    done
+    rg 'AXButton "Write session settings"' "$run/settings-ready.ax.txt"
+    "$S/app.sh" screenshot "$run" settings-before
+    source "$run/run.env"
+    osascript -l JavaScript .audit/pr84-r6-builder/ax-focus.js both-quit "$APP_PID"
+    wait_exit
+    ;;
+  settings-reopened)
+    "$S/app.sh" screenshot "$run" settings-rename-reopened
+    "$S/app.sh" tree "$run" > "$run/reopened-tree.txt"
+    rg 'Settings and rename quit proof|fix round six' "$run/reopened-tree.txt"
+    "$S/app.sh" keys "$run" q command
+    wait_exit
+    ;;
+  failure)
+    "$S/app.sh" screenshot "$run" failure-before
+    "$S/app.sh" press "$run" 'Storage probe'
+    restore_folder="$data/docs/workspace"
+    restore_mode=${4:-$(stat -f %Lp "$restore_folder")}
+    printf '%s\n' "$restore_mode" > "$run/workspace-original-mode.txt"
+    chmod 000 "$restore_folder"
+    "$S/app.sh" press "$run" 'Rename Getting started'
+    "$S/app.sh" tree "$run" > "$run/failed-rename.ax.txt"
+    rg "Changes aren't being saved" "$run/failed-rename.ax.txt"
+    "$S/app.sh" screenshot "$run" retained-rename-banner
+    "$S/app.sh" keys "$run" q command
+    "$S/app.sh" wait-dialog "$run" 'Quit with unsaved changes?'
+    "$S/app.sh" screenshot "$run" first-refused-quit
+    "$S/app.sh" keys "$run" q command
+    "$S/app.sh" wait-dialog "$run" 'Quit with unsaved changes?'
+    "$S/app.sh" screenshot "$run" second-refused-quit
+    [ "$(rg -c '^quit draining via=' "$run/shell.log")" -ge 2 ]
+    if rg -q 'quit confirmed' "$run/shell.log"; then echo 'confirmed while rename failed' >&2; exit 1; fi
+    "$S/app.sh" press "$run" 'Keep app open'
+    chmod "$restore_mode" "$restore_folder"
+    restore_folder=
+    source "$run/run.env"
+    for ((attempt=0;attempt<10;attempt++)); do
+      "$S/app.sh" tree "$run" > "$run/recovered.ax.txt"
+      if ! rg -q "Changes aren't being saved" "$run/recovered.ax.txt"; then break; fi
+    done
+    if rg -q "Changes aren't being saved" "$run/recovered.ax.txt"; then exit 1; fi
+    rg "page rename accepted title=Quit rename proof" "$run/recovered.ax.txt"
+    "$S/app.sh" screenshot "$run" recovered-banner-cleared
+    "$S/app.sh" keys "$run" q command
+    wait_exit
+    ;;
+  recovery-reopened)
+    "$S/app.sh" screenshot "$run" recovered-rename-reopened
+    "$S/app.sh" tree "$run" > "$run/reopened-tree.txt"
+    rg 'Quit rename proof' "$run/reopened-tree.txt"
+    "$S/app.sh" keys "$run" q command
+    wait_exit
+    ;;
+  *) exit 2 ;;
+esac

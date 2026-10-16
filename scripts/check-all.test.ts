@@ -55,8 +55,12 @@ const CI_ONLY = new Set([
 // CI launches the bundle it downloaded and unzipped; check:all launches the one it built.
 const LOCAL_FOR_CI = new Map([
   [
-    "node perf/cold-start.ts --ci --app app/Aelomi.app --out perf-results/cold-start",
-    "node perf/cold-start.ts --ci",
+    "node perf/cold-start.ts --ci --expected-variant index --app app/Aelomi.app --out perf-results/cold-start-index",
+    "node perf/cold-start.ts --ci --expected-variant index --out perf-results/cold-start-index",
+  ],
+  [
+    "node perf/cold-start.ts --ci --expected-variant page --app app/Aelomi.app --out perf-results/cold-start-page",
+    "node perf/cold-start.ts --ci --expected-variant page --out perf-results/cold-start-page",
   ],
 ]);
 
@@ -218,3 +222,23 @@ test("every pinned action names its version", () => {
       .map(([, action]) => action),
   ).toEqual([]);
 });
+
+test.each(["index", "page"])(
+  "cold-start waits for a quiet machine immediately before %s locally and in CI",
+  (variant) => {
+    const local =
+      STAGES.find((stage) => stage.job === "cold-start")?.commands.map(
+        (command) => command.join(" "),
+      ) ?? [];
+    const hosted = ciRuns.get("cold-start") ?? [];
+    for (const commands of [local, hosted]) {
+      const measure = commands.findIndex((command) =>
+        command.includes(
+          `perf/cold-start.ts --ci --expected-variant ${variant}`,
+        ),
+      );
+      expect(measure).toBeGreaterThan(0);
+      expect(commands[measure - 1]).toBe("node scripts/wait-for-quiet.ts");
+    }
+  },
+);

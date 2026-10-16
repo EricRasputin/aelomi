@@ -8,6 +8,8 @@ const USAGE = `Usage: ax.js <command> <pid> [args]
   wait-status PID TEXT [S]  wait up to S seconds (default 10) until the status reads TEXT
   wait-dialog PID TITLE [S] wait up to S seconds for an alert dialog with TITLE
   press PID NAME            send AXPress to the first element named NAME
+  rename-quit PID           press Rename Getting started and send native quit immediately
+  both-quit PID             write session settings, rename Getting started, and send native quit immediately
   focus PID NAME            focus the first element named NAME
   keys PID TEXT [MODS]      bring the app to the front and type TEXT; MODS is a comma list of command,shift,option,control
   window PID                print the CGWindowID and System Events bounds of the app window
@@ -23,6 +25,23 @@ function run(argv) {
   const proc = procs[0];
 
   switch (command) {
+    case "rename-quit": {
+      ready(proc, { front: true });
+      const button = findByName(webArea(proc), "Rename Getting started");
+      button.actions.whose({ name: "AXPress" })[0].perform();
+      se.keystroke("q", { using: ["command down"] });
+      return "renamed and requested quit";
+    }
+    case "both-quit": {
+      ready(proc, { front: true });
+      const web = webArea(proc);
+      const settings = findByName(web, "Write session settings");
+      const rename = findByName(web, "Rename Getting started");
+      settings.actions.whose({ name: "AXPress" })[0].perform();
+      rename.actions.whose({ name: "AXPress" })[0].perform();
+      se.keystroke("q", { using: ["command down"] });
+      return "wrote settings, renamed, and requested quit";
+    }
     case "tree":
       return tree(webArea(proc));
     case "status":

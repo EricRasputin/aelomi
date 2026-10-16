@@ -1,6 +1,5 @@
 import { create } from "zustand";
 import { commands, events, type IndexStatus } from "../ipc";
-import { usePageTreeStore } from "./page-tree";
 
 type IndexStatusStore = {
   status: IndexStatus | null;
@@ -49,10 +48,9 @@ export function connectIndexEvents() {
         })
         .then(keep),
       events.indexChanged
-        .listen(({ payload }) => {
+        .listen(() => {
           if (disposed) return;
           useIndexStatusStore.getState().receiveChange();
-          if (payload.workspace) void usePageTreeStore.getState().refresh();
         })
         .then(keep),
     ]);

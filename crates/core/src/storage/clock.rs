@@ -2,6 +2,7 @@ use std::time::{Duration, Instant};
 
 pub(crate) trait Clock: Send + Sync {
     fn now(&self) -> Duration;
+    fn unix_ms(&self) -> u64;
     #[cfg(any(test, feature = "test-support"))]
     fn sleep(&self, duration: Duration);
 }
@@ -21,6 +22,14 @@ impl SystemClock {
 impl Clock for SystemClock {
     fn now(&self) -> Duration {
         self.origin.elapsed()
+    }
+
+    fn unix_ms(&self) -> u64 {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis()
+            .min(u64::MAX as u128) as u64
     }
 
     #[cfg(any(test, feature = "test-support"))]
@@ -51,6 +60,10 @@ impl ManualClock {
 impl Clock for ManualClock {
     fn now(&self) -> Duration {
         *self.now.lock().unwrap()
+    }
+
+    fn unix_ms(&self) -> u64 {
+        self.now().as_millis() as u64
     }
 
     fn sleep(&self, duration: Duration) {

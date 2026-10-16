@@ -88,7 +88,27 @@ export const STAGES: readonly Stage[] = [
   },
   {
     job: "cold-start",
-    commands: [["node", "perf/cold-start.ts", "--ci"]],
-    perf: true,
+    commands: [
+      ["node", "scripts/wait-for-quiet.ts"],
+      [
+        "node",
+        "perf/cold-start.ts",
+        "--ci",
+        "--expected-variant",
+        "index",
+        "--out",
+        "perf-results/cold-start-index",
+      ],
+      ["node", "scripts/wait-for-quiet.ts"],
+      [
+        "node",
+        "perf/cold-start.ts",
+        "--ci",
+        "--expected-variant",
+        "page",
+        "--out",
+        "perf-results/cold-start-page",
+      ],
+    ],
   },
 ];

@@ -2,11 +2,13 @@ import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { useRef } from "react";
 import { useDeliveryStore } from "../editor/delivery";
 import {
+  recordErrorText,
   storageCopy,
   storageErrorText,
   storageFailureReason,
 } from "../storage-copy";
 import { quitDialogOpen, useQuitStore } from "../stores/quit";
+import { failing, useRecordCommandStore } from "../stores/record-commands";
 import { useStorageHealthStore } from "../stores/storage-health";
 
 export function SaveFailureBanner() {
@@ -14,19 +16,39 @@ export function SaveFailureBanner() {
   const refused = useDeliveryStore(
     (state) => state.failing.values().next().value ?? null,
   );
+  const record = useRecordCommandStore(
+    (state) => state.retained.values().next().value ?? null,
+  );
+  const failed = useRecordCommandStore(
+    (state) => state.failed.values().next().value ?? null,
+  );
+  const dismissFailed = useRecordCommandStore((state) => state.dismissFailed);
+  const recordFailing = useRecordCommandStore(failing);
+  const recordFailure = record ?? failed;
   const reason =
     health && health !== "Healthy"
       ? storageFailureReason(health.Failing.reason)
       : refused
         ? storageErrorText(refused)
-        : null;
+        : recordFailing && recordFailure
+          ? recordErrorText(recordFailure.error)
+          : null;
   if (reason === null) return null;
   return (
     <div role="alert" className="save-failure-banner">
       <p>
         <span className="font-medium">{storageCopy.banner}</span> {reason}
       </p>
-      <p className="mt-1">{storageCopy.retry}</p>
+      {record || !failed ? <p className="mt-1">{storageCopy.retry}</p> : null}
+      {failed ? (
+        <button
+          type="button"
+          className="quit-button mt-1"
+          onClick={() => dismissFailed(failed.id)}
+        >
+          Dismiss failed change
+        </button>
+      ) : null}
     </div>
   );
 }

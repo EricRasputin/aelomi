@@ -1,5 +1,6 @@
 import { commands } from "../ipc";
 import {
+  commandFailures,
   drainCommands,
   hasPendingCommands,
   setCommandAdmission,
@@ -31,12 +32,17 @@ async function drain(revision: number) {
   for (const editor of editors) editor.freeze();
   let failed: string[];
   do {
-    [failed] = await Promise.all([drainDeliveries(), drainCommands()]);
+    const [deliveries] = await Promise.all([
+      drainDeliveries(),
+      drainCommands(),
+    ]);
+    failed = deliveries;
   } while (hasOutstandingDeliveries() || hasPendingCommands());
   const quit = useQuitStore.getState();
   if (quit.decision.kind !== "draining" || quit.decision.revision !== revision)
     return;
   setCommandAdmission("completing");
+  failed = [...new Set([...failed, ...commandFailures()])];
   const reply =
     failed.length === 0
       ? await commands.completeQuit(revision)
@@ -56,6 +62,7 @@ export function connectQuitDrain(): () => void {
     const { decision } = useQuitStore.getState();
     if (decision.kind === "open") setCommandAdmission("open");
     if (decision.kind !== "draining" || decision.revision <= answered) return;
+    setCommandAdmission("open");
     answered = decision.revision;
     void drain(decision.revision).catch((error: unknown) => {
       console.error("Quit drain failed", error);

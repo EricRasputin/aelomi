@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+set -euo pipefail
+S=.claude/skills/verify-aelomi/scripts
+out=.audit/pr84-r6-builder
+export AELOMI_VERIFY_ROOT="$HOME/.local/state/aelomi-verify/pr84-r6"
+run=
+folder=
+mode=
+finish() {
+  if [ -n "$folder" ]; then chmod "$mode" "$folder"; fi
+  if [ -n "$run" ]; then "$S/app.sh" cleanup "$run"; fi
+}
+trap finish EXIT INT TERM
+run=$(env -u AELOMI_DATA_DIR "$S/app.sh" launch dev)
+printf '%s\n' "$run" > "$out/first-run.txt"
+data="$run/data"
+bash "$out/drive.sh" "$run" first
+"$S/app.sh" cleanup "$run"
+run=$(AELOMI_DATA_DIR="$data" "$S/app.sh" launch dev)
+printf '%s\n' "$run" > "$out/both-run.txt"
+bash "$out/drive.sh" "$run" both "$data"
+"$S/app.sh" cleanup "$run"
+run=$(AELOMI_DATA_DIR="$data" "$S/app.sh" launch dev)
+printf '%s\n' "$run" > "$out/settings-run.txt"
+bash "$out/drive.sh" "$run" settings-reopened "$data"
+"$S/app.sh" cleanup "$run"
+folder="$data/docs/workspace"
+mode=$(stat -f %Lp "$folder")
+printf '%s\n' "$mode" > "$out/original-workspace-mode.txt"
+chmod 000 "$folder"
+run=$(AELOMI_DATA_DIR="$data" "$S/app.sh" launch dev)
+printf '%s\n' "$run" > "$out/failure-run.txt"
+bash "$out/drive.sh" "$run" failure "$data" "$mode"
+[ "$(stat -f %Lp "$folder")" = "$mode" ]
+folder=
+"$S/app.sh" cleanup "$run"
+run=$(AELOMI_DATA_DIR="$data" "$S/app.sh" launch dev)
+printf '%s\n' "$run" > "$out/recovery-run.txt"
+bash "$out/drive.sh" "$run" recovery-reopened "$data"
+"$S/app.sh" cleanup "$run"
+run=
+ls -la "$HOME/Library/Application Support/Aelomi" > "$out/real-data-after.txt"
+diff -u "$out/real-data-before.txt" "$out/real-data-after.txt"
+cat "$data/settings.json"
+printf '\nNative proof PASS\n'

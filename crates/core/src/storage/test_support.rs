@@ -53,6 +53,15 @@ impl SimDisk {
         self.0.fail(OpKind::Read, "settings.json", libc::EACCES);
     }
 
+    pub fn fail_doc_load(&self, doc_id: &str) {
+        self.0
+            .fail(OpKind::List, &format!("/docs/{doc_id}"), libc::EACCES);
+    }
+
+    pub fn panic_doc_load(&self, doc_id: &str) {
+        self.0.panic_once(OpKind::List, &format!("/docs/{doc_id}"));
+    }
+
     pub fn clear_faults(&self) {
         self.0.clear_faults();
     }

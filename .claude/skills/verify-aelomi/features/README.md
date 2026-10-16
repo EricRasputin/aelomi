@@ -43,6 +43,8 @@ Keep implementation details out of the map. Name only user paths, stable handles
 
 ## Features
 
+- [Getting started](./getting-started.md) covers the fresh-folder seed, editable body, and reuse after relaunch.
+
 - [App window](./app-window.md) covers the single window, its macOS controls, the native menu bar, and the welcome content.
 - [Shortcuts and menu commands](./shortcut-menu.md) covers the palette, native menu, editor history, field history, and Quit.
 - [IPC status line](./ipc-status.md) covers the status line, the **Ping again** round trip to the Rust core, and the button's tooltip.

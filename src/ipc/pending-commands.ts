@@ -1,4 +1,8 @@
 const pending = new Set<Promise<void>>();
+const retained = new Map<
+  object,
+  { retry: () => void; docs: readonly string[] }
+>();
 let admission: "open" | "completing" = "open";
 
 export function setCommandAdmission(next: typeof admission) {
@@ -11,6 +15,23 @@ export function commandsAccepted(): boolean {
 
 export function hasPendingCommands(): boolean {
   return pending.size > 0;
+}
+
+export function retainCommand(
+  operation: object,
+  entry: { retry: () => void; docs: readonly string[] },
+) {
+  retained.set(operation, entry);
+}
+
+export function forgetCommand(operation: object) {
+  retained.delete(operation);
+}
+
+export function commandFailures(): string[] {
+  return [
+    ...new Set([...retained.values()].flatMap(({ docs }) => docs)),
+  ].sort();
 }
 
 export function trackCommand<T>(command: Promise<T>): Promise<T> {
@@ -27,5 +48,8 @@ export function trackCommand<T>(command: Promise<T>): Promise<T> {
 }
 
 export async function drainCommands(): Promise<void> {
-  while (pending.size > 0) await Promise.all([...pending]);
+  for (const { retry } of [...retained.values()]) retry();
+  while (pending.size > 0) {
+    await Promise.all([...pending]);
+  }
 }

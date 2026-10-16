@@ -1,5 +1,5 @@
 use std::fs::{File, OpenOptions, TryLockError};
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
 use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
 
@@ -18,6 +18,11 @@ pub(crate) trait Fs: Send + Sync {
     fn remove(&self, path: &Path) -> io::Result<()>;
     fn list(&self, dir: &Path) -> io::Result<Vec<String>>;
     fn read(&self, path: &Path) -> io::Result<Vec<u8>>;
+    fn read_prefix(&self, path: &Path, limit: usize) -> io::Result<Vec<u8>> {
+        let mut bytes = self.read(path)?;
+        bytes.truncate(limit);
+        Ok(bytes)
+    }
     fn lock(&self, path: &Path) -> Result<FsLock, LockError>;
 }
 
@@ -86,6 +91,14 @@ pub(crate) enum LockError {
 pub(crate) struct OsFs;
 
 impl Fs for OsFs {
+    fn read_prefix(&self, path: &Path, limit: usize) -> io::Result<Vec<u8>> {
+        let mut bytes = Vec::new();
+        File::open(path)?
+            .take(limit as u64)
+            .read_to_end(&mut bytes)?;
+        Ok(bytes)
+    }
+
     fn create_dir(&self, path: &Path) -> io::Result<()> {
         std::fs::create_dir(path)
     }

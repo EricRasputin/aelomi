@@ -2,15 +2,15 @@
   "coldStart": {
     "specMs": {
       "value": 500,
-      "why": "SPEC.md budget: process launch to first usable content, median of 10. Populated workspaces require the editable page frame; an empty workspace reports its index screen. pnpm perf:cold enforces 500 ms on Apple Silicon, while CI gates its separately measured hosted budget. The maintainer accepted the current 10,001-page first-editable-frame result of 618 ms median on 2026-10-15 and deferred optimization. This value retains the 500 ms goal; the recorded local FAIL is not relabeled as a pass. Hosted CI budgets remain unchanged."
+      "why": "SPEC.md budget: process launch to first usable content, median of 10. Populated workspaces require the editable page frame; an empty workspace reports its index screen. pnpm perf:cold enforces 500 ms on Apple Silicon, while CI gates its separately measured hosted budget. The maintainer accepted the current 10,001-page first-editable-frame result of 618 ms median on 2026-10-15 and deferred optimization. This value retains the 500 ms goal; the recorded local FAIL is not relabeled as a pass. The hosted index budgets keep their calibration. The seeded page uses its separate measured navigation and end-to-end budgets."
     },
     "hostedCiMs": {
       "value": 2500,
-      "why": "End-to-end budget on hosted macos-15. Three VMs of the same image measured series medians of 1449, 475, and 1634 ms with this harness, so the runner, not the app, sets the floor. 1.5 times the worst median, rounded up."
+      "why": "Empty-workspace index variant end-to-end ceiling on hosted macos-15. Three VMs of the same image measured series medians of 1449, 475, and 1634 ms with this harness, so the runner sets the floor. 1.5 times the worst median, rounded up. The index variant now uses the stored-empty workspace fixture; this ceiling is inherited from the original empty-folder calibration."
     },
     "hostedNavToPaintMs": {
       "value": 400,
-      "why": "Navigation start to first content frame on hosted macos-15, the part the frontend controls. The same three VMs measured 242, 84, and 250 ms. 1.5 times the worst median, rounded up."
+      "why": "Empty-workspace index variant, navigation start to first content frame on hosted macos-15, the part the frontend controls. The same three VMs measured 242, 84, and 250 ms. 1.5 times the worst median, rounded up. The index variant now uses the stored-empty workspace fixture; this ceiling is inherited from the original empty-folder calibration."
     },
     "warmupRuns": {
       "value": 1,
@@ -19,6 +19,14 @@
     "timedRuns": {
       "value": 10,
       "why": "SPEC: median of 10 runs. With an even count the median is the mean of the 5th and 6th sorted runs."
+    },
+    "hostedPageNavToPaintMs": {
+      "value": 712,
+      "why": "Seeded Getting started page variant, navigation start to the first editable content frame on hosted macos-15. A separate wait for load1 below 2.5, capped at 120 s, precedes each variant. The first three complete chronological series on source 53b8763 measured medians of 474.5, 443.5, 424 ms at page-start load1 values 2.43, 2.22, 2.5, respectively. The ceiling is 1.5 times the worst of these medians, rounded up to 712 ms. docs/evidence/shell-page-records records both variants, the waits, the runs, and the summary script."
+    },
+    "hostedPageCiMs": {
+      "value": 2783,
+      "why": "Seeded Getting started page variant, process launch to the first editable content frame on hosted macos-15. A separate wait for load1 below 2.5, capped at 120 s, precedes each variant. The first three complete chronological series on source 53b8763 measured medians of 1855, 1717.5, 1687.5 ms at page-start load1 values 2.43, 2.22, 2.5, respectively. The ceiling is 1.5 times the worst of these medians, rounded up to 2783 ms. docs/evidence/shell-page-records records both variants, the waits, the runs, and the summary script."
     }
   },
   "keystroke": {

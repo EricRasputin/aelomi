@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import * as Y from "yjs";
 import { commands } from "../ipc";
-import { installMock } from "../ipc/mock";
+import { installMock, commands as mockCommands } from "../ipc/mock";
 import { useQuitStore } from "../stores/quit";
 import { connectStorageEvents } from "../stores/storage-events";
 import { drainDeliveries } from "./delivery";
@@ -10,9 +10,10 @@ import { connectQuitDrain, onQuitDrain } from "./quit-drain";
 
 vi.mock("../ipc", async (importOriginal) => {
   const mock = await import("../ipc/mock");
+  const { withRecordCommands } = await import("../ipc/record-commands");
   return {
     ...(await importOriginal<typeof import("../ipc")>()),
-    commands: mock.commands,
+    commands: withRecordCommands(mock.commands),
     events: mock.events,
   };
 });
@@ -166,4 +167,29 @@ test("open editors stop accepting edits before the drain collects what is in fli
   window.__aelomiMock?.quit.request();
   await vi.waitFor(() => expect(window.__aelomiMock?.quit.exited).toBe(true));
   expect(order).toEqual(["finish", "freeze after 0 completions"]);
+});
+
+test("a page rename promise must finish before the webview completes its quit drain", async () => {
+  await connect();
+  const created = await commands.pageCreate(null);
+  if (created.status !== "ok") throw new Error(JSON.stringify(created));
+  const original = mockCommands.pageRename;
+  let release = () => {};
+  vi.spyOn(mockCommands, "pageRename").mockImplementationOnce(
+    (id, title) =>
+      new Promise((done) => {
+        release = () => void original(id, title).then(done);
+      }),
+  );
+  const rename = commands.pageRename(created.data, "Just before quit");
+  window.__aelomiMock?.quit.request();
+  await new Promise((done) => setTimeout(done, 10));
+  const exitedBeforeRename = window.__aelomiMock?.quit.exited;
+  release();
+  expect(await rename).toEqual({ status: "ok", data: null });
+  await vi.waitFor(() => expect(window.__aelomiMock?.quit.exited).toBe(true));
+  expect(exitedBeforeRename).toBe(false);
+  expect(
+    window.__aelomiMock?.workspace.tree().pages.map((p) => p.title),
+  ).toEqual(["Just before quit"]);
 });

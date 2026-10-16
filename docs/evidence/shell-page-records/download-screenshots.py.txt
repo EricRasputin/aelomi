@@ -1,0 +1,18 @@
+import hashlib
+import json
+import pathlib
+import re
+import sys
+import urllib.request
+
+comment = json.loads(pathlib.Path(sys.argv[1]).read_text())["body"]
+originals = [pathlib.Path(name) for name in sys.argv[2:]]
+urls = re.findall(r"https://(?:github\.com/user-attachments/assets|private-user-images\.githubusercontent\.com)/[^)\s]+", comment)
+assert len(urls) == len(originals), (len(urls), len(originals))
+for original, url in zip(originals, urls, strict=True):
+    with urllib.request.urlopen(url) as reply:
+        downloaded = reply.read()
+    local = original.read_bytes()
+    assert downloaded.startswith(b"\x89PNG\r\n\x1a\n"), original.name
+    assert downloaded == local, original.name
+    print(original.name, len(local), hashlib.sha256(local).hexdigest())

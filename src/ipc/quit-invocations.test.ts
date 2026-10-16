@@ -3,7 +3,7 @@ import { deliver, drainDeliveries } from "../editor/delivery";
 import { connectQuitDrain } from "../editor/quit-drain";
 import { useQuitStore } from "../stores/quit";
 import { commands, type Settings } from ".";
-import { drainCommands } from "./pending-commands";
+import { commandFailures, drainCommands } from "./pending-commands";
 
 const transport = vi.hoisted(() => ({
   invoke: vi.fn<(command: string, args?: unknown) => Promise<unknown>>(),
@@ -25,9 +25,188 @@ const snapshot: Settings = {
   expanded_rows: [],
 };
 
-afterEach(() => {
+afterEach(async () => {
+  transport.invoke.mockImplementation((name) =>
+    Promise.resolve(name === "storage_flush" ? true : null),
+  );
+  await drainCommands();
+  vi.useRealTimers();
   transport.invoke.mockReset();
   useQuitStore.setState(useQuitStore.getInitialState(), true);
+});
+
+function failingRecords() {
+  let failing = true;
+  let title = "Before";
+  transport.invoke.mockImplementation((command, args) => {
+    if (command === "storage_flush") return Promise.resolve(true);
+    if (command === "page_rename") {
+      if (failing) return Promise.reject({ Io: "read failed" });
+      if (typeof args === "object" && args !== null && "title" in args)
+        title = String(args.title);
+      return Promise.resolve(null);
+    }
+    if (typeof args === "object" && args !== null && "revision" in args) {
+      const revision = Number(args.revision) + 1;
+      if (command === "quit_drain_failed")
+        return Promise.resolve({
+          revision,
+          phase: {
+            Asking: { pending_docs: ["workspace"], pending_settings: false },
+          },
+        });
+      if (command === "complete_quit")
+        return Promise.resolve({ revision, phase: "Confirmed" });
+    }
+    return Promise.reject(new Error(`unexpected command ${command}`));
+  });
+  return {
+    recover: () => {
+      failing = false;
+    },
+    title: () => title,
+  };
+}
+
+test("SHELL-10 a record failure during the drain's initial yield is reported", async () => {
+  vi.useFakeTimers();
+  const storage = failingRecords();
+  const stop = connectQuitDrain();
+  try {
+    useQuitStore.getState().receiveQuit({ revision: 1, phase: "Draining" });
+    void commands.pageRename("page-a", "During yield");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(useQuitStore.getState().decision).toMatchObject({
+      kind: "asking",
+      pendingDocs: ["workspace"],
+    });
+    expect(
+      transport.invoke.mock.calls.some(([name]) => name === "complete_quit"),
+    ).toBe(false);
+  } finally {
+    stop();
+    storage.recover();
+  }
+});
+
+test("SHELL-10 a record failure after command collection while deliveries are held is reported", async () => {
+  vi.useFakeTimers();
+  const storage = failingRecords();
+  const invoke = transport.invoke.getMockImplementation();
+  let release = (_seq: number) => {};
+  const document = new Promise<number>((done) => {
+    release = done;
+  });
+  transport.invoke.mockImplementation((name, args) =>
+    name === "doc_append"
+      ? document
+      : (invoke?.(name, args) ?? Promise.resolve(null)),
+  );
+  const stop = connectQuitDrain();
+  try {
+    deliver("late-record-page", new Uint8Array([1]));
+    useQuitStore.getState().receiveQuit({ revision: 1, phase: "Draining" });
+    await vi.advanceTimersByTimeAsync(0);
+    await drainCommands();
+    expect(commandFailures()).toEqual([]);
+    void commands.pageRename("page-a", "While held");
+    await vi.advanceTimersByTimeAsync(0);
+    release(1);
+    await drainDeliveries();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(useQuitStore.getState().decision).toMatchObject({
+      kind: "asking",
+      pendingDocs: ["workspace"],
+    });
+    expect(
+      transport.invoke.mock.calls.some(([name]) => name === "complete_quit"),
+    ).toBe(false);
+  } finally {
+    release(1);
+    stop();
+    storage.recover();
+  }
+});
+
+test("SHELL-10 a second normal quit retains a refused rename until recovery saves it", async () => {
+  vi.useFakeTimers();
+  const storage = failingRecords();
+  const stop = connectQuitDrain();
+  try {
+    void commands.pageRename("page-a", "Recovered title");
+    await vi.advanceTimersByTimeAsync(0);
+    useQuitStore.getState().receiveQuit({ revision: 1, phase: "Draining" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(useQuitStore.getState().decision.kind).toBe("asking");
+    useQuitStore.getState().receiveQuit({ revision: 3, phase: "Draining" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(useQuitStore.getState().decision).toMatchObject({
+      kind: "asking",
+      revision: 4,
+      pendingDocs: ["workspace"],
+    });
+    expect(storage.title()).toBe("Before");
+    storage.recover();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(storage.title()).toBe("Recovered title");
+    useQuitStore.getState().receiveQuit({ revision: 5, phase: "Draining" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(useQuitStore.getState().decision).toMatchObject({
+      kind: "quitting",
+      revision: 6,
+      origin: "drained",
+    });
+    expect(
+      transport.invoke.mock.calls.filter(([name]) => name === "complete_quit"),
+    ).toEqual([["complete_quit", { revision: 5 }]]);
+  } finally {
+    stop();
+    storage.recover();
+  }
+});
+
+test("SHELL-10 a drain superseded by the five second timer retains a failure that settles afterward", async () => {
+  vi.useFakeTimers();
+  const storage = failingRecords();
+  const invoke = transport.invoke.getMockImplementation();
+  let reject = (_error: unknown) => {};
+  const held = new Promise<unknown>((_done, fail) => {
+    reject = fail;
+  });
+  transport.invoke.mockImplementationOnce(() => held);
+  const stop = connectQuitDrain();
+  try {
+    const rename = commands.pageRename("page-a", "After timeout");
+    useQuitStore.getState().receiveQuit({ revision: 1, phase: "Draining" });
+    setTimeout(
+      () =>
+        useQuitStore.getState().receiveQuit({
+          revision: 2,
+          phase: { Asking: { pending_docs: [], pending_settings: false } },
+        }),
+      5000,
+    );
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(useQuitStore.getState().decision.kind).toBe("asking");
+    reject({ Io: "late failure" });
+    void rename;
+    await vi.advanceTimersByTimeAsync(0);
+    useQuitStore.getState().receiveQuit({ revision: 3, phase: "Draining" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(useQuitStore.getState().decision).toMatchObject({
+      kind: "asking",
+      revision: 4,
+      pendingDocs: ["workspace"],
+    });
+    expect(
+      transport.invoke.mock.calls.some(([name]) => name === "complete_quit"),
+    ).toBe(false);
+  } finally {
+    reject({ Io: "late failure" });
+    stop();
+    storage.recover();
+    if (invoke) transport.invoke.mockImplementation(invoke);
+  }
 });
 
 test("SHELL-9 the real settings command boundary drains invokes held before native admission", async () => {
@@ -166,5 +345,167 @@ test("SHELL-9 settings writes are refused with Quitting once completion starts a
   } finally {
     finishQuit({ revision: 3, phase: "Open" });
     stop();
+  }
+});
+
+test("SHELL-9 one command drain waits for both a rename and settings before both land at quit", async () => {
+  let acceptRename = () => {};
+  let acceptSettings = () => {};
+  let title = "Before";
+  let settings: Settings = { ...snapshot, theme: "System" };
+  transport.invoke.mockImplementation((command) => {
+    if (command === "page_rename")
+      return new Promise((done) => {
+        acceptRename = () => {
+          title = "At quit";
+          done(null);
+        };
+      });
+    if (command === "settings_update")
+      return new Promise((done) => {
+        acceptSettings = () => {
+          settings = snapshot;
+          done(settings);
+        };
+      });
+    if (command === "complete_quit")
+      return Promise.resolve({ revision: 2, phase: "Confirmed" });
+    return Promise.reject(new Error(`unexpected command ${command}`));
+  });
+  const stop = connectQuitDrain();
+  try {
+    const rename = commands.pageRename("page-a", "At quit");
+    const update = commands.settingsUpdate({ theme: "Dark" });
+    let drained = false;
+    const drain = drainCommands().then((failed) => {
+      drained = true;
+      return failed;
+    });
+    useQuitStore.getState().receiveQuit({ revision: 1, phase: "Draining" });
+    acceptSettings();
+    expect(await update).toEqual({ status: "ok", data: snapshot });
+    await new Promise((done) => setTimeout(done, 10));
+    expect(drained).toBe(false);
+    expect(transport.invoke.mock.calls.map(([name]) => name)).toEqual([
+      "page_rename",
+      "settings_update",
+    ]);
+    acceptRename();
+    expect(await rename).toEqual({ status: "ok", data: null });
+    await drain;
+    expect(commandFailures()).toEqual([]);
+    await vi.waitFor(() =>
+      expect(useQuitStore.getState().decision.kind).toBe("quitting"),
+    );
+    expect({ title, settings }).toEqual({
+      title: "At quit",
+      settings: snapshot,
+    });
+    expect(transport.invoke.mock.calls.map(([name]) => name)).toEqual([
+      "page_rename",
+      "settings_update",
+      "complete_quit",
+    ]);
+  } finally {
+    acceptRename();
+    acceptSettings();
+    stop();
+  }
+});
+
+test("SHELL-9 a new drain after Asking admits both rename and settings before completion", async () => {
+  let first = true;
+  const settings = dispatch();
+  transport.invoke.mockImplementation((name) => {
+    if (name === "complete_quit") {
+      if (first) {
+        first = false;
+        return Promise.resolve({
+          revision: 2,
+          phase: {
+            Asking: { pending_docs: ["workspace"], pending_settings: true },
+          },
+        });
+      }
+      return Promise.resolve({ revision: 4, phase: "Confirmed" });
+    }
+    if (name === "page_rename") return Promise.resolve(null);
+    if (name === "settings_update") return settings.promise;
+    return Promise.reject(new Error(`unexpected command ${name}`));
+  });
+  const stop = connectQuitDrain();
+  try {
+    useQuitStore.getState().receiveQuit({ revision: 1, phase: "Draining" });
+    await vi.waitFor(() =>
+      expect(useQuitStore.getState().decision.kind).toBe("asking"),
+    );
+    useQuitStore.getState().receiveQuit({ revision: 3, phase: "Draining" });
+    const rename = commands.pageRename("page-a", "New drain");
+    const update = commands.settingsUpdate({ theme: "Dark" });
+    expect(await rename).toEqual({ status: "ok", data: null });
+    await new Promise((done) => setTimeout(done, 10));
+    expect(useQuitStore.getState().decision.kind).toBe("draining");
+    settings.admit(snapshot);
+    expect(await update).toEqual({ status: "ok", data: snapshot });
+    await vi.waitFor(() =>
+      expect(useQuitStore.getState().decision.kind).toBe("quitting"),
+    );
+    expect(transport.invoke.mock.calls).toEqual([
+      ["complete_quit", { revision: 1 }],
+      ["page_rename", { pageId: "page-a", title: "New drain" }],
+      ["settings_update", { patch: { theme: "Dark" } }],
+      ["complete_quit", { revision: 3 }],
+    ]);
+  } finally {
+    settings.admit(snapshot);
+    stop();
+  }
+});
+
+test("SHELL-10 Keep open preserves a failed head and queued edit until both recover in order", async () => {
+  vi.useFakeTimers();
+  const storage = failingRecords();
+  const invoke = transport.invoke.getMockImplementation();
+  const titles: string[] = [];
+  transport.invoke.mockImplementation((name, args) => {
+    if (name === "keep_open")
+      return Promise.resolve({ revision: 3, phase: "Open" });
+    if (
+      name === "page_rename" &&
+      typeof args === "object" &&
+      args !== null &&
+      "title" in args
+    )
+      titles.push(String(args.title));
+    return invoke?.(name, args) ?? Promise.resolve(null);
+  });
+  const stop = connectQuitDrain();
+  try {
+    void commands.pageRename("page-a", "First");
+    await vi.advanceTimersByTimeAsync(0);
+    const next = commands.pageRename("page-a", "Second");
+    useQuitStore.getState().receiveQuit({ revision: 1, phase: "Draining" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(useQuitStore.getState().decision).toMatchObject({
+      kind: "asking",
+      pendingDocs: ["workspace"],
+    });
+    await useQuitStore.getState().keepOpen();
+    expect(useQuitStore.getState().decision.kind).toBe("open");
+    expect(storage.title()).toBe("Before");
+    storage.recover();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(await next).toEqual({ status: "ok", data: null });
+    expect(titles).toEqual(["First", "First", "First", "First", "Second"]);
+    expect(storage.title()).toBe("Second");
+    useQuitStore.getState().receiveQuit({ revision: 4, phase: "Draining" });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(useQuitStore.getState().decision).toMatchObject({
+      kind: "quitting",
+      origin: "drained",
+    });
+  } finally {
+    stop();
+    storage.recover();
   }
 });

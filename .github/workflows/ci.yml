@@ -215,18 +215,12 @@ jobs:
           xattr -l app/Aelomi.app
           xattr -l app/Aelomi.app/Contents/MacOS/aelomi
           codesign -dv app/Aelomi.app 2>&1 | head -5
-      - name: Wait for a quiet machine
-        run: |
-          start=$(date +%s)
-          while :; do
-            load1=$(sysctl -n vm.loadavg | awk '{print $2}')
-            elapsed=$(( $(date +%s) - start ))
-            echo "t+${elapsed}s load1 ${load1}"
-            if awk "BEGIN{exit !($load1 < 2.5)}"; then break; fi
-            if [ "$elapsed" -ge 120 ]; then echo "load stayed above 2.5 for 120 s; measuring anyway"; break; fi
-            sleep 10
-          done
-      - run: node perf/cold-start.ts --ci --app app/Aelomi.app --out perf-results/cold-start
+      - name: Wait for a quiet machine before index
+        run: node scripts/wait-for-quiet.ts
+      - run: node perf/cold-start.ts --ci --expected-variant index --app app/Aelomi.app --out perf-results/cold-start-index
+      - name: Wait for a quiet machine before page
+        run: node scripts/wait-for-quiet.ts
+      - run: node perf/cold-start.ts --ci --expected-variant page --app app/Aelomi.app --out perf-results/cold-start-page
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() }}
         with:

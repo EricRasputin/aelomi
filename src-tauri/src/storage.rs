@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use aelomi_core::index::IndexEvent;
-use aelomi_core::storage::{self as core, DataPathError, OpenError, Pending};
+use aelomi_core::storage::{self as core, DataPathError, DocId, OpenError, Pending};
 use aelomi_core::workspace::Workspace;
 use serde::Serialize;
 use specta::Type;
@@ -154,10 +154,10 @@ impl Storage {
         location: &DataLocation,
         on_index: impl Fn(&IndexEvent) + Send + Sync + 'static,
     ) -> Self {
-        let storage = |opened, path| Self {
+        let storage = |opened: Result<Arc<Workspace>, StorageStatus>, path| Self {
+            quit: QuitGate::for_workspace(opened.is_ok()),
             opened,
             path,
-            quit: QuitGate::default(),
             #[cfg(test)]
             _index_dir: None,
         };
@@ -172,8 +172,11 @@ impl Storage {
         };
         match core::check_data_path(&configured, &location.cloud_roots) {
             Ok(resolved) => storage(
-                Workspace::open(&resolved, on_index)
-                    .map(Arc::new)
+                Workspace::prepare(&resolved)
+                    .map(|mut prepared| {
+                        prepared.seed_getting_started(Instant::now() + QUIT_FLUSH_TIMEOUT);
+                        Arc::new(prepared.start(on_index))
+                    })
                     .map_err(StorageStatus::from),
                 resolved,
             ),
@@ -201,7 +204,7 @@ impl Storage {
         Self {
             opened: Err(StorageStatus::Locked),
             path: "/data".into(),
-            quit: QuitGate::default(),
+            quit: QuitGate::for_workspace(false),
             _index_dir: None,
         }
     }
@@ -270,10 +273,18 @@ impl Storage {
     }
 
     pub fn flush_before_quit(&self, timeout: Duration) -> Result<(), Pending> {
+        let deadline = Instant::now() + timeout;
+        if !self.quit.wait_for_record_edits(deadline) {
+            let mut pending = self.pending_edits();
+            pending.docs.push(DocId::workspace());
+            pending.docs.sort();
+            pending.docs.dedup();
+            return Err(pending);
+        }
         let Ok(workspace) = &self.opened else {
             return Ok(());
         };
-        let pending = workspace.flush(Instant::now() + timeout);
+        let pending = workspace.flush(deadline);
         if pending.is_empty() {
             Ok(())
         } else {
@@ -427,9 +438,12 @@ pub(crate) mod tests {
         );
         assert_eq!(
             std::fs::read_to_string(dir.path().join("format.json")).unwrap(),
-            "{\n  \"format\": 1\n}\n"
+            "{\n  \"format\": 2\n}\n"
         );
         assert!(dir.path().join("docs").is_dir());
+        let tree = storage.workspace().unwrap().tree().unwrap();
+        assert_eq!(tree.pages.len(), 1);
+        assert_eq!(tree.pages[0].title, "Getting started");
     }
 
     #[test]
@@ -721,6 +735,46 @@ pub(crate) mod tests {
             start.elapsed()
         );
 
+        disk.clear_faults();
+        assert_eq!(storage.flush_before_quit(QUIT_FLUSH_TIMEOUT), Ok(()));
+    }
+
+    #[test]
+    fn record_wait_timeout_keeps_all_failing_documents_sorted_and_deduplicated() {
+        let disk = SimDisk::default();
+        let storage = open_on(&disk);
+        disk.fail_appends("docs/");
+        let workspace = storage.workspace().unwrap();
+        for id in ["z-page", "workspace", "a-page"] {
+            workspace
+                .append(&DocId::new(id).unwrap(), &update(id))
+                .unwrap();
+        }
+        let expected = vec![
+            DocId::new("a-page").unwrap(),
+            DocId::workspace(),
+            DocId::new("z-page").unwrap(),
+        ];
+        assert_eq!(
+            workspace
+                .flush(Instant::now() + Duration::from_millis(100))
+                .docs,
+            expected
+        );
+        let held = storage.quit.record_edit().unwrap();
+        storage.quit.register_frontend();
+        let crate::quit::QuitRequest::StartDrain(status) = storage.quit.request() else {
+            panic!("starts a drain")
+        };
+        assert!(storage.quit.begin_completing(status.revision));
+        assert_eq!(
+            storage.flush_before_quit(Duration::ZERO),
+            Err(Pending {
+                docs: expected,
+                settings: false
+            })
+        );
+        drop(held);
         disk.clear_faults();
         assert_eq!(storage.flush_before_quit(QUIT_FLUSH_TIMEOUT), Ok(()));
     }

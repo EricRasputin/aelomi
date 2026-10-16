@@ -29,6 +29,7 @@ import {
   type StorageStatus,
 } from "./bindings";
 import { type SeedBlock, writeBody } from "./mock-body";
+import { createRecordCommands } from "./mock-records";
 import {
   type MockHit,
   PageIndex,
@@ -87,6 +88,7 @@ type MockDoc = { doc: Y.Doc; updates: Uint8Array[]; pending: boolean };
 const storage: {
   status: StorageStatus;
   appendError: StorageError | null;
+  recordError: import("./bindings").PageError | null;
   failWrites: boolean;
   docs: Map<string, MockDoc>;
   seq: number;
@@ -95,6 +97,7 @@ const storage: {
 } = {
   status: "Ready",
   appendError: null,
+  recordError: null,
   failWrites: false,
   docs: new Map<string, MockDoc>(),
   seq: 0,
@@ -144,8 +147,15 @@ function mockEvent<T>(name: string) {
   return Object.assign(() => base, base);
 }
 
+function mockSignal(name: string) {
+  const event = mockEvent<null>(name);
+  const base = { ...event(), emit: () => event.emit(null) };
+  return Object.assign(() => base, base);
+}
+
 export const events = {
   menuCommand: mockEvent<MenuCommand>("menu-command"),
+  pageRecordsChanged: mockSignal("page-records-changed"),
   indexChanged: mockEvent<IndexChanged>("index-changed"),
   indexStatusChanged: mockEvent<IndexStatus>("index-status-changed"),
   quitStatusChanged: mockEvent<QuitStatus>("quit-status-changed"),
@@ -381,6 +391,45 @@ function search(text: string, limit: number, scope: Scope): MockHit[] {
   return searchPages(orderedPages(), text, limit, scope);
 }
 
+function acceptRecordEdit(edit: () => void) {
+  const stored = mockDoc(workspaceDocId);
+  const updates: Uint8Array[] = [];
+  const collect = (update: Uint8Array) => {
+    updates.push(update);
+  };
+  stored.doc.on("update", collect);
+  try {
+    stored.doc.transact(edit);
+  } finally {
+    stored.doc.off("update", collect);
+  }
+  stored.updates.push(
+    ...(updates.length === 0 ? [Uint8Array.of(0, 0)] : updates),
+  );
+  stored.pending = storage.failWrites;
+  storage.seq += 1;
+  refreshHealth();
+  markChanged({ workspace: true, pages: [] });
+  void events.pageRecordsChanged.emit();
+}
+
+const recordCommands = createRecordCommands({
+  doc: workspaceDoc,
+  records,
+  tree: () => sourceTree().tree,
+  accept: acceptRecordEdit,
+  error: () =>
+    storage.status !== "Ready"
+      ? "Unavailable"
+      : quit.phase === "Confirmed"
+        ? "Quitting"
+        : storage.recordError,
+  hasBody: (id) => {
+    const doc = storage.docs.get(id)?.doc;
+    return doc !== undefined && Y.encodeStateAsUpdate(doc).length > 2;
+  },
+});
+
 export const commands = {
   settingsGet: async () => {
     calls.push({ command: "settingsGet", args: [] });
@@ -549,6 +598,21 @@ export const commands = {
     );
     return { status: "ok", data: storage.seq };
   },
+  pageCreate: async (parentId, pageId = null) => {
+    calls.push({ command: "pageCreate", args: [parentId, pageId] });
+    await setupReady;
+    return recordCommands.pageCreate(parentId, pageId);
+  },
+  pageRename: async (pageId, title) => {
+    calls.push({ command: "pageRename", args: [pageId, title] });
+    await setupReady;
+    return recordCommands.pageRename(pageId, title);
+  },
+  pageTrash: async (pageId) => {
+    calls.push({ command: "pageTrash", args: [pageId] });
+    await setupReady;
+    return recordCommands.pageTrash(pageId);
+  },
   devProbeLog: async (line) => {
     calls.push({ command: "devProbeLog", args: [line] });
   },
@@ -685,6 +749,7 @@ function resetState() {
   settingsPending = false;
   storage.status = "Ready";
   storage.appendError = null;
+  storage.recordError = null;
   storage.failWrites = false;
   storage.docs.clear();
   storage.seq = 0;
@@ -774,6 +839,10 @@ const control = {
     },
   },
   workspace: {
+    async rename(pageId: string, title: string) {
+      const { commands } = await import("./index");
+      return commands.pageRename(pageId, title);
+    },
     seed(pages: SeedPage[]) {
       pageWrite(() => writeRecords(workspaceDoc(), pages));
     },
@@ -811,6 +880,9 @@ const control = {
     update: (patch: SettingsPatch) => commands.settingsUpdate(patch),
   },
   storage: {
+    refuseRecords(error: import("./bindings").PageError | null) {
+      storage.recordError = error;
+    },
     refuseAppends(error: StorageError | null) {
       storage.appendError = error;
     },

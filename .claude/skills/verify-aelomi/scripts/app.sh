@@ -19,6 +19,8 @@ Usage: app.sh <command> [args]
   press RUN NAME                 press the element named NAME (AXPress, no focus change)
   focus RUN NAME                 focus the element named NAME
   keys RUN TEXT [MODS]           bring Aelomi to the front and type TEXT (MODS: command,shift,option,control)
+  rename-quit RUN                 rename Getting started and send native quit immediately
+  both-quit RUN                   write session settings, rename, and send native quit immediately
   menus RUN                      print the native menu bar titles
   screenshot RUN NAME            save RUN/NAME.png of the window and RUN/NAME.ax.txt with its bounds and tree
   cleanup RUN                    stop every process this run started; keeps RUN and its evidence
@@ -238,6 +240,7 @@ case $command in
   wait-dialog) load "${1:-}"; require_app; ax wait-dialog "$APP_PID" "${2:?wait-dialog needs TITLE}" "${3:-10}" ;;
   press | focus) load "${1:-}"; require_app; log_action "$command \"${2:?$command needs NAME}\""; ax "$command" "$APP_PID" "$2" ;;
   keys) load "${1:-}"; require_app; log_action "keys \"${2:?keys needs TEXT}\" ${3:-}"; ax keys "$APP_PID" "$2" "${3:-}" ;;
+  rename-quit | both-quit) load "${1:-}"; require_app; log_action "$command"; ax "$command" "$APP_PID" ;;
   screenshot) screenshot "$@" ;;
   cleanup) cleanup "$@" ;;
   *) usage >&2; exit 2 ;;

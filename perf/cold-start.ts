@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import {
+  cpSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -11,6 +12,7 @@ import { cpus, loadavg, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
 import { readBudgets } from "./budgets.ts";
+import { hostedEndToEndBudget, hostedNavBudget } from "./cold-start-budget.ts";
 import { machineNoise, withNoise } from "./noise.ts";
 import { median, range } from "./stats.ts";
 
@@ -30,8 +32,7 @@ const { values: args } = parseArgs({
   },
 });
 const binary = resolve(args.app, "Contents/MacOS/aelomi");
-const expectedVariant =
-  args["expected-variant"] ?? (args["data-dir"] ? "page" : "index");
+const expectedVariant = args["expected-variant"] ?? "page";
 if (expectedVariant !== "index" && expectedVariant !== "page") {
   throw new Error("--expected-variant must be index or page");
 }
@@ -41,6 +42,13 @@ const sharedDataDir = args["data-dir"]
 if (!args["data-dir"]) {
   process.on("exit", () =>
     rmSync(sharedDataDir, { recursive: true, force: true }),
+  );
+}
+if (!args["data-dir"] && expectedVariant === "index") {
+  cpSync(
+    new URL("./fixtures/empty-workspace", import.meta.url),
+    sharedDataDir,
+    { recursive: true },
   );
 }
 const outDir = resolve(args.out);
@@ -202,6 +210,8 @@ async function launch(tag: string): Promise<Run> {
 }
 
 const budgets = readBudgets().coldStart;
+const navBudget = hostedNavBudget(budgets, expectedVariant);
+const endToEndBudget = hostedEndToEndBudget(budgets, expectedVariant);
 const warmupRuns = budgets.warmupRuns.value;
 const timedRuns = budgets.timedRuns.value;
 if (!existsSync(binary))
@@ -239,8 +249,7 @@ const navToPaintMedian = median(navToPaint);
 const verdict = (value: number, budget: number) =>
   `${fmt(value)} ms ${value <= budget ? "<=" : ">"} ${budget} ms ${value <= budget ? "PASS" : "FAIL"}`;
 const hostedPass =
-  endToEndMedian <= budgets.hostedCiMs.value &&
-  navToPaintMedian <= budgets.hostedNavToPaintMs.value;
+  endToEndMedian <= endToEndBudget.value && navToPaintMedian <= navBudget.value;
 const specPass = endToEndMedian <= budgets.specMs.value;
 
 log("");
@@ -251,7 +260,7 @@ log(
   `median nav-to-paint ${fmt(navToPaintMedian)} ms (${timedRuns} runs, ${range(navToPaint)})`,
 );
 log(
-  `hosted verdict${args.ci ? " (gate)" : " (information)"}: end-to-end ${verdict(endToEndMedian, budgets.hostedCiMs.value)}; nav-to-paint ${verdict(navToPaintMedian, budgets.hostedNavToPaintMs.value)}`,
+  `hosted verdict${args.ci ? " (gate)" : " (information)"}: end-to-end ${verdict(endToEndMedian, endToEndBudget.value)}; nav-to-paint ${verdict(navToPaintMedian, navBudget.value)}`,
 );
 log(
   `spec verdict${args.ci ? " (information)" : " (gate)"}: end-to-end ${verdict(endToEndMedian, budgets.specMs.value)}`,
@@ -268,6 +277,8 @@ writeFileSync(
       cpus: cpus().length,
       budgets,
       expectedVariant,
+      navBudget,
+      endToEndBudget,
       runs,
       endToEndMedian,
       navToPaintMedian,

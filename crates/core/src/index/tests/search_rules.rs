@@ -172,14 +172,10 @@ fn removing_a_winner_promotes_the_next_page_in_order() {
             .map(|h| h.page_id.as_str().to_owned())
             .collect()
     };
-    opened.edit_records(|records| {
-        records.get_mut(&page("c")).unwrap().trash = Some(Trash {
-            original_parent: None,
-            original_order: 3,
-            batch_id: "c".into(),
-            trashed_at: 9,
-        });
-    });
+    opened
+        .workspace
+        .edit_page(crate::workspace::PageEdit::Trash { page: page("c") })
+        .unwrap();
     opened.settle();
     assert_eq!(
         ids(ready(opened.workspace.search(&all("roadm", 2)).unwrap())),

@@ -214,3 +214,78 @@ test("SHELL-10 names pending settings in quit confirmation and retries after rec
     false,
   );
 });
+
+test("SHELL-10 a pre-acceptance rename failure shows the banner with healthy storage and clears on recovery", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.__aelomiMockSetup = { pages: [{ id: "a", title: "Before" }] };
+  });
+  await page.goto("/");
+  await expect(
+    page.getByRole("heading", { name: "Before", exact: true }),
+  ).toBeVisible();
+  await page.evaluate(() => {
+    const mock = window.__aelomiMock;
+    if (!mock) throw new Error("Missing IPC mock");
+    mock.storage.refuseRecords({ Io: "record read failed" });
+    void mock.workspace.rename("a", "Recovered");
+  });
+  await expect(page.getByRole("alert")).toContainText("record read failed");
+  expect(
+    await page.evaluate(() =>
+      window.__aelomiMock?.workspace.tree().pages.map((p) => p.title),
+    ),
+  ).toEqual(["Before"]);
+  await page.evaluate(() => window.__aelomiMock?.storage.refuseRecords(null));
+  await expect(
+    page.getByRole("heading", { name: "Recovered", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  expect(
+    await page.evaluate(() =>
+      window.__aelomiMock?.workspace.tree().pages.map((p) => p.title),
+    ),
+  ).toEqual(["Recovered"]);
+});
+
+test("SHELL-10 a terminal retry failure stays visible until dismissed", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.__aelomiMockSetup = {
+      pages: [
+        { id: "a", title: "Before" },
+        { id: "b", title: "Other" },
+      ],
+    };
+  });
+  await page.goto("/");
+  await expect(
+    page.getByRole("heading", { name: "Before", exact: true }),
+  ).toBeVisible();
+  await page.evaluate(() => {
+    window.__aelomiMock?.storage.refuseRecords({ Io: "read failed" });
+    void window.__aelomiMock?.workspace.rename("a", "Rejected");
+  });
+  await expect(page.getByRole("alert")).toContainText("read failed");
+  await page.evaluate(() =>
+    window.__aelomiMock?.storage.refuseRecords("NotActive"),
+  );
+  await expect(
+    page.getByRole("button", { name: "Dismiss failed change" }),
+  ).toBeVisible();
+  await expect(page.getByRole("alert")).toContainText("NotActive");
+  await page.evaluate(async () => {
+    window.__aelomiMock?.storage.refuseRecords(null);
+    await window.__aelomiMock?.workspace.rename("b", "Next");
+  });
+  await expect(page.getByRole("alert")).toContainText("NotActive");
+  expect(
+    await page.evaluate(() =>
+      window.__aelomiMock?.workspace.tree().pages.map((p) => p.title),
+    ),
+  ).toEqual(["Before", "Next"]);
+  await page.getByRole("button", { name: "Dismiss failed change" }).click();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+});

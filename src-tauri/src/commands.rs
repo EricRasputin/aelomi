@@ -232,6 +232,138 @@ pub fn doc_append(
     Ok(seq.0 as f64)
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Type)]
+pub enum PageError {
+    Unavailable,
+    Quitting,
+    InvalidPageId,
+    NotActive,
+    AlreadyExists,
+    Cycle,
+    OrderExhausted,
+    InvalidTime,
+    InvalidUpdate,
+    Malformed { reason: String },
+    Io(String),
+    Internal(String),
+}
+
+#[derive(Clone, Serialize, Type, tauri_specta::Event)]
+pub struct PageRecordsChanged;
+
+impl From<aelomi_core::workspace::PageEditError> for PageError {
+    fn from(error: aelomi_core::workspace::PageEditError) -> Self {
+        use aelomi_core::workspace::PageEditError as E;
+        match error {
+            E::Io(e) => Self::Io(e.to_string()),
+            E::Malformed(e) => Self::Malformed {
+                reason: e.to_string(),
+            },
+            E::NotActive => Self::NotActive,
+            E::AlreadyExists => Self::AlreadyExists,
+            E::Cycle => Self::Cycle,
+            E::OrderExhausted => Self::OrderExhausted,
+            E::InvalidTime => Self::InvalidTime,
+            E::InvalidUpdate => Self::InvalidUpdate,
+        }
+    }
+}
+
+async fn apply_page_edit<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    workspace: std::sync::Arc<aelomi_core::workspace::Workspace>,
+    edit: aelomi_core::workspace::PageEdit,
+) -> Result<aelomi_core::workspace::PageEditReply, PageError> {
+    let record_edit = app
+        .state::<Storage>()
+        .quit()
+        .record_edit()
+        .ok_or(PageError::Quitting)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let _record_edit = record_edit;
+        use tauri_specta::Event;
+        let reply = workspace.edit_page(edit)?;
+        if let Err(error) = PageRecordsChanged.emit(&app) {
+            eprintln!("page records event: {error}");
+        }
+        Ok(reply)
+    })
+    .await
+    .map_err(|e| PageError::Internal(e.to_string()))?
+}
+
+fn page_id(id: String) -> Result<aelomi_core::workspace::records::PageId, PageError> {
+    aelomi_core::workspace::records::PageId::new(id).map_err(|_| PageError::InvalidPageId)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn page_create<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    storage: State<'_, Storage>,
+    parent_id: Option<String>,
+    page_id: Option<String>,
+) -> Result<String, PageError> {
+    let workspace = storage.workspace().map_err(|_| PageError::Unavailable)?;
+    let parent = parent_id.map(self::page_id).transpose()?;
+    let edit = match page_id {
+        Some(id) => aelomi_core::workspace::PageEdit::CreateWithId {
+            page: self::page_id(id)?,
+            parent,
+            title: String::new(),
+        },
+        None => aelomi_core::workspace::PageEdit::Create {
+            parent,
+            title: String::new(),
+        },
+    };
+    let reply = apply_page_edit(app, workspace, edit).await?;
+    Ok(reply
+        .created_page()
+        .expect("create returns its page")
+        .to_string())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn page_rename<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    storage: State<'_, Storage>,
+    page_id: String,
+    title: String,
+) -> Result<(), PageError> {
+    let workspace = storage.workspace().map_err(|_| PageError::Unavailable)?;
+    apply_page_edit(
+        app,
+        workspace,
+        aelomi_core::workspace::PageEdit::Rename {
+            page: self::page_id(page_id)?,
+            title,
+        },
+    )
+    .await?;
+    Ok(())
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn page_trash<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    storage: State<'_, Storage>,
+    page_id: String,
+) -> Result<String, PageError> {
+    let workspace = storage.workspace().map_err(|_| PageError::Unavailable)?;
+    let reply = apply_page_edit(
+        app,
+        workspace,
+        aelomi_core::workspace::PageEdit::Trash {
+            page: self::page_id(page_id)?,
+        },
+    )
+    .await?;
+    Ok(reply.trash_batch().expect("trash returns its batch"))
+}
+
 #[tauri::command]
 #[specta::specta]
 pub fn dev_probe_log(line: String) {
@@ -309,6 +441,9 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
             quit_drain_failed,
             doc_load,
             doc_append,
+            page_create::<tauri::Wry>,
+            page_rename::<tauri::Wry>,
+            page_trash::<tauri::Wry>,
             index::index_status,
             index::page_tree,
             index::search,
@@ -324,7 +459,8 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
             QuitStatusChanged,
             IndexStatusChanged,
             IndexChanged,
-            MenuCommand
+            MenuCommand,
+            PageRecordsChanged
         ])
         .constant(
             "RECENT_PAGES_LIMIT",
@@ -398,3 +534,6 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod page_records_tests;
