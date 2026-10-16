@@ -37,9 +37,10 @@ export function StorageRefusal({
   startup: Exclude<StorageStartup, { kind: "ready" }>;
 }) {
   const title = useRef<HTMLHeadingElement>(null);
+  const heading = startup.kind === "loading" ? null : startup.title;
   useEffect(() => {
-    if (startup.kind !== "loading") title.current?.focus();
-  }, [startup]);
+    if (heading !== null) title.current?.focus();
+  }, [heading]);
   return (
     <main className="storage-refusal" aria-busy={startup.kind === "loading"}>
       <section
