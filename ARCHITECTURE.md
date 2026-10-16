@@ -253,7 +253,7 @@ The configured main window has automatic creation disabled. Setup opens storage 
 
 `connectTheme` listens to the media query and subscribes to the choice store before React mounts. Its settings read cannot replace a later user pick. Theme picks apply synchronously and enter a FIFO promise chain tracked by the existing quit drain. Native write errors stay on the storage writer for retry and report through storage health. Rejected transport calls and pre-admission errors retain their theme patch, retry with the existing storage backoff, and feed the same save-failure banner. Later choices stay ordered behind that patch. There is no save-status UI or theme transition.
 
-`SettingsDialog` uses Base UI Dialog for dismissal, focus trapping and accessibility. Escape and the close control restore the saved focus target through the editor's focus helper. The sections container is the seam for later settings rows. The Appearance fieldset is disabled during quit. Mock builds alone expose an initial appearance and a change control for the System acceptance case. WebKit tests also exercise real media-query change events.
+`SettingsDialog` uses Base UI Dialog for dismissal, focus trapping and accessibility. It keeps main content inert while open, including an editor that finishes loading after the modal opens. Initial focus goes to the selected appearance radio. Escape and the close control restore the saved focus target through the editor's focus helper. The sections container is the seam for later settings rows. The Appearance fieldset is disabled during quit. Mock builds alone expose an initial appearance and a change control for the System acceptance case. WebKit tests also exercise real media-query change events.
 
 ## Data model and storage
 

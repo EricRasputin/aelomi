@@ -112,7 +112,7 @@ let indexStatus: IndexStatus = "Ready";
 let settings = defaultSettings();
 let settingsPending = false;
 let settingsTransportFailures = 0;
-let appearance: "light" | "dark" = "light";
+let appearance: "light" | "dark" | null = null;
 
 type FixturePage = { id: string; title: string; lines: string[] };
 const fixtureBodies = new Map<string, string[]>();
@@ -781,7 +781,7 @@ function resetState() {
   settings = defaultSettings();
   settingsPending = false;
   settingsTransportFailures = 0;
-  appearance = "light";
+  appearance = null;
   storage.status = "Ready";
   storage.appendError = null;
   storage.recordError = null;
@@ -913,7 +913,11 @@ const control = {
     },
   },
   appearance: {
-    current: () => appearance,
+    current: () =>
+      appearance ??
+      (window.matchMedia("(prefers-color-scheme: dark)").matches
+        ? "dark"
+        : "light"),
     set(value: "light" | "dark") {
       appearance = value;
       window.dispatchEvent(new Event("aelomi-test-appearance"));

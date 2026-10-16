@@ -49,7 +49,7 @@ test("SHELL-5 SHELL-8 keyboard theme picks apply at once and send only theme pat
   await page.goto("/");
   await page.keyboard.press("Meta+,");
   const system = page.getByRole("radio", { name: "System", exact: true });
-  await system.focus();
+  await expect(system).toBeFocused();
   await page.keyboard.press("ArrowRight");
   await expect(
     page.getByRole("radio", { name: "Light", exact: true }),
@@ -187,4 +187,28 @@ test("SHELL-5 explicit choices ignore system changes and System resumes live med
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
   await page.emulateMedia({ colorScheme: "dark" });
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+});
+
+test("SHELL-6 Settings keeps focus when the initial page finishes loading", async ({
+  page,
+}) => {
+  let releaseChunk = () => {};
+  const chunkReady = new Promise<void>((resolve) => {
+    releaseChunk = resolve;
+  });
+  await page.route("**/assets/page-view-*.js", async (route) => {
+    await chunkReady;
+    await route.continue();
+  });
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await page.keyboard.press("Meta+,");
+  const system = page.getByRole("radio", { name: "System", exact: true });
+  await expect(system).toBeFocused();
+  releaseChunk();
+  await expect(page.locator('[aria-label="Page body"]')).toHaveText("plan");
+  await expect(system).toBeFocused();
+  await page.keyboard.press("ArrowRight");
+  await expect(
+    page.getByRole("radio", { name: "Light", exact: true }),
+  ).toBeChecked();
 });

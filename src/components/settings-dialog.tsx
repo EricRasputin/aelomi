@@ -1,5 +1,5 @@
 import { Dialog } from "@base-ui/react/dialog";
-import { useId, useRef } from "react";
+import { useId, useLayoutEffect, useRef } from "react";
 import { restoreFocus } from "../editor/active-editor";
 import { useQuitStore } from "../stores/quit";
 import { useSettingsDialogStore } from "../stores/settings-dialog";
@@ -15,9 +15,17 @@ export function SettingsDialog() {
   const choose = useThemeStore((state) => state.choose);
   const disabled = useQuitStore((state) => state.decision.kind !== "open");
   const groupId = useId();
-  const close = useRef<HTMLButtonElement>(null);
+  const selected = useRef<HTMLInputElement>(null);
   const returnTo = useRef<Element | null>(null);
   if (dialog.kind === "open") returnTo.current = dialog.returnTo;
+  useLayoutEffect(() => {
+    if (dialog.kind !== "open") return;
+    const page = document.querySelector("main");
+    if (page) page.inert = true;
+    return () => {
+      if (page) page.inert = false;
+    };
+  }, [dialog.kind]);
 
   return (
     <Dialog.Root
@@ -30,7 +38,7 @@ export function SettingsDialog() {
         <Dialog.Backdrop className="settings-backdrop" />
         <Dialog.Popup
           className="settings-dialog"
-          initialFocus={close}
+          initialFocus={selected}
           finalFocus={() => {
             restoreFocus(returnTo.current);
             return false;
@@ -38,7 +46,6 @@ export function SettingsDialog() {
         >
           <div className="settings-heading">
             <Dialog.Close
-              ref={close}
               className="settings-close"
               aria-label="Close Settings"
             >
@@ -69,6 +76,7 @@ export function SettingsDialog() {
                 {choices.map((choice) => (
                   <label key={choice} className="theme-choice">
                     <input
+                      ref={selectedTheme(theme) === choice ? selected : null}
                       type="radio"
                       name={groupId}
                       value={choice}
