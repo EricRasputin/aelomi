@@ -49,5 +49,6 @@ Keep implementation details out of the map. Name only user paths, stable handles
 - [Shortcuts and menu commands](./shortcut-menu.md) covers the palette, native menu, editor history, field history, and Quit.
 - [IPC status line](./ipc-status.md) covers the status line, the **Ping again** round trip to the Rust core, and the button's tooltip.
 - [Save failure and quit confirmation](./save-failure.md) covers the banner for failing writes, its recovery, and the dialog that guards every quit path while an edit is pending.
+- [Settings appearance](./settings-appearance.md) covers the modal, app themes, native chrome and first-frame persistence.
 - [Settings persistence](./settings.md) covers the dev probe, durable session writes, and close-and-reopen equality.
 - [Storage startup and URL links](./storage-startup-links.md) covers refusal screens and browser handoff.
