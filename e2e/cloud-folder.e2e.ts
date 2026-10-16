@@ -106,6 +106,7 @@ test("SHELL-11 acceptance 7: a cloud folder shows its resolved path and how to m
     "/Users/test/Library/Application Support",
     "/Users/test/Library/Mobile Documents/com~apple~CloudDocs",
     "/Users/test/Library/Application Support/Aelomi",
+    "/Users/test/Library/Application Support",
   ]);
   await screen
     .getByRole(
