@@ -67,7 +67,7 @@ test("SHELL-4 TREE-1 CMD-6 trash the only page then create from the empty state"
     ),
   ).toEqual([
     ["pageTrash", ["a"]],
-    ["pageCreate", [null]],
+    ["pageCreate", [null, new URL(page.url()).pathname.split("/").at(-1)]],
   ]);
 });
 
@@ -328,4 +328,163 @@ test("TREE-6 settings failure keeps the source tree collapsed and disclosures di
   await expect(
     rows.getByRole("button", { name: "Child", exact: true }),
   ).toBeVisible();
+});
+
+for (const titleText of [
+  "One-line title",
+  "Quarterly planning notes for the platform and product teams across every region of the company",
+]) {
+  test(`SHELL-1 palette stays above ${titleText.length > 20 ? "wrapped" : "one-line"} title and the title scrolls with the body`, async ({
+    page,
+  }) => {
+    await page.addInitScript((title) => {
+      window.__aelomiMockSetup = {
+        pages: [{ id: "a", title }],
+        bodies: {
+          a: Array.from({ length: 80 }, (_, i) => ({
+            id: `line-${i}`,
+            content: [`Body line ${i}`],
+          })),
+        },
+      };
+    }, titleText);
+    await page.goto("/page/a");
+    const title = page.getByRole("textbox", {
+      name: "Page title",
+      exact: true,
+    });
+    await expect(title).toHaveValue(titleText);
+    await page.keyboard.press("Meta+k");
+    await page.getByRole("combobox").fill("new");
+    const command = page.getByRole("option", { name: "New page" });
+    await expect(command).toBeVisible();
+    expect(
+      await command.evaluate((element) => {
+        const rect = element.getBoundingClientRect();
+        return element.contains(
+          document.elementFromPoint(
+            rect.x + rect.width / 2,
+            rect.y + rect.height / 2,
+          ),
+        );
+      }),
+    ).toBe(true);
+    await page.keyboard.press("Escape");
+    const main = page.locator("main");
+    await main.evaluate((element) => {
+      element.scrollTop = 400;
+    });
+    await expect
+      .poll(async () => {
+        const header = await page.locator(".page-header").boundingBox();
+        const port = await main.boundingBox();
+        return (header?.y ?? 0) + (header?.height ?? 0) < (port?.y ?? 0);
+      })
+      .toBe(true);
+    const block = page.locator(
+      '[data-node-type="blockOuter"][data-id="line-15"]',
+    );
+    await block.click();
+    await page.keyboard.press("Meta+ArrowRight");
+    await page.keyboard.type(" visible caret");
+    await expect(block).toContainText("Body line 15 visible caret");
+    const rect = await block.boundingBox();
+    const port = await main.boundingBox();
+    expect(rect?.y).toBeGreaterThanOrEqual(port?.y ?? 0);
+  });
+}
+
+test("TREE-1 current page reveals its ancestors and scrolls into the virtualized sidebar", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.__aelomiMockSetup = {
+      pages: [
+        ...Array.from({ length: 200 }, (_, i) => ({
+          id: `p-${i}`,
+          title: `Page ${i}`,
+        })),
+        { id: "target", title: "Target page", parentId: "p-199" },
+      ],
+    };
+  });
+  await page.goto("/page/p-0");
+  const rows = page.getByRole("navigation", { name: "Pages" });
+  await expect(
+    rows.getByRole("button", { name: "Page 0", exact: true }),
+  ).toBeVisible();
+  await page.keyboard.press("Meta+k");
+  await page.getByRole("combobox").fill("Target page");
+  await page.getByRole("option", { name: "Target page", exact: true }).click();
+  const active = rows.getByRole("button", { name: "Target page", exact: true });
+  await expect(active).toBeInViewport();
+  await expect(active).toHaveAttribute("aria-current", "page");
+  await expect(
+    rows.getByRole("button", { name: "Page 199 children" }),
+  ).toHaveAttribute("aria-expanded", "true");
+  await page.keyboard.press("Meta+n");
+  await expect(
+    rows.getByRole("button", { name: "Untitled", exact: true }),
+  ).toBeInViewport();
+});
+
+test("TREE-2 sidebar focus requests do not repeat a content-search jump, and hiding transfers focus", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.__aelomiMockSetup = {
+      pages: [{ id: "a", title: "A" }],
+      bodies: {
+        a: [
+          { id: "one", content: ["one"] },
+          { id: "two", content: ["two"] },
+        ],
+      },
+    };
+  });
+  await page.goto("/page/a?block=two");
+  const body = page.getByRole("textbox", { name: "Page body" });
+  await expect(body).toBeFocused();
+  await page.keyboard.press("Meta+ArrowRight");
+  await page.keyboard.type(" token");
+  const row = page
+    .getByRole("navigation", { name: "Pages" })
+    .getByRole("button", { name: "A", exact: true });
+  await row.click();
+  await expect(body).toBeFocused();
+  await page.keyboard.type("x");
+  await expect(
+    page.locator('[data-node-type="blockOuter"][data-id="two"]'),
+  ).toHaveText("two tokenx");
+  await row.focus();
+  await page.keyboard.press("Meta+Backslash");
+  await expect(body).toBeFocused();
+});
+
+test("TREE-7 whitespace titles stay named and IME confirmation Return keeps title focus", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.__aelomiMockSetup = { pages: [{ id: "a", title: "   " }] };
+  });
+  await page.goto("/page/a");
+  const title = page.getByRole("textbox", { name: "Page title", exact: true });
+  const row = page
+    .getByRole("navigation", { name: "Pages" })
+    .getByRole("button", { name: "Untitled", exact: true });
+  await expect(row).toBeVisible();
+  await title.focus();
+  await title.dispatchEvent("keydown", {
+    key: "Enter",
+    keyCode: 229,
+    isComposing: false,
+  });
+  await expect(title).toBeFocused();
+  await title.press("Enter");
+  await expect(page.getByRole("textbox", { name: "Page body" })).toBeFocused();
+  expect(
+    await page.evaluate(
+      () => window.__aelomiMock?.workspace.tree().pages[0]?.title,
+    ),
+  ).toBe("   ");
 });

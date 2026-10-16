@@ -70,3 +70,25 @@ test("TREE-7 an unavailable title cannot submit a rename against an empty baseli
     window.__aelomiMock?.workspace.tree().pages.map((p) => p.title),
   ).toEqual(["Known title"]);
 });
+
+test("TREE-7 a matching old snapshot cannot acknowledge a newer queued draft", async () => {
+  const native = transport.pageRename;
+  let release = () => {};
+  vi.spyOn(transport, "pageRename").mockImplementationOnce(
+    (id, title) =>
+      new Promise((done) => {
+        release = () => void native(id, title).then(done);
+      }),
+  );
+  const first = usePageTitlesStore.getState().rename("a", "Intermediate");
+  const last = usePageTitlesStore.getState().rename("a", "Original");
+  expect(usePageTitlesStore.getState().drafts.get("a")?.title).toBe("Original");
+  release();
+  await Promise.all([first, last]);
+  await vi.waitFor(() =>
+    expect(usePageTitlesStore.getState().drafts.size).toBe(0),
+  );
+  expect(
+    window.__aelomiMock?.workspace.tree().pages.map((p) => p.title),
+  ).toEqual(["Original"]);
+});
