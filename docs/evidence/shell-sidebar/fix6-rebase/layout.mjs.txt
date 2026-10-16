@@ -1,0 +1,26 @@
+export default async function ({ page, expect, shot }) {
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.setViewportSize({ width: 960, height: 640 });
+  await page.addInitScript(() => {
+    window.__aelomiMockSetup = { pages: Array.from({length: 82}, (_,i)=>({id:`p-${i}`,title: i===0?'Alpha':`Page ${i+1}`})) };
+  });
+  await page.goto('/page/p-0');
+  await expect(page.getByRole('textbox',{name:'Page title',exact:true})).toHaveValue('Alpha');
+  await expect(page.getByRole('textbox', {name:'Page body'})).toBeVisible();
+  await shot('before-status');
+  await page.evaluate(()=>window.__aelomiMock?.storage.refuseRecords({Internal:'terminal'}));
+  await page.keyboard.press('Meta+n');
+  await expect(page.locator('.shell-notice')).toHaveText("A new page couldn't be created.");
+  await expect(page.locator('[data-state="failed"]')).toBeInViewport();
+  await shot('status-scrolling');
+  for (const width of [320, 960]) {
+    await page.setViewportSize({width,height:640});
+    await page.evaluate(()=> { document.documentElement.style.fontSize='200%'; });
+    const rects = await page.evaluate(()=> {
+      const row=document.querySelector('[data-state="failed"]').getBoundingClientRect();
+      const notice=document.querySelector('.shell-notice').getBoundingClientRect();
+      return { clear:row.top>=notice.bottom, overflow:document.documentElement.scrollWidth>innerWidth };
+    });
+    expect(rects).toEqual({clear:true,overflow:false});
+  }
+}
