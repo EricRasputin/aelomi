@@ -189,3 +189,47 @@ test("TREE-7 a pending rename ending in a terminal error keeps the exact text an
     { op: "rename", pageId: "a", error: { Internal: "planner failed" } },
   ]);
 });
+
+test("TREE-7 the latest coalesced rename stays pending behind another page's retained operation", async () => {
+  window.__aelomiMock?.workspace.seed([
+    { id: "a", title: "Original" },
+    { id: "b", title: "Other" },
+  ]);
+  await usePageTreeStore.getState().refresh();
+  const native = transport.pageRename;
+  let blocked = true;
+  vi.spyOn(transport, "pageRename").mockImplementation((id, title) =>
+    id === "b" && blocked
+      ? Promise.resolve({ status: "error", error: { Io: "read failed" } })
+      : native(id, title),
+  );
+  const head = usePageTitlesStore.getState().rename("b", "Other recovered");
+  await vi.waitFor(() =>
+    expect([
+      ...useRecordCommandStore.getState().retained.values(),
+    ]).toMatchObject([{ op: "rename", pageId: "b" }]),
+  );
+  const first = usePageTitlesStore.getState().rename("a", "Intermediate");
+  const latest = usePageTitlesStore.getState().rename("a", "Latest title");
+  expect(usePageTitlesStore.getState().drafts.get("a")).toMatchObject({
+    title: "Latest title",
+    result: null,
+    error: null,
+  });
+  expect(
+    [...useRecordCommandStore.getState().retained.values()].map(
+      (op) => op.pageId,
+    ),
+  ).toEqual(["b"]);
+  expect(
+    window.__aelomiMock?.workspace.tree().pages.map((page) => page.title),
+  ).toEqual(["Original", "Other"]);
+  blocked = false;
+  await Promise.all([head, first, latest]);
+  await vi.waitFor(() =>
+    expect(usePageTitlesStore.getState().drafts.size).toBe(0),
+  );
+  expect(
+    window.__aelomiMock?.workspace.tree().pages.map((page) => page.title),
+  ).toEqual(["Latest title", "Other recovered"]);
+});
