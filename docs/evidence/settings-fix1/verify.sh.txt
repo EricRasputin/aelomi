@@ -1,0 +1,8 @@
+set -eu
+pnpm install --frozen-lockfile
+pnpm exec vitest run src/stores/settings.test.ts src/editor/quit-drain.test.ts src/ipc/record-commands.test.ts src/theme.test.ts src/shortcuts.test.ts
+cargo test -p aelomi --lib shell_5_initial_theme
+cargo test -p aelomi --lib shell_10_frontend_only_settings_failure
+pnpm build:mock
+AELOMI_TEST_PORT=4285 pnpm exec playwright test tests/playwright/settings.spec.ts --project=webkit
+E2E_TELEMETRY_DISABLED=1 DO_NOT_TRACK=1 pnpm exec e2e run e2e/settings.e2e.ts
