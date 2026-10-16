@@ -1,5 +1,7 @@
 # Refusal recovery, fix round 2
 
+`attempted-finder-proof.sh.txt` and `capture-ui-only.sh.txt` change the Mac's appearance and must not be rerun as is. Follow the current [verify-aelomi rules](../../../.claude/skills/verify-aelomi/SKILL.md#rules) instead.
+
 Source commit `d79deecba3840d29098c4fd821bf7e66fc31d6f2`. Merge base `6d64d683d5bf02bea2f67e8038428caef1ab4d62` against `origin/main`. Verbatim patch-id `c11d6ca7151c0972e9969634f813c59469e368e9`.
 
 Proven pathspecs are `src/storage-copy.ts`, `src/storage-copy.test.ts`, `e2e/cloud-folder.e2e.ts`, `tests/playwright/storage-refusal.spec.ts`, `src-tauri/src/commands.rs`, `src-tauri/src/storage.rs`, `src-tauri/src/lib.rs`, `src-tauri/src/tests.rs`, `src-tauri/src/macos.rs`, `src/ipc/mock.ts`, and `src/stores/quit.ts`.

@@ -18,10 +18,15 @@ Read [`features/README.md`](features/README.md) before you drive. Then read the 
 
 Run every command from the repo root. The examples use `S=.claude/skills/verify-aelomi/scripts`. If your shell does not keep variables between commands, write the paths out.
 
+## Rules
+
+- Never change the Mac's appearance or any other system setting, even to restore it. The maintainer uses this Mac during verification.
+- For a dark capture, use the app's own **Settings > Appearance** where the branch has it, or the mock browser with Playwright's `page.emulateMedia({ colorScheme: "dark" })`. Otherwise capture the current appearance only and say so in the evidence.
+
 ## Before the first run
 
 - Run `pnpm install --frozen-lockfile`.
-- In System Settings > Privacy & Security, give the app that runs your shell (Terminal, an IDE, or an agent host) **Accessibility** and **Screen Recording**. `app.sh doctor` checks Accessibility. Screen Recording has no check, so look at every screenshot. If a screenshot does not show the Aelomi window, Screen Recording is missing.
+- The app that runs your shell (Terminal, an IDE, or an agent host) must already have **Accessibility** and **Screen Recording** permissions. `app.sh doctor` checks Accessibility. Screen Recording has no check, so look at every screenshot. If a screenshot does not show the Aelomi window, Screen Recording is missing. Stop and report missing permissions without changing system settings.
 - For the mock browser, install WebKit once with `pnpm exec e2e-web install webkit`.
 
 ## Launch the real app
@@ -217,7 +222,7 @@ Never kill Aelomi, Vite, or node by name. Another agent or the maintainer may be
 - Accessibility lists only windows on the current Space. When Aelomi's window is on another Space, `ax.js` commands that inspect a window or act on its content make Aelomi frontmost, which switches Spaces, and wait up to 5 s for the window. The switch took about 2 s in the proof run. Another app can take the front back between two commands, so a command can still fail with `The window has no web content yet.` Rerun it. This is not a product failure. `screencapture -l` captures the window from any Space, but the tree in `NAME.ax.txt` needs the switch.
 - During a `launch dev` run, the dev server reloads the app's UI when an HTML file under `playwright-report/`, `.e2e/`, or `dist-mock/` changes. The reload clears in-memory UI state, such as an open dialog. Don't run the WebKit suite, `pnpm test:e2e`, `pnpm build:mock`, or `mock-drive.mjs` until that run is cleaned up.
 - `pnpm build:mock` empties `dist-mock/` before it writes the new build. Do not pass `--rebuild` while another mock run in the same checkout is serving `dist-mock/`.
-- The mock browser renders the light theme, Playwright's default color scheme. The real app follows the macOS appearance, which was dark in this repo's proof run.
+- Never change the Mac's appearance or any other system setting, even to restore it. For a dark capture, use the app's own **Settings > Appearance** where the branch has it, or the mock browser with Playwright's `page.emulateMedia({ colorScheme: "dark" })`. Otherwise capture the current appearance only and say so in the evidence.
 - An accessibility query takes 1 to 2 s, because each element read is a separate System Events call. Expect `tree` to slow down as pages grow.
 
 To keep the feature map current as the app changes, use `/maintain-verification-skill`.
