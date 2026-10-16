@@ -21,7 +21,7 @@ import {
 } from "./components/storage-notices";
 import { StorageRefusal } from "./components/storage-refusal";
 import { formatPingReply } from "./ipc/format-ping";
-import { PageFrame } from "./pages/page-frame";
+import { PageFrame, preloadPageBody } from "./pages/page-frame";
 import { markIndexCommit, resolveEntry } from "./perf/cold-start";
 import { useNewPagesStore } from "./shell/new-pages";
 import { pageAfterTrash } from "./shell/page-navigation";
@@ -324,6 +324,7 @@ export type PageSearch = { block?: string };
 const pageRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/page/$pageId",
+  loader: preloadPageBody,
   beforeLoad: ({ params }) => {
     const { activePageId } = useShellStore.getState();
     if (!canOpenPage(params.pageId) && params.pageId !== activePageId)

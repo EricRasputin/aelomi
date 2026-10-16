@@ -15,6 +15,34 @@ const title = (page: Page) =>
   page.getByRole("textbox", { name: "Page title", exact: true });
 const rows = (page: Page) => page.getByRole("navigation", { name: "Pages" });
 
+test("SHELL-1 cold page navigation preloads the body before the first frame mounts", async ({
+  page,
+}) => {
+  let release = () => {};
+  const held = new Promise<void>((done) => {
+    release = done;
+  });
+  let requested = () => {};
+  const started = new Promise<void>((done) => {
+    requested = done;
+  });
+  await page.route(/\/assets\/page-view-[^/]+\.js$/, async (route) => {
+    requested();
+    await held;
+    await route.continue();
+  });
+  await page.goto("/page/a");
+  await started;
+  try {
+    await expect(title(page)).toHaveCount(0);
+  } finally {
+    release();
+  }
+  await expect(title(page)).toHaveValue("Alpha");
+  await expect(page.getByRole("textbox", { name: "Page body" })).toHaveText(
+    "Original body",
+  );
+});
 async function creates(page: Page) {
   return page.evaluate(() => [
     ...new Set(

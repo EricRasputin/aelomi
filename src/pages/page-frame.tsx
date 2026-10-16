@@ -1,11 +1,5 @@
-import {
-  lazy,
-  Suspense,
-  useId,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from "react";
+import { lazyRouteComponent } from "@tanstack/react-router";
+import { Suspense, useId, useLayoutEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import {
   pageTitleHistory,
@@ -25,7 +19,8 @@ import { displayTitle } from "../stores/page-tree";
 import { canEdit, useQuitStore } from "../stores/quit";
 import { useShellStore } from "../stores/shell";
 
-const PageView = lazy(() => import("./page-view"));
+const PageView = lazyRouteComponent(() => import("./page-view"));
+export const preloadPageBody = () => PageView.preload?.();
 export function PageFrame({
   pageId,
   focusBlock,
