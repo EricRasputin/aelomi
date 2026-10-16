@@ -24,7 +24,6 @@ import {
   type QuitStatus,
   type SearchScope,
   type Settings,
-  type SettingsPatch,
   type StorageError,
   type StorageStatus,
 } from "./bindings";
@@ -39,7 +38,7 @@ import {
   type SearchablePage,
   searchPages,
 } from "./mock-search";
-import { defaultSettings, patchSettings, seedSettings } from "./mock-settings";
+import { createSettingsMock } from "./mock-settings";
 import {
   type PageRecord,
   pagesRootProblem,
@@ -110,10 +109,13 @@ const storage: {
 };
 let exited = false;
 let indexStatus: IndexStatus = "Ready";
-let settings = defaultSettings();
-let settingsPending = false;
-let settingsTransportFailures = 0;
-let settingsError: import("./bindings").SettingsError | null = null;
+const settings = createSettingsMock({
+  ready: () => setupReady,
+  status: () => storage.status,
+  writeFailure: () => (storage.failWrites ? storage.reason : null),
+  changed: () => refreshHealth(),
+  record: (call) => calls.push(call),
+});
 let registration = Promise.resolve();
 let releaseRegistration = () => {};
 let appearance: "light" | "dark" | null = null;
@@ -190,25 +192,25 @@ function pendingDocs(): string[] {
 
 function flushThenQuit() {
   const pending = pendingDocs();
-  if (pending.length === 0 && !settingsPending) {
+  if (pending.length === 0 && !settings.pending) {
     changeQuit("Confirmed");
     exited = true;
   } else
     changeQuit({
-      Asking: { pending_docs: pending, pending_settings: settingsPending },
+      Asking: { pending_docs: pending, pending_settings: settings.pending },
     });
 }
 
 function refreshHealth() {
   const pending = pendingDocs();
   const next: Health =
-    pending.length === 0 && !settingsPending
+    pending.length === 0 && !settings.pending
       ? "Healthy"
       : {
           Failing: {
             reason: storage.reason,
             pending_docs: pending,
-            pending_settings: settingsPending,
+            pending_settings: settings.pending,
           },
         };
   if (JSON.stringify(next) === JSON.stringify(storage.health)) return;
@@ -463,33 +465,7 @@ export const commands = {
     control.quit.request();
     return { status: "ok", data: null };
   },
-  settingsGet: async () => {
-    calls.push({ command: "settingsGet", args: [] });
-    await setupReady;
-    if (storage.status !== "Ready")
-      return { status: "error", error: "Unavailable" };
-    return { status: "ok", data: structuredClone(settings) };
-  },
-  settingsUpdate: async (patch) => {
-    calls.push({ command: "settingsUpdate", args: [structuredClone(patch)] });
-    await setupReady;
-    if (settingsError !== null)
-      return { status: "error", error: settingsError };
-    if (settingsTransportFailures > 0) {
-      settingsTransportFailures -= 1;
-      throw new Error("Settings transport unavailable");
-    }
-    if (storage.status !== "Ready")
-      return { status: "error", error: "Unavailable" };
-    const result = patchSettings(settings, patch);
-    if (result.status === "error") return result;
-    settings = result.data;
-    settingsPending = storage.failWrites;
-    refreshHealth();
-    if (settingsPending)
-      return { status: "error", error: { Write: storage.reason } };
-    return structuredClone(result);
-  },
+  ...settings.commands,
   ping: async (request) => {
     calls.push({ command: "ping", args: [structuredClone(request)] });
     return { seq: request.seq, core_version: "0.1.0-mock" };
@@ -608,7 +584,7 @@ export const commands = {
       changeQuit({
         Asking: {
           pending_docs: [...new Set([...docIds, ...pendingDocs()])].sort(),
-          pending_settings: settingsPending || pendingSettings,
+          pending_settings: settings.pending || pendingSettings,
         },
       });
     return { status: "ok", data: quitStatus() };
@@ -756,7 +732,7 @@ async function applySetup(setup: MockSetup | undefined) {
     registration = new Promise<void>((resolve) => {
       releaseRegistration = resolve;
     });
-  if (setup.settings) settings = seedSettings(setup.settings);
+  if (setup.settings) settings.seed(setup.settings);
   if (setup.appearance) appearance = setup.appearance;
   if (setup.storageStatus)
     storage.status = structuredClone(setup.storageStatus);
@@ -798,10 +774,7 @@ function restoreKept(): boolean {
 function resetState() {
   calls.length = 0;
   errors.length = 0;
-  settings = defaultSettings();
-  settingsPending = false;
-  settingsTransportFailures = 0;
-  settingsError = null;
+  settings.reset();
   releaseRegistration();
   registration = Promise.resolve();
   appearance = null;
@@ -869,12 +842,12 @@ const control = {
       }
       if (!quit.frontendReady) {
         const pending = pendingDocs();
-        if (pending.length === 0 && !settingsPending) exited = true;
+        if (pending.length === 0 && !settings.pending) exited = true;
         else
           changeQuit({
             Asking: {
               pending_docs: pending,
-              pending_settings: settingsPending,
+              pending_settings: settings.pending,
             },
           });
         return;
@@ -887,7 +860,7 @@ const control = {
       changeQuit({
         Asking: {
           pending_docs: pendingDocs(),
-          pending_settings: settingsPending,
+          pending_settings: settings.pending,
         },
       });
     },
@@ -947,16 +920,7 @@ const control = {
       window.dispatchEvent(new Event("aelomi-test-appearance"));
     },
   },
-  settings: {
-    get: () => commands.settingsGet(),
-    refuseUpdates(error: import("./bindings").SettingsError | null) {
-      settingsError = error;
-    },
-    failTransport(attempts: number) {
-      settingsTransportFailures = attempts;
-    },
-    update: (patch: SettingsPatch) => commands.settingsUpdate(patch),
-  },
+  settings: settings.control,
   storage: {
     refuseRecords(error: import("./bindings").PageError | null) {
       storage.recordError = error;
@@ -970,7 +934,7 @@ const control = {
       storage.reason = reason;
       if (!on) {
         for (const doc of storage.docs.values()) doc.pending = false;
-        settingsPending = false;
+        settings.recover();
       }
       refreshHealth();
     },
