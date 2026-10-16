@@ -5,7 +5,7 @@ import { flushSync } from "react-dom";
 import { setActiveEditor } from "../editor/active-editor";
 import { renderSegments, type ShownBlock } from "../editor/body-reader";
 import {
-  createTitleHistory,
+  pageTitleHistory,
   registerFieldHistory,
 } from "../editor/field-history";
 import { inCode, type PickerKey, pickerTrigger } from "../editor/page-picker";
@@ -38,13 +38,29 @@ function PageTitle({
   const input = useRef<HTMLTextAreaElement>(null);
   const lastTitle = useRef(title ?? "");
   const shownTitle = title ?? lastTitle.current;
-  const history = useRef(createTitleHistory(shownTitle));
+  const history = useRef(pageTitleHistory(pageId, shownTitle));
   const composing = useRef(false);
-  const [frozen, setFrozen] = useState(false);
+  const [frozen, setFrozen] = useState(
+    () => useQuitStore.getState().decision.kind !== "open",
+  );
   const decision = useQuitStore((state) => state.decision.kind);
   const registered = useQuitStore((state) => state.registered);
+  const movingToTrash = useShellStore(
+    (state) =>
+      state.trashRequest?.status === "pending" &&
+      state.trashRequest.affected.has(pageId),
+  );
+  const sourceError = usePageTreeStore(
+    (state) =>
+      state.source.kind === "error" ||
+      (state.source.kind === "ready" && Boolean(state.source.error)),
+  );
   const editable =
-    registered && !frozen && (decision === "open" || decision === "draining");
+    registered &&
+    !frozen &&
+    !movingToTrash &&
+    !sourceError &&
+    (decision === "open" || decision === "draining");
   useLayoutEffect(() => {
     if (decision === "open") setFrozen(false);
   }, [decision]);
@@ -73,8 +89,7 @@ function PageTitle({
     }
     if (title !== null) {
       lastTitle.current = title;
-      if (history.current.value() !== title)
-        history.current = createTitleHistory(title);
+      if (history.current.value() !== title) history.current.reset(title);
     }
   }, [title]);
   useLayoutEffect(() => {
@@ -120,6 +135,7 @@ function PageTitle({
   }, [pageId]);
   const error = usePageTitlesStore((state) => state.drafts.get(pageId)?.error);
   const request = useShellStore((state) => state.focusRequest);
+  const createIntent = useShellStore((state) => state.createIntent);
   useLayoutEffect(() => {
     if (
       request?.pageId === pageId &&
@@ -127,10 +143,25 @@ function PageTitle({
       editable &&
       title !== null
     ) {
+      if (
+        createIntent?.stage.kind === "opening" &&
+        createIntent.stage.pageId === pageId &&
+        createIntent.title !== title
+      ) {
+        void usePageTitlesStore.getState().rename(pageId, createIntent.title);
+        return;
+      }
       input.current?.focus();
-      useShellStore.setState({ focusRequest: null });
+      useShellStore.setState((state) => ({
+        focusRequest: null,
+        createIntent:
+          state.createIntent?.stage.kind === "opening" &&
+          state.createIntent.stage.pageId === pageId
+            ? null
+            : state.createIntent,
+      }));
     }
-  }, [request, pageId, editable, title]);
+  }, [request, pageId, editable, title, createIntent]);
   return (
     <header className="page-header">
       <h1 className="sr-only" dir="auto">
@@ -170,6 +201,16 @@ function PageTitle({
           }
         }}
       />
+      {movingToTrash && (
+        <p className="page-notice" role="status">
+          Moving to Trash…
+        </p>
+      )}
+      {sourceError && (
+        <p className="page-notice">
+          Titles can't be edited until pages can be refreshed.
+        </p>
+      )}
       {error && (
         <p className="page-notice" role="alert">
           {error}
@@ -318,6 +359,12 @@ export function PageView({
     <article
       className="page"
       aria-label="Page"
+      onFocusCapture={(event) => {
+        if (event.target.closest('[contenteditable="true"], textarea, input'))
+          useShellStore.setState((state) => ({
+            editorFocus: state.editorFocus + 1,
+          }));
+      }}
       onPointerDownCapture={recordPageLinkPointer}
       onClickCapture={openPageLink}
       onAuxClickCapture={openPageLink}

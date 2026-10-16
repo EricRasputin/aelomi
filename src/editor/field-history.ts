@@ -16,6 +16,11 @@ export function createTitleHistory(initial: string) {
   let current = initial;
   return {
     value: () => current,
+    reset(value: string) {
+      past.length = 0;
+      future.length = 0;
+      current = value;
+    },
     record(value: string) {
       if (value === current) return;
       past.push(current);
@@ -32,4 +37,15 @@ export function createTitleHistory(initial: string) {
       return current;
     },
   };
+}
+
+const titleHistories = new Map<string, ReturnType<typeof createTitleHistory>>();
+
+export function pageTitleHistory(pageId: string, initial: string) {
+  let history = titleHistories.get(pageId);
+  if (!history) {
+    history = createTitleHistory(initial);
+    titleHistories.set(pageId, history);
+  }
+  return history;
 }

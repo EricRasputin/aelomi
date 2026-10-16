@@ -6,7 +6,7 @@ The sidebar opens pages from the source tree. New page opens an untitled page wi
 
 - `shell-sidebar-toggle` covers SHELL-1 and SHELL-6, with no toggle animation.
 - `shell-page-create` covers TREE-1 and SHELL-4 through the sidebar, empty state, palette, and File menu.
-- `shell-title` covers TREE-7, EDIT-1, and SHELL-8, including title-only Undo, unknown-title protection, and final composition input before quit.
+- `shell-title` covers TREE-7, EDIT-1, and SHELL-8, including title-only Undo across page navigation, unknown-title protection, and final composition input before quit.
 - `shell-current-page` covers selected versus hovered rows, active-row reveal, and scroll visibility.
 - `shell-disclosure` covers TREE-6 and persisted expanded rows.
 - `shell-trash-open` covers TREE-9's sibling, ancestor, recent-page, and empty fallbacks.
@@ -25,10 +25,18 @@ Preconditions: launch only through app.sh with a fresh synthetic `AELOMI_DATA_DI
 
 - **Initial state.** Run `$S/app.sh doctor "$RUN"`, then `tree`. Expect Sidebar, Getting started, Page title, Page body, and the IPC status landmark.
 - **Create and rename.** Press New page with `press`, then type `D1 notes` with `keys`. Expect Page title and the sidebar row to read D1 notes. Capture before and after.
-- **Create outage.** On the synthetic data folder, record its exact permission mode, then remove write permission. Press New page. Expect the save-failure banner, the current page still open, and New page disabled with a busy state. Press ⌘N again. Restore the recorded mode on every exit path. Expect exactly one new page to open with Page title focused after recovery.
+- **Create outage.** On the synthetic data folder, record its exact permission mode, then remove write permission. Press New page. Expect the save-failure banner, the current page still open, and the focused button labeled Creating page with an accessible busy state. Press ⌘N again. Restore the recorded mode on every exit path. Expect exactly one new page to open with Page title focused after recovery.
+- **Immediate typing.** Focus Page body, press ⌘N, and type a title immediately while a create is held. Expect the temporary New page title field to hold that exact text. Recover storage. Expect the new title focused with that text and the old body unchanged.
+- **Title history across pages.** Rename A, open B, reopen A, focus Page title, press ⌘Z, then ⇧⌘Z. Expect the exact original and revised title.
+- **Safe command selection.** Press ⌘K, type `to`, then Return. Expect the palette still open and the page unchanged. Press Down and Return to explicitly choose Move to trash.
+- **Quit navigation.** Hold a create delivery, start Quit, and try another sidebar row and ⌘K. Expect the current route unchanged and Page title read-only. Recover storage, relaunch the synthetic folder, and assert the exact title.
+- **Late create.** Hold New page, open another page, and type in its body. Recover storage. Expect New page created with its row revealed and the same body focus, route, and text.
+- **Pending opening.** While an accepted create is still pending, click its row and palette result. Neither opens an editor. A direct route shows Creating page until durable success, with no body load.
+- **Pending trash.** Hold Move to trash. Expect its title and any opened descendant title to be read-only with Moving to Trash.
+- **Read retry.** Fail a tree refresh. Expect the previous rows and title, an explanatory notice, and Try again. Retry and automatic backoff recover the list without changing the title.
 - **Title Return.** Send Return with the native key-code helper. Type `body token`. Expect Page body to contain body token.
 - **Toggle.** Run `$S/app.sh keys "$RUN" '\' command` twice. Capture the hidden and restored states. The editor occupies the released width.
-- **Trash.** On a folder containing only one active page, open the palette with `$S/app.sh keys "$RUN" k command`, type Move to trash, and send Return. Expect No page open and New page. Press New page and type a title without focusing another field. Expect the title and row to update.
+- **Trash.** On a folder containing only one active page, open the palette with `$S/app.sh keys "$RUN" k command`, type Move to trash, explicitly select it with Down, and send Return. Expect No page open and New page. Press New page and type a title without focusing another field. Expect the title and row to update.
 - **Disclosure restart.** On the nested fixture, press Projects children and check `aria-expanded` becomes false. Quit with ⌘Q, wait for the owned PID to exit, and relaunch the same synthetic folder through app.sh. Expect Projects children to be collapsed and no child rows. The settings file has no Projects ID in expandedRows.
 - **Unknown title.** Inject a source-read failure only in the synthetic run. Expect Page title to retain its text but refuse input and Undo. Recover the read and check title Undo still reaches its original baseline. Reopen the real data after quit and assert the exact title.
 - **Title and palette.** Capture the palette over a one-line title and a wrapped title. Dismiss it, scroll the body, and type near the scrollport top. The title scrolls out and the caret remains visible.
@@ -46,4 +54,4 @@ Preconditions: launch only through app.sh with a fresh synthetic `AELOMI_DATA_DI
 - The stress picker exists only in mock builds. It clears synthetic mock data when changing datasets.
 - Native proof uses real buttons and keys. Read settings afterward to confirm persistence.
 
-- Pending New page leaves the current page or empty state visible. Every New page control stays disabled and busy until the final result. Recovery opens the new page with its title focused. Pending Move to trash keeps the page open until durable success. A final error keeps the page open and shows a failure. The banner includes retained operations and terminal failures.
+- Pending New page leaves the current page or empty state visible. Every New page control stays focusable and busy until the final result. Keyboard typing is buffered in New page title. Recovery opens the new page with its title focused only if the user has stayed in the original context. Otherwise the new row is revealed with a quiet notice. Pending Move to trash keeps the page open until durable success. A final error keeps the page open and shows a failure. The banner includes retained operations and terminal failures.

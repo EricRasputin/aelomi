@@ -2,6 +2,7 @@ import { Button } from "@base-ui/react/button";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { flattenPages } from "../shell/page-navigation";
+import { pageCreatePending } from "../shell/page-opening";
 import { newPage } from "../shell/use-page-commands";
 import { usePageTitle } from "../stores/page-titles";
 import { displayTitle, usePageTreeStore } from "../stores/page-tree";
@@ -53,6 +54,10 @@ function PageRow({
   openPage: (pageId: string) => void;
 }) {
   const title = displayTitle(usePageTitle(pageId) ?? fallback);
+  const editable = useQuitStore(canEdit);
+  const pending = useRecordCommandStore((state) =>
+    pageCreatePending(state, pageId),
+  );
   return (
     <>
       {hasChildren ? (
@@ -73,6 +78,8 @@ function PageRow({
       <Button
         className="sidebar-page"
         aria-current={active ? "page" : undefined}
+        aria-disabled={!editable || pending}
+        aria-busy={pending}
         onClick={() => openPage(pageId)}
       >
         <RowTitle title={title} />
@@ -86,15 +93,33 @@ export function NewPageButton() {
   const creating = useRecordCommandStore((state) =>
     state.pendingCreates.has(null),
   );
+  const opening = useShellStore(
+    (state) => state.createIntent?.stage.kind === "opening",
+  );
+  const busy = creating || opening;
   const ready = usePageTreeStore((state) => state.source.kind === "ready");
   return (
     <Button
       className="shell-button"
-      disabled={!editable || !ready || creating}
-      aria-busy={creating}
+      disabled={!editable || !ready || busy}
+      focusableWhenDisabled
+      aria-busy={busy}
       onClick={newPage}
+      onKeyDown={(event) => {
+        if (
+          !busy ||
+          event.metaKey ||
+          event.ctrlKey ||
+          event.altKey ||
+          event.key.length !== 1
+        )
+          return;
+        event.preventDefault();
+        document.getElementById("new-page-title")?.focus();
+        document.execCommand("insertText", false, event.key);
+      }}
     >
-      New page
+      {busy ? "Creating page…" : "New page"}
     </Button>
   );
 }
@@ -110,6 +135,8 @@ export function Sidebar({
   const expansion = useTreeExpansionStore((state) => state.expansion);
   const editable = useQuitStore(canEdit);
   const activePageId = useShellStore((state) => state.activePageId);
+  const revealedPageId = useShellStore((state) => state.revealedPageId);
+  const revealPageId = revealedPageId ?? activePageId;
   const scroll = useRef<HTMLDivElement>(null);
   const rows = useMemo(
     () =>
@@ -133,33 +160,50 @@ export function Sidebar({
     if (
       source.kind !== "ready" ||
       expansion.kind !== "ready" ||
-      !activePageId ||
-      revealed.current === activePageId
+      !revealPageId ||
+      revealed.current === revealPageId
     )
       return;
-    revealed.current = activePageId;
+    revealed.current = revealPageId;
     const ancestors: string[] = [];
-    let parent = source.byId.get(activePageId)?.parent_id;
+    let parent = source.byId.get(revealPageId)?.parent_id;
     while (parent && !ancestors.includes(parent)) {
       ancestors.push(parent);
       parent = source.byId.get(parent)?.parent_id;
     }
     useTreeExpansionStore.getState().reveal(ancestors);
-  }, [source, expansion.kind, activePageId]);
+  }, [source, expansion.kind, revealPageId]);
   const scrolled = useRef<string | null>(null);
   useLayoutEffect(() => {
-    if (hidden || scrolled.current === activePageId) return;
-    const index = rows.findIndex((row) => row.page.id === activePageId);
+    if (hidden || scrolled.current === revealPageId) return;
+    const index = rows.findIndex((row) => row.page.id === revealPageId);
     if (index < 0) return;
     virtualizer.scrollToIndex(index, { align: "auto" });
-    scrolled.current = activePageId;
-  }, [activePageId, rows, virtualizer, hidden]);
+    scrolled.current = revealPageId;
+  }, [revealPageId, rows, virtualizer, hidden]);
   return (
     <aside className="sidebar" aria-label="Sidebar" hidden={hidden}>
       <div className="sidebar-heading">
         <span>Pages</span>
         <NewPageButton />
       </div>
+      {(source.kind === "error" ||
+        (source.kind === "ready" && source.error)) && (
+        <div className="sidebar-notice" role="alert">
+          <p>
+            {source.kind === "ready"
+              ? "Pages couldn't be refreshed. Showing the last available list."
+              : "Pages couldn't be loaded."}
+          </p>
+          <Button
+            className="shell-button"
+            disabled={!editable}
+            onClick={() => void usePageTreeStore.getState().refresh()}
+          >
+            Try again
+          </Button>
+        </div>
+      )}
       {expansion.kind === "error" && (
         <div className="sidebar-notice" role="alert">
           <p>{expansion.message}</p>

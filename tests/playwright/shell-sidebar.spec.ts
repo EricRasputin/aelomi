@@ -512,7 +512,10 @@ test("TREE-1 a create pending through a long outage navigates only after durable
     "Changes aren't being saved",
   );
   await page.clock.runFor(15_000);
-  const pending = page.getByRole("button", { name: "New page", exact: true });
+  const pending = page.getByRole("button", {
+    name: "Creating page…",
+    exact: true,
+  });
   await expect(pending).toBeDisabled();
   await expect(pending).toHaveAttribute("aria-busy", "true");
   await expect(page).toHaveURL(/\/page\/a$/);
@@ -574,7 +577,7 @@ test("TREE-1 repeated New page buttons, shortcut and menu while pending create e
   await page.evaluate(() =>
     window.__aelomiMock?.storage.refuseRecords({ Io: "synthetic outage" }),
   );
-  const buttons = page.getByRole("button", { name: "New page", exact: true });
+  const buttons = page.locator(".shell-button[aria-busy]");
   await empty.getByRole("button", { name: "New page" }).click();
   await expect(buttons.nth(0)).toBeDisabled();
   await expect(buttons.nth(1)).toBeDisabled();
@@ -696,7 +699,7 @@ test("TREE-1 a pending create ending in terminal error keeps the existing page a
   );
   await page.keyboard.press("Meta+n");
   await expect(
-    page.getByRole("button", { name: "New page", exact: true }),
+    page.getByRole("button", { name: "Creating page…", exact: true }),
   ).toBeDisabled();
   await expect(page).toHaveURL(/\/page\/a$/);
   await page.evaluate(() =>

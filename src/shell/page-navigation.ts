@@ -6,6 +6,26 @@ export type VisiblePage = {
   hasChildren: boolean;
 };
 
+export function subtreeIds(
+  pages: readonly TreePage[],
+  root: string,
+): ReadonlySet<string> {
+  const children = new Map<string | null, string[]>();
+  for (const page of pages) {
+    const siblings = children.get(page.parent_id) ?? [];
+    siblings.push(page.id);
+    children.set(page.parent_id, siblings);
+  }
+  const ids = new Set<string>();
+  const stack = [root];
+  for (let id = stack.pop(); id !== undefined; id = stack.pop()) {
+    if (ids.has(id)) continue;
+    ids.add(id);
+    stack.push(...(children.get(id) ?? []));
+  }
+  return ids;
+}
+
 export function flattenPages(
   pages: readonly TreePage[],
   expanded: ReadonlySet<string>,

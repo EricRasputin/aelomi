@@ -9,6 +9,7 @@ import { HighlightedText } from "../pages/highlighted-text";
 import { type ContentResult, shownContent } from "../palette/content";
 import type { PageCommand } from "../palette/page-commands";
 import type { TitleMatch } from "../palette/title-match";
+import { canOpenPage, pageCreatePending } from "../shell/page-opening";
 import { useIndexStatusStore } from "../stores/index-status";
 import {
   displayTitle,
@@ -17,6 +18,9 @@ import {
   usePageTreeStore,
 } from "../stores/page-tree";
 import { usePaletteStore } from "../stores/palette";
+import { acceptsUserCommands, useQuitStore } from "../stores/quit";
+import { useRecordCommandStore } from "../stores/record-commands";
+import { useShellStore } from "../stores/shell";
 
 export const paletteCopy = {
   indexing: "Indexing…",
@@ -80,6 +84,7 @@ export function CommandPalette() {
   const settled = usePaletteStore((state) => state.answered === state.request);
   const status = useIndexStatusStore((state) => state.status);
   const source = usePageTreeStore((state) => state.source);
+  const recordCommands = useRecordCommandStore();
   const navigate = useNavigate();
   const input = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLDivElement>(null);
@@ -118,6 +123,9 @@ export function CommandPalette() {
 
   const activate = (row: Row | undefined) => {
     if (!row || row.kind === "header") return;
+    if (!acceptsUserCommands(useQuitStore.getState().decision)) return;
+    if (row.kind === "title" && !canOpenPage(row.match.id)) return;
+    if (row.kind === "content" && !canOpenPage(row.hit.page_id)) return;
     close();
     if (row.kind === "command") {
       commandDispatcher.dispatch(row.command.command, {
@@ -127,6 +135,7 @@ export function CommandPalette() {
       });
       return;
     }
+    useShellStore.setState({ revealedPageId: null });
     if (row.kind === "title")
       void navigate({
         to: "/page/$pageId",
@@ -244,6 +253,13 @@ export function CommandPalette() {
                   id={`palette-row-${item.index}`}
                   role="option"
                   aria-selected={isSelected}
+                  aria-disabled={
+                    row.kind === "title"
+                      ? pageCreatePending(recordCommands, row.match.id)
+                      : row.kind === "content"
+                        ? pageCreatePending(recordCommands, row.hit.page_id)
+                        : undefined
+                  }
                   tabIndex={-1}
                   className="palette-row"
                   data-kind={row.kind}

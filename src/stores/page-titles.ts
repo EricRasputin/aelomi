@@ -3,6 +3,7 @@ import { commands, type RecordCommandResult } from "../ipc";
 import { commandsAccepted } from "../ipc/pending-commands";
 import { usePageTreeStore } from "./page-tree";
 import { useQuitStore } from "./quit";
+import { useShellStore } from "./shell";
 
 type Draft = {
   title: string;
@@ -26,6 +27,9 @@ export const usePageTitlesStore = create<TitleStore>((set, get) => ({
       !commandsAccepted() ||
       (decision.kind !== "open" && decision.kind !== "draining") ||
       source.kind !== "ready" ||
+      source.error ||
+      (useShellStore.getState().trashRequest?.status === "pending" &&
+        useShellStore.getState().trashRequest?.affected.has(pageId)) ||
       !source.byId.has(pageId)
     )
       return;

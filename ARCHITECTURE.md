@@ -77,11 +77,13 @@ This file maps the code. `SPEC.md` has the behaviors and the budgets, and `READM
 | `src/editor/` | Raw Y.Doc delivery, pre-bind body guard, BlockNote core binding, link picker and quit drain |
 | `src/components/sidebar.tsx` | Virtualized source-backed sidebar and the New page button |
 | `src/shell/page-navigation.ts` | Visible tree projection and open-page fallback after trash |
+| `src/shell/page-opening.ts` | Shared quit and pending-create admission for page navigation |
+| `src/components/pending-page-title.tsx` | New-title input buffer while create waits for its final outcome |
 | `src/shell/use-page-commands.ts` | Shared create, trash, sidebar toggle, and page-focus actions |
 | `src/stores/tree-expansion.ts` | Expanded-page ID set loaded and persisted through settings commands |
 | `src/stores/page-titles.ts` | Versioned title drafts reconciled from final rename outcomes and the source tree |
 | `src/stores/shell.ts` | Sidebar visibility, current page, focus requests, and action feedback |
-| `src/editor/field-history.ts` | Field-scoped title Undo and Redo, isolated from WebKit body history |
+| `src/editor/field-history.ts` | Session title histories keyed by page ID and mounted field registrations |
 | `src/dev/sidebar-stress.tsx` | Mock-only sidebar and title stress data picker |
 | `crates/core/tests/rename_latency.rs` | Ignored release measurement of edit_page rename on the 10,000-record fixture |
 | `src/pages/` | Lazy page route and page view |
@@ -206,9 +208,15 @@ The source tree remains the authoritative ordered list of active records. `flatt
 
 Titles use a map keyed by page ID. Each draft holds its title, version, and final rename result, which is null while the promise is pending. A reply cannot acknowledge a newer draft. One reconciler runs on result settlement and source-tree changes. It clears a draft only after `ok` and a matching source title. Pending renames have no per-title error. A final `error` keeps the text and shows a failure. Title calls add no tree refresh.
 
-New page checks `pendingCreate(null)` at dispatch. Both New page buttons subscribe to the same `pendingCreates` set and expose a disabled, busy state until the operation settles. A create queued behind another retained operation is pending too. Navigation and title focus happen only after `pageCreate` returns `ok`, so no route or body exists for an unaccepted page ID. A final error keeps the existing page or empty state and shows the action failure.
+New page checks `pendingCreate(null)` at dispatch. Its session intent holds the origin page ID, editor-focus revision, buffered title, activation source, and a pending, opening, or failed stage. Keyboard creation synchronously focuses the temporary New page title input so immediate typing cannot reach the old body. Button creation keeps focus on the busy button, which transfers typed text into that buffer. Both New page buttons remain focusable with a visible Creating page label and `aria-busy`. The intent lasts through the mounted title's focus handoff. An unsuccessful create keeps the buffered text for another attempt.
 
-Local trash requests hold a page ID and pending or error status. The source-tree observer waits while a local trash request is pending, including if the user opens a child of its target. A retained operation can change the source before durability confirmation. On `pageTrash` success, a refresh and removal of the request release the observer to choose the fallback. An error preserves the target page with action feedback. External trash still uses the same observer. The shared save-failure banner reads both retained and failed record operations.
+Create navigation waits for final `ok` and checks the origin page and editor-focus revision again. If the user moved on, the sidebar reveals the row and a quiet notice announces completion without changing focus. `page-opening.ts` checks quit admission and retained create IDs for sidebar and palette activations. The route independently checks pending create IDs before mounting PageView, so a direct route cannot load or edit its body before final `ok`. Navigation and automatic trash fallback stop at Draining. Titles mounted during an existing drain start frozen.
+
+The page-tree store retains its last ready tree and marks it with an error on failed refresh. Its connection retries reads with `storageRetry` backoff and cancels timers on disposal. Sidebar rows remain visible with a Try again notice. The title keeps its baseline and becomes read-only until refresh recovers. Session title histories are keyed by page ID, so navigating away preserves title Undo and Redo. An actual external title change resets that page's history baseline.
+
+Palette commands use exact, prefix, and word-start matching. Automatic selection skips Move to trash on query changes and content replies. Arrow keys or a pointer explicitly select that destructive command.
+
+Local trash requests hold a page ID, its captured subtree ID set, and pending or error status. Titles in that set are read-only while pending and show Moving to Trash. The set survives disappearance from the active tree. The source-tree observer waits while a local trash request is pending, including if the user opens a child of its target. A retained operation can change the source before durability confirmation. On `pageTrash` success, a refresh and removal of the request release the observer to choose the fallback. An error preserves the target page with action feedback. External trash still uses the same observer. The shared save-failure banner reads both retained and failed record operations.
 
 An unavailable source title is `null`, distinct from a saved empty string. The field retains its last known display and history, refuses edits until a baseline exists, and never renames against an unknown title. The title registers its composition finalizer with the quit drain. Already-started input reaches the record queue while admission remains open, then the finalizer freezes the field before collection. Return ignores composing and WebKit's conversion key code. The textarea wraps in normal page flow. Rows display whitespace-only titles as Untitled without changing the record, and expose a tooltip only when truncated. Sidebar visibility and typed focus requests stay in session memory. The page view owns body-focus intents separately from one-time content-search jumps.
 

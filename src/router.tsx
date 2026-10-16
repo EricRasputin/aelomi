@@ -6,6 +6,7 @@ import {
   Link,
   lazyRouteComponent,
   Outlet,
+  redirect,
   useMatch,
   useNavigate,
   useRouterState,
@@ -13,6 +14,7 @@ import {
 import { useEffect, useId, useLayoutEffect, useRef } from "react";
 import { CommandPalette } from "./components/command-palette";
 import { SettingsDialog } from "./components/settings-dialog";
+import { PendingPageTitle } from "./components/pending-page-title";
 import { NewPageButton, Sidebar } from "./components/sidebar";
 import {
   QuitConfirmation,
@@ -25,7 +27,7 @@ import { pageAfterTrash } from "./shell/page-navigation";
 import { usePageCommands } from "./shell/use-page-commands";
 import { usePageTreeStore } from "./stores/page-tree";
 import { usePingStore } from "./stores/ping";
-import { useQuitStore } from "./stores/quit";
+import { acceptsUserCommands, useQuitStore } from "./stores/quit";
 import { useRecentPagesStore } from "./stores/recent-pages";
 import { useShellStore } from "./stores/shell";
 import { useStorageStartupStore } from "./stores/storage-startup";
@@ -108,13 +110,8 @@ function WorkspaceLayout() {
         </header>
         <ShellStatus landmark={!diagnostic} />
         <SaveFailureBanner />
-        <main
-          tabIndex={-1}
-          className="flex min-h-0 flex-1 flex-col overflow-y-auto"
-        >
-          <Outlet />
-        </main>
         <SettingsDialog />
+        <PendingPageTitle />
         {(message || closing) && (
           <p role="status" className="shell-notice">
             {closing
@@ -144,12 +141,14 @@ function useWorkspaceNavigation() {
   });
   const source = usePageTreeStore((state) => state.source);
   const trashRequest = useShellStore((state) => state.trashRequest);
+  const decision = useQuitStore((state) => state.decision);
   const previous = useRef(source);
   const entered = useRef(false);
   useLayoutEffect(() => {
     useShellStore.setState({ activePageId: pageId });
   }, [pageId]);
   useEffect(() => {
+    if (!acceptsUserCommands(decision)) return;
     if (source.kind !== "ready") return;
     if (trashRequest?.status === "pending" || trashRequest?.pageId === pageId)
       return;
@@ -187,7 +186,7 @@ function useWorkspaceNavigation() {
         replace: true,
       });
     } else void navigate({ to: "/", replace: true });
-  }, [source, pageId, pathname, navigate, trashRequest]);
+  }, [source, pageId, pathname, navigate, trashRequest, decision]);
 }
 
 export const workspaceCopy = {
@@ -267,6 +266,22 @@ export type PageSearch = { block?: string };
 const pageRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/page/$pageId",
+  beforeLoad: ({ params }) => {
+    const { activePageId } = useShellStore.getState();
+    if (
+      !acceptsUserCommands(useQuitStore.getState().decision) &&
+      params.pageId !== activePageId
+    )
+      throw redirect(
+        activePageId
+          ? {
+              to: "/page/$pageId",
+              params: { pageId: activePageId },
+              search: {},
+            }
+          : { to: "/" },
+      );
+  },
   validateSearch: (search: Record<string, unknown>): PageSearch =>
     typeof search.block === "string" ? { block: search.block } : {},
   component: lazyRouteComponent(() => import("./pages/page-route")),

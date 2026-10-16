@@ -3,16 +3,22 @@ import { useCallback, useEffect } from "react";
 import { flushSync } from "react-dom";
 import { commandDispatcher } from "../command-dispatcher";
 import { commands } from "../ipc";
+import { trackCommand } from "../ipc/pending-commands";
+import { usePageTitlesStore } from "../stores/page-titles";
 import { usePageTreeStore } from "../stores/page-tree";
 import { usePaletteStore } from "../stores/palette";
 import { acceptsUserCommands, canEdit, useQuitStore } from "../stores/quit";
 import { pendingCreate } from "../stores/record-commands";
 import { useShellStore } from "../stores/shell";
+import { subtreeIds } from "./page-navigation";
+import { canOpenPage } from "./page-opening";
 
 export function usePageCommands() {
   const navigate = useNavigate();
   const open = useCallback(
     (pageId: string, target: "body" | "title" = "body") => {
+      if (!canOpenPage(pageId)) return;
+      useShellStore.setState({ revealedPageId: null });
       useShellStore.getState().requestFocus({ pageId, target });
       void navigate({ to: "/page/$pageId", params: { pageId }, search: {} });
     },
@@ -41,24 +47,73 @@ export function usePageCommands() {
         },
       }),
       commandDispatcher.register("newPage", {
-        enabled: () => ready() && !pendingCreate(null),
-        run: () => {
+        enabled: () =>
+          ready() &&
+          !pendingCreate(null) &&
+          useShellStore.getState().createIntent?.stage.kind !== "opening",
+        run: (context) => {
           if (usePaletteStore.getState().open)
             flushSync(() => usePaletteStore.getState().hide());
-          useShellStore.setState({ message: null });
-          void (async () => {
-            try {
-              const reply = await commands.pageCreate(null);
-              if (reply.status === "error")
-                throw new Error(JSON.stringify(reply.error));
-              await usePageTreeStore.getState().refresh();
-              open(reply.data, "title");
-            } catch {
-              useShellStore.setState({
-                message: "A new page couldn't be created. Try again.",
-              });
-            }
-          })();
+          const shell = useShellStore.getState();
+          const intent = {
+            originPageId: shell.activePageId,
+            editorFocus: shell.editorFocus,
+            title:
+              shell.createIntent?.stage.kind === "failed"
+                ? shell.createIntent.title
+                : "",
+            source: context.source,
+            stage: { kind: "pending" as const },
+          };
+          flushSync(() =>
+            useShellStore.setState({ message: null, createIntent: intent }),
+          );
+          void trackCommand(
+            (async () => {
+              try {
+                const reply = await commands.pageCreate(null);
+                if (reply.status === "error")
+                  throw new Error(JSON.stringify(reply.error));
+                await usePageTreeStore.getState().refresh();
+                const buffered =
+                  useShellStore.getState().createIntent?.title ?? "";
+                useShellStore.setState((state) => ({
+                  createIntent: state.createIntent && {
+                    ...state.createIntent,
+                    stage: { kind: "opening", pageId: reply.data },
+                  },
+                }));
+                if (buffered)
+                  await usePageTitlesStore
+                    .getState()
+                    .rename(reply.data, buffered);
+                const current = useShellStore.getState();
+                const stillHere =
+                  current.activePageId === intent.originPageId &&
+                  current.editorFocus === intent.editorFocus;
+                if (
+                  stillHere &&
+                  acceptsUserCommands(useQuitStore.getState().decision)
+                ) {
+                  open(reply.data, "title");
+                } else {
+                  useShellStore.setState({
+                    createIntent: null,
+                    revealedPageId: reply.data,
+                    message: "New page created.",
+                  });
+                }
+              } catch {
+                useShellStore.setState((state) => ({
+                  createIntent: state.createIntent && {
+                    ...state.createIntent,
+                    stage: { kind: "failed" },
+                  },
+                  message: "A new page couldn't be created. Try again.",
+                }));
+              }
+            })(),
+          );
         },
       }),
       commandDispatcher.register("trashPage", {
@@ -76,9 +131,14 @@ export function usePageCommands() {
         run: () => {
           const { activePageId } = useShellStore.getState();
           if (!activePageId) return;
+          const { source } = usePageTreeStore.getState();
+          const affected = subtreeIds(
+            source.kind === "ready" ? source.tree.pages : [],
+            activePageId,
+          );
           useShellStore.setState({
             message: null,
-            trashRequest: { pageId: activePageId, status: "pending" },
+            trashRequest: { pageId: activePageId, affected, status: "pending" },
           });
           void (async () => {
             try {
@@ -90,7 +150,11 @@ export function usePageCommands() {
             } catch {
               useShellStore.setState({
                 message: "This page couldn't be moved to trash. Try again.",
-                trashRequest: { pageId: activePageId, status: "error" },
+                trashRequest: {
+                  pageId: activePageId,
+                  affected,
+                  status: "error",
+                },
               });
             }
           })();
