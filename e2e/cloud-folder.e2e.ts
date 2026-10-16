@@ -6,33 +6,38 @@ test("SHELL-11 acceptance 7: a cloud folder shows its resolved path and how to m
   browser,
   screen,
 }) => {
-  await app.open("/");
-  await expect(screen.getByRole("button", "Ping again")).toBeVisible();
+  await browser.addInitScript(() => {
+    window.__aelomiMockSetup = {
+      storageStatus: new URL(location.href).searchParams.has("refused")
+        ? {
+            CloudPath: {
+              configured: "/Users/test/Library/Application Support/Aelomi",
+              resolved:
+                "/Users/test/Library/Mobile Documents/com~apple~CloudDocs/Aelomi Notes",
+              recovery: {
+                LinkAtDataFolder: {
+                  configured_parent: "/Users/test/Library/Application Support",
+                  configured_name: "Aelomi",
+                  resolved_parent:
+                    "/Users/test/Library/Mobile Documents/com~apple~CloudDocs",
+                  resolved_name: "Aelomi Notes",
+                },
+              },
+            },
+          }
+        : "Ready",
+      pages: [{ id: "page-a", title: "A" }],
+      bodies: { "page-a": [{ id: "block-a", content: ["Original page"] }] },
+    };
+  });
+  await app.open("/page/page-a");
+  await expect(screen.getByRole("textbox", "Page body")).toHaveText(
+    "Original page",
+  );
   await browser.keyboard.press("Meta+k");
   await expect(screen.getByRole("dialog", "Command palette")).toBeVisible();
   await browser.keyboard.press("Escape");
-  await browser.addInitScript(() => {
-    window.__aelomiMockSetup = {
-      storageStatus: {
-        CloudPath: {
-          configured: "/Users/test/Library/Application Support/Aelomi",
-          resolved:
-            "/Users/test/Library/Mobile Documents/com~apple~CloudDocs/Aelomi Notes",
-          recovery: {
-            LinkAtDataFolder: {
-              configured_parent: "/Users/test/Library/Application Support",
-              configured_name: "Aelomi",
-              resolved_parent:
-                "/Users/test/Library/Mobile Documents/com~apple~CloudDocs",
-              resolved_name: "Aelomi Notes",
-            },
-          },
-        },
-      },
-      pages: [{ id: "page-a", title: "A" }],
-    };
-  });
-  await browser.reload();
+  await browser.goto(new URL("/?refused=1", await browser.url()).href);
   await expect(
     screen.getByText(
       'Check that "Aelomi" is now in the window from step 1, without an arrow.',
