@@ -21,7 +21,7 @@ Settings opens inside the main window. Its Appearance control switches the app b
 
 ## Driving it with app.sh and mock-drive
 
-Preconditions: Launch through `app.sh` on a fresh synthetic data folder and pass doctor. Acquire the keyboard lock with `/Users/prabhath_p/.local/state/aelomi-orchestrator/audit/gate/ui-lock.sh acquire <label>` before any native key, click or transient screenshot, and release it with the same script and label. Read macOS appearance with `defaults read -g AppleInterfaceStyle`; a missing key means Light. Keep that setting unchanged.
+Preconditions: Launch through `app.sh` on a fresh synthetic data folder and pass doctor. Acquire the keyboard lock with `"$HOME/.local/state/aelomi-orchestrator/audit/gate/ui-lock.sh" acquire <label>` before any native key, click or transient screenshot, and release it with the same script and label. Read macOS appearance with `defaults read -g AppleInterfaceStyle`; a missing key means Light. Keep that setting unchanged.
 
 - **Shortcut.** Run `$S/app.sh keys "$RUN" , command`. Expect Settings, Appearance, System, Light, Dark and Close Settings in the tree. Capture settings-light. Send Escape by PID-targeted System Events key code 53 and expect Settings gone.
 - **Menu.** AXPress Aelomi in the owned process's menu bar, then Settings… in its first menu. Expect the same Settings modal.
