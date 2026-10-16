@@ -103,13 +103,19 @@ test("CMD-2 CMD-3 CMD-6 New page is reachable by query and shortcut from the emp
   await expect(screen.getByRole("option", "New page")).toBeVisible();
   await expect(screen.getByRole("option", "Move to trash")).not.toBeVisible();
   await screen.getByRole("option", "New page").click();
+  await expect(screen.getByRole("textbox", "Page title")).toBeVisible();
   await browser.keyboard.type("Created by palette");
   await expect(
     screen
       .getByRole("navigation", "Pages")
       .getByRole("button", "Created by palette"),
   ).toBeVisible();
+  await browser.keyboard.press("Meta+k");
+  await browser.keyboard.type("Move to trash");
+  await screen.getByRole("option", "Move to trash").click();
+  await expect(screen.getByRole("region", "No page open")).toBeVisible();
   await browser.keyboard.press("Meta+n");
+  await expect(screen.getByRole("textbox", "Page title")).toBeVisible();
   await browser.keyboard.type("Created by shortcut");
   await expect(
     screen
