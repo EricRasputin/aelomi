@@ -126,10 +126,6 @@ pub(crate) fn prepare_workspace<R: Runtime>(
     app: &AppHandle<R>,
     workspace: std::sync::Arc<aelomi_core::workspace::Workspace>,
 ) {
-    let settings_workspace = workspace.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        let _ = settings_workspace.settings();
-    });
     warm_tree(workspace.clone());
     let app = app.clone();
     workspace.subscribe_health(move |health| {
