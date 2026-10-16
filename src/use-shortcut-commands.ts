@@ -2,13 +2,27 @@ import { useEffect } from "react";
 import { flushSync } from "react-dom";
 import { commandDispatcher } from "./command-dispatcher";
 import { historyCommand } from "./editor/history-commands";
-import { events } from "./ipc";
+import { commands, events } from "./ipc";
 import { usePaletteStore } from "./stores/palette";
 import { useSettingsDialogStore } from "./stores/settings-dialog";
 
 export function useShortcutCommands() {
   useEffect(() => {
     const unregister = [
+      commandDispatcher.register("closeWindow", {
+        run: () => {
+          const settings = useSettingsDialogStore.getState();
+          const palette = usePaletteStore.getState();
+          if (settings.dialog.kind === "open") flushSync(() => settings.hide());
+          else if (palette.open) flushSync(() => palette.hide());
+          else
+            void commands
+              .closeWindow()
+              .catch((error: unknown) =>
+                console.error("Window close failed", error),
+              );
+        },
+      }),
       commandDispatcher.register("openPalette", {
         enabled: () =>
           useSettingsDialogStore.getState().dialog.kind === "closed",

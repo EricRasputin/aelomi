@@ -39,18 +39,12 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             macos::setup(app)?;
             open_storage(app);
-            let theme = app
-                .state::<Storage>()
-                .workspace()
-                .ok()
-                .and_then(|workspace| workspace.settings().ok())
-                .map(|settings| settings::Settings::from(&settings).theme)
-                .unwrap_or(settings::Theme::System);
-            let script = format!(
-                "window.__aelomiInitialTheme = {};",
-                serde_json::to_string(&theme)?
-            );
-            tauri::WebviewWindowBuilder::from_config(app.handle(), &app.config().app.windows[0])?
+            let script = settings::initial_theme_script(&app.state::<Storage>())?;
+            let window =
+                app.config().app.windows.first().ok_or_else(|| {
+                    std::io::Error::other("the main window configuration is missing")
+                })?;
+            tauri::WebviewWindowBuilder::from_config(app.handle(), window)?
                 .initialization_script(script)
                 .build()?;
             Ok(())

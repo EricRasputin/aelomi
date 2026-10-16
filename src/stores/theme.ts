@@ -1,50 +1,21 @@
 import { create } from "zustand";
 import { commands, type Theme } from "../ipc";
-import { trackCommand } from "../ipc/pending-commands";
-import { storageRetry } from "../storage-retry";
 import type { AppliedTheme } from "../theme";
+import { updateSettings } from "./settings";
 
 type ThemeChoice = Exclude<Theme, object>;
 type ThemeStore = {
   choice: Theme;
-  transportFailure: string | null;
   choose: (choice: ThemeChoice) => void;
 };
 
 let revision = 0;
-let writes = Promise.resolve();
-
-async function persistTheme(choice: ThemeChoice) {
-  let delay = storageRetry.firstMs;
-  for (;;) {
-    try {
-      const result = await commands.settingsUpdate({ theme: choice });
-      if (
-        result.status === "ok" ||
-        (typeof result.error === "object" && "Write" in result.error)
-      ) {
-        useThemeStore.setState({ transportFailure: null });
-        return;
-      }
-      useThemeStore.setState({
-        transportFailure: "Settings couldn't reach storage.",
-      });
-    } catch (error: unknown) {
-      useThemeStore.setState({
-        transportFailure: `Settings couldn't reach storage. ${error instanceof Error ? error.message : String(error)}`,
-      });
-    }
-    await new Promise<void>((resolve) => setTimeout(resolve, delay));
-    delay = Math.min(delay * 2, storageRetry.maxMs);
-  }
-}
 export const useThemeStore = create<ThemeStore>((set) => ({
   choice: window.__aelomiInitialTheme ?? "System",
-  transportFailure: null,
   choose: (choice) => {
     revision += 1;
     set({ choice });
-    writes = trackCommand(writes.then(() => persistTheme(choice)));
+    updateSettings({ theme: choice });
   },
 }));
 

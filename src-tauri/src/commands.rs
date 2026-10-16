@@ -190,7 +190,13 @@ pub(crate) fn complete_quit_with<R: Runtime>(
     status
 }
 
-/// The webview could not deliver its edits to `doc_ids` during the drain at `revision`, so the
+#[tauri::command]
+#[specta::specta]
+pub fn close_window(window: tauri::WebviewWindow) -> Result<(), String> {
+    window.close().map_err(|error| error.to_string())
+}
+
+/// The webview could not deliver `doc_ids` or pending settings during the drain at `revision`, so the
 /// user is asked. A stale `revision` changes nothing. Returns the decision after the call.
 #[tauri::command]
 #[specta::specta]
@@ -198,21 +204,29 @@ pub fn quit_drain_failed(
     app: tauri::AppHandle,
     revision: u32,
     doc_ids: Vec<String>,
+    pending_settings: bool,
 ) -> Result<QuitStatus, StorageError> {
     let docs = doc_ids
         .into_iter()
         .map(DocId::new)
         .collect::<Result<Vec<_>, _>>()?;
-    Ok(quit_drain_failed_with(&app, revision, &docs))
+    Ok(quit_drain_failed_with(
+        &app,
+        revision,
+        &docs,
+        pending_settings,
+    ))
 }
 
 pub(crate) fn quit_drain_failed_with<R: Runtime>(
     app: &AppHandle<R>,
     revision: u32,
     docs: &[DocId],
+    pending_settings: bool,
 ) -> QuitStatus {
     let storage = app.state::<Storage>();
     let mut pending = storage.pending_edits();
+    pending.settings |= pending_settings;
     pending.docs.extend_from_slice(docs);
     pending.docs.sort();
     pending.docs.dedup();
@@ -477,6 +491,7 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
             frontend_ready,
             complete_quit,
             quit_drain_failed,
+            close_window,
             doc_load,
             doc_append,
             page_create::<tauri::Wry>,

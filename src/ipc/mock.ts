@@ -63,6 +63,7 @@ type MockCall = {
 export type MockSetup = {
   settings?: Partial<Settings>;
   appearance?: "light" | "dark";
+  holdRegistration?: boolean;
   storageStatus?: StorageStatus;
   recovery?: RecoverySetup;
   failWrites?: FailReason;
@@ -112,6 +113,9 @@ let indexStatus: IndexStatus = "Ready";
 let settings = defaultSettings();
 let settingsPending = false;
 let settingsTransportFailures = 0;
+let settingsError: import("./bindings").SettingsError | null = null;
+let registration = Promise.resolve();
+let releaseRegistration = () => {};
 let appearance: "light" | "dark" | null = null;
 
 type FixturePage = { id: string; title: string; lines: string[] };
@@ -454,6 +458,11 @@ function recoveryMock() {
 }
 
 export const commands = {
+  closeWindow: async () => {
+    calls.push({ command: "closeWindow", args: [] });
+    control.quit.request();
+    return { status: "ok", data: null };
+  },
   settingsGet: async () => {
     calls.push({ command: "settingsGet", args: [] });
     await setupReady;
@@ -464,6 +473,8 @@ export const commands = {
   settingsUpdate: async (patch) => {
     calls.push({ command: "settingsUpdate", args: [structuredClone(patch)] });
     await setupReady;
+    if (settingsError !== null)
+      return { status: "error", error: settingsError };
     if (settingsTransportFailures > 0) {
       settingsTransportFailures -= 1;
       throw new Error("Settings transport unavailable");
@@ -575,6 +586,8 @@ export const commands = {
   },
   frontendReady: async () => {
     calls.push({ command: "frontendReady", args: [] });
+    await setupReady;
+    await registration;
     if (storage.status === "Ready") quit.frontendReady = true;
   },
   completeQuit: async (revision) => {
@@ -583,8 +596,11 @@ export const commands = {
       flushThenQuit();
     return quitStatus();
   },
-  quitDrainFailed: async (revision, docIds) => {
-    calls.push({ command: "quitDrainFailed", args: [revision, [...docIds]] });
+  quitDrainFailed: async (revision, docIds, pendingSettings) => {
+    calls.push({
+      command: "quitDrainFailed",
+      args: [revision, [...docIds], pendingSettings],
+    });
     const invalid = docIds.find((id) => !/^[0-9a-z-]{1,64}$/.test(id));
     if (invalid !== undefined)
       return { status: "error", error: "InvalidDocId" };
@@ -592,7 +608,7 @@ export const commands = {
       changeQuit({
         Asking: {
           pending_docs: [...new Set([...docIds, ...pendingDocs()])].sort(),
-          pending_settings: settingsPending,
+          pending_settings: settingsPending || pendingSettings,
         },
       });
     return { status: "ok", data: quitStatus() };
@@ -736,6 +752,10 @@ async function loadSearchFixture() {
 
 async function applySetup(setup: MockSetup | undefined) {
   if (!setup) return;
+  if (setup.holdRegistration)
+    registration = new Promise<void>((resolve) => {
+      releaseRegistration = resolve;
+    });
   if (setup.settings) settings = seedSettings(setup.settings);
   if (setup.appearance) appearance = setup.appearance;
   if (setup.storageStatus)
@@ -781,6 +801,9 @@ function resetState() {
   settings = defaultSettings();
   settingsPending = false;
   settingsTransportFailures = 0;
+  settingsError = null;
+  releaseRegistration();
+  registration = Promise.resolve();
   appearance = null;
   storage.status = "Ready";
   storage.appendError = null;
@@ -830,6 +853,7 @@ const control = {
     resetState();
   },
   quit: {
+    releaseRegistration: () => releaseRegistration(),
     get exited() {
       return exited;
     },
@@ -924,6 +948,10 @@ const control = {
     },
   },
   settings: {
+    get: () => commands.settingsGet(),
+    refuseUpdates(error: import("./bindings").SettingsError | null) {
+      settingsError = error;
+    },
     failTransport(attempts: number) {
       settingsTransportFailures = attempts;
     },

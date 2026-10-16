@@ -101,8 +101,7 @@ export const shortcuts = [
   {
     command: "closeWindow",
     label: "Close Window",
-    owner: "native",
-    role: "closeWindow",
+    owner: "webview",
     shortcut: { key: "w", modifiers: ["Meta"] },
     menu: { menu: "file", group: 0, order: 0 },
   },

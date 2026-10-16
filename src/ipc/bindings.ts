@@ -32,10 +32,11 @@ export const commands = {
 	 */
 	completeQuit: (revision: number) => __TAURI_INVOKE<QuitStatus>("complete_quit", { revision }),
 	/**
-	 *  The webview could not deliver its edits to `doc_ids` during the drain at `revision`, so the
+	 *  The webview could not deliver `doc_ids` or pending settings during the drain at `revision`, so the
 	 *  user is asked. A stale `revision` changes nothing. Returns the decision after the call.
 	 */
-	quitDrainFailed: (revision: number, docIds: string[]) => typedError<QuitStatus, StorageError>(__TAURI_INVOKE("quit_drain_failed", { revision, docIds })),
+	quitDrainFailed: (revision: number, docIds: string[], pendingSettings: boolean) => typedError<QuitStatus, StorageError>(__TAURI_INVOKE("quit_drain_failed", { revision, docIds, pendingSettings })),
+	closeWindow: () => typedError<null, string>(__TAURI_INVOKE("close_window")),
 	/**  Returns the doc's full state as base64. Loads off the main thread. */
 	docLoad: (docId: string) => typedError<string, StorageError>(__TAURI_INVOKE("doc_load", { docId })),
 	/**

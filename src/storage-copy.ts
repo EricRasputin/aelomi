@@ -408,3 +408,23 @@ export function recordErrorText(error: RecordCommandError): string {
   if (error.Internal !== undefined) return error.Internal;
   return error.Malformed.reason;
 }
+
+export function settingsErrorText(
+  error: import("./stores/settings").SettingsWriteError,
+): string {
+  if (typeof error === "object") {
+    if ("Transport" in error) return error.Transport;
+    if (error.Io !== undefined) return error.Io;
+    return storageFailureReason(error.Write);
+  }
+  switch (error) {
+    case "Unavailable":
+      return storageCopy.notOpen;
+    case "Quitting":
+      return "Settings are waiting for the quit decision.";
+    case "InvalidPageId":
+      return storageCopy.invalidDoc;
+    case "Internal":
+      return storageCopy.storageError;
+  }
+}

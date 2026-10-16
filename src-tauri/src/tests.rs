@@ -149,7 +149,7 @@ fn shell_10_a_failed_frontend_drain_also_names_pending_settings() {
     );
     assert!(!flush_then_allow_quit(app.handle(), "ExitRequested"));
     assert_eq!(
-        commands::quit_drain_failed_with(app.handle(), 1, &[DocId::new("page").unwrap()]),
+        commands::quit_drain_failed_with(app.handle(), 1, &[DocId::new("page").unwrap()], false),
         asking_settings(2, &["page"])
     );
 }
@@ -362,11 +362,11 @@ fn a_drain_with_unsaved_docs_asks_and_keep_open_reopens_editing() {
         "quitting again while asked drains again"
     );
     assert_eq!(
-        commands::quit_drain_failed_with(app.handle(), 3, &[DocId::new("other").unwrap()]),
+        commands::quit_drain_failed_with(app.handle(), 3, &[DocId::new("other").unwrap()], false),
         asking(4, &["other", "page"])
     );
     assert_eq!(
-        commands::quit_drain_failed_with(app.handle(), 3, &[]),
+        commands::quit_drain_failed_with(app.handle(), 3, &[], false),
         asking(4, &["other", "page"]),
         "a stale failure changes nothing"
     );
@@ -736,5 +736,20 @@ fn final_exit_flush_saves_recovered_writes_and_appends_after_confirmation() {
             r#"quit-status-changed {"revision":1,"phase":{"Asking":{"pending_docs":["page"],"pending_settings":false}}}"#,
             r#"quit-status-changed {"revision":2,"phase":"Confirmed"}"#,
         ]
+    );
+}
+
+#[test]
+fn shell_10_frontend_only_settings_failure_asks_without_native_pending_edits() {
+    let disk = SimDisk::default();
+    let BlockedApp { app, .. } = app_with_webview(&disk, Duration::from_secs(60));
+    assert_eq!(
+        app.state::<Storage>().pending_edits(),
+        aelomi_core::storage::Pending::default()
+    );
+    assert!(!flush_then_allow_quit(app.handle(), "ExitRequested"));
+    assert_eq!(
+        commands::quit_drain_failed_with(app.handle(), 1, &[], true),
+        asking_settings(2, &[])
     );
 }

@@ -1,7 +1,7 @@
 import { expect } from "e2e";
 import { test } from "./fixtures";
 
-test("SHELL-5 Theme applies Dark to the editor, Settings and command palette", async ({
+test("SHELL-5 acceptance 1: Theme applies Dark to the editor, Settings and command palette", async ({
   app,
   browser,
   screen,
@@ -20,16 +20,16 @@ test("SHELL-5 Theme applies Dark to the editor, Settings and command palette", a
   await expect(settings).toBeVisible();
   await settings.getByRole("radio", "Dark").click();
   expect(
-    await browser.evaluate(() => ({
-      theme: document.documentElement.dataset.theme ?? null,
-      editor: getComputedStyle(
-        document.querySelector('[role="textbox"][aria-label="Page body"]') ??
-          document.body,
-      ).color,
-      settings: getComputedStyle(
-        document.querySelector(".settings-dialog") ?? document.body,
-      ).backgroundColor,
-    })),
+    await browser.evaluate(() => {
+      const editor = document.querySelector(".page-body.bn-editor");
+      const settings = document.querySelector(".settings-dialog");
+      if (!editor || !settings) throw new Error("Editor or Settings missing");
+      return {
+        theme: document.documentElement.dataset.theme ?? null,
+        editor: getComputedStyle(editor).color,
+        settings: getComputedStyle(settings).backgroundColor,
+      };
+    }),
   ).toEqual({
     theme: "dark",
     editor: "rgb(237, 237, 240)",
@@ -39,15 +39,15 @@ test("SHELL-5 Theme applies Dark to the editor, Settings and command palette", a
   await browser.keyboard.press("Meta+k");
   await expect(screen.getByRole("dialog", "Command palette")).toBeVisible();
   expect(
-    await browser.evaluate(
-      () =>
-        getComputedStyle(document.querySelector(".palette") ?? document.body)
-          .backgroundColor,
-    ),
+    await browser.evaluate(() => {
+      const palette = document.querySelector(".palette");
+      if (!palette) throw new Error("Palette missing");
+      return getComputedStyle(palette).backgroundColor;
+    }),
   ).toBe("rgb(31, 31, 35)");
 });
 
-test("SHELL-6 Settings shortcut opens the modal and Escape closes it", async ({
+test("SHELL-6 acceptance 3: Settings shortcut opens the modal and Escape closes it", async ({
   app,
   browser,
   screen,
@@ -62,7 +62,7 @@ test("SHELL-6 Settings shortcut opens the modal and Escape closes it", async ({
   await expect(screen.getByRole("button", "Ping again")).toBeVisible();
 });
 
-test("SHELL-5 System theme follows changes in the mock macOS appearance", async ({
+test("SHELL-5 acceptance 6: System theme follows changes in the mock macOS appearance", async ({
   app,
   browser,
   screen,

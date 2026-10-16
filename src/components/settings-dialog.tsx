@@ -1,7 +1,7 @@
 import { Dialog } from "@base-ui/react/dialog";
 import { useId, useLayoutEffect, useRef } from "react";
 import { restoreFocus } from "../editor/active-editor";
-import { useQuitStore } from "../stores/quit";
+import { canEdit, useQuitStore } from "../stores/quit";
 import { useSettingsDialogStore } from "../stores/settings-dialog";
 import { useThemeStore } from "../stores/theme";
 import { selectedTheme } from "../theme";
@@ -13,7 +13,7 @@ export function SettingsDialog() {
   const hide = useSettingsDialogStore((state) => state.hide);
   const theme = useThemeStore((state) => state.choice);
   const choose = useThemeStore((state) => state.choose);
-  const disabled = useQuitStore((state) => state.decision.kind !== "open");
+  const disabled = useQuitStore((state) => !canEdit(state));
   const groupId = useId();
   const selected = useRef<HTMLInputElement>(null);
   const returnTo = useRef<Element | null>(null);

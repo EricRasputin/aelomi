@@ -1,5 +1,6 @@
 import { shortcutFor, shortcuts, type WebviewCommand } from "./shortcuts";
 import { useQuitStore } from "./stores/quit";
+import { useStorageStartupStore } from "./stores/storage-startup";
 
 export type CommandContext = {
   source: "keyboard" | "menu";
@@ -11,16 +12,18 @@ export type CommandHandler = {
   enabled?: (context: CommandContext) => boolean;
 };
 
-export function createCommandDispatcher(available: () => boolean = () => true) {
+export function createCommandDispatcher(
+  available: (command: WebviewCommand) => boolean = () => true,
+) {
   const handlers = new Map<WebviewCommand, CommandHandler>();
   function dispatch(
     command: string,
     context: CommandContext,
     beforeRun?: () => void,
   ): boolean {
-    if (context.isComposing || !available()) return false;
+    if (context.isComposing) return false;
     const entry = shortcuts.find((entry) => entry.command === command);
-    if (entry?.owner !== "webview") return false;
+    if (entry?.owner !== "webview" || !available(entry.command)) return false;
     const handler = handlers.get(entry.command);
     if (!handler || handler.enabled?.(context) === false) return false;
     beforeRun?.();
@@ -55,5 +58,8 @@ export function createCommandDispatcher(available: () => boolean = () => true) {
 }
 
 export const commandDispatcher = createCommandDispatcher(
-  () => useQuitStore.getState().decision.kind === "open",
+  (command) =>
+    useQuitStore.getState().decision.kind === "open" &&
+    (command === "closeWindow" ||
+      useStorageStartupStore.getState().startup.kind === "ready"),
 );

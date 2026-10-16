@@ -3,14 +3,15 @@ import { useRef } from "react";
 import { useDeliveryStore } from "../editor/delivery";
 import {
   recordErrorText,
+  settingsErrorText,
   storageCopy,
   storageErrorText,
   storageFailureReason,
 } from "../storage-copy";
 import { quitDialogOpen, useQuitStore } from "../stores/quit";
 import { failing, useRecordCommandStore } from "../stores/record-commands";
+import { useSettingsWriteStore } from "../stores/settings";
 import { useStorageHealthStore } from "../stores/storage-health";
-import { useThemeStore } from "../stores/theme";
 
 export function SaveFailureBanner() {
   const health = useStorageHealthStore((state) => state.health);
@@ -26,7 +27,7 @@ export function SaveFailureBanner() {
   const dismissFailed = useRecordCommandStore((state) => state.dismissFailed);
   const recordFailing = useRecordCommandStore(failing);
   const recordFailure = record ?? failed;
-  const settingsFailure = useThemeStore((state) => state.transportFailure);
+  const settingsFailure = useSettingsWriteStore((state) => state.error);
   const reason =
     health && health !== "Healthy"
       ? storageFailureReason(health.Failing.reason)
@@ -34,7 +35,9 @@ export function SaveFailureBanner() {
         ? storageErrorText(refused)
         : recordFailing && recordFailure
           ? recordErrorText(recordFailure.error)
-          : settingsFailure;
+          : settingsFailure
+            ? settingsErrorText(settingsFailure)
+            : null;
   if (reason === null) return null;
   return (
     <div role="alert" className="save-failure-banner">

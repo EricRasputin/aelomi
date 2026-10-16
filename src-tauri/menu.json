@@ -84,8 +84,7 @@
         "group": 0,
         "accelerator": "Super+W",
         "action": {
-          "owner": "native",
-          "role": "closeWindow"
+          "owner": "webview"
         }
       }
     ]

@@ -14,6 +14,7 @@ function appliedTheme(choice, appearance) {
 /** @param {"light" | "dark"} theme */
 function applyTheme(theme) {
   document.documentElement.dataset.theme = theme;
+  document.documentElement.classList.toggle("dark", theme === "dark");
   document.documentElement.style.colorScheme = theme;
 }
 

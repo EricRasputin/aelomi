@@ -46,6 +46,7 @@ function ShellStatus({ landmark }: { landmark: boolean }) {
 }
 
 function RootLayout() {
+  useShortcutCommands();
   const startup = useStorageStartupStore((state) => state.startup);
   if (startup.kind !== "ready")
     return (
@@ -61,7 +62,6 @@ function WorkspaceLayout() {
   const onIndex = useRouterState({
     select: (state) => state.location.pathname === "/",
   });
-  useShortcutCommands();
   return (
     <Tooltip.Provider delay={700} timeout={300}>
       <div className="flex h-screen flex-col">

@@ -108,7 +108,7 @@ test.each([
     expect(await head).toEqual({ status: "error", error });
     expect(await next).toEqual({ status: "ok", data: null });
     await drainCommands();
-    expect(commandFailures()).toEqual([]);
+    expect(commandFailures()).toEqual({ docs: [], settings: false });
     expect(
       window.__aelomiMock?.workspace.tree().pages.map((p) => p.title),
     ).toEqual(["Next"]);
@@ -129,7 +129,7 @@ test.each(["NotActive", "OrderExhausted"] as const)(
     expect(await refused).toEqual({ status: "error", error });
     await drainCommands();
     expect(failing(useRecordCommandStore.getState())).toBe(false);
-    expect(commandFailures()).toEqual([]);
+    expect(commandFailures()).toEqual({ docs: [], settings: false });
     expect(
       window.__aelomiMock?.workspace.tree().pages.map((p) => p.title),
     ).toEqual(["Next"]);
@@ -143,7 +143,7 @@ test("Quitting on retry retains the operation until admission recovers", async (
   const result = withRecordCommands(transport).pageRename("a", "Recovered");
   await new Promise((done) => setTimeout(done, 0));
   await drainCommands();
-  expect(commandFailures()).toEqual(["workspace"]);
+  expect(commandFailures()).toEqual({ docs: ["workspace"], settings: false });
   expect(
     [...useRecordCommandStore.getState().retained.values()].map((op) => [
       op.pageId,
@@ -152,7 +152,7 @@ test("Quitting on retry retains the operation until admission recovers", async (
     ]),
   ).toEqual([["a", "Quitting", 2]]);
   await drainCommands();
-  expect(commandFailures()).toEqual([]);
+  expect(commandFailures()).toEqual({ docs: [], settings: false });
   expect(await result).toEqual({ status: "ok", data: null });
   expect(
     window.__aelomiMock?.workspace.tree().pages.map((p) => p.title),

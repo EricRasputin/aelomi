@@ -38,6 +38,10 @@ describe("SHELL-5 applied theme", () => {
     });
     expect(document.documentElement.dataset.theme).toBe("dark");
     expect(document.documentElement.style.colorScheme).toBe("dark");
+    expect(document.documentElement.className).toBe("dark");
+    window.aelomiTheme.apply("light");
+    expect(document.documentElement.dataset.theme).toBe("light");
+    expect(document.documentElement.className).toBe("");
   });
   it("shows System for an unknown choice without changing its value", () => {
     const choice = { Unknown: "Sepia" };
