@@ -1,41 +1,45 @@
 #!/usr/bin/env bash
 set -euo pipefail
 S=.claude/skills/verify-aelomi/scripts
-driver=${1:?pass the absolute path to a copy of drive.sh.txt}
-out=${2:?pass an absolute local output directory outside the checkout}
-mkdir -p "$out"
+out=.audit/pr84-r6-builder
+export AELOMI_VERIFY_ROOT="$HOME/.local/state/aelomi-verify/pr84-r6"
 run=
-data=
+folder=
 mode=
-cleanup() {
-  if [ -n "$mode" ] && [ -n "$data" ]; then chmod "$mode" "$data/docs/workspace"; fi
+finish() {
+  if [ -n "$folder" ]; then chmod "$mode" "$folder"; fi
   if [ -n "$run" ]; then "$S/app.sh" cleanup "$run"; fi
 }
-trap cleanup EXIT INT TERM
-ls -la "$HOME/Library/Application Support/Aelomi" > "$out/default-before.txt"
-run=$("$S/app.sh" launch dev)
-printf '%s\n' "$run" > "$out/runs.txt"
+trap finish EXIT INT TERM
+run=$(env -u AELOMI_DATA_DIR "$S/app.sh" launch dev)
+printf '%s\n' "$run" > "$out/first-run.txt"
 data="$run/data"
-bash "$driver" "$run" first
+bash "$out/drive.sh" "$run" first
 "$S/app.sh" cleanup "$run"
 run=$(AELOMI_DATA_DIR="$data" "$S/app.sh" launch dev)
-printf '%s\n' "$run" >> "$out/runs.txt"
-bash "$driver" "$run" both
+printf '%s\n' "$run" > "$out/both-run.txt"
+bash "$out/drive.sh" "$run" both "$data"
 "$S/app.sh" cleanup "$run"
 run=$(AELOMI_DATA_DIR="$data" "$S/app.sh" launch dev)
-printf '%s\n' "$run" >> "$out/runs.txt"
-bash "$driver" "$run" settings-reopened
+printf '%s\n' "$run" > "$out/settings-run.txt"
+bash "$out/drive.sh" "$run" settings-reopened "$data"
 "$S/app.sh" cleanup "$run"
-mode=$(stat -f %Lp "$data/docs/workspace")
-chmod 000 "$data/docs/workspace"
+folder="$data/docs/workspace"
+mode=$(stat -f %Lp "$folder")
+printf '%s\n' "$mode" > "$out/original-workspace-mode.txt"
+chmod 000 "$folder"
 run=$(AELOMI_DATA_DIR="$data" "$S/app.sh" launch dev)
-printf '%s\n' "$run" >> "$out/runs.txt"
-bash "$driver" "$run" failure "$data" "$mode"
-[ "$(stat -f %Lp "$data/docs/workspace")" = "$mode" ]
+printf '%s\n' "$run" > "$out/failure-run.txt"
+bash "$out/drive.sh" "$run" failure "$data" "$mode"
+[ "$(stat -f %Lp "$folder")" = "$mode" ]
+folder=
 "$S/app.sh" cleanup "$run"
 run=$(AELOMI_DATA_DIR="$data" "$S/app.sh" launch dev)
-printf '%s\n' "$run" >> "$out/runs.txt"
-bash "$driver" "$run" recovery-reopened
+printf '%s\n' "$run" > "$out/recovery-run.txt"
+bash "$out/drive.sh" "$run" recovery-reopened "$data"
 "$S/app.sh" cleanup "$run"
-ls -la "$HOME/Library/Application Support/Aelomi" > "$out/default-after.txt"
-diff -u "$out/default-before.txt" "$out/default-after.txt"
+run=
+ls -la "$HOME/Library/Application Support/Aelomi" > "$out/real-data-after.txt"
+diff -u "$out/real-data-before.txt" "$out/real-data-after.txt"
+cat "$data/settings.json"
+printf '\nNative proof PASS\n'

@@ -1,0 +1,7 @@
+from pathlib import Path
+source = Path('.claude/skills/verify-aelomi/scripts/ax.js').read_text()
+needle = '      se.keystroke("q", { using: ["command down"] });'
+assert source.count(needle) == 2
+Path('.audit/pr84-r6-builder/ax-focus.js').write_text(
+    source.replace(needle, '      ready(proc, { front: true });\n' + needle)
+)

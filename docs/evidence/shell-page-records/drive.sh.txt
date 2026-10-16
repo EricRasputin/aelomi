@@ -20,7 +20,7 @@ until mkdir "$lock" 2>/dev/null; do
   sleep 15
 done
 owned=true
-echo "$$ $(date -u +%FT%TZ) PR84-round5-$scenario" > "$lock/owner"
+echo "$$ $(date -u +%FT%TZ) PR84-round6-$scenario" > "$lock/owner"
 wait_exit() {
   source "$run/run.env"
   for ((attempt=0;attempt<100;attempt++)); do
@@ -35,29 +35,31 @@ case "$scenario" in
   first)
     "$S/app.sh" screenshot "$run" seed-before
     "$S/app.sh" focus "$run" 'Page body'
-    "$S/app.sh" keys "$run" ' fix round five'
+    "$S/app.sh" keys "$run" ' fix round six'
     "$S/app.sh" screenshot "$run" typed-before-quit
     "$S/app.sh" press "$run" 'Storage probe'
-    "$S/app.sh" rename-quit "$run"
+    source "$run/run.env"
+    osascript -l JavaScript .audit/pr84-r6-builder/ax-focus.js rename-quit "$APP_PID"
     wait_exit
     ;;
   both)
     "$S/app.sh" screenshot "$run" immediate-rename-reopened
     "$S/app.sh" tree "$run" > "$run/reopened-tree.txt"
-    rg 'Quit rename proof|fix round five' "$run/reopened-tree.txt"
+    rg 'Quit rename proof|fix round six' "$run/reopened-tree.txt"
     "$S/app.sh" press "$run" 'Settings probe'
     for ((attempt=0;attempt<5;attempt++)); do
       if "$S/app.sh" tree "$run" > "$run/settings-ready.ax.txt" && rg -q 'AXButton "Write session settings"' "$run/settings-ready.ax.txt"; then break; fi
     done
     rg 'AXButton "Write session settings"' "$run/settings-ready.ax.txt"
     "$S/app.sh" screenshot "$run" settings-before
-    "$S/app.sh" both-quit "$run"
+    source "$run/run.env"
+    osascript -l JavaScript .audit/pr84-r6-builder/ax-focus.js both-quit "$APP_PID"
     wait_exit
     ;;
   settings-reopened)
     "$S/app.sh" screenshot "$run" settings-rename-reopened
     "$S/app.sh" tree "$run" > "$run/reopened-tree.txt"
-    rg 'Settings and rename quit proof|fix round five' "$run/reopened-tree.txt"
+    rg 'Settings and rename quit proof|fix round six' "$run/reopened-tree.txt"
     "$S/app.sh" keys "$run" q command
     wait_exit
     ;;
@@ -89,6 +91,7 @@ case "$scenario" in
       if ! rg -q "Changes aren't being saved" "$run/recovered.ax.txt"; then break; fi
     done
     if rg -q "Changes aren't being saved" "$run/recovered.ax.txt"; then exit 1; fi
+    rg "page rename accepted title=Quit rename proof" "$run/recovered.ax.txt"
     "$S/app.sh" screenshot "$run" recovered-banner-cleared
     "$S/app.sh" keys "$run" q command
     wait_exit
