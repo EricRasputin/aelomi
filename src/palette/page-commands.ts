@@ -16,6 +16,7 @@ export function matchingPageCommands(
   if (query.trim() === "") return [];
   const matches = rankTitles(titles, query, new Map(), entries.length);
   return matches.flatMap((match) => {
+    if (match.tier === "subsequence") return [];
     const entry = entries.find((entry) => entry.command === match.id);
     return entry && (active || entry.command !== "trashPage") ? [entry] : [];
   });

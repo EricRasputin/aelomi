@@ -26,6 +26,44 @@ afterEach(() => {
   window.__aelomiMock?.reset();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
+});
+
+test("a failed refresh retains the last tree and retries with storage backoff", async () => {
+  vi.useFakeTimers();
+  window.__aelomiMock?.workspace.seed([{ id: "a", title: "Last known" }]);
+  const connection = connectPageTreeEvents();
+  connections.push(connection);
+  await connection.ready;
+  await vi.runOnlyPendingTimersAsync();
+  const read = vi
+    .spyOn(commands, "pageTree")
+    .mockResolvedValueOnce({ status: "error", error: { Io: "read refused" } })
+    .mockResolvedValueOnce({
+      status: "error",
+      error: { Io: "read refused again" },
+    });
+  await usePageTreeStore.getState().refresh();
+  expect(usePageTreeStore.getState().source).toMatchObject({
+    kind: "ready",
+    tree: { pages: [{ id: "a", title: "Last known" }] },
+    error: "read refused",
+  });
+  await vi.advanceTimersByTimeAsync(99);
+  expect(read.mock.calls).toHaveLength(1);
+  await vi.advanceTimersByTimeAsync(1);
+  expect(usePageTreeStore.getState().source).toMatchObject({
+    kind: "ready",
+    error: "read refused again",
+  });
+  await vi.advanceTimersByTimeAsync(199);
+  expect(read.mock.calls).toHaveLength(2);
+  await vi.advanceTimersByTimeAsync(1);
+  expect(usePageTreeStore.getState().source).toMatchObject({
+    kind: "ready",
+    tree: { pages: [{ id: "a", title: "Last known" }] },
+    error: null,
+  });
 });
 
 async function create(parent: string | null = null) {

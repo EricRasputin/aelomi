@@ -69,6 +69,19 @@ export function resultCount(
   );
 }
 
+function initialSelection(
+  titles: readonly TitleMatch[],
+  commands: readonly PageCommand[],
+  content: ContentResult,
+) {
+  if (titles.length > 0) return 0;
+  const safe = commands.findIndex((entry) => entry.command !== "trashPage");
+  if (safe >= 0) return safe;
+  return content.kind === "ready" && content.hits.length > 0
+    ? commands.length
+    : -1;
+}
+
 export const usePaletteStore = create<PaletteStore>((set, get) => {
   const run = (query: string, source: SourceTree) => {
     const titles = rankTitles(
@@ -91,11 +104,18 @@ export const usePaletteStore = create<PaletteStore>((set, get) => {
         content: { kind: "idle" },
         request,
         answered: request,
-        selected: 0,
+        selected: -1,
       });
       return;
     }
-    set({ query, titles, pageCommands, request, selected: 0 });
+    set({
+      query,
+      titles,
+      pageCommands,
+      request,
+      content: { kind: "idle" },
+      selected: initialSelection(titles, pageCommands, { kind: "idle" }),
+    });
     void commands
       .search(query, contentLimit, contentScope(titles))
       .then(contentFromReply, (error: unknown) => ({
@@ -105,7 +125,15 @@ export const usePaletteStore = create<PaletteStore>((set, get) => {
       .then((content) => {
         const current = get();
         if (current.request !== request || !current.open) return;
-        set({ content, answered: request, selected: 0 });
+        set({
+          content,
+          answered: request,
+          selected: initialSelection(
+            current.titles,
+            current.pageCommands,
+            content,
+          ),
+        });
       });
   };
   return {
@@ -117,7 +145,7 @@ export const usePaletteStore = create<PaletteStore>((set, get) => {
     content: { kind: "idle" },
     request: 0,
     answered: 0,
-    selected: 0,
+    selected: -1,
     show: (returnTo) => {
       if (get().open) return;
       set({
@@ -127,7 +155,7 @@ export const usePaletteStore = create<PaletteStore>((set, get) => {
         titles: [],
         pageCommands: [],
         content: { kind: "idle" },
-        selected: 0,
+        selected: -1,
         request: get().request + 1,
         answered: get().request + 1,
       });
@@ -142,7 +170,15 @@ export const usePaletteStore = create<PaletteStore>((set, get) => {
     move: (delta) => {
       const count = resultCount(get());
       if (count === 0) return;
-      set({ selected: (get().selected + delta + count) % count });
+      const current = get().selected;
+      set({
+        selected:
+          current < 0
+            ? delta > 0
+              ? 0
+              : count - 1
+            : (current + delta + count) % count,
+      });
     },
     select: (index) => set({ selected: index }),
   };

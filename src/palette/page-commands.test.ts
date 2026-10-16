@@ -19,3 +19,14 @@ test("CMD-6 only Move to trash requires an active page", () => {
   ).toEqual(["New page"]);
   expect(matchingPageCommands("theme", true)).toEqual([]);
 });
+
+test("CMD-3 command matching stops at prefix and word starts", () => {
+  expect(matchingPageCommands("moth", true)).toEqual([]);
+  expect(matchingPageCommands("tash", true)).toEqual([]);
+  expect(matchingPageCommands("to", true).map((c) => c.command)).toEqual([
+    "trashPage",
+  ]);
+  expect(matchingPageCommands("new p", false).map((c) => c.command)).toEqual([
+    "newPage",
+  ]);
+});
