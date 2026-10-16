@@ -1,0 +1,86 @@
+#!/bin/bash
+set -euo pipefail
+S=.claude/skills/verify-aelomi/scripts
+LOCK="$HOME/.local/state/aelomi-orchestrator/audit/gate/ui-lock.sh"
+HELPER=$(mktemp)
+cp docs/evidence/settings-fix2/native.js.txt "$HELPER"
+RUN=$($S/app.sh launch app)
+source "$RUN/run.env"
+D2_LOCKED=0
+finish() {
+  chmod u+w "$RUN/data" 2>/dev/null || true
+  if [ "$D2_LOCKED" = 1 ]; then "$LOCK" release d2-fix2-replay; fi
+  "$S/app.sh" cleanup "$RUN"
+  rm -f "$HELPER"
+}
+trap finish EXIT
+"$S/app.sh" doctor "$RUN"
+"$LOCK" acquire d2-fix2-replay
+D2_LOCKED=1
+native() { osascript -l JavaScript "$HELPER" "$APP_PID" "$@"; }
+window_id() {
+  osascript -l JavaScript "$S/ax.js" window "$APP_PID" | sed -E 's/^id=([0-9]+).*/\1/'
+}
+native menu Aelomi 'About Aelomi'
+python3 - "$APP_PID" <<'PY'
+import subprocess, sys, time
+pid=sys.argv[1]
+end=time.monotonic()+5
+while time.monotonic()<end:
+    result=subprocess.check_output(['osascript','-l','JavaScript','-e',f"const p=Application('System Events').processes.whose({{unixId:{pid}}})[0]; p.windows.length;"],text=True)
+    if int(result.strip())>1: break
+    time.sleep(0.05)
+else: raise SystemExit('About panel did not open')
+PY
+screencapture -x -o -l "$(window_id)" "$RUN/about-before-close.png"
+"$S/app.sh" keys "$RUN" w command
+kill -0 "$APP_PID"
+"$S/app.sh" screenshot "$RUN" about-after-close
+"$S/app.sh" focus "$RUN" 'Page body'
+"$S/app.sh" keys "$RUN" , command
+native click-radio Dark
+"$S/app.sh" screenshot "$RUN" settings-dark-mouse
+native click-radio Light
+"$S/app.sh" screenshot "$RUN" settings-light-mouse
+"$S/app.sh" keys "$RUN" w command
+"$S/app.sh" keys "$RUN" 'D2-key-focus '
+"$S/app.sh" tree "$RUN" | rg 'D2-key-focus'
+"$S/app.sh" keys "$RUN" , command
+native menu File 'Close Window'
+"$S/app.sh" tree "$RUN" > "$RUN/menu-dismissed.txt"
+if rg 'AXApplicationDialog' "$RUN/menu-dismissed.txt"; then exit 1; fi
+"$S/app.sh" keys "$RUN" 'MENU-FOCUS-OK '
+"$S/app.sh" tree "$RUN" | rg 'MENU-FOCUS-OK'
+"$S/app.sh" keys "$RUN" , command
+D2_WINDOW=$(window_id)
+chmod u-w "$RUN/data"
+native click-radio Dark
+"$S/app.sh" tree "$RUN" > "$RUN/settings-failing.txt"
+"$S/app.sh" keys "$RUN" q command
+screencapture -x -o -l "$D2_WINDOW" "$RUN/settings-disabled-draining.png"
+"$S/app.sh" wait-dialog "$RUN" 'Quit with unsaved changes?'
+chmod u+w "$RUN/data"
+"$S/app.sh" press "$RUN" 'Keep app open'
+"$S/app.sh" screenshot "$RUN" settings-after-keep-open
+native focused
+python3 - "$RUN/data/settings.json" <<'PY'
+import json, sys, time
+end=time.monotonic()+5
+while time.monotonic()<end:
+    with open(sys.argv[1]) as f: settings=json.load(f)
+    if settings['theme']=='Dark': break
+    time.sleep(0.05)
+else: raise SystemExit('Dark was not stored')
+print(settings)
+PY
+native escape
+"$S/app.sh" keys "$RUN" q command
+python3 - "$APP_PID" <<'PY'
+import os, sys, time
+pid=int(sys.argv[1]); end=time.monotonic()+10
+while time.monotonic()<end:
+    try: os.kill(pid,0)
+    except ProcessLookupError: break
+    time.sleep(0.05)
+else: raise SystemExit('App did not exit')
+PY
