@@ -232,3 +232,38 @@ test("SHELL-8 a merged invalid field cannot discard valid settings after a retai
     },
   });
 });
+
+test("SHELL-10 a retained transport failure survives a quit refusal until storage accepts it", async () => {
+  const update = vi
+    .spyOn(commands, "settingsUpdate")
+    .mockRejectedValueOnce(new Error("invoke disconnected"))
+    .mockResolvedValueOnce({ status: "error", error: "Quitting" });
+  const report = vi.fn();
+  const job = createSettingsWriteJob(
+    (patch) => commands.settingsUpdate(patch),
+    report,
+  );
+  job({ theme: "Dark" });
+  await drainCommands();
+  await drainCommands();
+  expect(commandFailures()).toEqual({ docs: [], settings: true });
+  expect(report.mock.calls).toEqual([
+    [{ kind: "retrying", error: { Transport: "invoke disconnected" } }],
+  ]);
+  await drainCommands();
+  expect(update.mock.calls).toEqual([
+    [{ theme: "Dark" }],
+    [{ theme: "Dark" }],
+    [{ theme: "Dark" }],
+  ]);
+  expect(commandFailures()).toEqual({ docs: [], settings: false });
+  expect(await commands.settingsGet()).toEqual({
+    status: "ok",
+    data: {
+      theme: "Dark",
+      open_page: null,
+      recent_pages: [],
+      expanded_rows: [],
+    },
+  });
+});
