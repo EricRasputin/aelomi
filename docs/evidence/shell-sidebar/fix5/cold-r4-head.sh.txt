@@ -1,0 +1,14 @@
+#!/bin/bash
+set -euo pipefail
+lock=${AELOMI_UI_LOCK:?}
+label=pr89-fix5-r4-head
+"$lock" acquire "$label"
+trap '"$lock" release "$label"' EXIT
+for round in 1 2 3 4 5; do
+ for revision in r4 head; do
+  out=/tmp/aelomi-d1-fix5-perf/paired-$round-$revision
+  if pnpm perf:cold --ci --expected-variant page --app "/tmp/aelomi-d1-fix5-perf/apps/$revision.app" --out "$out" > "$out.log" 2>&1; then result=0; else result=$?; fi
+  printf '%s\t%s\t%s\n' "$round" "$revision" "$result" >> /tmp/aelomi-d1-fix5-perf/paired-exits.tsv
+  if [ "$result" -eq 2 ]; then cat "$out.log"; exit 2; fi
+ done
+done

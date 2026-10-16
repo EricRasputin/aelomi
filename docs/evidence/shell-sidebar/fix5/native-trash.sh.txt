@@ -1,0 +1,43 @@
+#!/bin/bash
+set -euo pipefail
+run=${1:?}
+S=.claude/skills/verify-aelomi/scripts
+keys=${AELOMI_PROOF_KEYS:?}
+lock=${AELOMI_UI_LOCK:?}
+label=pr89-fix5-trash-queued
+source "$run/run.env"
+mode=$(stat -f %Lp "$run/data/docs")
+"$lock" acquire "$label"
+trap 'chmod "$mode" "$run/data/docs"; "$lock" release "$label"' EXIT
+"$S/app.sh" doctor "$run"
+osascript -l JavaScript "$keys" "$APP_PID" new 'Trash fallback'
+osascript -l JavaScript "$keys" "$APP_PID" inspect 'Trash fallback' > "$run/created-fallback-proof.json"
+"$S/app.sh" press "$run" 'Getting started'
+chmod 000 "$run/data/docs"
+osascript -l JavaScript "$keys" "$APP_PID" new 'Trash queue hold'
+osascript -l JavaScript "$keys" "$APP_PID" inspect 'Trash queue hold' > "$run/queue-proof.json"
+python3 -c 'import json,sys; j=json.load(open(sys.argv[1]));assert j["body"] is None,j' "$run/queue-proof.json"
+"$S/app.sh" press "$run" 'Getting started'
+"$S/app.sh" keys "$run" k command
+"$S/app.sh" keys "$run" 'Move to trash'
+"$S/app.sh" tree "$run" > "$run/trash-choice-tree.txt"
+osascript -l JavaScript "$keys" "$APP_PID" choose
+osascript -l JavaScript "$keys" "$APP_PID" inspect 'Getting started' > "$run/trash-pending-proof.json"
+"$S/app.sh" keys "$run" k command
+"$S/app.sh" keys "$run" a command
+"$S/app.sh" keys "$run" move
+"$S/app.sh" screenshot "$run" trash-palette-held-current
+chmod "$mode" "$run/data/docs"
+for attempt in {1..30}; do
+ "$S/app.sh" tree "$run" > "$run/trash-palette-recovered-tree.txt"
+ if ! rg -q "Changes aren't being saved" "$run/trash-palette-recovered-tree.txt"; then break; fi
+ sleep 0.2
+done
+if rg -q "Changes aren't being saved|Move to trash" "$run/trash-palette-recovered-tree.txt"; then echo 'Trash still pending or an unexpected target appeared'; exit 1; fi
+"$S/app.sh" screenshot "$run" trash-palette-recovered-current
+osascript -l JavaScript "$keys" "$APP_PID" escape
+osascript -l JavaScript "$keys" "$APP_PID" inspect 'Trash fallback' > "$run/fallback-proof.json"
+"$S/app.sh" screenshot "$run" fallback-current
+"$S/app.sh" keys "$run" q command
+for attempt in {1..75}; do kill -0 "$APP_PID" 2>/dev/null || exit 0; sleep 0.2; done
+echo 'Owned app did not quit'; exit 1

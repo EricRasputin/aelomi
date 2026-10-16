@@ -1,0 +1,36 @@
+#!/bin/bash
+set -euo pipefail
+run=${1:?}
+S=.claude/skills/verify-aelomi/scripts
+keys=${AELOMI_PROOF_KEYS:?}
+lock=${AELOMI_UI_LOCK:?}
+label=pr89-fix5-native
+source "$run/run.env"
+mode=$(stat -f %Lp "$run/data/docs")
+"$lock" acquire "$label"
+trap 'chmod "$mode" "$run/data/docs"; "$lock" release "$label"' EXIT
+"$S/app.sh" doctor "$run"
+"$S/app.sh" screenshot "$run" before-current
+"$S/app.sh" focus "$run" 'Page body'
+osascript -l JavaScript "$keys" "$APP_PID" new 'Instant round 5'
+osascript -l JavaScript "$keys" "$APP_PID" inspect 'Instant round 5' > "$run/instant-proof.json"
+"$S/app.sh" screenshot "$run" instant-current
+chmod 000 "$run/data/docs"
+osascript -l JavaScript "$keys" "$APP_PID" new 'Held round 5'
+"$S/app.sh" focus "$run" 'Getting started'
+osascript -l JavaScript "$keys" "$APP_PID" toggle
+"$S/app.sh" focus "$run" 'Page title'
+"$S/app.sh" keys "$run" ' exact'
+osascript -l JavaScript "$keys" "$APP_PID" inspect 'Held round 5 exact' > "$run/held-proof.json"
+python3 -c 'import json,sys; j=json.load(open(sys.argv[1]));assert j["titleFocused"] and j["body"] is None,j' "$run/held-proof.json"
+"$S/app.sh" screenshot "$run" held-current
+chmod "$mode" "$run/data/docs"
+for attempt in {1..20}; do
+ osascript -l JavaScript "$keys" "$APP_PID" inspect 'Held round 5 exact' > "$run/recovery-proof.json"
+ if python3 -c 'import json,sys; j=json.load(open(sys.argv[1]));sys.exit(0 if j["body"] is not None and j["titleFocused"] else 1)' "$run/recovery-proof.json"; then break; fi
+ sleep 0.2
+done
+python3 -c 'import json,sys; j=json.load(open(sys.argv[1]));assert j["body"] is not None and j["titleFocused"],j' "$run/recovery-proof.json"
+"$S/app.sh" keys "$run" ' recovered'
+osascript -l JavaScript "$keys" "$APP_PID" inspect 'Held round 5 exact recovered' > "$run/recovered-proof.json"
+"$S/app.sh" screenshot "$run" recovered-current
