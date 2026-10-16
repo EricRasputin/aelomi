@@ -39,7 +39,7 @@ Preconditions: launch only through app.sh with a fresh synthetic `AELOMI_DATA_DI
 
 - Empty palette queries list no commands. Query New page even when no page is open. Only Move to trash requires an active page.
 - Settings loading or failure leaves root rows visible and collapsed. Disclosure controls remain disabled until settings load.
-- Retained rename errors clear on background success. They do not require another rename.
+- A retained rename stays a draft without a per-title error. Background acknowledgement plus the matching source title clears the draft. A final refusal keeps the draft and shows a failure.
 - Favorites, Trash navigation, row menus, drag, and tree keyboard navigation belong to section 2.
 - `Page title` is a textarea. Use its accessibility name, not a heading, to focus it.
 - The stress picker exists only in mock builds. It clears synthetic mock data when changing datasets.

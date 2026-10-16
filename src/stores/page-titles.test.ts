@@ -38,14 +38,15 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-test("TREE-7 a failed rename's retained retry clears its error and draft after the source catches up", async () => {
+test("TREE-7 a retained rename stays a draft without an error until retry acknowledgement", async () => {
   vi.spyOn(transport, "pageRename").mockResolvedValueOnce({
     status: "error",
     error: { Io: "read failed" },
   });
   await usePageTitlesStore.getState().rename("a", "Retried title");
-  expect(usePageTitlesStore.getState().drafts.get("a")?.error).toBe(
-    "This title couldn't be saved. Aelomi will retry.",
+  expect(usePageTitlesStore.getState().drafts.get("a")?.error).toBe(null);
+  expect(usePageTitlesStore.getState().drafts.get("a")?.title).toBe(
+    "Retried title",
   );
   await vi.waitFor(() =>
     expect(usePageTitlesStore.getState().drafts.size).toBe(0),
@@ -88,6 +89,21 @@ test("TREE-7 a matching old snapshot cannot acknowledge a newer queued draft", a
   await vi.waitFor(() =>
     expect(usePageTitlesStore.getState().drafts.size).toBe(0),
   );
+  expect(
+    window.__aelomiMock?.workspace.tree().pages.map((p) => p.title),
+  ).toEqual(["Original"]);
+});
+
+test("TREE-7 a final rename refusal keeps the draft and shows a failure", async () => {
+  vi.spyOn(transport, "pageRename").mockResolvedValueOnce({
+    status: "error",
+    error: "NotActive",
+  });
+  await usePageTitlesStore.getState().rename("a", "Unsaved title");
+  expect(usePageTitlesStore.getState().drafts.get("a")).toMatchObject({
+    title: "Unsaved title",
+    error: "This title couldn't be changed. Your text is kept here.",
+  });
   expect(
     window.__aelomiMock?.workspace.tree().pages.map((p) => p.title),
   ).toEqual(["Original"]);

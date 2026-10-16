@@ -64,11 +64,9 @@ function reconcile() {
       continue;
     }
     const error =
-      state?.kind === "retained"
-        ? "This title couldn't be saved. Aelomi will retry."
-        : state?.kind === "refused"
-          ? "This title couldn't be changed. Your text is kept here."
-          : null;
+      state?.kind === "refused"
+        ? "This title couldn't be changed. Your text is kept here."
+        : null;
     if (error !== draft.error) drafts.set(pageId, { ...draft, error });
   }
   if ([...current].some(([id, draft]) => drafts.get(id) !== draft))

@@ -68,7 +68,6 @@ This file maps the code. `SPEC.md` has the behaviors and the budgets, and `READM
 | `src/storage-copy.ts` | Storage messages and the pure startup-state mapping |
 | `src/stores/` | Zustand stores |
 | `src/ipc/` | Generated bindings, the IPC mock, the switch between them, and the base64 helpers for doc bytes |
-| `src/ipc/record-commands.ts` | Record FIFO, retained retries, and D1's additive promise-keyed rename observations |
 | `src/ipc/pending-commands.ts` | Generic command-promise tracker awaited by the webview quit drain |
 | `src/stores/record-commands.ts` | Observable retained operations, terminal failures, pending-create parents, and selectors |
 | `src/ipc/mock-recovery.ts` | Lazy recovery commands, create refusals, snapshot fault injection, and the held-tree control |
@@ -205,7 +204,7 @@ The source tree remains the authoritative ordered list of active records. `flatt
 
 `pageAfterTrash` takes the prior tree, the current active tree, and visit timestamps. It chooses the next active sibling, the nearest active ancestor, the most recently opened active page, or no page. One root observer applies that choice when the open record disappears, including trash initiated outside the UI. Initial entry selection happens once, so the empty fallback cannot accidentally reopen another page.
 
-Titles use a map keyed by page ID. Each draft holds its title, version, and the record queue's existing promise. D1 adds `renameState` and `observeRename` to `record-commands.ts` without changing its existing exports or callers. A WeakMap observes pending, retained, acknowledged, and refused operations, including background retries and coalesced promises. One reconciler listens to the source tree and operation state. It drops only the current draft whose operation is acknowledged and whose source title matches. Errors follow retained state, and title calls add no tree refresh.
+Titles use a map keyed by page ID. Each draft holds its title, version, and the record queue's existing promise. D1 adds `renameState` and `observeRename` to `record-commands.ts` without changing its existing exports or callers. A WeakMap observes pending, retained, acknowledged, and refused operations, including background retries and coalesced promises. One reconciler listens to the source tree and operation state. It drops only the current draft whose operation is acknowledged and whose source title matches. Retained renames keep their draft without a per-title error; a final refusal keeps the draft and shows a failure. Title calls add no tree refresh.
 
 An unavailable source title is `null`, distinct from a saved empty string. The field retains its last known display and history, refuses edits until a baseline exists, and never renames against an unknown title. The title registers its composition finalizer with the quit drain. Already-started input reaches the record queue while admission remains open, then the finalizer freezes the field before collection. Return ignores composing and WebKit's conversion key code. The textarea wraps in normal page flow. Rows display whitespace-only titles as Untitled without changing the record, and expose a tooltip only when truncated. Sidebar visibility and typed focus requests stay in session memory. The page view owns body-focus intents separately from one-time content-search jumps.
 
