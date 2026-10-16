@@ -487,7 +487,10 @@ fn explicit_creation_refuses_unrecognized_items_and_keeps_the_record() {
     );
     assert!(matches!(
         storage.status(),
-        StorageStatus::FinishMoving { .. }
+        StorageStatus::FinishMoving {
+            destination_exists: true,
+            ..
+        }
     ));
     assert_eq!(
         listing(&home.location.path),

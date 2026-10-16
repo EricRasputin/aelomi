@@ -232,6 +232,16 @@ impl Storage {
                 core::DestinationFolder::Workspace => OpenMode::Startup,
                 core::DestinationFolder::NotEmpty { items }
                 | core::DestinationFolder::Unrecognized { items } => {
+                    if let Err(StorageStatus::FinishMoving {
+                        destination_exists, ..
+                    }) = self
+                        .opened
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .as_mut()
+                    {
+                        *destination_exists = true;
+                    }
                     return Err(StorageError::DestinationNotEmpty { items });
                 }
             },
