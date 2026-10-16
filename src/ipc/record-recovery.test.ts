@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
-import { useRecordCommandStore } from "../stores/record-commands";
+import { failing, useRecordCommandStore } from "../stores/record-commands";
 import { installMock, commands as transport } from "./mock";
 import {
   commandFailures,
@@ -22,28 +22,6 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-test("SHELL-10 a second user create reuses the retained page and lands exactly once", async () => {
-  const native = transport.pageCreate;
-  const create = vi
-    .spyOn(transport, "pageCreate")
-    .mockResolvedValueOnce({ status: "error", error: { Io: "read failed" } });
-  const commands = withRecordCommands(transport);
-  const first = await commands.pageCreate(null);
-  expect(first).toMatchObject({
-    status: "retrying",
-    pageId: expect.any(String),
-    operationId: expect.any(String),
-  });
-  create.mockImplementation(native);
-  expect(await commands.pageCreate(null)).toEqual(first);
-  await drainCommands();
-  expect(window.__aelomiMock?.workspace.tree().pages.map((p) => p.id)).toEqual([
-    "a",
-    first.status === "retrying" ? first.pageId : "missing",
-  ]);
-  expect(useRecordCommandStore.getState().retained.size).toBe(0);
-});
-
 test("SHELL-10 retained rename publishes every attempt and stays visible until durable recovery", async () => {
   vi.useFakeTimers();
   vi.setSystemTime(1234);
@@ -52,11 +30,11 @@ test("SHELL-10 retained rename publishes every attempt and stays visible until d
     .spyOn(transport, "pageRename")
     .mockResolvedValue({ status: "error", error: { Io: "read failed" } });
   const commands = withRecordCommands(transport);
-  const result = await commands.pageRename("a", "Recovered");
-  expect(result).toMatchObject({ status: "retrying", pageId: "a" });
+  const result = commands.pageRename("a", "Recovered");
+  await drainCommands();
   const retained = [...useRecordCommandStore.getState().retained.values()][0];
   expect(retained).toEqual({
-    id: result.status === "retrying" ? result.operationId : "missing",
+    id: expect.any(String),
     op: "rename",
     pageId: "a",
     error: { Io: "read failed" },
@@ -80,34 +58,34 @@ test("SHELL-10 retained rename publishes every attempt and stays visible until d
   );
   const drain = drainCommands();
   await vi.advanceTimersByTimeAsync(0);
-  expect(useRecordCommandStore.getState().failing).toBe(true);
+  expect(failing(useRecordCommandStore.getState())).toBe(true);
   flush({ status: "ok", data: true });
   await drain;
-  expect(useRecordCommandStore.getState().failing).toBe(false);
+  expect(await result).toEqual({ status: "ok", data: null });
+  expect(failing(useRecordCommandStore.getState())).toBe(false);
   expect(
     window.__aelomiMock?.workspace.tree().pages.map((p) => p.title),
   ).toEqual(["Recovered"]);
 });
 
-test("SHELL-10 trash reports retrying before the retained operation lands", async () => {
+test("SHELL-10 trash stays pending until the retained operation lands", async () => {
   vi.spyOn(transport, "pageTrash").mockResolvedValueOnce({
     status: "error",
     error: { Io: "read failed" },
   });
-  const result = await withRecordCommands(transport).pageTrash("a");
-  expect(result).toMatchObject({
-    status: "retrying",
-    pageId: "a",
-    operationId: expect.any(String),
-  });
+  const result = withRecordCommands(transport).pageTrash("a");
+  await new Promise((done) => setTimeout(done, 0));
   expect(window.__aelomiMock?.workspace.tree().pages.map((p) => p.id)).toEqual([
     "a",
   ]);
   await drainCommands();
-  expect(window.__aelomiMock?.workspace.tree().pages).toEqual([]);
-  expect(window.__aelomiMock?.workspace.tree().trash.map((p) => p.id)).toEqual([
-    "a",
-  ]);
+  const tree = window.__aelomiMock?.workspace.tree();
+  expect(await result).toEqual({
+    status: "ok",
+    data: tree?.trash[0]?.batch_id,
+  });
+  expect(tree?.pages).toEqual([]);
+  expect(tree?.trash.map((p) => p.id)).toEqual(["a"]);
 });
 
 test.each([
@@ -138,19 +116,19 @@ test.each([
 );
 
 test.each(["NotActive", "OrderExhausted"] as const)(
-  "a %s refusal on retry dequeues the operation",
+  "a %s refusal on retry reaches its caller before a later success clears its failed notice",
   async (error) => {
     vi.spyOn(transport, "pageRename")
       .mockResolvedValueOnce({ status: "error", error: { Io: "read failed" } })
       .mockResolvedValueOnce({ status: "error", error });
     const commands = withRecordCommands(transport);
-    expect(await commands.pageRename("a", "Refused")).toMatchObject({
-      status: "retrying",
-    });
+    const refused = commands.pageRename("a", "Refused");
+    await new Promise((done) => setTimeout(done, 0));
     const next = commands.pageRename("a", "Next");
     expect(await next).toEqual({ status: "ok", data: null });
+    expect(await refused).toEqual({ status: "error", error });
     await drainCommands();
-    expect(useRecordCommandStore.getState().failing).toBe(false);
+    expect(failing(useRecordCommandStore.getState())).toBe(false);
     expect(commandFailures()).toEqual([]);
     expect(
       window.__aelomiMock?.workspace.tree().pages.map((p) => p.title),
@@ -162,11 +140,8 @@ test("Quitting on retry retains the operation until admission recovers", async (
   vi.spyOn(transport, "pageRename")
     .mockResolvedValueOnce({ status: "error", error: { Io: "read failed" } })
     .mockResolvedValueOnce({ status: "error", error: "Quitting" });
-  const result = await withRecordCommands(transport).pageRename(
-    "a",
-    "Recovered",
-  );
-  expect(result).toMatchObject({ status: "retrying" });
+  const result = withRecordCommands(transport).pageRename("a", "Recovered");
+  await new Promise((done) => setTimeout(done, 0));
   await drainCommands();
   expect(commandFailures()).toEqual(["workspace"]);
   expect(
@@ -178,6 +153,7 @@ test("Quitting on retry retains the operation until admission recovers", async (
   ).toEqual([["a", "Quitting", 2]]);
   await drainCommands();
   expect(commandFailures()).toEqual([]);
+  expect(await result).toEqual({ status: "ok", data: null });
   expect(
     window.__aelomiMock?.workspace.tree().pages.map((p) => p.title),
   ).toEqual(["Recovered"]);

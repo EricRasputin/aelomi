@@ -26,9 +26,19 @@ for (const name of quitTrackedCommands) {
 }
 
 export type {
+  FailedRecordOp,
   OperationId,
   PageId,
+  RecordCommandError,
+  RecordCommandStore,
+  RecordOp,
   RetainedRecordOp,
+  TransportFailure,
+} from "../stores/record-commands";
+export {
+  failing,
+  pendingCreate,
+  useRecordCommandStore,
 } from "../stores/record-commands";
 export type {
   Backlink,

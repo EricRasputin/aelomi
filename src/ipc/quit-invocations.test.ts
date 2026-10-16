@@ -74,11 +74,7 @@ test("SHELL-10 a record failure during the drain's initial yield is reported", a
   const stop = connectQuitDrain();
   try {
     useQuitStore.getState().receiveQuit({ revision: 1, phase: "Draining" });
-    expect(await commands.pageRename("page-a", "During yield")).toEqual({
-      status: "retrying",
-      pageId: "page-a",
-      operationId: expect.any(String),
-    });
+    void commands.pageRename("page-a", "During yield");
     await vi.advanceTimersByTimeAsync(0);
     expect(useQuitStore.getState().decision).toMatchObject({
       kind: "asking",
@@ -113,11 +109,8 @@ test("SHELL-10 a record failure after command collection while deliveries are he
     await vi.advanceTimersByTimeAsync(0);
     await drainCommands();
     expect(commandFailures()).toEqual([]);
-    expect(await commands.pageRename("page-a", "While held")).toEqual({
-      status: "retrying",
-      pageId: "page-a",
-      operationId: expect.any(String),
-    });
+    void commands.pageRename("page-a", "While held");
+    await vi.advanceTimersByTimeAsync(0);
     release(1);
     await drainDeliveries();
     await vi.advanceTimersByTimeAsync(0);
@@ -140,11 +133,8 @@ test("SHELL-10 a second normal quit retains a refused rename until recovery save
   const storage = failingRecords();
   const stop = connectQuitDrain();
   try {
-    expect(await commands.pageRename("page-a", "Recovered title")).toEqual({
-      status: "retrying",
-      pageId: "page-a",
-      operationId: expect.any(String),
-    });
+    void commands.pageRename("page-a", "Recovered title");
+    await vi.advanceTimersByTimeAsync(0);
     useQuitStore.getState().receiveQuit({ revision: 1, phase: "Draining" });
     await vi.advanceTimersByTimeAsync(0);
     expect(useQuitStore.getState().decision.kind).toBe("asking");
@@ -199,11 +189,7 @@ test("SHELL-10 a drain superseded by the five second timer retains a failure tha
     await vi.advanceTimersByTimeAsync(5000);
     expect(useQuitStore.getState().decision.kind).toBe("asking");
     reject({ Io: "late failure" });
-    expect(await rename).toEqual({
-      status: "retrying",
-      pageId: "page-a",
-      operationId: expect.any(String),
-    });
+    void rename;
     await vi.advanceTimersByTimeAsync(0);
     useQuitStore.getState().receiveQuit({ revision: 3, phase: "Draining" });
     await vi.advanceTimersByTimeAsync(0);
@@ -495,10 +481,8 @@ test("SHELL-10 Keep open preserves a failed head and queued edit until both reco
   });
   const stop = connectQuitDrain();
   try {
-    expect(await commands.pageRename("page-a", "First")).toMatchObject({
-      status: "retrying",
-      pageId: "page-a",
-    });
+    void commands.pageRename("page-a", "First");
+    await vi.advanceTimersByTimeAsync(0);
     const next = commands.pageRename("page-a", "Second");
     useQuitStore.getState().receiveQuit({ revision: 1, phase: "Draining" });
     await vi.advanceTimersByTimeAsync(0);

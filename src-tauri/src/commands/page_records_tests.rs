@@ -468,3 +468,48 @@ fn a_record_planner_panic_returns_terminal_internal_and_releases_admission() {
         ["next"]
     );
 }
+
+#[test]
+fn page_rename_load_permission_denied_returns_retryable_io_and_recovers() {
+    let disk = SimDisk::default();
+    disk.fail_doc_load("workspace");
+    let shell = shell(crate::storage::tests::open_on(&disk));
+    assert_eq!(
+        invoke(
+            &shell,
+            "page_rename",
+            json!({"pageId": "a", "title": "Blocked"})
+        ),
+        Err(json!({"Io": "Permission denied (os error 13)"}))
+    );
+    assert_eq!(*shell.events.lock().unwrap(), 0);
+    disk.clear_faults();
+    assert_eq!(
+        invoke(
+            &shell,
+            "page_create",
+            json!({"pageId": "a", "parentId": null})
+        ),
+        Ok(json!("a"))
+    );
+    assert_eq!(
+        invoke(
+            &shell,
+            "page_rename",
+            json!({"pageId": "a", "title": "Recovered"})
+        ),
+        Ok(Value::Null)
+    );
+    assert_eq!(
+        shell
+            .app
+            .state::<Storage>()
+            .workspace()
+            .unwrap()
+            .tree()
+            .unwrap()
+            .pages[0]
+            .title,
+        "Recovered"
+    );
+}

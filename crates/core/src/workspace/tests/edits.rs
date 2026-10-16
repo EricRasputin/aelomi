@@ -783,3 +783,47 @@ fn create_cannot_reattach_an_orphaned_body_document() {
     );
     assert_eq!(records(&w), BTreeMap::new());
 }
+
+#[test]
+fn create_replay_refuses_a_record_hidden_under_a_trashed_ancestor() {
+    let dir = tempfile::tempdir().unwrap();
+    let w = empty(dir.path());
+    let parent = PageId::new("hidden-parent").unwrap();
+    let child = PageId::new("hidden-child").unwrap();
+    crafted(
+        &w,
+        &[
+            ("hidden-parent", None, 1),
+            ("hidden-child", Some("hidden-parent"), 1),
+        ],
+    );
+    let mut editor = Editor::new(42);
+    editor.apply(&DocId::workspace(), &w.load(&DocId::workspace()).unwrap());
+    let mut trashed = records(&w)[&parent].clone();
+    trashed.trash = Some(crate::workspace::records::Trash {
+        original_parent: None,
+        original_order: 1,
+        batch_id: "batch".into(),
+        trashed_at: 1,
+    });
+    w.append(
+        &DocId::workspace(),
+        &editor.edit(&DocId::workspace(), |txn| {
+            put_page(txn, &parent, &trashed);
+        }),
+    )
+    .unwrap();
+    let before = records(&w);
+    assert_eq!(
+        w.edit_page(PageEdit::CreateWithId {
+            page: child,
+            parent: Some(parent),
+            title: "hidden-child".into()
+        })
+        .unwrap_err()
+        .to_string(),
+        PageEditError::AlreadyExists.to_string()
+    );
+    assert_eq!(records(&w), before);
+    assert_eq!(w.tree().unwrap().pages, []);
+}

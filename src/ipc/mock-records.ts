@@ -57,7 +57,7 @@ export function createRecordCommands(context: Context): RecordCommands {
         const existing = context.records().get(pageId);
         if (existing)
           return existing.parentId === parentId &&
-            existing.trash === null &&
+            context.tree().pages.some((page) => page.id === pageId) &&
             existing.title === ""
             ? { status: "ok", data: pageId }
             : { status: "error", error: "AlreadyExists" };

@@ -365,3 +365,28 @@ test("mock create replays require the original active placement and empty title 
     "new",
   ]);
 });
+
+test("mock create replay refuses a record hidden under a trashed ancestor", async () => {
+  const { commands: transport } = await import("../ipc/mock");
+  window.__aelomiMock?.workspace.seed([
+    {
+      id: "parent",
+      title: "Parent",
+      trash: {
+        originalParentId: null,
+        originalOrder: 0,
+        batchId: "batch",
+        trashedAt: 1,
+      },
+    },
+    { id: "child", title: "", parentId: "parent" },
+  ]);
+  expect(await transport.pageCreate("parent", "child")).toEqual({
+    status: "error",
+    error: "AlreadyExists",
+  });
+  expect(window.__aelomiMock?.workspace.tree().pages).toEqual([]);
+  expect(window.__aelomiMock?.workspace.tree().trash.map((p) => p.id)).toEqual([
+    "parent",
+  ]);
+});

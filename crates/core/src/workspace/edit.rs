@@ -201,7 +201,7 @@ fn plan(
         } => {
             if let Some(record) = records.get(&page) {
                 if record.placement.parent != parent
-                    || record.trash.is_some()
+                    || !forest.active.contains(&page)
                     || record.title != title
                 {
                     return Err(PageEditError::AlreadyExists);

@@ -82,7 +82,7 @@ async function measureTransport(): Promise<string> {
 async function renameSeed(title = "Quit rename proof"): Promise<string> {
   const reply = await commands.pageRename("getting-started", title);
   if (reply.status === "error") throw new Error(JSON.stringify(reply.error));
-  return `page rename ${reply.status === "ok" ? "accepted" : "retrying"} title=${title}`;
+  return `page rename accepted title=${title}`;
 }
 
 export default function StorageProbe() {
