@@ -432,18 +432,23 @@ const recordCommands = createRecordCommands({
   },
 });
 
-const recoveryMock = createRecoveryMock({
-  ready: () => setupReady,
-  status: () => storage.status,
-  setup: () => window.__aelomiMockSetup?.recovery,
-  record: (command) => calls.push({ command, args: [] }),
-  open: async () => {
-    storage.status = "Ready";
-    indexStatus = "Ready";
-    await events.indexStatusChanged.emit("Ready");
-    quit.frontendReady = true;
-  },
-});
+let recovery: ReturnType<typeof createRecoveryMock> | undefined;
+function recoveryMock() {
+  if (recovery) return recovery;
+  recovery = createRecoveryMock({
+    ready: () => setupReady,
+    status: () => storage.status,
+    setup: () => window.__aelomiMockSetup?.recovery,
+    record: (command) => calls.push({ command, args: [] }),
+    open: async () => {
+      storage.status = "Ready";
+      indexStatus = "Ready";
+      await events.indexStatusChanged.emit("Ready");
+      quit.frontendReady = true;
+    },
+  });
+  return recovery;
+}
 
 export const commands = {
   settingsGet: async () => {
@@ -478,7 +483,8 @@ export const commands = {
     calls.push({ command: "storageStatus", args: [] });
     return storage.status;
   },
-  ...recoveryMock.commands,
+  showRecoveryFolder: () => recoveryMock().commands.showRecoveryFolder(),
+  startEmptyWorkspace: () => recoveryMock().commands.startEmptyWorkspace(),
   storageHealth: async () => {
     calls.push({ command: "storageHealth", args: [] });
     return storage.health;
@@ -487,14 +493,14 @@ export const commands = {
     calls.push({ command: "indexStatus", args: [] });
     if (storage.status !== "Ready")
       return { Failed: { reason: "the data folder is not open" } };
-    const snapshot = recoveryMock.snapshot();
+    const snapshot = recoveryMock().snapshot();
     if (snapshot) return snapshot;
     return structuredClone(indexStatus);
   },
   pageTree: async () => {
     calls.push({ command: "pageTree", args: [] });
     await setupReady;
-    await recoveryMock.waitForTree();
+    await recoveryMock().waitForTree();
     if (storage.status !== "Ready")
       return { status: "error", error: "Unavailable" };
     const problem = pagesRootProblem(workspaceDoc());
@@ -797,7 +803,7 @@ function pageWrite(update: () => void) {
 }
 
 const control = {
-  recovery: recoveryMock.control,
+  recovery: { releaseTree: () => recoveryMock().control.releaseTree() },
   menu: {
     activate(command: MenuCommand["command"]) {
       return events.menuCommand.emit({ command });

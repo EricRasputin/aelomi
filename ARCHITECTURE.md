@@ -67,7 +67,7 @@ This file maps the code. `SPEC.md` has the behaviors and the budgets, and `READM
 | `src/ipc/` | Generated bindings, the IPC mock, the switch between them, and the base64 helpers for doc bytes |
 | `src/ipc/pending-commands.ts` | Generic command-promise tracker awaited by the webview quit drain |
 | `src/stores/record-commands.ts` | Observable retained operations, terminal failures, pending-create parents, and selectors |
-| `src/ipc/mock-recovery.ts` | Recovery commands, create refusals, snapshot fault injection, and the held-tree control |
+| `src/ipc/mock-recovery.ts` | Lazy recovery commands, create refusals, snapshot fault injection, and the held-tree control |
 | `src/ipc/mock-records.ts` | Record validation, sibling-order allocation and mock create, rename and trash |
 | `src/ipc/record-commands.ts` | FIFO record operations retained across failed attempts, with rename coalescing and capped retry backoff |
 | `src/dev/` | Routes that only dev builds register, such as the storage probe |
@@ -175,6 +175,8 @@ The root shell retains the startup ping and an accessible status landmark on eve
 Zustand components use selectors. `index-status.ts` subscribes before its status snapshot. `page-tree.ts` loads the source-backed tree independently of index availability. Its own connection attempts page-record and index listeners before the first tree snapshot. A rejected registration still permits the snapshot and retries with backoff from 100 ms to 5 s; recovery reads another snapshot. Accepted command replies also request a refresh, so a lost native event cannot leave the tree stale. `recent-pages.ts` records visits for title ties. The subset does not yet provide the palette command group, recent-page list, sidebar or link creation.
 
 `src/ipc/` owns generated bindings, the mock switch and base64 helpers. The mock boot configuration seeds DATA-2 workspace records and actual prosemirror bodies before commands run. `mock-workspace.ts` projects its own tree, including missing parents, cycles, favorites and ancestor trash. `mock-body.ts` builds canonical Yjs bodies, and `mock-search.ts` implements the typed scopes, fixed ordering, exclusions and partial diagnostics. Status and quit controls emit the same generated event types. Raw-body fixtures prove read-only preservation and source delivery through actual editor tests.
+
+The recovery mock initializes on its first command or control call. Importing the IPC module does not instantiate it, so production builds can discard the mock.
 
 Mock builds alone register real editor routes `editor-empty` and `editor-page-5000-blocks`, with the original synthetic routes retained for diagnostics. Dev builds retain `/dev/storage`, reachable from the shared header, with a Getting started rename button for quit proof. `pnpm build:mock` writes dist-mock for the browser suites. Production builds omit the mock and dev routes; `check:no-mock` verifies that boundary.
 
