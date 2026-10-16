@@ -77,8 +77,8 @@ test("TREE-7 refresh error keeps rows and title with a retry notice then recover
   await page.goto("/page/a");
   const title = page.getByRole("textbox", { name: "Page title", exact: true });
   await expect(title).toHaveValue("Alpha");
-  await page.clock.install();
-  await page.clock.pauseAt(new Date());
+  await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
+  await page.clock.pauseAt(new Date("2026-01-01T00:00:01Z"));
   await page.evaluate(() => window.__aelomiMock?.workspace.failReads(true));
   const rows = page.getByRole("navigation", { name: "Pages" });
   await expect(

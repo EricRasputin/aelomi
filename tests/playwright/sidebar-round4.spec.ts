@@ -438,8 +438,8 @@ test("SHELL-9 draining disables New page visibly with no press transform and kee
 }) => {
   await page.goto("/page/a");
   await expect(titleOf(page)).toHaveValue("Alpha");
-  await page.clock.install();
-  await page.clock.pauseAt(new Date());
+  await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
+  await page.clock.pauseAt(new Date("2026-01-01T00:00:01Z"));
   expect(await page.locator(".shell-notice").textContent()).toBe("");
   await page.evaluate(() => {
     Object.assign(window, {
@@ -552,8 +552,8 @@ test("SHELL-9 each sidebar and direct-route activation stays on the frozen page 
   await expect(page.getByRole("textbox", { name: "Page body" })).toHaveText(
     "Original body",
   );
-  await page.clock.install();
-  await page.clock.pauseAt(new Date());
+  await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
+  await page.clock.pauseAt(new Date("2026-01-01T00:00:01Z"));
   const before = await page.evaluate(() =>
     window.__aelomiMock?.calls
       .filter((c) => c.command === "docLoad")
@@ -590,8 +590,8 @@ test("SHELL-9 palette activation stays blocked during Draining independently of 
   await page.getByRole("combobox").fill("Beta");
   const beta = page.getByRole("option", { name: "Beta", exact: true });
   await expect(beta).toBeVisible();
-  await page.clock.install();
-  await page.clock.pauseAt(new Date());
+  await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
+  await page.clock.pauseAt(new Date("2026-01-01T00:00:01Z"));
   await page.evaluate(() => window.__aelomiMock?.quit.request());
   await expect(beta).toHaveAttribute("aria-disabled", "true");
   await beta.click({ force: true });
@@ -613,8 +613,8 @@ test("SHELL-9 a title mounted during an existing drain starts frozen", async ({
   await expect(page.getByRole("textbox", { name: "Page body" })).toHaveText(
     "Original body",
   );
-  await page.clock.install();
-  await page.clock.pauseAt(new Date());
+  await page.clock.install({ time: new Date("2026-01-01T00:00:00Z") });
+  await page.clock.pauseAt(new Date("2026-01-01T00:00:01Z"));
   await page.evaluate(() => {
     history.pushState({}, "", "/page/b");
     window.dispatchEvent(new PopStateEvent("popstate"));
