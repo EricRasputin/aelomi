@@ -721,7 +721,7 @@ mark {
   box-shadow: var(--shadow-segment);
 }
 
-.theme-choice:active:not(:has(input:checked)) {
+.theme-choice:active:not(:has(input:checked, input:disabled)) {
   background: var(--selected);
 }
 
@@ -730,7 +730,11 @@ mark {
     background: var(--button-hover);
   }
 
-  .theme-choice:hover:not(:has(input:checked)) {
+  .theme-choice:hover:not(:has(input:checked, input:disabled)) {
     color: var(--foreground);
   }
+}
+
+.settings-section:disabled .theme-choices {
+  opacity: 0.5;
 }

@@ -428,3 +428,6 @@ export function settingsErrorText(
       return storageCopy.storageError;
   }
 }
+
+export const editingPausedCopy =
+  "Editing pauses while Aelomi connects to its shell.";

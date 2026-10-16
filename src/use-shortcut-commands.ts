@@ -23,22 +23,6 @@ export function useShortcutCommands() {
               );
         },
       }),
-      commandDispatcher.register("openPalette", {
-        enabled: () =>
-          useSettingsDialogStore.getState().dialog.kind === "closed",
-        run: ({ target }) =>
-          flushSync(() => usePaletteStore.getState().show(target)),
-      }),
-      commandDispatcher.register("openSettings", {
-        run: ({ target }) => {
-          const palette = usePaletteStore.getState();
-          const returnTo = palette.open ? palette.returnTo : target;
-          flushSync(() => palette.hide());
-          flushSync(() => useSettingsDialogStore.getState().show(returnTo));
-        },
-      }),
-      commandDispatcher.register("undo", historyCommand("undo")),
-      commandDispatcher.register("redo", historyCommand("redo")),
     ];
     let composing = false;
     const compositionstart = () => {
@@ -76,6 +60,32 @@ export function useShortcutCommands() {
       window.removeEventListener("keydown", keydown, true);
       window.removeEventListener("compositionstart", compositionstart, true);
       window.removeEventListener("compositionend", compositionend, true);
+      for (const stop of unregister) stop();
+    };
+  }, []);
+}
+
+export function useWorkspaceShortcutCommands() {
+  useEffect(() => {
+    const unregister = [
+      commandDispatcher.register("openPalette", {
+        enabled: () =>
+          useSettingsDialogStore.getState().dialog.kind === "closed",
+        run: ({ target }) =>
+          flushSync(() => usePaletteStore.getState().show(target)),
+      }),
+      commandDispatcher.register("openSettings", {
+        run: ({ target }) => {
+          const palette = usePaletteStore.getState();
+          const returnTo = palette.open ? palette.returnTo : target;
+          flushSync(() => palette.hide());
+          flushSync(() => useSettingsDialogStore.getState().show(returnTo));
+        },
+      }),
+      commandDispatcher.register("undo", historyCommand("undo")),
+      commandDispatcher.register("redo", historyCommand("redo")),
+    ];
+    return () => {
       for (const stop of unregister) stop();
     };
   }, []);

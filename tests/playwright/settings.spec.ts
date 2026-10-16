@@ -245,6 +245,25 @@ test("SHELL-8 Appearance waits for quit registration before accepting a pick", a
   await page.keyboard.press("Meta+,");
   const dark = page.getByRole("radio", { name: "Dark", exact: true });
   await expect(dark).toBeDisabled();
+  await expect(
+    page.getByText("Editing pauses while Aelomi connects to its shell."),
+  ).toBeVisible();
+  const choices = page.locator(".theme-choices");
+  await expect(choices).toHaveCSS("opacity", "0.5");
+  const label = page.locator(".theme-choice").filter({ has: dark });
+  const idle = await label.evaluate((element) => ({
+    color: getComputedStyle(element).color,
+    background: getComputedStyle(element).backgroundColor,
+  }));
+  await label.hover();
+  await page.mouse.down();
+  expect(
+    await label.evaluate((element) => ({
+      color: getComputedStyle(element).color,
+      background: getComputedStyle(element).backgroundColor,
+    })),
+  ).toEqual(idle);
+  await page.mouse.up();
   await dark.click({ force: true });
   expect(
     await page.evaluate(() =>
@@ -266,6 +285,10 @@ test("SHELL-8 Appearance waits for quit registration before accepting a pick", a
   });
   await page.evaluate(() => window.__aelomiMock?.quit.releaseRegistration());
   await expect(dark).toBeEnabled();
+  await expect(
+    page.getByRole("radio", { name: "System", exact: true }),
+  ).toBeFocused();
+  await expect(choices).toHaveCSS("opacity", "1");
   await dark.click();
   await expect
     .poll(() => page.evaluate(() => window.__aelomiMock?.settings.get()))
@@ -331,6 +354,7 @@ test("SHELL-9 SHELL-10 an Io settings failure asks promptly with settings and re
     { command: "settingsUpdate", args: [{ theme: "Dark" }] },
     { command: "settingsUpdate", args: [{ theme: "Dark" }] },
     { command: "settingsUpdate", args: [{ theme: "Dark" }] },
+    { command: "settingsUpdate", args: [{ theme: "Dark" }] },
   ]);
   expect(
     await page.evaluate(() => window.__aelomiMock?.settings.get()),
@@ -349,11 +373,15 @@ test("SHELL-6 Close Window dismisses Settings and the palette before closing the
   page,
 }) => {
   await page.goto("/");
+  const body = page.getByRole("textbox", { name: "Page body" });
+  await expect(body).toHaveText("plan");
+  await body.click();
   await page.keyboard.press("Meta+,");
   const settings = page.getByRole("dialog", { name: "Settings", exact: true });
   await expect(settings).toBeVisible();
   await page.keyboard.press("Meta+w");
   await expect(settings).toBeHidden();
+  await expect(body).toBeFocused();
   expect(await page.evaluate(() => window.__aelomiMock?.quit.exited)).toBe(
     false,
   );
@@ -361,6 +389,7 @@ test("SHELL-6 Close Window dismisses Settings and the palette before closing the
   await expect(settings).toBeVisible();
   await page.evaluate(() => window.__aelomiMock?.menu.activate("closeWindow"));
   await expect(settings).toBeHidden();
+  await expect(body).toBeFocused();
   await page.keyboard.press("Meta+k");
   const palette = page.getByRole("dialog", { name: "Command palette" });
   await expect(palette).toBeVisible();
@@ -468,4 +497,138 @@ test("SHELL-5 a mouse-selected Appearance option has contrast without a focus ri
       (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05),
     ).toBeGreaterThanOrEqual(3);
   }
+});
+
+test("SHELL-10 Keep app open preserves the settings error while asking and retries at once", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(page.getByRole("textbox", { name: "Page body" })).toHaveText(
+    "plan",
+  );
+  await page.clock.install();
+  await page.clock.pauseAt(new Date());
+  await page.evaluate(() =>
+    window.__aelomiMock?.settings.refuseUpdates({ Io: "Settings read denied" }),
+  );
+  await page.keyboard.press("Meta+,");
+  await page.getByRole("radio", { name: "Dark", exact: true }).click();
+  await page.keyboard.press("Escape");
+  const banner = page.getByRole("alert");
+  await expect(banner).toContainText("Settings read denied");
+  await page.evaluate(() => window.__aelomiMock?.quit.request());
+  await page.clock.runFor(1);
+  await expect(page.getByRole("alertdialog")).toBeVisible();
+  await page.clock.runFor(20_000);
+  await expect(page.locator(".save-failure-banner")).toContainText(
+    "Settings read denied",
+  );
+  expect(
+    await page.evaluate(() =>
+      window.__aelomiMock?.calls.filter(
+        (call) => call.command === "settingsUpdate",
+      ),
+    ),
+  ).toEqual([
+    { command: "settingsUpdate", args: [{ theme: "Dark" }] },
+    { command: "settingsUpdate", args: [{ theme: "Dark" }] },
+  ]);
+  await page.evaluate(() => window.__aelomiMock?.settings.refuseUpdates(null));
+  await page.getByRole("button", { name: "Keep app open" }).click();
+  await expect(banner).toBeHidden();
+  expect(
+    await page.evaluate(() =>
+      window.__aelomiMock?.calls.filter(
+        (call) => call.command === "settingsUpdate",
+      ),
+    ),
+  ).toEqual([
+    { command: "settingsUpdate", args: [{ theme: "Dark" }] },
+    { command: "settingsUpdate", args: [{ theme: "Dark" }] },
+    { command: "settingsUpdate", args: [{ theme: "Dark" }] },
+  ]);
+  expect(
+    await page.evaluate(() => window.__aelomiMock?.settings.get()),
+  ).toEqual({
+    status: "ok",
+    data: {
+      theme: "Dark",
+      open_page: null,
+      recent_pages: [],
+      expanded_rows: [],
+    },
+  });
+});
+
+test("SHELL-8 terminal settings errors are dismissible and later theme picks save", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page.evaluate(() =>
+    window.__aelomiMock?.settings.refuseUpdates("Internal"),
+  );
+  await page.keyboard.press("Meta+,");
+  await page.getByRole("radio", { name: "Dark", exact: true }).click();
+  await page.keyboard.press("Escape");
+  const banner = page.getByRole("alert");
+  await expect(banner).toContainText("A storage error prevented the write.");
+  await expect(banner).not.toContainText("Aelomi will keep trying.");
+  await page
+    .getByRole("button", { name: "Dismiss failed settings change" })
+    .click();
+  await expect(banner).toBeHidden();
+  await page.evaluate(() => window.__aelomiMock?.settings.refuseUpdates(null));
+  await page.keyboard.press("Meta+,");
+  await page.getByRole("radio", { name: "Light", exact: true }).click();
+  expect(
+    await page.evaluate(() => window.__aelomiMock?.settings.get()),
+  ).toEqual({
+    status: "ok",
+    data: {
+      theme: "Light",
+      open_page: null,
+      recent_pages: [],
+      expanded_rows: [],
+    },
+  });
+  expect(
+    await page.evaluate(() =>
+      window.__aelomiMock?.calls.filter(
+        (call) => call.command === "settingsUpdate",
+      ),
+    ),
+  ).toEqual([
+    { command: "settingsUpdate", args: [{ theme: "Dark" }] },
+    { command: "settingsUpdate", args: [{ theme: "Light" }] },
+  ]);
+});
+
+test("SHELL-7 refused storage keeps Close Window registered without workspace commands", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.__aelomiMockSetup = { storageStatus: "Locked" };
+  });
+  await page.goto("/");
+  await expect(page.getByRole("heading")).toHaveText(
+    "This data folder is already open",
+  );
+  for (const command of ["openPalette", "openSettings", "undo", "redo"]) {
+    await page.evaluate(
+      (command) => window.__aelomiMock?.menu.activate(command),
+      command,
+    );
+    await expect(page.getByRole("dialog")).toHaveCount(0);
+  }
+  await page.keyboard.press("Meta+w");
+  await expect
+    .poll(() => page.evaluate(() => window.__aelomiMock?.quit.exited))
+    .toBe(true);
+  expect(
+    await page.evaluate(() =>
+      window.__aelomiMock?.calls.filter(
+        (call) => call.command === "closeWindow",
+      ),
+    ),
+  ).toEqual([{ command: "closeWindow", args: [] }]);
 });

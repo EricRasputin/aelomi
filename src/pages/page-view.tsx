@@ -7,7 +7,7 @@ import { inCode, type PickerKey, pickerTrigger } from "../editor/page-picker";
 import { openPage, type PageSession } from "../editor/page-session";
 import { openPageLink, recordPageLinkPointer } from "../editor/url-links";
 import { markPageContent } from "../perf/cold-start";
-import { storageErrorText } from "../storage-copy";
+import { editingPausedCopy, storageErrorText } from "../storage-copy";
 import { displayTitle, linkText, usePageTreeStore } from "../stores/page-tree";
 import { usePickerStore } from "../stores/picker";
 import { canEdit, useQuitStore } from "../stores/quit";
@@ -18,8 +18,6 @@ type ViewState = { kind: "loading" } | PageSession;
 
 export const readOnlyCopy =
   "Read-only. This page holds content this version of Aelomi can't edit without changing it.";
-export const editingPausedCopy =
-  "Editing pauses while Aelomi connects to its shell.";
 
 function PageTitle({ pageId }: { pageId: string }) {
   const title = usePageTreeStore((state) => {

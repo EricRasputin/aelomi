@@ -1,6 +1,7 @@
 import { Dialog } from "@base-ui/react/dialog";
 import { useId, useLayoutEffect, useRef } from "react";
 import { restoreFocus } from "../editor/active-editor";
+import { editingPausedCopy } from "../storage-copy";
 import { canEdit, useQuitStore } from "../stores/quit";
 import { useSettingsDialogStore } from "../stores/settings-dialog";
 import { useThemeStore } from "../stores/theme";
@@ -16,6 +17,13 @@ export function SettingsDialog() {
   const disabled = useQuitStore((state) => !canEdit(state));
   const groupId = useId();
   const selected = useRef<HTMLInputElement>(null);
+  const close = useRef<HTMLButtonElement>(null);
+  const wasDisabled = useRef(disabled);
+  useLayoutEffect(() => {
+    if (wasDisabled.current && !disabled && dialog.kind === "open")
+      selected.current?.focus();
+    wasDisabled.current = disabled;
+  }, [disabled, dialog.kind]);
   const returnTo = useRef<Element | null>(null);
   if (dialog.kind === "open") returnTo.current = dialog.returnTo;
   useLayoutEffect(() => {
@@ -38,7 +46,7 @@ export function SettingsDialog() {
         <Dialog.Backdrop className="settings-backdrop" />
         <Dialog.Popup
           className="settings-dialog"
-          initialFocus={selected}
+          initialFocus={disabled ? close : selected}
           finalFocus={() => {
             restoreFocus(returnTo.current);
             return false;
@@ -46,6 +54,7 @@ export function SettingsDialog() {
         >
           <div className="settings-heading">
             <Dialog.Close
+              ref={close}
               className="settings-close"
               aria-label="Close Settings"
             >
@@ -70,7 +79,9 @@ export function SettingsDialog() {
             <fieldset className="settings-section" disabled={disabled}>
               <legend>Appearance</legend>
               <Dialog.Description className="settings-description">
-                System follows your Mac's appearance.
+                {disabled
+                  ? editingPausedCopy
+                  : "System follows your Mac's appearance."}
               </Dialog.Description>
               <div className="theme-choices">
                 {choices.map((choice) => (
