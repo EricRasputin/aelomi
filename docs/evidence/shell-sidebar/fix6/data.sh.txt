@@ -1,0 +1,7 @@
+#!/bin/bash
+set -euo pipefail
+example=crates/core/examples/d1_fix6_data.rs
+test ! -e "$example"
+trap 'rm -f "$example"' EXIT
+cp .local-gate/fix6/data.rs "$example"
+cargo run --release -p aelomi-core --features test-support --example d1_fix6_data -- "$1" "$2"

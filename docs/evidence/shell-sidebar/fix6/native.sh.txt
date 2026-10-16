@@ -1,0 +1,62 @@
+#!/bin/bash
+set -euo pipefail
+S=.claude/skills/verify-aelomi/scripts
+lock=${AELOMI_UI_LOCK:?}
+label=pr89-fix6-native
+data=${1:?}
+ls -la "$HOME/Library/Application Support/Aelomi" > .local-gate/fix6/real-before.txt
+R=$(AELOMI_DATA_DIR="$data" bash "$S/app.sh" launch app)
+printf '%s\n' "$R" > .local-gate/fix6/native-run.txt
+source "$R/run.env"
+owned=false
+mode=$(stat -f %Lp "$data/docs")
+finish() {
+ chmod "$mode" "$data/docs"
+ if $owned; then "$lock" release "$label"; fi
+ bash "$S/app.sh" cleanup "$R"
+ ls -la "$HOME/Library/Application Support/Aelomi" > .local-gate/fix6/real-after.txt
+ diff -u .local-gate/fix6/real-before.txt .local-gate/fix6/real-after.txt
+}
+trap finish EXIT
+bash "$S/app.sh" doctor "$R"
+"$lock" acquire "$label"
+owned=true
+guard() {
+ local front
+ front=$(osascript -e 'tell application "System Events" to get name of first process whose frontmost is true')
+ if [ "$front" != Aelomi ]; then
+  bash "$S/app.sh" focus "$R" 'Page title'
+  front=$(osascript -e 'tell application "System Events" to get name of first process whose frontmost is true')
+ fi
+ [ "$front" = Aelomi ] || { echo "INCONCLUSIVE frontmost=$front"; exit 1; }
+}
+shot() { guard; bash "$S/app.sh" screenshot "$R" "$1"; }
+keys() { guard; bash "$S/app.sh" keys "$R" "$@"; }
+press() { guard; bash "$S/app.sh" press "$R" "$1"; }
+shot before-title
+guard; osascript -l JavaScript .local-gate/fix6/native.js "$APP_PID" row-title | tee "$R/title-immediate.json"
+keys ' complete'
+shot after-title
+guard; osascript -l JavaScript .local-gate/fix6/native.js "$APP_PID" inspect | tee "$R/title-final.json"
+python3 - "$R/title-final.json" <<'PY'
+import json,sys
+assert json.load(open(sys.argv[1])) == {'title':'Beta native title complete','focused':True}
+PY
+keys k command
+keys 'Last row'
+guard; osascript -l JavaScript .local-gate/fix6/native.js "$APP_PID" choose
+shot before-status
+chmod 000 "$data/docs"
+guard; osascript -l JavaScript .local-gate/fix6/native.js "$APP_PID" trash
+shot status-scrolling
+bash "$S/app.sh" tree "$R" > "$R/status-tree.txt"
+rg 'Moving to trash' "$R/status-tree.txt"
+chmod "$mode" "$data/docs"
+keys q command
+for attempt in $(seq 1 40); do
+ if ! kill -0 "$APP_PID" 2>/dev/null; then break; fi
+ sleep 0.25
+done
+if kill -0 "$APP_PID" 2>/dev/null; then echo 'INCONCLUSIVE app did not quit'; exit 1; fi
+rg 'quit flush via=Exit pending=None' "$R/shell.log"
+echo "PASS native $R"

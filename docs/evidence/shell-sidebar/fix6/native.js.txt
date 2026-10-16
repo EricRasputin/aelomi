@@ -1,0 +1,39 @@
+function run(argv) {
+  const se = Application('System Events');
+  const proc = se.processes.whose({ unixId: Number(argv[0]) })[0];
+  function guard() {
+    const name = se.processes.whose({ frontmost: true })[0].name();
+    if (name !== 'Aelomi') throw Error('INCONCLUSIVE frontmost=' + name);
+  }
+  function find(name, role) {
+    const queue = [proc.windows[0]];
+    while (queue.length) {
+      const node = queue.shift();
+      try {
+        if ((node.name() === name || node.description() === name) && (!role || node.role() === role)) return node;
+        queue.push(...Array.from({ length: node.uiElements.length }, (_, i) => node.uiElements[i]));
+      } catch (_) {}
+    }
+    throw Error('Missing ' + name);
+  }
+  if (argv[1] === 'row-title') {
+    const field = find('Page title', 'AXTextArea');
+    const row = find('Beta', 'AXButton');
+    guard(); row.actions.whose({ name: 'AXPress' })[0].perform();
+    guard(); field.focused = true;
+    guard(); se.keyCode(124, { using: ['command down'] });
+    guard(); se.keystroke(' native title');
+    return JSON.stringify({ title: field.value(), focused: field.focused() });
+  }
+  if (argv[1] === 'inspect') {
+    const field = find('Page title', 'AXTextArea');
+    return JSON.stringify({ title: field.value(), focused: field.focused() });
+  }
+  if (argv[1] === 'trash') {
+    guard(); se.keyCode(40, { using: ['command down'] });
+    guard(); se.keystroke('Move to trash');
+    guard(); se.keyCode(125);
+    guard(); se.keyCode(36);
+  }
+  if (argv[1] === 'choose') { guard(); se.keyCode(36); }
+}

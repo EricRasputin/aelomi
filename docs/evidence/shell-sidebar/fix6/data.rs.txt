@@ -1,0 +1,44 @@
+use aelomi_core::storage::{DocId, Store};
+use aelomi_core::workspace::{body, fixture::{Editor, paragraph, put_page, text, write_body}, records::{PageId, PageRecord, Placement, read_pages}};
+use std::{path::PathBuf, time::{Duration, Instant}};
+use yrs::{Doc, Transact, Update, updates::decoder::Decode};
+fn main() {
+    let args: Vec<_> = std::env::args().collect();
+    let folder = PathBuf::from(&args[1]);
+    assert!(folder.to_string_lossy().contains("/aelomi-verify/"));
+    if args[2] == "seed" {
+        assert!(!folder.exists());
+        let store = Store::open(&folder).unwrap();
+        let mut editor = Editor::new(667);
+        for i in 0..82 {
+            let id = PageId::new(format!("native-{i:02}")).unwrap();
+            let title = match i { 0 => "Alpha".to_string(), 1 => "Beta".to_string(), 81 => "Last row".to_string(), _ => format!("Page {i:02}") };
+            let record = PageRecord { title, placement: Placement { parent: None, order: i }, favorite: None, trash: None, created_at: 1, updated_at: 1 };
+            let update = editor.edit(&DocId::workspace(), |txn| put_page(txn, &id, &record));
+            store.append(&DocId::workspace(), &update).unwrap();
+            let blocks = if i == 1 { (0..500).map(|n| paragraph(&format!("block-{n}"), vec![text(&format!("Original block {n}"))])).collect() } else { vec![paragraph("original", vec![text("Original body")])] };
+            let update = editor.edit(id.doc_id(), |txn| write_body(txn, &blocks));
+            store.append(id.doc_id(), &update).unwrap();
+        }
+        store.close(Instant::now() + Duration::from_secs(30)).unwrap();
+        println!("PASS seeded 82 rows and Beta's 500 original blocks");
+    } else {
+        let store = Store::open(&folder).unwrap();
+        let workspace = Doc::new();
+        workspace.transact_mut().apply_update(Update::decode_v1(&store.load(&DocId::workspace()).unwrap()).unwrap()).unwrap();
+        let records = read_pages(&workspace.transact()).unwrap();
+        assert_eq!(records.len(), 82);
+        assert_eq!(records[&PageId::new("native-01").unwrap()].title, "Beta native title complete");
+        for i in 0..82 {
+            let id = PageId::new(format!("native-{i:02}")).unwrap();
+            let doc = Doc::new();
+            doc.transact_mut().apply_update(Update::decode_v1(&store.load(id.doc_id()).unwrap()).unwrap()).unwrap();
+            let actual: Vec<_> = body::read_body(&doc.transact()).blocks.into_iter().map(|b| b.segments).collect();
+            let expected: Vec<_> = if i == 1 { (0..500).map(|n| vec![body::Segment::Text(format!("Original block {n}"))]).collect() } else { vec![vec![body::Segment::Text("Original body".into())]] };
+            assert_eq!(actual, expected);
+        }
+        assert!(records[&PageId::new("native-81").unwrap()].trash.is_some());
+        store.close(Instant::now() + Duration::from_secs(30)).unwrap();
+        println!("PASS records=82 title=Beta native title complete all_bodies_unchanged=true last_row_trashed=true");
+    }
+}
