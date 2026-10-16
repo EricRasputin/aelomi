@@ -1,0 +1,37 @@
+from pathlib import Path
+import hashlib
+import re
+import subprocess
+import tempfile
+import shlex
+
+root=Path(__file__).resolve().parents[2]
+readme=(root/'docs/evidence/shell-refusal-polish-fix2/README.md').read_text()
+source=re.search(r'Source commit `([0-9a-f]{40})`',readme)[1]
+base=re.search(r'Merge base `([0-9a-f]{40})`',readme)[1]
+patch=re.search(r'Verbatim patch-id `([0-9a-f]{40})`',readme)[1]
+line=next(line for line in readme.splitlines() if line.startswith('Proven pathspecs'))
+paths=re.findall(r'`([^`]+)`',line)
+changed=subprocess.check_output(['git','diff','--name-only',base,source],cwd=root,text=True).splitlines()
+assert all(path in changed for path in paths)
+diff=subprocess.check_output(['git','diff','--full-index','--binary',base,source],cwd=root)
+assert subprocess.check_output(['git','patch-id','--verbatim'],input=diff,cwd=root).decode().split()[0]==patch
+subprocess.run(['git','diff','--exit-code',source,'HEAD','--',*paths],cwd=root,check=True)
+assert not (root/'docs/evidence/shell-refusal-polish').exists()
+print('PASS: source paths, unchanged product files, patch-id and evidence deletion')
+script=(root/'docs/evidence/shell-refusal-polish-fix1/native-proof.sh.txt').read_text()
+with tempfile.TemporaryDirectory(prefix='ae90-negative-') as directory:
+    for filename,bad,prefix in [('shell.log','quit frontend ready\n',"    if grep -Eq '^quit frontend ready$"),('refusal-tree.txt','Then rename it "Aelomi".\n',"if grep -q 'Then rename'")]:
+        check=next(line for line in script.splitlines() if line.startswith(prefix))
+        for contents,expected in [(bad,1),('allowed line\n',0)]:
+            Path(directory,filename).write_text(contents)
+            result=subprocess.run(['bash','-c','set -e\nRUN='+shlex.quote(directory)+'\n'+check],capture_output=True)
+            assert result.returncode==expected
+print('PASS: both negative checks reject forbidden input and accept clean input')
+for path,expected_size,expected_hash in re.findall(r'\| `([^`]+\.png)` \| ([0-9]+) \| `([0-9a-f]{64})` \|',readme):
+    match=next(Path.home().joinpath('.local/state/aelomi-verify').glob(path),None)
+    assert match is not None,path
+    data=match.read_bytes()
+    assert len(data)==int(expected_size),path
+    assert hashlib.sha256(data).hexdigest()==expected_hash,path
+print('PASS: recorded screenshot byte counts and SHA-256 values')

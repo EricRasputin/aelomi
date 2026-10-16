@@ -222,6 +222,15 @@ impl Storage {
         }
     }
 
+    pub(crate) fn register_frontend(&self) {
+        if self.opened.is_ok() {
+            self.quit.register_frontend();
+            println!("quit frontend ready");
+        } else {
+            println!("quit frontend ready skipped: storage refused");
+        }
+    }
+
     pub(crate) fn quit(&self) -> &QuitGate {
         &self.quit
     }

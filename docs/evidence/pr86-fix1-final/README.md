@@ -2,7 +2,7 @@
 
 Source commit `e5a94111548e817fc6f7a36f0cf9e4b540b168c5`. Merge base `a4db19d8ab2e1ac072dea8bc3a1cc3747af8fdae` against `origin/main`. Patch-id `71adac6729fae82c18a2d3b339217ba0866a7937`. The proven pathspecs are `src/` and `src-tauri/`.
 
-This record supplements the [recovery and link self-proof](../pr86-fix1-native/README.md). Comparing its source commit `06079e2917eee86acd7cc40dae939a9825252d24` with this source under both pathspecs yields exactly `src/storage-copy.ts`. All other app source is byte-identical. The prior packaged URL, context-menu, exact quit-survival, and recovery tests therefore prove the same app code. The original record keeps their scripts, run paths, log excerpts, screenshot sizes, and hashes.
+This record supplements the [recovery and link self-proof](https://github.com/aelomi/aelomi/blob/96cdc94ccb48be742d5bdc907de1f609f4a747fe/docs/evidence/pr86-fix1-native/README.md). Comparing its source commit `06079e2917eee86acd7cc40dae939a9825252d24` with this source under both pathspecs yields exactly `src/storage-copy.ts`. All other app source is byte-identical. The prior packaged URL, context-menu, exact quit-survival, and recovery tests therefore prove the same app code. The original record keeps their scripts, run paths, log excerpts, screenshot sizes, and hashes.
 
 ## Final refusal proof
 

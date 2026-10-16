@@ -32,6 +32,9 @@ for (const colorScheme of ["light", "dark"] as const) {
         name: "Move your data folder out of cloud storage",
       }),
     ).toBeVisible();
+    await expect(
+      page.getByText("Keep Aelomi open until the last step.", { exact: true }),
+    ).toBeVisible();
     await page.addStyleTag({
       content: ".storage-refusal-path { field-sizing: fixed !important; }",
     });
@@ -54,7 +57,7 @@ for (const colorScheme of ["light", "dark"] as const) {
         })),
       ).toEqual({ overflow: false, clipped: [] });
       const chip = page.getByRole("textbox", {
-        name: "In Finder, choose File > New Finder Window (⌘N). Then choose Go > Go to Folder and paste:",
+        name: "Copy this path. In Finder, choose File > New Finder Window (⌘N). Then choose Go > Go to Folder and paste it:",
       });
       await chip.click();
       expect(
@@ -66,11 +69,25 @@ for (const colorScheme of ["light", "dark"] as const) {
       ).toBe(
         "/Users/test/Library/CloudStorage/Dropbox/International-Collaboration-Archive/研究とメモ🦊",
       );
+      await expect(
+        page.getByRole("textbox", {
+          name: "Copy this path. In Finder, choose Go > Go to Folder and paste it:",
+          exact: true,
+        }),
+      ).toHaveValue("/Users/test/Library/Application Support/Aelomi");
       await page
-        .getByText("Nothing in this folder was changed.", { exact: true })
+        .getByText("Aelomi hasn't changed anything in your data folder.", {
+          exact: true,
+        })
         .scrollIntoViewIfNeeded();
       await expect(
         page.getByText("Quit Aelomi and open it again.", { exact: true }),
+      ).toBeVisible();
+      await expect(
+        page.getByText(
+          'Finder should open a folder named "Aelomi" with your Aelomi files. If it can\'t find it, close Go to Folder. If the folder is in the window from step 1, rename it "Aelomi" again. If you moved it elsewhere, undo any rename first, then choose Edit > Undo Move of "Aelomi Notes" in Finder and repeat step 2. If you haven\'t moved it, repeat step 2.',
+          { exact: true },
+        ),
       ).toBeVisible();
     }
   });

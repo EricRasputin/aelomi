@@ -469,9 +469,7 @@ mod tests {
         let crate::tests::BlockedApp {
             app, quit_events, ..
         } = crate::tests::app_with_page_pending(&disk);
-        app.state::<crate::storage::Storage>()
-            .quit()
-            .register_frontend();
+        app.state::<crate::storage::Storage>().register_frontend();
 
         assert_eq!(
             terminate_reply(app.handle()),

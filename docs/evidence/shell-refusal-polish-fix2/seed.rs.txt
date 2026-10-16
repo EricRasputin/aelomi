@@ -5,7 +5,7 @@ fn main() {
     let store = Store::open(Path::new(&args[0])).unwrap();
     let mut editor = Editor::new(86);
     let page = PageId::new("page-proof").unwrap();
-    let record = PageRecord { title: "Link recovery proof".into(), placement: Placement { parent: None, order: 0 }, favorite: None, trash: None, created_at: 1, updated_at: 1 };
+    let record = PageRecord { title: "Finder recovery proof".into(), placement: Placement { parent: None, order: 0 }, favorite: None, trash: None, created_at: 1, updated_at: 1 };
     let update = editor.edit(&DocId::workspace(), |txn| put_page(txn, &page, &record));
     store.append(&DocId::workspace(), &update).unwrap();
     store.append(page.doc_id(), &std::fs::read(&args[1]).unwrap()).unwrap();

@@ -35,16 +35,24 @@ test.each([
     steps: [
       {
         kind: "folder",
-        text: "In Finder, choose Go > Go to Folder (⇧⌘G) and paste:",
+        text: "Copy this path. In Finder, choose Go > Go to Folder (⇧⌘G) and paste it:",
         path: "/Users/test/Library/Application Support",
         after:
-          'Find "Aelomi". It has a small arrow because it is a link. Drag it to the Trash. This removes only the link, not your pages.',
+          'Find "Aelomi". It has a small arrow because it is a link. Drag it to the Trash. This removes only the link, not your pages. Choose View > as Icons. Leave this Finder window open.',
       },
       {
         kind: "folder",
-        text: "In Finder, choose File > New Finder Window (⌘N). Then choose Go > Go to Folder and paste:",
+        text: "Copy this path. In Finder, choose File > New Finder Window (⌘N). Then choose Go > Go to Folder and paste it:",
         path: "/Users/test/Library/Mobile Documents",
-        after: 'Drag "Aelomi" into the window from step 1.',
+        after:
+          'Move the new window aside so you can see the window from step 1. Drag "Aelomi" onto an empty area of the window from step 1, not onto a folder. Finder or your cloud app may warn that the folder will be removed from iCloud Drive or the cloud app. Continue. Your pages move to this Mac.',
+      },
+      {
+        kind: "folder",
+        text: "Copy this path. In Finder, choose Go > Go to Folder and paste it:",
+        path: "/Users/test/Library/Application Support/Aelomi",
+        after:
+          'Finder should open a folder named "Aelomi" with your Aelomi files. If it can\'t find it, close Go to Folder. If you moved it elsewhere, choose Edit > Undo Move of "Aelomi" in Finder and repeat step 2. If you haven\'t moved it, repeat step 2.',
       },
       { kind: "text", text: "Quit Aelomi and open it again." },
     ],
@@ -66,17 +74,24 @@ test.each([
     steps: [
       {
         kind: "folder",
-        text: "In Finder, choose Go > Go to Folder (⇧⌘G) and paste:",
+        text: "Copy this path. In Finder, choose Go > Go to Folder (⇧⌘G) and paste it:",
         path: "/Users/test/Library/Application Support",
         after:
-          'Find "Aelomi". It has a small arrow because it is a link. Drag it to the Trash. This removes only the link, not your pages.',
+          'Find "Aelomi". It has a small arrow because it is a link. Drag it to the Trash. This removes only the link, not your pages. Choose View > as Icons. Leave this Finder window open.',
       },
       {
         kind: "folder",
-        text: "In Finder, choose File > New Finder Window (⌘N). Then choose Go > Go to Folder and paste:",
+        text: "Copy this path. In Finder, choose File > New Finder Window (⌘N). Then choose Go > Go to Folder and paste it:",
         path: "/Users/test/Library/CloudStorage/Dropbox/Apps",
         after:
-          'Drag "Aelomi Notes" into the window from step 1. Then rename it "Aelomi".',
+          'Move the new window aside so you can see the window from step 1. Drag "Aelomi Notes" onto an empty area of the window from step 1, not onto a folder. Finder or your cloud app may warn that the folder will be removed from iCloud Drive or the cloud app. Continue. Your pages move to this Mac. Then rename it "Aelomi".',
+      },
+      {
+        kind: "folder",
+        text: "Copy this path. In Finder, choose Go > Go to Folder and paste it:",
+        path: "/Users/test/Library/Application Support/Aelomi",
+        after:
+          'Finder should open a folder named "Aelomi" with your Aelomi files. If it can\'t find it, close Go to Folder. If the folder is in the window from step 1, rename it "Aelomi" again. If you moved it elsewhere, undo any rename first, then choose Edit > Undo Move of "Aelomi Notes" in Finder and repeat step 2. If you haven\'t moved it, repeat step 2.',
       },
       { kind: "text", text: "Quit Aelomi and open it again." },
     ],
@@ -93,15 +108,16 @@ test.each([
     steps: [
       {
         kind: "folder",
-        text: "This folder is synced to cloud storage:",
+        text: "This folder is a link into cloud storage:",
         path: "/Users/test/Library/Application Support",
         after:
-          "Other apps and files may use it. Aelomi can't keep its database there.",
+          "Aelomi can't keep its database there and hasn't changed anything.",
       },
       {
         kind: "text",
-        text: "In your cloud app's settings, turn off syncing for this folder so it is a regular folder on this Mac. Then quit Aelomi and open it again.",
+        text: "For Aelomi to open it, this folder must be a regular folder on this Mac. Turning off syncing for it in a cloud app can remove its files from this Mac, including other apps' files.",
       },
+      { kind: "text", text: "Quit Aelomi and open it again." },
     ],
   },
   {
@@ -136,16 +152,24 @@ test.each([
     steps: [
       {
         kind: "folder",
-        text: "In Finder, choose Go > Go to Folder (⇧⌘G) and paste:",
+        text: "Copy this path. In Finder, choose Go > Go to Folder (⇧⌘G) and paste it:",
         path: "/Users/test/Library/Application Support",
         after:
-          'Find "Aelomi Dev". It has a small arrow because it is a link. Drag it to the Trash. This removes only the link, not your pages.',
+          'Find "Aelomi Dev". It has a small arrow because it is a link. Drag it to the Trash. This removes only the link, not your pages. Choose View > as Icons. Leave this Finder window open.',
       },
       {
         kind: "folder",
-        text: "In Finder, choose File > New Finder Window (⌘N). Then choose Go > Go to Folder and paste:",
+        text: "Copy this path. In Finder, choose File > New Finder Window (⌘N). Then choose Go > Go to Folder and paste it:",
         path: "/Users/test/Library/Mobile Documents",
-        after: 'Drag "Aelomi Dev" into the window from step 1.',
+        after:
+          'Move the new window aside so you can see the window from step 1. Drag "Aelomi Dev" onto an empty area of the window from step 1, not onto a folder. Finder or your cloud app may warn that the folder will be removed from iCloud Drive or the cloud app. Continue. Your pages move to this Mac.',
+      },
+      {
+        kind: "folder",
+        text: "Copy this path. In Finder, choose Go > Go to Folder and paste it:",
+        path: "/Users/test/Library/Application Support/Aelomi Dev",
+        after:
+          'Finder should open a folder named "Aelomi Dev" with your Aelomi files. If it can\'t find it, close Go to Folder. If you moved it elsewhere, choose Edit > Undo Move of "Aelomi Dev" in Finder and repeat step 2. If you haven\'t moved it, repeat step 2.',
       },
       { kind: "text", text: "Quit Aelomi and open it again." },
     ],

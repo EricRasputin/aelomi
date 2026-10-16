@@ -494,7 +494,7 @@ export const commands = {
   },
   frontendReady: async () => {
     calls.push({ command: "frontendReady", args: [] });
-    quit.frontendReady = true;
+    if (storage.status === "Ready") quit.frontendReady = true;
   },
   completeQuit: async (revision) => {
     calls.push({ command: "completeQuit", args: [revision] });

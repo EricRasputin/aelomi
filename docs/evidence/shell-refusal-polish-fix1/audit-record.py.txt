@@ -1,0 +1,16 @@
+from pathlib import Path
+import re
+import subprocess
+
+record = Path('docs/evidence/shell-refusal-polish-fix1/README.md').read_text()
+source = re.search(r'Source commit `([0-9a-f]{40})`', record)[1]
+base = re.search(r'Merge base against `origin/main` is `([0-9a-f]{40})`', record)[1]
+patch = re.search(r'Verbatim patch-id is `([0-9a-f]{40})`', record)[1]
+paths = re.findall(r'`([^`]+)`', next(line for line in record.splitlines() if line.startswith('Proven pathspecs')))
+changed = subprocess.check_output(['git', 'diff', '--name-only', base, source], text=True).splitlines()
+assert all(path in changed for path in paths), [path for path in paths if path not in changed]
+assert subprocess.check_output(['git', 'diff', source, 'HEAD', '--', *paths]) == b''
+diff = subprocess.check_output(['git', 'diff', '--full-index', '--binary', base, source])
+actual_patch = subprocess.check_output(['git', 'patch-id', '--verbatim'], input=diff).decode().split()[0]
+assert actual_patch == patch, (actual_patch, patch)
+print(f'PASS: {len(paths)} recorded paths are in the source diff and unchanged at HEAD; patch-id matches')

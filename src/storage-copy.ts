@@ -23,9 +23,9 @@ export const storageCopy = {
   cloudTitle: "Move your data folder out of cloud storage",
   cloudRisk: "Cloud sync corrupts the database.",
   cloudDataPath: "Where your data really is",
-  recoveryKeepOpen: "Keep this window open until the last step.",
+  recoveryKeepOpen: "Keep Aelomi open until the last step.",
   details: "Details",
-  unchanged: "Nothing in this folder was changed.",
+  unchanged: "Aelomi hasn't changed anything in your data folder.",
   restart: "Quit Aelomi and open it again.",
   override:
     "Set AELOMI_DATA_DIR to a folder outside cloud storage, or unset it.",
@@ -65,7 +65,7 @@ export type StorageStartup =
 function cloudRecovery(
   cloud: Extract<StorageStatus, { CloudPath: object }>["CloudPath"],
 ) {
-  const { resolved, recovery } = cloud;
+  const { configured, resolved, recovery } = cloud;
   let steps: RecoveryStep[];
   if (recovery === "Override") {
     steps = [
@@ -76,15 +76,16 @@ function cloudRecovery(
     steps = [
       {
         kind: "folder",
-        text: "This folder is synced to cloud storage:",
+        text: "This folder is a link into cloud storage:",
         path: recovery.SharedLink.link,
         after:
-          "Other apps and files may use it. Aelomi can't keep its database there.",
+          "Aelomi can't keep its database there and hasn't changed anything.",
       },
       {
         kind: "text",
-        text: "In your cloud app's settings, turn off syncing for this folder so it is a regular folder on this Mac. Then quit Aelomi and open it again.",
+        text: "For Aelomi to open it, this folder must be a regular folder on this Mac. Turning off syncing for it in a cloud app can remove its files from this Mac, including other apps' files.",
       },
+      { kind: "text", text: storageCopy.restart },
     ];
   } else {
     const {
@@ -97,18 +98,30 @@ function cloudRecovery(
       configured_name === resolved_name
         ? ""
         : ` Then rename it "${configured_name}".`;
+    const renameRemedy =
+      configured_name === resolved_name
+        ? ""
+        : ` If the folder is in the window from step 1, rename it "${configured_name}" again.`;
+    const undoRename =
+      configured_name === resolved_name ? "" : "undo any rename first, then ";
     steps = [
       {
         kind: "folder",
-        text: "In Finder, choose Go > Go to Folder (⇧⌘G) and paste:",
+        text: "Copy this path. In Finder, choose Go > Go to Folder (⇧⌘G) and paste it:",
         path: configured_parent,
-        after: `Find "${configured_name}". It has a small arrow because it is a link. Drag it to the Trash. This removes only the link, not your pages.`,
+        after: `Find "${configured_name}". It has a small arrow because it is a link. Drag it to the Trash. This removes only the link, not your pages. Choose View > as Icons. Leave this Finder window open.`,
       },
       {
         kind: "folder",
-        text: "In Finder, choose File > New Finder Window (⌘N). Then choose Go > Go to Folder and paste:",
+        text: "Copy this path. In Finder, choose File > New Finder Window (⌘N). Then choose Go > Go to Folder and paste it:",
         path: resolved_parent,
-        after: `Drag "${resolved_name}" into the window from step 1.${rename}`,
+        after: `Move the new window aside so you can see the window from step 1. Drag "${resolved_name}" onto an empty area of the window from step 1, not onto a folder. Finder or your cloud app may warn that the folder will be removed from iCloud Drive or the cloud app. Continue. Your pages move to this Mac.${rename}`,
+      },
+      {
+        kind: "folder",
+        text: "Copy this path. In Finder, choose Go > Go to Folder and paste it:",
+        path: configured,
+        after: `Finder should open a folder named "${configured_name}" with your Aelomi files. If it can't find it, close Go to Folder.${renameRemedy} If you moved it elsewhere, ${undoRename}choose Edit > Undo Move of "${resolved_name}" in Finder and repeat step 2. If you haven't moved it, repeat step 2.`,
       },
       { kind: "text", text: storageCopy.restart },
     ];

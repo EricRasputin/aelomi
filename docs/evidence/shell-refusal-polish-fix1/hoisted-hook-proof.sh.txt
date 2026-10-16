@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+set -euo pipefail
+OUT=.local-gate/e2-fix1
+cp src/router.tsx "$OUT/router-before-mutation.txt"
+trap 'cp "$OUT/router-before-mutation.txt" src/router.tsx' EXIT INT TERM
+python3 - <<'PY'
+from pathlib import Path
+p=Path('src/router.tsx')
+s=p.read_text().replace('  useShortcutCommands();\n', '').replace('function RootLayout() {', 'function RootLayout() {\n  useShortcutCommands();')
+p.write_text(s)
+PY
+pnpm build:mock > "$OUT/hoisted-build.log" 2>&1
+set +e
+pnpm test:e2e e2e/cloud-folder.e2e.ts --grep 'a cloud folder shows' > "$OUT/hoisted-hook.log" 2>&1
+result=$?
+set -e
+test "$result" -ne 0
+rg 'expected false to be true' "$OUT/hoisted-hook.log"
+echo 'PASS: hoisted hook was detected; the exit trap restores RootLayout'
