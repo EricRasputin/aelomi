@@ -6,7 +6,7 @@ import { renderSegments, type ShownBlock } from "../editor/body-reader";
 import { inCode, type PickerKey, pickerTrigger } from "../editor/page-picker";
 import { openPage, type PageSession } from "../editor/page-session";
 import { markPageContent } from "../perf/cold-start";
-import { resolvePageFocus } from "../shell/page-focus";
+import { type FocusRequest, resolvePageFocus } from "../shell/page-focus";
 import { editingPausedCopy, storageErrorText } from "../storage-copy";
 import { linkText, usePageTreeStore } from "../stores/page-tree";
 import { usePickerStore } from "../stores/picker";
@@ -45,6 +45,7 @@ export default function PageView({
 }) {
   const [view, setView] = useState<ViewState>({ kind: "loading" });
   const host = useRef<HTMLDivElement>(null);
+  const focusReady = useRef(false);
   const editable = useQuitStore(canEdit);
   const registered = useQuitStore((state) => state.registered);
   const focusRequest = useShellStore((state) => state.focusRequest);
@@ -107,7 +108,7 @@ export default function PageView({
     };
   }, [session]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!editor) return;
     editor.isEditable = editable;
     if (editable) markPageContent();
@@ -117,8 +118,6 @@ export default function PageView({
     if (!editor) return;
     const block = focusBlock && editor.getBlock(focusBlock);
     if (block) {
-      editor.setTextCursorPosition(block, "start");
-      editor.focus();
       const element = host.current?.querySelector<HTMLElement>(
         `[data-node-type="blockOuter"][data-id="${CSS.escape(focusBlock)}"]`,
       );
@@ -127,44 +126,40 @@ export default function PageView({
     }
   }, [editor, focusBlock]);
 
-  useEffect(() => {
-    if (!editor || !editable || !autoFocus) return;
-    const request = useShellStore.getState().focusRequest;
-    if (request?.pageId === pageId && request.target === "title") return;
-    if (
-      !focusBlock &&
-      !(
-        document.activeElement instanceof HTMLTextAreaElement ||
-        document.activeElement instanceof HTMLInputElement
-      )
-    )
-      editor.focus();
-  }, [editor, editable, pageId, focusBlock, autoFocus]);
-
-  useEffect(() => {
-    if (
-      !editor ||
-      !editable ||
-      focusRequest?.pageId !== pageId ||
-      focusRequest.target === "title"
-    )
-      return;
+  useLayoutEffect(() => {
+    const deferred = !focusReady.current;
+    focusReady.current = editor !== null && editable;
+    if (!editor || !editable) return;
+    const pending = focusRequest;
+    const intent: FocusRequest | null =
+      pending?.pageId === pageId
+        ? pending
+        : deferred && autoFocus
+          ? focusBlock
+            ? { pageId, target: "block", blockId: focusBlock }
+            : { pageId, target: "body" }
+          : null;
+    if (!intent || intent.target === "title") return;
     const active = document.activeElement;
-    const request = resolvePageFocus(focusRequest, {
-      kind: "bodyMount",
+    const request = resolvePageFocus(intent, {
+      kind: "bodyFocus",
+      deferred,
       textFieldFocused:
         (active instanceof HTMLTextAreaElement ||
           active instanceof HTMLInputElement) &&
         host.current?.closest("article")?.contains(active) === true,
     });
-    useShellStore.setState({ focusRequest: null });
+    if (intent === pending) useShellStore.setState({ focusRequest: null });
     if (!request) return;
     if (request.target === "bodyStart") {
       const first = editor.document[0];
       if (first) editor.setTextCursorPosition(first, "start");
+    } else if (request.target === "block") {
+      const block = editor.getBlock(request.blockId);
+      if (block) editor.setTextCursorPosition(block, "start");
     }
     editor.focus();
-  }, [editor, editable, focusRequest, pageId]);
+  }, [editor, editable, focusRequest, pageId, focusBlock, autoFocus]);
 
   return (
     <>

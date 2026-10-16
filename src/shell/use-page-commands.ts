@@ -22,7 +22,13 @@ export function useOpenPage() {
       if (!canOpenPage(pageId)) return;
       forgetEmptyFailuresExcept(pageId);
       flushSync(() => {
-        useShellStore.getState().requestFocus({ pageId, target });
+        useShellStore
+          .getState()
+          .requestFocus(
+            search.block
+              ? { pageId, target: "block", blockId: search.block }
+              : { pageId, target },
+          );
         useShellStore.setState({
           activePageId: pageId,
           message: null,

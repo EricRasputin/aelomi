@@ -1,34 +1,50 @@
 import { expect, test } from "vitest";
 import { resolvePageFocus } from "./page-focus";
 
-test("TREE-7 body focus yields to a focused text field, while Return can enter the body", () => {
-  expect(
-    resolvePageFocus(
-      { pageId: "a", target: "body" },
-      {
-        kind: "bodyMount",
+test("TREE-7 every deferred body target yields to a focused text field", () => {
+  for (const request of [
+    { pageId: "a", target: "body" },
+    { pageId: "a", target: "bodyStart" },
+    { pageId: "a", target: "block", blockId: "two" },
+  ] as const) {
+    expect(
+      resolvePageFocus(request, {
+        kind: "bodyFocus",
+        deferred: true,
         textFieldFocused: true,
-      },
-    ),
-  ).toBeNull();
-  expect(
-    resolvePageFocus(
-      { pageId: "a", target: "body" },
-      {
-        kind: "bodyMount",
+      }),
+    ).toBeNull();
+    expect(
+      resolvePageFocus(request, {
+        kind: "bodyFocus",
+        deferred: true,
         textFieldFocused: false,
-      },
-    ),
-  ).toEqual({ pageId: "a", target: "body" });
+      }),
+    ).toEqual(request);
+  }
+});
+
+test("TREE-7 immediate Return enters a mounted body from its focused title", () => {
   expect(
     resolvePageFocus(
       { pageId: "a", target: "bodyStart" },
       {
-        kind: "bodyMount",
+        kind: "bodyFocus",
+        deferred: false,
         textFieldFocused: true,
       },
     ),
   ).toEqual({ pageId: "a", target: "bodyStart" });
+  expect(
+    resolvePageFocus(
+      { pageId: "a", target: "body" },
+      {
+        kind: "bodyFocus",
+        deferred: false,
+        textFieldFocused: true,
+      },
+    ),
+  ).toBeNull();
 });
 
 test("TREE-1 gated Return is dropped and a title focus cancels pending body targets", () => {
@@ -50,14 +66,15 @@ test("TREE-1 gated Return is dropped and a title focus cancels pending body targ
       },
     ),
   ).toEqual({ pageId: "a", target: "title" });
-  for (const target of ["body", "bodyStart"] as const) {
+  for (const request of [
+    { pageId: "a", target: "body" },
+    { pageId: "a", target: "bodyStart" },
+    { pageId: "a", target: "block", blockId: "two" },
+  ] as const) {
     expect(
-      resolvePageFocus(
-        { pageId: "a", target },
-        {
-          kind: "titleFocus",
-        },
-      ),
+      resolvePageFocus(request, {
+        kind: "titleFocus",
+      }),
     ).toBeNull();
   }
   expect(
