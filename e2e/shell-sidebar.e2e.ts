@@ -89,3 +89,31 @@ test("TREE-9 Trash the open page chooses its sibling then the empty state", asyn
   await screen.getByRole("option", "Move to trash").click();
   await expect(screen.getByRole("region", "No page open")).toBeVisible();
 });
+
+test("CMD-2 CMD-3 CMD-6 New page is reachable by query and shortcut from the empty state", async ({
+  app,
+  browser,
+  screen,
+}) => {
+  await app.open("/");
+  await expect(screen.getByRole("region", "No page open")).toBeVisible();
+  await browser.keyboard.press("Meta+k");
+  await expect(screen.getByRole("option", "New page")).not.toBeVisible();
+  await browser.keyboard.type("new");
+  await expect(screen.getByRole("option", "New page")).toBeVisible();
+  await expect(screen.getByRole("option", "Move to trash")).not.toBeVisible();
+  await screen.getByRole("option", "New page").click();
+  await browser.keyboard.type("Created by palette");
+  await expect(
+    screen
+      .getByRole("navigation", "Pages")
+      .getByRole("button", "Created by palette"),
+  ).toBeVisible();
+  await browser.keyboard.press("Meta+n");
+  await browser.keyboard.type("Created by shortcut");
+  await expect(
+    screen
+      .getByRole("navigation", "Pages")
+      .getByRole("button", "Created by shortcut"),
+  ).toBeVisible();
+});

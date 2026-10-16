@@ -62,6 +62,7 @@ export type MockSetup = {
   settings?: Partial<Settings>;
   appearance?: "light" | "dark";
   holdRegistration?: boolean;
+  failSettingsRead?: boolean;
   storageStatus?: StorageStatus;
   recovery?: RecoverySetup;
   failWrites?: FailReason;
@@ -83,6 +84,9 @@ declare global {
 }
 const calls: MockCall[] = [];
 const errors: string[] = [];
+let failTreeRead = false;
+let failSettingsRead = false;
+
 type MockDoc = { doc: Y.Doc; updates: Uint8Array[]; pending: boolean };
 const storage: {
   status: StorageStatus;
@@ -455,7 +459,15 @@ export const commands = {
     control.quit.request();
     return { status: "ok", data: null };
   },
-  settingsGet: () => settingsMock().commands.settingsGet(),
+  settingsGet: async () => {
+    await setupReady;
+    if (failSettingsRead)
+      return {
+        status: "error",
+        error: { Io: "synthetic settings read failure" },
+      };
+    return settingsMock().commands.settingsGet();
+  },
   settingsUpdate: (patch) => settingsMock().commands.settingsUpdate(patch),
   ping: async (request) => {
     calls.push({ command: "ping", args: [structuredClone(request)] });
@@ -486,6 +498,8 @@ export const commands = {
     calls.push({ command: "pageTree", args: [] });
     await setupReady;
     await recoveryMock().waitForTree();
+    if (failTreeRead)
+      return { status: "error", error: { Io: "synthetic tree read failure" } };
     if (storage.status !== "Ready")
       return { status: "error", error: "Unavailable" };
     const problem = pagesRootProblem(workspaceDoc());
@@ -727,6 +741,7 @@ async function applySetup(setup: MockSetup | undefined) {
   if (setup.appearance) appearance = setup.appearance;
   if (setup.storageStatus)
     storage.status = structuredClone(setup.storageStatus);
+  failSettingsRead = setup.failSettingsRead ?? false;
   if (setup.failWrites) {
     storage.failWrites = true;
     storage.reason = setup.failWrites;
@@ -763,6 +778,8 @@ function restoreKept(): boolean {
 }
 
 function resetState() {
+  failTreeRead = false;
+  failSettingsRead = false;
   calls.length = 0;
   errors.length = 0;
   settingsMock().reset();
@@ -866,6 +883,10 @@ const control = {
       const { commands } = await import("./index");
       return commands.pageRename(pageId, title);
     },
+    failReads(on: boolean) {
+      failTreeRead = on;
+      void events.pageRecordsChanged.emit();
+    },
     seed(pages: SeedPage[]) {
       pageWrite(() => writeRecords(workspaceDoc(), pages));
     },
@@ -911,7 +932,12 @@ const control = {
     },
   },
   get settings() {
-    return settingsMock().control;
+    return {
+      ...settingsMock().control,
+      failReads(on: boolean) {
+        failSettingsRead = on;
+      },
+    };
   },
   storage: {
     refuseRecords(error: import("./bindings").PageError | null) {
