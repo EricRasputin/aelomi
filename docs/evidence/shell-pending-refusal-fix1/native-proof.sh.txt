@@ -1,0 +1,221 @@
+#!/usr/bin/env bash
+set -euo pipefail
+OUT=.local-gate/e3-fix1
+S=.claude/skills/verify-aelomi/scripts
+BASE=$(cat "$OUT/base.txt")
+RUN=
+OWN_LOCK=0
+OLD_DARK=
+release_lock() {
+  if [[ "$OWN_LOCK" == 1 && -f /tmp/aelomi-ui.lock/owner && "$(awk '{print $1}' /tmp/aelomi-ui.lock/owner)" == "$$" ]]; then rm -rf /tmp/aelomi-ui.lock; fi
+  OWN_LOCK=0
+}
+take_lock() {
+  local started
+  started=$(date +%s)
+  until mkdir /tmp/aelomi-ui.lock 2>/dev/null; do
+    if [[ -f /tmp/aelomi-ui.lock/owner ]] && (( $(date +%s) - $(stat -f %m /tmp/aelomi-ui.lock/owner) > 1800 )); then rm -rf /tmp/aelomi-ui.lock; fi
+    if (( $(date +%s) - started > 2700 )); then echo 'INCONCLUSIVE: keyboard lock unavailable for 45 minutes'; exit 1; fi
+    sleep 15
+  done
+  printf '%s %s E3-fix1-native-proof\n' "$$" "$(date -u +%FT%TZ)" > /tmp/aelomi-ui.lock/owner
+  OWN_LOCK=1
+}
+restore_appearance() {
+  if [[ -n "$OLD_DARK" ]]; then osascript -e "tell application \"System Events\" to tell appearance preferences to set dark mode to $OLD_DARK" >/dev/null; fi
+}
+finish() {
+  if [[ "$OWN_LOCK" == 1 ]]; then restore_appearance || true; fi
+  release_lock
+  if [[ -n "$RUN" ]]; then "$S/app.sh" cleanup "$RUN" >/dev/null || true; fi
+  ls -la "$HOME/Library/Application Support/Aelomi" > "$OUT/real-data-after.txt"
+  diff -u "$OUT/real-data-before.txt" "$OUT/real-data-after.txt"
+}
+trap finish EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+launch() {
+  RUN=$(AELOMI_DATA_DIR="$1" AELOMI_CLOUD_ROOTS="$BASE/Proof Cloud" AELOMI_RECOVERY_DIR="$BASE/Preferences/$2" "$S/app.sh" launch dev)
+  printf '%s\t%s\n' "$3" "$RUN" >> "$OUT/runs.tsv"
+  take_lock
+  "$S/app.sh" doctor "$RUN"
+  if [[ -z "$OLD_DARK" ]]; then OLD_DARK=$(osascript -e 'tell application "System Events" to tell appearance preferences to get dark mode'); fi
+  osascript - "$(sed -n 's/^APP_PID=//p' "$RUN/run.env")" <<'AS'
+on run argv
+ tell application "System Events" to tell (first process whose unix id is (item 1 of argv as integer))
+  set size of window 1 to {1080, 1000}
+ end tell
+end run
+AS
+}
+quit_run() {
+  local pid
+  pid=$(sed -n 's/^APP_PID=//p' "$RUN/run.env")
+  "$S/app.sh" keys "$RUN" q command
+  for attempt in {1..50}; do if ! kill -0 "$pid" 2>/dev/null; then break; fi; sleep 0.1; done
+  if kill -0 "$pid" 2>/dev/null; then echo 'FAIL: app did not quit'; exit 1; fi
+  restore_appearance
+  release_lock
+  "$S/app.sh" cleanup "$RUN" >/dev/null
+  RUN=
+}
+capture_themes() {
+  for scheme in dark light; do
+    local dark=false
+    if [[ "$scheme" == dark ]]; then dark=true; fi
+    osascript -e "tell application \"System Events\" to tell appearance preferences to set dark mode to $dark" >/dev/null
+    "$S/app.sh" screenshot "$RUN" "$1-$scheme"
+  done
+}
+check_original() {
+  python3 - "$1" "$OUT/$2-before.json.txt" <<'PY'
+import hashlib,json,sys
+from pathlib import Path
+root=Path(sys.argv[1]);expected=json.loads(Path(sys.argv[2]).read_text())
+actual={str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest() for p in root.rglob('*') if p.is_file()}
+assert actual==expected,(actual,expected)
+print('PASS: original folder listing and every file byte are unchanged')
+PY
+}
+launch "$BASE/Destination/Aelomi" move leaf
+"$S/app.sh" tree "$RUN" > "$OUT/leaf-tree.txt"
+grep '^storage status=CloudPath' "$RUN/shell.log"
+python3 - "$BASE" <<'PY'
+import json,sys
+from pathlib import Path
+b=Path(sys.argv[1]);r=json.loads(next((b/'Preferences/move').glob('*.json')).read_text())
+assert r['configured']==str(b/'Destination/Aelomi')
+assert r['resolved']==str(b/'Proof Cloud/Aelomi Notes')
+assert r['version']==1
+assert r['kind']=='LeafLink'
+assert r['refused_at_unix_ms']>1_760_000_000_000
+print('PASS: cloud refusal recorded exact paths, variant, and timestamp')
+PY
+capture_themes leaf-refusal
+quit_run
+test -L "$BASE/Destination/Aelomi"
+rm "$BASE/Destination/Aelomi"
+mv "$BASE/Proof Cloud/Aelomi Notes" "$BASE/Destination/OtherApp/Aelomi"
+ls -la "$BASE/Destination" > "$OUT/misplaced-listing-before.txt"
+launch "$BASE/Destination/Aelomi" move misplaced
+"$S/app.sh" tree "$RUN" > "$OUT/misplaced-tree.txt"
+grep 'Finish moving your pages' "$OUT/misplaced-tree.txt"
+grep '^storage status=FinishMoving' "$RUN/shell.log"
+test ! -e "$BASE/Destination/Aelomi"
+ls -la "$BASE/Destination" > "$OUT/misplaced-listing-after.txt"
+diff -u "$OUT/misplaced-listing-before.txt" "$OUT/misplaced-listing-after.txt"
+echo 'PASS: misplaced drop creates nothing at configured path; parent listing is identical'
+capture_themes finish-moving
+quit_run
+mkdir "$BASE/Destination/Aelomi"
+cp "$BASE/Destination/OtherApp/Aelomi/format.json" "$BASE/Destination/Aelomi/format.json"
+python3 - "$BASE" "$OUT/marker-before.json.txt" <<'MARKER'
+import json,hashlib,sys
+from pathlib import Path
+b=Path(sys.argv[1]);paths=[b/'Destination/Aelomi',b/'Preferences/move']
+result={str(p.relative_to(b)):hashlib.sha256(p.read_bytes()).hexdigest() for root in paths for p in root.rglob('*') if p.is_file()}
+Path(sys.argv[2]).write_text(json.dumps(result,sort_keys=True))
+MARKER
+launch "$BASE/Destination/Aelomi" move marker-only
+"$S/app.sh" tree "$RUN" > "$OUT/marker-tree.txt"
+grep 'Finish moving your pages' "$OUT/marker-tree.txt"
+grep '^storage status=FinishMoving' "$RUN/shell.log"
+test ! -e "$BASE/Destination/Aelomi/docs"
+python3 - "$BASE" "$OUT/marker-before.json.txt" <<'MARKER'
+import json,hashlib,sys
+from pathlib import Path
+b=Path(sys.argv[1]);paths=[b/'Destination/Aelomi',b/'Preferences/move']
+actual={str(p.relative_to(b)):hashlib.sha256(p.read_bytes()).hexdigest() for root in paths for p in root.rglob('*') if p.is_file()}
+assert actual==json.loads(Path(sys.argv[2]).read_text())
+assert sorted(p.name for p in (b/'Destination/Aelomi').iterdir())==['format.json']
+print('PASS: marker-only destination and pending record are byte-identical; no docs directory was created')
+MARKER
+capture_themes marker-only
+quit_run
+rm "$BASE/Destination/Aelomi/format.json"
+rmdir "$BASE/Destination/Aelomi"
+mv "$BASE/Destination/OtherApp/Aelomi" "$BASE/Destination/Aelomi"
+test -f "$BASE/Destination/Aelomi/format.json"
+test -d "$BASE/Destination/Aelomi/docs"
+check_original "$BASE/Destination/Aelomi" move
+launch "$BASE/Destination/Aelomi" move recovered
+"$S/app.sh" tree "$RUN" > "$OUT/recovered-tree.txt"
+grep 'Original pages survive E3 recovery.' "$OUT/recovered-tree.txt"
+python3 - <<'EXACT'
+from pathlib import Path
+body = [line.strip() for line in Path('.local-gate/e3-fix1/recovered-tree.txt').read_text().splitlines() if 'AXTextArea "Page body"' in line]
+assert body == ['AXTextArea "Page body" = "Original pages survive E3 recovery."'], body
+print('PASS: native Page body equals exactly Original pages survive E3 recovery.')
+EXACT
+grep '^storage status=Ready' "$RUN/shell.log"
+test "$(find "$BASE/Preferences/move" -name '*.json' | wc -l | tr -d ' ')" = 0
+echo 'PASS: correct shell move opens exact original page text and clears pending record'
+capture_themes recovered-page
+quit_run
+launch "$BASE/New Destination/Aelomi" new new-leaf
+grep '^storage status=CloudPath' "$RUN/shell.log"
+quit_run
+test -L "$BASE/New Destination/Aelomi"
+rm "$BASE/New Destination/Aelomi"
+launch "$BASE/New Destination/Aelomi" new new-workspace
+"$S/app.sh" tree "$RUN" > "$OUT/new-pending-tree.txt"
+grep 'Finish moving your pages' "$OUT/new-pending-tree.txt"
+"$S/app.sh" press "$RUN" 'Start a new empty workspace here'
+"$S/app.sh" wait-dialog "$RUN" 'Start a new empty workspace?'
+capture_themes new-confirmation
+"$S/app.sh" press "$RUN" 'Keep moving my pages'
+test ! -e "$BASE/New Destination/Aelomi"
+test "$(find "$BASE/Preferences/new" -name '*.json' | wc -l | tr -d ' ')" = 1
+echo 'PASS: cancel keeps pending refusal and creates no workspace'
+"$S/app.sh" press "$RUN" 'Start a new empty workspace here'
+"$S/app.sh" wait-dialog "$RUN" 'Start a new empty workspace?'
+"$S/app.sh" press "$RUN" 'Create empty workspace'
+"$S/app.sh" wait-status "$RUN" 'IPC ok · core 0.1.0 · seq 1'
+"$S/app.sh" tree "$RUN" > "$OUT/new-ready-tree.txt"
+grep 'Ping again' "$OUT/new-ready-tree.txt"
+if grep -q 'AXTextArea "Page body"' "$OUT/new-ready-tree.txt"; then echo 'FAIL: the new workspace has a page body'; exit 1; fi
+grep '^recovery new workspace status=Ready' "$RUN/shell.log"
+test -f "$BASE/New Destination/Aelomi/format.json"
+test "$(find "$BASE/Preferences/new" -name '*.json' | wc -l | tr -d ' ')" = 0
+check_original "$BASE/Proof Cloud/Keep These Pages" new
+capture_themes new-empty
+quit_run
+echo 'PASS: confirmed creation opens empty workspace; original cloud folder is untouched'
+echo 'PASS: no Finder commands or opener actions were sent; moves used shell rm and mv'
+
+launch "$BASE/Corrupt Destination/Aelomi" corrupt corrupt-leaf
+grep '^storage status=CloudPath' "$RUN/shell.log"
+quit_run
+rm "$BASE/Corrupt Destination/Aelomi"
+python3 - "$BASE" <<'CORRUPT'
+import hashlib,json,sys
+from pathlib import Path
+b=Path(sys.argv[1]);file=next((b/'Preferences/corrupt').glob('*.json'))
+file.write_text('broken JSON')
+root=b/'Proof Cloud/Corrupt Pages'
+Path('.local-gate/e3-fix1/corrupt-before.json.txt').write_text(json.dumps({str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest() for p in root.rglob('*') if p.is_file()},sort_keys=True))
+CORRUPT
+launch "$BASE/Corrupt Destination/Aelomi" corrupt corrupt-record
+"$S/app.sh" tree "$RUN" > "$OUT/corrupt-tree.txt"
+grep 'Aelomi lost track of where your pages were' "$OUT/corrupt-tree.txt"
+grep '^storage status=RecoveryRecordUnreadable' "$RUN/shell.log"
+test ! -e "$BASE/Corrupt Destination/Aelomi"
+python3 - "$BASE" <<'CORRUPT'
+import sys
+from pathlib import Path
+b=Path(sys.argv[1]);assert next((b/'Preferences/corrupt').glob('*.json')).read_text()=='broken JSON'
+print('PASS: corrupt record keeps guard, destination absent, and corrupt bytes unchanged')
+CORRUPT
+capture_themes corrupt-record
+"$S/app.sh" press "$RUN" 'Start a new empty workspace here'
+"$S/app.sh" wait-dialog "$RUN" 'Start a new empty workspace?'
+"$S/app.sh" press "$RUN" 'Create empty workspace'
+"$S/app.sh" tree "$RUN" > "$OUT/corrupt-ready-tree.txt"
+grep 'Ping again' "$OUT/corrupt-ready-tree.txt"
+grep '^recovery new workspace status=Ready' "$RUN/shell.log"
+check_original "$BASE/Proof Cloud/Corrupt Pages" corrupt
+capture_themes corrupt-empty
+quit_run
+echo 'PASS: explicit creation succeeds after corrupt record and original pages remain byte-identical'
+test "$(find "$BASE/Preferences/corrupt" -name '*.json' | wc -l | tr -d ' ')" = 0
+echo 'PASS: corrupt pending record cleared after explicit creation'

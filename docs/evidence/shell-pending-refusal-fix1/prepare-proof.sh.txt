@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+set -euo pipefail
+OUT=.local-gate/e3-fix1
+base=$(mktemp -d /private/tmp/ae92-e3-fix1-XXXXXX)
+printf '%s\n' "$base" > "$OUT/base.txt"
+mkdir -p "$base/Proof Cloud" "$base/Destination/OtherApp" "$base/New Destination" "$base/Preferences" "$base/Corrupt Destination"
+node --input-type=module <<'JS'
+import { writeFileSync } from 'node:fs';
+import * as Y from 'yjs';
+import { writeBody } from './src/ipc/mock-body.ts';
+const doc = new Y.Doc();
+writeBody(doc, [{ id: 'block-recovery', content: ['Original pages survive E3 recovery.'] }]);
+writeFileSync('.local-gate/e3-fix1/original.yupdate', Y.encodeStateAsUpdate(doc));
+JS
+trap 'rm -f crates/core/examples/e3_proof_seed.rs' EXIT
+cat > crates/core/examples/e3_proof_seed.rs <<'RS'
+use std::{path::Path, time::{Duration, Instant}};
+use aelomi_core::{storage::{DocId, Store}, workspace::{fixture::{Editor, put_page}, records::{PageId, PageRecord, Placement}}};
+fn main() {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let store = Store::open(Path::new(&args[0])).unwrap();
+    let mut editor = Editor::new(92);
+    let page = PageId::new("page-proof").unwrap();
+    let record = PageRecord { title: "E3 recovery proof".into(), placement: Placement { parent: None, order: 0 }, favorite: None, trash: None, created_at: 1, updated_at: 1 };
+    let update = editor.edit(&DocId::workspace(), |txn| put_page(txn, &page, &record));
+    store.append(&DocId::workspace(), &update).unwrap();
+    store.append(page.doc_id(), &std::fs::read(&args[1]).unwrap()).unwrap();
+    assert!(store.flush(Instant::now() + Duration::from_secs(2)).is_empty());
+}
+RS
+cargo run -p aelomi-core --features test-support --example e3_proof_seed -- "$base/Proof Cloud/Aelomi Notes" "$OUT/original.yupdate"
+cargo run -p aelomi-core --features test-support --example e3_proof_seed -- "$base/Proof Cloud/Keep These Pages" "$OUT/original.yupdate"
+cargo run -p aelomi-core --features test-support --example e3_proof_seed -- "$base/Proof Cloud/Corrupt Pages" "$OUT/original.yupdate"
+ln -s "$base/Proof Cloud/Corrupt Pages" "$base/Corrupt Destination/Aelomi"
+ln -s "$base/Proof Cloud/Aelomi Notes" "$base/Destination/Aelomi"
+ln -s "$base/Proof Cloud/Keep These Pages" "$base/New Destination/Aelomi"
+python3 - "$base" <<'PY'
+import hashlib,json,sys
+from pathlib import Path
+base=Path(sys.argv[1])
+for name,folder in [('move','Aelomi Notes'),('new','Keep These Pages')]:
+    root=base/'Proof Cloud'/folder
+    Path(f'.local-gate/e3-fix1/{name}-before.json.txt').write_text(json.dumps({str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest() for p in root.rglob('*') if p.is_file()},sort_keys=True))
+PY
