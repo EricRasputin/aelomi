@@ -1,5 +1,7 @@
 # Refusal recovery success path, fix round 1
 
+`native-proof.sh.txt` changes the Mac's appearance and must not be rerun as is. Follow the current [verify-aelomi rules](../../../.claude/skills/verify-aelomi/SKILL.md#rules) instead.
+
 Source commit `5fb8fb008f712ac72117b71d6a67ca28d6ccf6bb`. Merge base against `origin/main` is `6d64d683d5bf02bea2f67e8038428caef1ab4d62`. Verbatim patch-id is `954478497f2131627cd3edd8dd64165b3046115f`.
 
 Proven pathspecs are `src/storage-copy.ts` and `src/storage-copy.test.ts`. This historical record covers the successful equal-name recipe at that source commit. Round 2 updates the check copy and proves failure recovery separately.
@@ -32,6 +34,8 @@ The complete native `Page body` value equals the original marker. This record pr
 Both owned Finder windows were closed. Appearance and clipboard were restored. The real-data folder was listed read-only before launch and after cleanup; the listings were identical.
 
 ## Reproduce
+
+(see the warning above)
 
 Copy the text scripts into `.local-gate/e2-fix1/`, removing the final `.txt` suffix except from `seed.rs.txt`. Run `prepare-proof.sh`, then `native-proof.sh` against the recorded source. The scripts use fresh synthetic folders and a fake cloud root. They take the keyboard lock, preserve existing Finder windows, and clean up owned launches. The negative checks now exit explicitly on a match.
 

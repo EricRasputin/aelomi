@@ -1,5 +1,7 @@
 # Refusal recovery, fix round 2
 
+`attempted-finder-proof.sh.txt` and `capture-ui-only.sh.txt` change the Mac's appearance and must not be rerun as is. Follow the current [verify-aelomi rules](../../../.claude/skills/verify-aelomi/SKILL.md#rules) instead.
+
 Source commit `d79deecba3840d29098c4fd821bf7e66fc31d6f2`. Merge base `6d64d683d5bf02bea2f67e8038428caef1ab4d62` against `origin/main`. Verbatim patch-id `c11d6ca7151c0972e9969634f813c59469e368e9`.
 
 Proven pathspecs are `src/storage-copy.ts`, `src/storage-copy.test.ts`, `e2e/cloud-folder.e2e.ts`, `tests/playwright/storage-refusal.spec.ts`, `src-tauri/src/commands.rs`, `src-tauri/src/storage.rs`, `src-tauri/src/lib.rs`, `src-tauri/src/tests.rs`, `src-tauri/src/macos.rs`, `src/ipc/mock.ts`, and `src/stores/quit.ts`.
@@ -83,6 +85,8 @@ GitHub CLI 2.102.0 was downloaded and its archive matched the published SHA-256 
 | `20261016-084150-dev-Rw2y/override-light.png` | 165769 | `29ccc0f275aba22fd6429c60233ddeb8fecac4203cfa017a5dda1963f5243aa7` | [Image](https://github.com/user-attachments/assets/ad0a18de-029b-4ce5-a4be-490e4cff3196) |
 
 ## Reproduce
+
+(see the warning above)
 
 Copy the text scripts into `.local-gate/e2-fix2/`, dropping the final `.txt` suffix except from `seed.rs.txt`. `capture-ui-only.sh` creates fresh synthetic cloud paths and captures every refusal variant without sending keys or calling Finder. `stress.mjs` runs through `mock-drive.mjs`. Run `hoisted-hook-proof.sh` only when no native dev instance is active, then rebuild the mock before positive checks.
 

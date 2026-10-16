@@ -1,5 +1,7 @@
 # PR 86 round 4 Finder recovery proof
 
+`finder-proof.sh.txt` changes the Mac's appearance and must not be rerun as is. Follow the current [verify-aelomi rules](../../../.claude/skills/verify-aelomi/SKILL.md#rules) instead.
+
 Source commit `acd375ec26d319eabc912f3a7da29550f2a3b8c0`. Merge base against `origin/main` is `a39625b427c8675d4ca2a5ffa62bc8c1de2aa82e`. Verbatim patch-id is `967b11e1a2f9c1f93824ac6b1a9899e04aa56fe7`.
 
 Proven pathspecs, from the repository root, are `src/storage-copy.ts`, `src/components/storage-refusal.tsx`, and `src/styles.css`. The app performs no folder movement. This record proves the manual recovery recipe that moves a user's workspace.
@@ -24,6 +26,8 @@ Model the Domain kept the existing enum and step union. Laziness Protocol remove
 - Mock run `~/.local/state/aelomi-verify/20261015-220118-mock-kFKW7T` passes all three variants with demo and worst-case data, light and dark, widths 320, 480, 960, and 1440, long names, Japanese text, emoji, and 200% text. Paths wrap without clipping or horizontal overflow. The proof-only fixture toggle is absent from production.
 
 ## Reproduce the native proof
+
+(see the warning above)
 
 Use macOS 27.0.1 on Apple Silicon. Run from the repository root. Do not launch a default Aelomi instance.
 
