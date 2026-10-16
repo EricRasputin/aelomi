@@ -242,11 +242,17 @@ fn open_workspace(
                 }
             }
             let opened = Workspace::prepare(&resolved)
-                .map(|mut prepared| {
-                    if mode == OpenMode::Startup { prepared.seed_getting_started(Instant::now() + QUIT_FLUSH_TIMEOUT); }
-                    Arc::new(prepared.start(on_index))
-                })
-                .map_err(StorageStatus::from);
+                .map_err(StorageStatus::from)
+                .and_then(|mut prepared| {
+                    let deadline = Instant::now() + QUIT_FLUSH_TIMEOUT;
+                    match mode {
+                        OpenMode::Startup => prepared.seed_getting_started(deadline),
+                        OpenMode::CreateEmpty => prepared
+                            .initialize_empty(deadline)
+                            .map_err(|error| StorageStatus::Io(error.to_string()))?,
+                    }
+                    Ok(Arc::new(prepared.start(on_index)))
+                });
             if opened.is_ok() {
                 if let Some(record) = &record {
                     record.clear();
@@ -310,7 +316,6 @@ impl Storage {
             path,
             #[cfg(test)]
             _index_dir: None,
-
         }
     }
 
@@ -336,7 +341,11 @@ impl Storage {
         match result {
             Err(StorageStatus::Io(error)) => Err(StorageError::Io(error)),
             other => {
+                let ready = other.is_ok();
                 *opened = other;
+                if ready {
+                    self.quit.workspace_opened();
+                }
                 Ok(opened
                     .as_ref()
                     .map_or_else(Clone::clone, |_| StorageStatus::Ready))

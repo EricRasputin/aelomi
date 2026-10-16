@@ -15,6 +15,19 @@ pub const GETTING_STARTED_LINES: [&str; 3] = [
 ];
 
 impl PreparedWorkspace {
+    /// Durably initializes an empty workspace that first-run seeding will skip on later launches.
+    pub fn initialize_empty(&mut self, deadline: Instant) -> Result<(), PageEditError> {
+        let doc = Doc::new();
+        let update = doc.transact_mut().encode_update_v1();
+        self.store.append(&DocId::workspace(), &update)?;
+        if !self.store.flush(deadline).is_empty() {
+            return Err(PageEditError::Io(std::io::Error::other(
+                "could not finish creating the empty workspace",
+            )));
+        }
+        Ok(())
+    }
+
     /// Seeds a pristine workspace before index readers start. Failure leaves it open and unseeded.
     pub fn seed_getting_started(&mut self, deadline: Instant) {
         if let Err(error) = self.try_seed(deadline) {

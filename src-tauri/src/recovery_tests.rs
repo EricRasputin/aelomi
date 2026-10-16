@@ -206,7 +206,7 @@ fn a_different_configured_path_ignores_and_retains_the_record() {
     assert_eq!(storage.status(), StorageStatus::Ready);
     assert_eq!(
         fs::read_to_string(home.location.path.join("format.json")).unwrap(),
-        "{\n  \"format\": 1\n}\n"
+        "{\n  \"format\": 2\n}\n"
     );
     assert_eq!(original_file.load().unwrap(), Some(record));
 }
@@ -544,4 +544,40 @@ fn normalized_configured_paths_have_one_stable_record_filename() {
         file.path.file_name().unwrap().to_string_lossy(),
         "04e4667d4c7f20d958be55c7ec05a9af1188ae4bf03ddf4381f2d8ef0dc8c651.json"
     );
+}
+
+#[test]
+fn explicit_empty_workspace_stays_empty_after_a_normal_relaunch() {
+    let home = Home::new();
+    home.leaf();
+    home.open();
+    fs::remove_file(&home.location.path).unwrap();
+    let storage = home.open();
+    assert_eq!(
+        storage.start_empty_workspace(|_| {}).unwrap(),
+        StorageStatus::Ready
+    );
+    drop(storage);
+    let reopened = home.open();
+    assert_eq!(reopened.status(), StorageStatus::Ready);
+    assert_eq!(reopened.workspace().unwrap().tree().unwrap().pages.len(), 0);
+    assert_eq!(home.file().path.exists(), false);
+}
+
+#[test]
+fn explicit_creation_enables_the_store_only_record_edit_quit_barrier() {
+    let home = Home::new();
+    home.leaf();
+    home.open();
+    fs::remove_file(&home.location.path).unwrap();
+    let storage = home.open();
+    assert_eq!(
+        storage.start_empty_workspace(|_| {}).unwrap(),
+        StorageStatus::Ready
+    );
+    assert_eq!(
+        storage.quit().request(),
+        crate::quit::QuitRequest::FlushStore
+    );
+    assert_eq!(storage.quit().record_edit().is_none(), true);
 }
