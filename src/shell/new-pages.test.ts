@@ -77,14 +77,15 @@ test("SHELL-10 an empty failed page needs no retained title retry", () => {
   expect([...useNewPagesStore.getState().pages]).toEqual([[id, "failed"]]);
   expect(commandFailures()).toEqual([]);
 });
-test("TREE-1 a fresh tree forgets listed settled entries but keeps creating entries", () => {
+test("TREE-1 a fresh tree forgets listed settled entries but keeps creating and failed entries", () => {
   useNewPagesStore.setState({
     pages: new Map([
       ["a", "created"],
       ["b", "creating"],
+      ["failed", "failed"],
     ]),
   });
-  const pages = ["a", "b"].map((id) => ({
+  const pages = ["a", "b", "failed"].map((id) => ({
     id,
     title: "",
     parent_id: null,
@@ -98,5 +99,8 @@ test("TREE-1 a fresh tree forgets listed settled entries but keeps creating entr
       byId: new Map(pages.map((p) => [p.id, p])),
     },
   });
-  expect([...useNewPagesStore.getState().pages]).toEqual([["b", "creating"]]);
+  expect([...useNewPagesStore.getState().pages]).toEqual([
+    ["b", "creating"],
+    ["failed", "failed"],
+  ]);
 });

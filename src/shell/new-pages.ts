@@ -78,6 +78,6 @@ function reconcile() {
   const { source } = usePageTreeStore.getState();
   if (source.kind !== "ready" || source.error) return;
   for (const [id, state] of useNewPagesStore.getState().pages)
-    if (state !== "creating" && source.byId.has(id)) forgetNewPage(id);
+    if (state === "created" && source.byId.has(id)) forgetNewPage(id);
 }
 usePageTreeStore.subscribe(reconcile);

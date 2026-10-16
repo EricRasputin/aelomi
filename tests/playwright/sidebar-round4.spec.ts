@@ -533,3 +533,128 @@ test("CMD-6 final create and trash failures keep their own pages and retry targe
   await expect.poll(() => tree(page)).toEqual(["Beta"]);
   await expect(page).toHaveURL("/page/b");
 });
+
+test("SHELL-9 each sidebar and direct-route activation stays on the frozen page during Draining", async ({
+  page,
+}) => {
+  await page.goto("/page/a");
+  await expect(titleOf(page)).toHaveValue("Alpha");
+  await expect(page.getByRole("textbox", { name: "Page body" })).toHaveText(
+    "Original body",
+  );
+  await page.clock.install();
+  await page.clock.pauseAt(new Date());
+  const before = await page.evaluate(() =>
+    window.__aelomiMock?.calls
+      .filter((c) => c.command === "docLoad")
+      .map((c) => c.args[0]),
+  );
+  await page.evaluate(() => window.__aelomiMock?.quit.request());
+  const beta = rowsOf(page).getByRole("button", { name: "Beta", exact: true });
+  await expect(beta).toHaveAttribute("aria-disabled", "true");
+  await beta.click({ force: true });
+  await expect(page).toHaveURL("/page/a");
+  await expect(titleOf(page)).toHaveValue("Alpha");
+  expect(
+    await page.evaluate(() =>
+      window.__aelomiMock?.calls
+        .filter((c) => c.command === "docLoad")
+        .map((c) => c.args[0]),
+    ),
+  ).toEqual(before);
+  await page.evaluate(() => {
+    history.pushState({}, "", "/page/b");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+  });
+  await expect(page).toHaveURL("/page/a");
+  await page.clock.runFor(0);
+  await expect(titleOf(page)).toHaveJSProperty("readOnly", true);
+});
+
+test("SHELL-9 palette activation stays blocked during Draining independently of the sidebar", async ({
+  page,
+}) => {
+  await page.goto("/page/a");
+  await expect(titleOf(page)).toHaveValue("Alpha");
+  await page.keyboard.press("Meta+k");
+  await page.getByRole("combobox").fill("Beta");
+  const beta = page.getByRole("option", { name: "Beta", exact: true });
+  await expect(beta).toBeVisible();
+  await page.clock.install();
+  await page.clock.pauseAt(new Date());
+  await page.evaluate(() => window.__aelomiMock?.quit.request());
+  await expect(beta).toHaveAttribute("aria-disabled", "true");
+  await beta.click({ force: true });
+  await expect(page).toHaveURL("/page/a");
+  await expect(page.getByRole("combobox")).toBeVisible();
+  expect(
+    await page.evaluate(() =>
+      window.__aelomiMock?.calls.filter(
+        (c) => c.command === "docLoad" && c.args[0] === "b",
+      ),
+    ),
+  ).toEqual([]);
+});
+
+test("SHELL-9 a title mounted during an existing drain starts frozen", async ({
+  page,
+}) => {
+  await page.goto("/page/a");
+  await expect(page.getByRole("textbox", { name: "Page body" })).toHaveText(
+    "Original body",
+  );
+  await page.clock.install();
+  await page.clock.pauseAt(new Date());
+  await page.evaluate(() => {
+    history.pushState({}, "", "/page/b");
+    window.dispatchEvent(new PopStateEvent("popstate"));
+    queueMicrotask(() => window.__aelomiMock?.quit.request());
+  });
+  await expect(titleOf(page)).toHaveValue("Beta");
+  expect(
+    await page.evaluate(() => window.__aelomiMock?.quit.status.phase),
+  ).toBe("Draining");
+  await expect(titleOf(page)).toHaveJSProperty("readOnly", true);
+  await titleOf(page).focus();
+  await page.keyboard.type("Refused");
+  expect(await tree(page)).toEqual(["Alpha", "Beta"]);
+});
+
+test("TREE-1 an accepted record cannot unlock a terminally failed create through a fresh tree", async ({
+  page,
+}) => {
+  await page.goto("/page/a");
+  await expect(titleOf(page)).toHaveValue("Alpha");
+  await page.clock.install();
+  await hold(page);
+  await page.keyboard.press("Meta+n");
+  await page.keyboard.type("Kept");
+  const id = await newId(page);
+  await page.evaluate(() => {
+    window.__aelomiMock?.storage.failWrites(true);
+    window.__aelomiMock?.storage.refuseRecords(null);
+  });
+  await page.clock.runFor(6000);
+  expect(await tree(page)).toEqual(["Alpha", "Beta", ""]);
+  await page.evaluate(() => window.__aelomiMock?.storage.setStatus("Locked"));
+  await page.clock.runFor(6000);
+  await expect(titleOf(page)).toHaveJSProperty("readOnly", true);
+  await expect(titleOf(page)).toHaveValue("Kept");
+  await page.evaluate(() => {
+    window.__aelomiMock?.storage.setStatus("Ready");
+    window.__aelomiMock?.storage.failWrites(false);
+    window.__aelomiMock?.workspace.failReads(false);
+  });
+  await page.clock.runFor(6000);
+  await expect(
+    page.getByText("This page couldn't be created. Its title is kept here.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(titleOf(page)).toHaveJSProperty("readOnly", true);
+  expect(await bodyCalls(page, id)).toEqual([]);
+  await page.getByRole("button", { name: "Try again", exact: true }).click();
+  await page.clock.runFor(1000);
+  await expect.poll(() => tree(page)).toEqual(["Alpha", "Beta", "Kept"]);
+  await expect.poll(() => bodyCalls(page, id)).toEqual(["docLoad"]);
+});
