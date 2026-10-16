@@ -11,6 +11,7 @@ import {
 } from "@tanstack/react-router";
 import { useEffect, useId, useLayoutEffect } from "react";
 import { CommandPalette } from "./components/command-palette";
+import { SettingsDialog } from "./components/settings-dialog";
 import {
   QuitConfirmation,
   SaveFailureBanner,
@@ -91,6 +92,7 @@ function WorkspaceLayout() {
         >
           <Outlet />
         </main>
+        <SettingsDialog />
         <CommandPalette />
         <QuitConfirmation />
       </div>

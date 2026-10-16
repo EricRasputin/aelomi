@@ -4,13 +4,24 @@ import { commandDispatcher } from "./command-dispatcher";
 import { historyCommand } from "./editor/history-commands";
 import { events } from "./ipc";
 import { usePaletteStore } from "./stores/palette";
+import { useSettingsDialogStore } from "./stores/settings-dialog";
 
 export function useShortcutCommands() {
   useEffect(() => {
     const unregister = [
       commandDispatcher.register("openPalette", {
+        enabled: () =>
+          useSettingsDialogStore.getState().dialog.kind === "closed",
         run: ({ target }) =>
           flushSync(() => usePaletteStore.getState().show(target)),
+      }),
+      commandDispatcher.register("openSettings", {
+        run: ({ target }) => {
+          const palette = usePaletteStore.getState();
+          const returnTo = palette.open ? palette.returnTo : target;
+          flushSync(() => palette.hide());
+          flushSync(() => useSettingsDialogStore.getState().show(returnTo));
+        },
       }),
       commandDispatcher.register("undo", historyCommand("undo")),
       commandDispatcher.register("redo", historyCommand("redo")),

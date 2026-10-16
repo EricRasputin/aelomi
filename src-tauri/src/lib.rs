@@ -39,6 +39,20 @@ pub fn run() {
             #[cfg(target_os = "macos")]
             macos::setup(app)?;
             open_storage(app);
+            let theme = app
+                .state::<Storage>()
+                .workspace()
+                .ok()
+                .and_then(|workspace| workspace.settings().ok())
+                .map(|settings| settings::Settings::from(&settings).theme)
+                .unwrap_or(settings::Theme::System);
+            let script = format!(
+                "window.__aelomiInitialTheme = {};",
+                serde_json::to_string(&theme)?
+            );
+            tauri::WebviewWindowBuilder::from_config(app.handle(), &app.config().app.windows[0])?
+                .initialization_script(script)
+                .build()?;
             Ok(())
         });
     if perf::report_path().is_some() {

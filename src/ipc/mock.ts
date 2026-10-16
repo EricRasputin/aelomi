@@ -62,6 +62,7 @@ type MockCall = {
 
 export type MockSetup = {
   settings?: Partial<Settings>;
+  appearance?: "light" | "dark";
   storageStatus?: StorageStatus;
   recovery?: RecoverySetup;
   failWrites?: FailReason;
@@ -110,6 +111,8 @@ let exited = false;
 let indexStatus: IndexStatus = "Ready";
 let settings = defaultSettings();
 let settingsPending = false;
+let settingsTransportFailures = 0;
+let appearance: "light" | "dark" = "light";
 
 type FixturePage = { id: string; title: string; lines: string[] };
 const fixtureBodies = new Map<string, string[]>();
@@ -461,6 +464,10 @@ export const commands = {
   settingsUpdate: async (patch) => {
     calls.push({ command: "settingsUpdate", args: [structuredClone(patch)] });
     await setupReady;
+    if (settingsTransportFailures > 0) {
+      settingsTransportFailures -= 1;
+      throw new Error("Settings transport unavailable");
+    }
     if (storage.status !== "Ready")
       return { status: "error", error: "Unavailable" };
     const result = patchSettings(settings, patch);
@@ -730,6 +737,7 @@ async function loadSearchFixture() {
 async function applySetup(setup: MockSetup | undefined) {
   if (!setup) return;
   if (setup.settings) settings = seedSettings(setup.settings);
+  if (setup.appearance) appearance = setup.appearance;
   if (setup.storageStatus)
     storage.status = structuredClone(setup.storageStatus);
   if (setup.failWrites) {
@@ -772,6 +780,8 @@ function resetState() {
   errors.length = 0;
   settings = defaultSettings();
   settingsPending = false;
+  settingsTransportFailures = 0;
+  appearance = "light";
   storage.status = "Ready";
   storage.appendError = null;
   storage.recordError = null;
@@ -902,7 +912,17 @@ const control = {
       return toBase64(Y.encodeStateAsUpdate(mockDoc(pageId).doc));
     },
   },
+  appearance: {
+    current: () => appearance,
+    set(value: "light" | "dark") {
+      appearance = value;
+      window.dispatchEvent(new Event("aelomi-test-appearance"));
+    },
+  },
   settings: {
+    failTransport(attempts: number) {
+      settingsTransportFailures = attempts;
+    },
     update: (patch: SettingsPatch) => commands.settingsUpdate(patch),
   },
   storage: {

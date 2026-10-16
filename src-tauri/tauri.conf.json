@@ -13,6 +13,7 @@
     "windows": [
       {
         "title": "Aelomi",
+        "create": false,
         "allowLinkPreview": false,
         "width": 960,
         "height": 640,
