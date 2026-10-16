@@ -106,7 +106,7 @@ launch() {
 
   mkdir -p "$VERIFY_ROOT"
   RUN=$(mktemp -d "$VERIFY_ROOT/$(date +%Y%m%d-%H%M%S)-$mode-XXXX")
-  (cd "$REPO" && export AELOMI_DATA_DIR="${AELOMI_DATA_DIR:-$RUN/data}" && exec nohup "${cmd[@]}" >"$RUN/shell.log" 2>&1 </dev/null) &
+  (cd "$REPO" && export AELOMI_DATA_DIR="${AELOMI_DATA_DIR:-$RUN/data}" AELOMI_RECOVERY_FILE="${AELOMI_RECOVERY_FILE:-$RUN/recovery.json}" && exec nohup "${cmd[@]}" >"$RUN/shell.log" 2>&1 </dev/null) &
   local launch_pid=$!
   printf 'MODE=%q\nLAUNCH_PID=%q\nREPO=%q\n' "$mode" "$launch_pid" "$REPO" >"$RUN/run.env"
   echo "app.sh: started ${cmd[*]} as PID $launch_pid, log $RUN/shell.log" >&2

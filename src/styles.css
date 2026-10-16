@@ -558,3 +558,42 @@ mark {
 .storage-refusal li + li {
   margin-top: 0.75rem;
 }
+
+.storage-recovery-paragraph + .storage-recovery-paragraph {
+  margin-top: 0.75rem;
+}
+
+.storage-start-empty {
+  margin-top: 1.5rem;
+  color: var(--muted);
+  text-align: start;
+}
+
+.storage-empty-dialog {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 2rem);
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.storage-empty-dialog .quit-button {
+  font-size: 0.8125rem;
+  white-space: normal;
+  text-align: start;
+}
+
+.storage-empty-dialog .storage-refusal-chip {
+  max-height: min(12rem, 25dvh);
+  overflow-y: auto;
+}
+
+.storage-empty-body {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.storage-empty-dialog h2,
+.storage-empty-actions {
+  flex-shrink: 0;
+}

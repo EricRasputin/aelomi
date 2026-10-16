@@ -52,7 +52,7 @@ test("SHELL-11 acceptance 7: a cloud folder shows its resolved path and how to m
   await browser.goto(new URL("/?refused=1", await browser.url()).href);
   await expect(
     screen.getByText(
-      'Finder should open a folder named "Aelomi" with your Aelomi files. If it can\'t find it, close Go to Folder. If the folder is in the window from step 1, rename it "Aelomi" again. If you moved it elsewhere, undo any rename first, then choose Edit > Undo Move of "Aelomi Notes" in Finder and repeat step 2. If you haven\'t moved it, repeat step 2.',
+      'Finder must open "Aelomi" directly inside "/Users/test/Library/Application Support", with format.json and docs. Continue to step 4 only after this exact path opens with those files.',
       { exact: true },
     ),
   ).toBeVisible();
@@ -110,7 +110,7 @@ test("SHELL-11 acceptance 7: a cloud folder shows its resolved path and how to m
   await screen
     .getByRole(
       "textbox",
-      "Copy this path. In Finder, choose Go > Go to Folder (⇧⌘G) and paste it:",
+      "Copy this path. In Finder, choose Go > Go to Folder (⇧⌘G) and paste it. Press Return:",
     )
     .click();
   expect(
@@ -124,7 +124,7 @@ test("SHELL-11 acceptance 7: a cloud folder shows its resolved path and how to m
   await screen
     .getByRole(
       "textbox",
-      "Copy this path. In Finder, choose File > New Finder Window (⌘N). Then choose Go > Go to Folder and paste it:",
+      "Copy this path. In Finder, choose File > New Finder Window (⌘N). Then choose Go > Go to Folder and paste it. Press Return:",
     )
     .focus();
   expect(

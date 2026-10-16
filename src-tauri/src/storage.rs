@@ -1,18 +1,20 @@
 use std::ffi::OsString;
 use std::path::{Component, Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use aelomi_core::index::IndexEvent;
 use aelomi_core::storage::{self as core, DataPathError, DocId, OpenError, Pending};
 use aelomi_core::workspace::Workspace;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use specta::Type;
 
 use crate::quit::QuitGate;
+use crate::recovery::{PendingCloudRefusal, RecoveryFile};
 
 pub const QUIT_FLUSH_TIMEOUT: Duration = Duration::from_secs(2);
 
+#[derive(Clone)]
 pub struct DataLocation {
     pub path: PathBuf,
     pub cloud_roots: Vec<PathBuf>,
@@ -43,13 +45,18 @@ pub enum StorageStatus {
         resolved: String,
         recovery: CloudRecovery,
     },
+    FinishMoving {
+        configured: String,
+        resolved: String,
+        recovery: CloudRecovery,
+    },
     Locked,
     NewerFormat,
     UnknownFormat,
     Io(String),
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Type)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub enum CloudRecovery {
     LinkAtDataFolder {
         configured_parent: String,
@@ -142,7 +149,8 @@ pub enum StorageError {
 }
 
 pub struct Storage {
-    opened: Result<Arc<Workspace>, StorageStatus>,
+    opened: Mutex<Result<Arc<Workspace>, StorageStatus>>,
+    recovery: Option<(DataLocation, RecoveryFile)>,
     path: PathBuf,
     quit: QuitGate,
     #[cfg(test)]
@@ -150,13 +158,32 @@ pub struct Storage {
 }
 
 impl Storage {
+    #[cfg(test)]
     pub fn open(
         location: &DataLocation,
         on_index: impl Fn(&IndexEvent) + Send + Sync + 'static,
     ) -> Self {
+        Self::open_inner(location, None, false, on_index)
+    }
+
+    pub(crate) fn open_with_recovery(
+        location: &DataLocation,
+        record: PathBuf,
+        on_index: impl Fn(&IndexEvent) + Send + Sync + 'static,
+    ) -> Self {
+        Self::open_inner(location, Some(RecoveryFile(record)), false, on_index)
+    }
+
+    fn open_inner(
+        location: &DataLocation,
+        record: Option<RecoveryFile>,
+        allow_new: bool,
+        on_index: impl Fn(&IndexEvent) + Send + Sync + 'static,
+    ) -> Self {
         let storage = |opened: Result<Arc<Workspace>, StorageStatus>, path| Self {
             quit: QuitGate::for_workspace(opened.is_ok()),
-            opened,
+            opened: Mutex::new(opened),
+            recovery: record.clone().map(|file| (location.clone(), file)),
             path,
             #[cfg(test)]
             _index_dir: None,
@@ -170,26 +197,81 @@ impl Storage {
                 );
             }
         };
+        if let Some(record) = &record {
+            let validate = || -> Result<(), String> {
+                let record_path = core::check_data_path(&record.0, &location.cloud_roots)
+                    .map_err(|e| e.to_string())?;
+                let data_path =
+                    core::check_data_path(&configured, &[]).map_err(|e| e.to_string())?;
+                if record_path.starts_with(&data_path) {
+                    return Err("the recovery record must be outside the data folder".into());
+                }
+                Ok(())
+            };
+            if let Err(error) = validate() {
+                return storage(Err(StorageStatus::Io(error)), configured);
+            }
+        }
         match core::check_data_path(&configured, &location.cloud_roots) {
-            Ok(resolved) => storage(
-                Workspace::prepare(&resolved)
+            Ok(resolved) => {
+                if !allow_new {
+                    if let Some(pending) = record
+                        .as_ref()
+                        .and_then(RecoveryFile::load)
+                        .filter(|pending| pending.configured == configured)
+                    {
+                        match resolved.join("format.json").try_exists() {
+                            Ok(false) => {
+                                return storage(
+                                    Err(StorageStatus::FinishMoving {
+                                        configured: configured.to_string_lossy().into_owned(),
+                                        resolved: pending.resolved.to_string_lossy().into_owned(),
+                                        recovery: pending.recovery,
+                                    }),
+                                    resolved,
+                                );
+                            }
+                            Err(error) => {
+                                return storage(
+                                    Err(StorageStatus::Io(error.to_string())),
+                                    resolved,
+                                );
+                            }
+                            Ok(true) => {}
+                        }
+                    }
+                }
+                let opened = Workspace::prepare(&resolved)
                     .map(|mut prepared| {
-                        prepared.seed_getting_started(Instant::now() + QUIT_FLUSH_TIMEOUT);
+                        if !allow_new { prepared.seed_getting_started(Instant::now() + QUIT_FLUSH_TIMEOUT); }
                         Arc::new(prepared.start(on_index))
                     })
-                    .map_err(StorageStatus::from),
-                resolved,
-            ),
+                    .map_err(StorageStatus::from);
+                if opened.is_ok() {
+                    if let Some(record) = &record {
+                        record.clear_for(&configured);
+                    }
+                }
+                storage(opened, resolved)
+            }
             Err(DataPathError::CloudFolder { resolved, link, .. }) => {
-                let status =
-                    match CloudRecovery::from_paths(&configured, &resolved, link.as_deref()) {
-                        Ok(recovery) => StorageStatus::CloudPath {
-                            configured: configured.to_string_lossy().into_owned(),
-                            resolved: resolved.to_string_lossy().into_owned(),
-                            recovery,
-                        },
-                        Err(error) => StorageStatus::Io(error.to_string()),
-                    };
+                let refusal = || -> std::io::Result<StorageStatus> {
+                    let recovery =
+                        CloudRecovery::from_paths(&configured, &resolved, link.as_deref())?;
+                    if let Some(record) = &record {
+                        record.save(&PendingCloudRefusal::new(
+                            &configured,
+                            &resolved,
+                            recovery.clone(),
+                        ))?;
+                    }
+                    Ok(StorageStatus::CloudPath {
+                        configured: configured.to_string_lossy().into_owned(),
+                        resolved: resolved.to_string_lossy().into_owned(),
+                        recovery,
+                    })
+                };
+                let status = refusal().unwrap_or_else(|error| StorageStatus::Io(error.to_string()));
                 storage(Err(status), resolved)
             }
             Err(DataPathError::Io(error)) => storage(
@@ -199,10 +281,41 @@ impl Storage {
         }
     }
 
+    pub(crate) fn start_empty_workspace(
+        &self,
+        on_index: impl Fn(&IndexEvent) + Send + Sync + 'static,
+    ) -> Result<StorageStatus, StorageError> {
+        let mut opened = self.opened.lock().unwrap();
+        if !matches!(&*opened, Err(StorageStatus::FinishMoving { .. })) {
+            return Err(StorageError::Unavailable);
+        }
+        let (location, record) = self.recovery.as_ref().ok_or(StorageError::Unavailable)?;
+        let next = Self::open_inner(location, Some(record.clone()), true, on_index);
+        let result = next.opened.into_inner().unwrap();
+        match result {
+            Err(StorageStatus::Io(error)) => Err(StorageError::Io(error)),
+            other => {
+                *opened = other;
+                Ok(opened
+                    .as_ref()
+                    .map_or_else(Clone::clone, |_| StorageStatus::Ready))
+            }
+        }
+    }
+
+    pub(crate) fn recovery_folder(&self) -> Result<String, StorageError> {
+        match self.status() {
+            StorageStatus::CloudPath { resolved, .. }
+            | StorageStatus::FinishMoving { resolved, .. } => Ok(resolved),
+            _ => Err(StorageError::Unavailable),
+        }
+    }
+
     #[cfg(test)]
     pub(crate) fn not_open() -> Self {
         Self {
-            opened: Err(StorageStatus::Locked),
+            opened: Mutex::new(Err(StorageStatus::Locked)),
+            recovery: None,
             path: "/data".into(),
             quit: QuitGate::for_workspace(false),
             _index_dir: None,
@@ -211,13 +324,15 @@ impl Storage {
 
     pub fn workspace(&self) -> Result<Arc<Workspace>, StorageError> {
         self.opened
+            .lock()
+            .unwrap()
             .as_ref()
             .map(Arc::clone)
             .map_err(|_| StorageError::Unavailable)
     }
 
     pub fn index_status(&self) -> crate::index::IndexStatus {
-        match &self.opened {
+        match &*self.opened.lock().unwrap() {
             Ok(workspace) => workspace.index_status().into(),
             Err(_) => crate::index::IndexStatus::Failed {
                 reason: "the data folder is not open".into(),
@@ -226,7 +341,7 @@ impl Storage {
     }
 
     pub(crate) fn register_frontend(&self) {
-        if self.opened.is_ok() {
+        if self.opened.lock().unwrap().is_ok() {
             self.quit.register_frontend();
             println!("quit frontend ready");
         } else {
@@ -239,7 +354,7 @@ impl Storage {
     }
 
     pub fn status(&self) -> StorageStatus {
-        match &self.opened {
+        match &*self.opened.lock().unwrap() {
             Ok(_) => StorageStatus::Ready,
             Err(status) => status.clone(),
         }
@@ -281,7 +396,7 @@ impl Storage {
             pending.docs.dedup();
             return Err(pending);
         }
-        let Ok(workspace) = &self.opened else {
+        let Ok(workspace) = self.workspace() else {
             return Ok(());
         };
         let pending = workspace.flush(deadline);
@@ -668,7 +783,8 @@ pub(crate) mod tests {
             .join(aelomi_core::index::FILE);
         let store = disk.open(Path::new("/data")).expect("opens");
         Storage {
-            opened: Ok(Arc::new(Workspace::with_store(store, index, |_| {}))),
+            opened: Mutex::new(Ok(Arc::new(Workspace::with_store(store, index, |_| {})))),
+            recovery: None,
             path: "/data".into(),
             quit,
             _index_dir: Some(index_dir),
@@ -782,7 +898,8 @@ pub(crate) mod tests {
     #[test]
     fn quitting_goes_ahead_when_the_store_never_opened() {
         let storage = Storage {
-            opened: Err(StorageStatus::Locked),
+            opened: Mutex::new(Err(StorageStatus::Locked)),
+            recovery: None,
             path: "/data".into(),
             quit: QuitGate::default(),
             _index_dir: None,
@@ -804,3 +921,7 @@ pub(crate) mod tests {
         body.get_string(&doc.transact())
     }
 }
+
+#[cfg(test)]
+#[path = "recovery_tests.rs"]
+mod recovery_tests;

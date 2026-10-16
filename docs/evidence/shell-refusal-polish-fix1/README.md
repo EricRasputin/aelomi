@@ -2,6 +2,8 @@
 
 `native-proof.sh.txt` changes the Mac's appearance and must not be rerun as is. Follow the current [verify-aelomi rules](../../../.claude/skills/verify-aelomi/SKILL.md#rules) instead.
 
+Historical scope annotation for issue #92. Round 2 stopped before the failure remedy completed, as [PR #90's final verification](https://github.com/aelomi/aelomi/pull/90) states. The sentence below that says round 2 proves failure recovery is superseded. This record proves only the success path at its recorded source commit. Its pathspec audit fails against the later HEAD because those copy files changed. It is not evidence for the current recovery copy or for issue #92.
+
 Source commit `5fb8fb008f712ac72117b71d6a67ca28d6ccf6bb`. Merge base against `origin/main` is `6d64d683d5bf02bea2f67e8038428caef1ab4d62`. Verbatim patch-id is `954478497f2131627cd3edd8dd64165b3046115f`.
 
 Proven pathspecs are `src/storage-copy.ts` and `src/storage-copy.test.ts`. This historical record covers the successful equal-name recipe at that source commit. Round 2 updates the check copy and proves failure recovery separately.

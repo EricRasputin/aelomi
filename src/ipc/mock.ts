@@ -463,6 +463,26 @@ export const commands = {
     calls.push({ command: "storageStatus", args: [] });
     return storage.status;
   },
+  showRecoveryFolder: async () => {
+    calls.push({ command: "showRecoveryFolder", args: [] });
+    await setupReady;
+    return typeof storage.status === "object" &&
+      ("CloudPath" in storage.status || "FinishMoving" in storage.status)
+      ? { status: "ok", data: null }
+      : { status: "error", error: "Unavailable" };
+  },
+  startEmptyWorkspace: async () => {
+    calls.push({ command: "startEmptyWorkspace", args: [] });
+    await setupReady;
+    if (
+      typeof storage.status !== "object" ||
+      !("FinishMoving" in storage.status)
+    )
+      return { status: "error", error: "Unavailable" };
+    storage.status = "Ready";
+    quit.frontendReady = true;
+    return { status: "ok", data: "Ready" };
+  },
   storageHealth: async () => {
     calls.push({ command: "storageHealth", args: [] });
     return storage.health;
