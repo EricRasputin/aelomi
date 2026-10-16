@@ -1,6 +1,0 @@
-import { writeFileSync } from 'node:fs';
-import * as Y from 'yjs';
-import { writeBody } from '../../src/ipc/mock-body.ts';
-const doc = new Y.Doc();
-writeBody(doc, [{ id: 'block-recovery', content: ['Original pages survived the equal-name Finder drag.'] }]);
-writeFileSync('.local-gate/e2/original.yupdate', Y.encodeStateAsUpdate(doc));

@@ -71,7 +71,7 @@ for (const colorScheme of ["light", "dark"] as const) {
       );
       await expect(
         page.getByRole("textbox", {
-          name: "Choose Go > Go to Folder and paste:",
+          name: "Copy this path. In Finder, choose Go > Go to Folder and paste it:",
           exact: true,
         }),
       ).toHaveValue("/Users/test/Library/Application Support/Aelomi");
@@ -85,7 +85,7 @@ for (const colorScheme of ["light", "dark"] as const) {
       ).toBeVisible();
       await expect(
         page.getByText(
-          "Finder should open your data folder. If it can't find it, choose Edit > Undo in Finder and repeat step 2.",
+          'Finder should open a folder named "Aelomi" with your Aelomi files. If it can\'t find it, close Go to Folder. If the folder is in the window from step 1, rename it "Aelomi" again. If you moved it elsewhere, undo any rename first, then choose Edit > Undo Move of "Aelomi Notes" in Finder and repeat step 2. If you haven\'t moved it, repeat step 2.',
           { exact: true },
         ),
       ).toBeVisible();

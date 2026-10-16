@@ -25,7 +25,7 @@ export type QuitDecision =
 
 type QuitStore = {
   decision: QuitDecision;
-  /** `frontendReady` reached the shell, so quits wait for this webview. */
+  /** `frontendReady` succeeded; only an opened workspace registers for drains. */
   registered: boolean;
   receiveQuit: (status: QuitStatus) => void;
   register: () => void;

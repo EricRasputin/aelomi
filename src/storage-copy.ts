@@ -76,14 +76,14 @@ function cloudRecovery(
     steps = [
       {
         kind: "folder",
-        text: "This folder is synced to cloud storage:",
+        text: "This folder is a link into cloud storage:",
         path: recovery.SharedLink.link,
         after:
-          "Other apps and files may use it. Aelomi can't keep its database there.",
+          "Aelomi can't keep its database there and hasn't changed anything.",
       },
       {
         kind: "text",
-        text: "In your cloud app's settings, turn off syncing for this folder so it is a regular folder on this Mac.",
+        text: "For Aelomi to open it, this folder must be a regular folder on this Mac. Turning off syncing for it in a cloud app can remove its files from this Mac, including other apps' files.",
       },
       { kind: "text", text: storageCopy.restart },
     ];
@@ -98,6 +98,12 @@ function cloudRecovery(
       configured_name === resolved_name
         ? ""
         : ` Then rename it "${configured_name}".`;
+    const renameRemedy =
+      configured_name === resolved_name
+        ? ""
+        : ` If the folder is in the window from step 1, rename it "${configured_name}" again.`;
+    const undoRename =
+      configured_name === resolved_name ? "" : "undo any rename first, then ";
     steps = [
       {
         kind: "folder",
@@ -109,14 +115,13 @@ function cloudRecovery(
         kind: "folder",
         text: "Copy this path. In Finder, choose File > New Finder Window (⌘N). Then choose Go > Go to Folder and paste it:",
         path: resolved_parent,
-        after: `Move the new window aside so you can see the window from step 1. Drag "${resolved_name}" onto an empty area of the window from step 1, not onto a folder.${rename}`,
+        after: `Move the new window aside so you can see the window from step 1. Drag "${resolved_name}" onto an empty area of the window from step 1, not onto a folder. Finder or your cloud app may warn that the folder will be removed from iCloud Drive or the cloud app. Continue. Your pages move to this Mac.${rename}`,
       },
       {
         kind: "folder",
-        text: "Choose Go > Go to Folder and paste:",
+        text: "Copy this path. In Finder, choose Go > Go to Folder and paste it:",
         path: configured,
-        after:
-          "Finder should open your data folder. If it can't find it, choose Edit > Undo in Finder and repeat step 2.",
+        after: `Finder should open a folder named "${configured_name}" with your Aelomi files. If it can't find it, close Go to Folder.${renameRemedy} If you moved it elsewhere, ${undoRename}choose Edit > Undo Move of "${resolved_name}" in Finder and repeat step 2. If you haven't moved it, repeat step 2.`,
       },
       { kind: "text", text: storageCopy.restart },
     ];

@@ -77,7 +77,7 @@ quit_app() {
     grep '^quit draining via=ExitRequested' "$RUN/shell.log"
     grep '^quit confirmed via=drain' "$RUN/shell.log"
   else
-    ! grep -q '^quit frontend ready\|^quit draining\|via=CompleteQuit' "$RUN/shell.log"
+    if grep -q '^quit frontend ready$\|^quit draining\|via=CompleteQuit' "$RUN/shell.log"; then echo 'FAIL: refused app registered a frontend drain'; exit 1; fi
     grep '^quit flush via=ExitRequested pending=None' "$RUN/shell.log"
     echo 'PASS: refused app quit without a frontend drain or dialog'
   fi
@@ -151,7 +151,7 @@ launch "$CONFIGURED" leaf
 pbpaste > "$OUT/clipboard-before.txt"
 if [[ "${SKIP_LEAF_CAPTURE:-0}" != 1 ]]; then capture_variant leaf; fi
 "$S/app.sh" tree "$RUN" > "$RUN/refusal-tree.txt"
-! grep -q 'Then rename' "$RUN/refusal-tree.txt"
+if grep -q 'Then rename' "$RUN/refusal-tree.txt"; then echo 'FAIL: equal names requested a rename'; exit 1; fi
 initial_names=$(osascript -e 'tell application "System Events" to tell process "Finder" to get name of every window')
 if [[ "$initial_names" == *"Recovery Destination"* || "$initial_names" == *"Proof Cloud"* || "$initial_names" == *"Aelomi"* ]]; then echo 'INCONCLUSIVE: an existing Finder window has a proof title'; exit 1; fi
 initial_count=$(osascript -e 'tell application "System Events" to tell process "Finder" to count windows')

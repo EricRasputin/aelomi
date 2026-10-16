@@ -52,7 +52,7 @@ test("SHELL-11 acceptance 7: a cloud folder shows its resolved path and how to m
   await browser.goto(new URL("/?refused=1", await browser.url()).href);
   await expect(
     screen.getByText(
-      "Finder should open your data folder. If it can't find it, choose Edit > Undo in Finder and repeat step 2.",
+      'Finder should open a folder named "Aelomi" with your Aelomi files. If it can\'t find it, close Go to Folder. If the folder is in the window from step 1, rename it "Aelomi" again. If you moved it elsewhere, undo any rename first, then choose Edit > Undo Move of "Aelomi Notes" in Finder and repeat step 2. If you haven\'t moved it, repeat step 2.',
       { exact: true },
     ),
   ).toBeVisible();
@@ -80,7 +80,7 @@ test("SHELL-11 acceptance 7: a cloud folder shows its resolved path and how to m
   ).toBeVisible();
   await expect(
     screen.getByText(
-      'Move the new window aside so you can see the window from step 1. Drag "Aelomi Notes" onto an empty area of the window from step 1, not onto a folder. Then rename it "Aelomi".',
+      'Move the new window aside so you can see the window from step 1. Drag "Aelomi Notes" onto an empty area of the window from step 1, not onto a folder. Finder or your cloud app may warn that the folder will be removed from iCloud Drive or the cloud app. Continue. Your pages move to this Mac. Then rename it "Aelomi".',
       { exact: true },
     ),
   ).toBeVisible();
@@ -223,6 +223,26 @@ for (const variant of ["SharedLink", "Override"] as const) {
       count: variant === "Override" ? 2 : 3,
       restart: "Quit Aelomi and open it again.",
     });
+    if (variant === "SharedLink") {
+      await expect(
+        screen.getByRole(
+          "textbox",
+          "This folder is a link into cloud storage:",
+        ),
+      ).toHaveValue("/Users/test/Library/Application Support");
+      await expect(
+        screen.getByText(
+          "Aelomi can't keep its database there and hasn't changed anything.",
+          { exact: true },
+        ),
+      ).toBeVisible();
+      await expect(
+        screen.getByText(
+          "For Aelomi to open it, this folder must be a regular folder on this Mac. Turning off syncing for it in a cloud app can remove its files from this Mac, including other apps' files.",
+          { exact: true },
+        ),
+      ).toBeVisible();
+    }
   });
 }
 

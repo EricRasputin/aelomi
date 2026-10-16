@@ -111,10 +111,7 @@ pub(crate) fn quit_anyway_with<R: Runtime>(app: &AppHandle<R>, exit: impl FnOnce
 #[tauri::command]
 #[specta::specta]
 pub fn frontend_ready(storage: State<'_, Storage>) {
-    if storage.workspace().is_ok() {
-        storage.quit().register_frontend();
-        println!("quit frontend ready");
-    }
+    storage.register_frontend();
 }
 
 /// The webview delivered every edit of the drain at `revision`. Flushes the store: with
