@@ -18,7 +18,6 @@ for (const status of [
       };
       window.__aelomiMockSetup = {
         appearance: "light",
-        settings: { theme: "Dark" },
         storageStatus:
           status === "CloudPath"
             ? { CloudPath: location }
@@ -57,6 +56,48 @@ for (const status of [
     }
   });
 }
+
+test("SHELL-5 SHELL-11 recovery loads stored Dark after the System fallback", async ({
+  page,
+}) => {
+  await page.emulateMedia({ colorScheme: "light" });
+  await page.addInitScript(() => {
+    window.__aelomiMockSetup = {
+      appearance: "light",
+      settings: { theme: "Dark" },
+      storageStatus: {
+        FinishMoving: {
+          configured: "/synthetic/local/Aelomi",
+          resolved: "/synthetic/cloud/Aelomi",
+          recovery: "Override",
+          destination_exists: false,
+        },
+      },
+    };
+  });
+  await page.goto("/");
+  await expect(
+    page.getByRole("heading", { name: "Finish moving your pages" }),
+  ).toBeVisible();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  expect(
+    await page.evaluate(() => window.__aelomiMock?.settings.get()),
+  ).toEqual({ status: "error", error: "Unavailable" });
+  await page
+    .getByRole("button", { name: "Start a new empty workspace here" })
+    .click();
+  await page
+    .getByRole("button", { name: "Create empty workspace", exact: true })
+    .click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await page.keyboard.press("Meta+,");
+  await expect(
+    page.getByRole("dialog", { name: "Settings", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("radio", { name: "Dark", exact: true }),
+  ).toBeChecked();
+});
 
 for (const colorScheme of ["light", "dark"] as const) {
   test(`SHELL-11 ${colorScheme} recovery chips wrap and select without automatic field sizing`, async ({
