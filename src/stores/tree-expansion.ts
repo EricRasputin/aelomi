@@ -13,6 +13,7 @@ type ExpansionStore = {
   expansion: Expansion;
   load: () => Promise<void>;
   toggle: (pageId: string) => Promise<void>;
+  reveal: (pageIds: readonly string[]) => void;
 };
 
 let loading: Promise<void> | null = null;
@@ -42,6 +43,14 @@ export const useTreeExpansionStore = create<ExpansionStore>((set, get) => ({
       }
     })();
     return loading;
+  },
+  reveal: (pageIds) => {
+    const { expansion } = get();
+    if (expansion.kind !== "ready") return;
+    const rows = new Set(expansion.rows);
+    for (const id of pageIds) rows.add(id);
+    if (rows.size !== expansion.rows.size)
+      set({ expansion: { kind: "ready", rows } });
   },
   toggle: async (pageId) => {
     if (!acceptsUserCommands(useQuitStore.getState().decision)) {

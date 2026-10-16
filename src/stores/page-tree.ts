@@ -110,7 +110,7 @@ export const untitled = "Untitled";
 export const deletedPage = "Deleted page";
 
 export function displayTitle(title: string): string {
-  return title === "" ? untitled : title;
+  return title.trim() === "" ? untitled : title;
 }
 
 export type LinkLabel =

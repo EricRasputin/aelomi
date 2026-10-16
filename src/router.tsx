@@ -25,10 +25,10 @@ import { pageAfterTrash } from "./shell/page-navigation";
 import { usePageCommands } from "./shell/use-page-commands";
 import { usePageTreeStore } from "./stores/page-tree";
 import { usePingStore } from "./stores/ping";
-import { useStorageStartupStore } from "./stores/storage-startup";
 import { useQuitStore } from "./stores/quit";
 import { useRecentPagesStore } from "./stores/recent-pages";
 import { useShellStore } from "./stores/shell";
+import { useStorageStartupStore } from "./stores/storage-startup";
 import { useTreeExpansionStore } from "./stores/tree-expansion";
 import {
   useShortcutCommands,
@@ -123,7 +123,7 @@ function WorkspaceLayout() {
           </p>
         )}
         <div className="workspace" data-workspace>
-          {sidebarVisible && !stress && <Sidebar openPage={openPage} />}
+          {!stress && <Sidebar openPage={openPage} hidden={!sidebarVisible} />}
           <main tabIndex={-1} className="editor-pane">
             <Outlet />
           </main>

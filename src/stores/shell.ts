@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-type FocusRequest = { pageId: string; target: "title" | "body" };
+type FocusRequest = { pageId: string; target: "title" | "body" | "bodyStart" };
 
 type ShellStore = {
   sidebarVisible: boolean;

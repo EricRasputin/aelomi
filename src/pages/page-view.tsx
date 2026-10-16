@@ -1,5 +1,4 @@
 import "@blocknote/core/style.css";
-import { Button } from "@base-ui/react/button";
 import { SuggestionMenu } from "@blocknote/core";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
@@ -11,6 +10,7 @@ import {
 } from "../editor/field-history";
 import { inCode, type PickerKey, pickerTrigger } from "../editor/page-picker";
 import { openPage, type PageSession } from "../editor/page-session";
+import { onQuitDrain } from "../editor/quit-drain";
 import { openPageLink, recordPageLinkPointer } from "../editor/url-links";
 import { markPageContent } from "../perf/cold-start";
 import { editingPausedCopy, storageErrorText } from "../storage-copy";
@@ -36,15 +36,46 @@ function PageTitle({
 }) {
   const title = usePageTitle(pageId);
   const input = useRef<HTMLTextAreaElement>(null);
-  const history = useRef(createTitleHistory(title));
+  const lastTitle = useRef(title ?? "");
+  const shownTitle = title ?? lastTitle.current;
+  const history = useRef(createTitleHistory(shownTitle));
+  const composing = useRef(false);
+  const [frozen, setFrozen] = useState(false);
+  const decision = useQuitStore((state) => state.decision.kind);
+  const registered = useQuitStore((state) => state.registered);
+  const editable =
+    registered && !frozen && (decision === "open" || decision === "draining");
+  useLayoutEffect(() => {
+    if (decision === "open") setFrozen(false);
+  }, [decision]);
+  useLayoutEffect(() => {
+    const field = input.current;
+    if (!field) return;
+    return onQuitDrain({
+      finish: () => {
+        if (composing.current) field.blur();
+      },
+      freeze: () => {
+        if (!field.readOnly && field.value !== history.current.value()) {
+          history.current.record(field.value);
+          void usePageTitlesStore.getState().rename(pageId, field.value);
+        }
+        field.readOnly = true;
+        setFrozen(true);
+      },
+    });
+  }, [pageId]);
   useLayoutEffect(() => {
     const field = input.current;
     if (field) {
       field.style.height = "auto";
       field.style.height = `${field.scrollHeight}px`;
     }
-    if (history.current.value() !== title)
-      history.current = createTitleHistory(title);
+    if (title !== null) {
+      lastTitle.current = title;
+      if (history.current.value() !== title)
+        history.current = createTitleHistory(title);
+    }
   }, [title]);
   useLayoutEffect(() => {
     const field = input.current;
@@ -63,6 +94,7 @@ function PageTitle({
     const field = input.current;
     if (!field) return;
     const move = (action: "undo" | "redo") => {
+      if (field.readOnly) return;
       const value = history.current.move(action);
       if (value === field.value) return;
       flushSync(() => {
@@ -86,18 +118,24 @@ function PageTitle({
       field.removeEventListener("beforeinput", beforeinput);
     };
   }, [pageId]);
-  const editable = useQuitStore(canEdit);
   const error = usePageTitlesStore((state) => state.drafts.get(pageId)?.error);
   const request = useShellStore((state) => state.focusRequest);
   useLayoutEffect(() => {
-    if (request?.pageId === pageId && request.target === "title" && editable) {
+    if (
+      request?.pageId === pageId &&
+      request.target === "title" &&
+      editable &&
+      title !== null
+    ) {
       input.current?.focus();
       useShellStore.setState({ focusRequest: null });
     }
-  }, [request, pageId, editable]);
+  }, [request, pageId, editable, title]);
   return (
     <header className="page-header">
-      <h1 className="sr-only">{displayTitle(title)}</h1>
+      <h1 className="sr-only" dir="auto">
+        {displayTitle(shownTitle)}
+      </h1>
       <textarea
         ref={input}
         rows={1}
@@ -105,14 +143,27 @@ function PageTitle({
         data-testid="page-title"
         aria-label="Page title"
         placeholder="Untitled"
-        value={title}
-        readOnly={!editable}
+        dir="auto"
+        value={shownTitle}
+        readOnly={!editable || title === null}
+        onCompositionStart={() => {
+          composing.current = true;
+        }}
+        onCompositionEnd={() => {
+          composing.current = false;
+        }}
         onChange={(event) => {
+          if (event.currentTarget.readOnly || title === null) return;
           history.current.record(event.target.value);
           void usePageTitlesStore.getState().rename(pageId, event.target.value);
         }}
         onKeyDown={(event) => {
-          if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+          if (
+            event.key === "Enter" &&
+            !event.nativeEvent.isComposing &&
+            event.keyCode !== 229 &&
+            !composing.current
+          ) {
             event.preventDefault();
             useShellStore.setState({ focusRequest: null });
             focusBody();
@@ -121,14 +172,7 @@ function PageTitle({
       />
       {error && (
         <p className="page-notice" role="alert">
-          {error}{" "}
-          <Button
-            onClick={() =>
-              void usePageTitlesStore.getState().rename(pageId, title)
-            }
-          >
-            Try again
-          </Button>
+          {error}
         </p>
       )}
     </header>
@@ -237,25 +281,38 @@ export function PageView({
       );
       element?.scrollIntoView({ block: "center" });
       if (element) flash(element);
-    } else if (
-      editable &&
-      !(
-        document.activeElement instanceof HTMLInputElement ||
-        document.activeElement instanceof HTMLTextAreaElement
-      ) &&
-      !(focusRequest?.pageId === pageId && focusRequest.target === "title")
-    ) {
-      editor.focus();
     }
+  }, [editor, focusBlock]);
+
+  useEffect(() => {
+    if (!editor || !editable) return;
+    const request = useShellStore.getState().focusRequest;
+    if (request?.pageId === pageId && request.target === "title") return;
     if (
-      focusRequest?.pageId === pageId &&
-      focusRequest.target === "body" &&
-      editable
-    ) {
+      !focusBlock &&
+      !(
+        document.activeElement instanceof HTMLTextAreaElement ||
+        document.activeElement instanceof HTMLInputElement
+      )
+    )
       editor.focus();
-      useShellStore.setState({ focusRequest: null });
+  }, [editor, editable, pageId, focusBlock]);
+
+  useEffect(() => {
+    if (
+      !editor ||
+      !editable ||
+      focusRequest?.pageId !== pageId ||
+      focusRequest.target === "title"
+    )
+      return;
+    if (focusRequest.target === "bodyStart") {
+      const first = editor.document[0];
+      if (first) editor.setTextCursorPosition(first, "start");
     }
-  }, [editor, focusBlock, editable, focusRequest, pageId]);
+    editor.focus();
+    useShellStore.setState({ focusRequest: null });
+  }, [editor, editable, focusRequest, pageId]);
 
   return (
     <article
@@ -267,15 +324,11 @@ export function PageView({
       onContextMenuCapture={openPageLink}
     >
       <PageTitle
+        key={pageId}
         pageId={pageId}
-        focusBody={() => {
-          const first = editor?.document[0];
-          if (editor && first) {
-            editor.setTextCursorPosition(first, "start");
-            editor.focus();
-          } else
-            useShellStore.getState().requestFocus({ pageId, target: "body" });
-        }}
+        focusBody={() =>
+          useShellStore.getState().requestFocus({ pageId, target: "bodyStart" })
+        }
       />
       {view.kind === "readOnly" && (
         <>

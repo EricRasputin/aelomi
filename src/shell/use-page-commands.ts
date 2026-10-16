@@ -2,7 +2,6 @@ import { useNavigate } from "@tanstack/react-router";
 import { useCallback, useEffect } from "react";
 import { flushSync } from "react-dom";
 import { commandDispatcher } from "../command-dispatcher";
-import { getActiveEditor } from "../editor/active-editor";
 import { commands } from "../ipc";
 import { usePageTreeStore } from "../stores/page-tree";
 import { usePaletteStore } from "../stores/palette";
@@ -14,12 +13,6 @@ export function usePageCommands() {
   const open = useCallback(
     (pageId: string, target: "body" | "title" = "body") => {
       useShellStore.getState().requestFocus({ pageId, target });
-      if (
-        useShellStore.getState().activePageId === pageId &&
-        target === "body"
-      ) {
-        getActiveEditor()?.focus();
-      }
       void navigate({ to: "/page/$pageId", params: { pageId }, search: {} });
     },
     [navigate],
@@ -30,7 +23,21 @@ export function usePageCommands() {
       usePageTreeStore.getState().source.kind === "ready";
     const unregister = [
       commandDispatcher.register("toggleSidebar", {
-        run: () => useShellStore.getState().toggleSidebar(),
+        run: () => {
+          const shell = useShellStore.getState();
+          if (
+            shell.sidebarVisible &&
+            document.activeElement?.closest(".sidebar")
+          ) {
+            if (shell.activePageId)
+              shell.requestFocus({
+                pageId: shell.activePageId,
+                target: "body",
+              });
+            else document.querySelector<HTMLElement>("main")?.focus();
+          }
+          shell.toggleSidebar();
+        },
       }),
       commandDispatcher.register("newPage", {
         enabled: () => ready() && !useShellStore.getState().creating,
