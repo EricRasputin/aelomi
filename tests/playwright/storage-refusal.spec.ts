@@ -57,7 +57,7 @@ for (const colorScheme of ["light", "dark"] as const) {
         })),
       ).toEqual({ overflow: false, clipped: [] });
       const chip = page.getByRole("textbox", {
-        name: "Copy this path. In Finder, choose File > New Finder Window (⌘N). Then choose Go > Go to Folder and paste it:",
+        name: "Copy this path. In Finder, choose File > New Finder Window (⌘N). Then choose Go > Go to Folder and paste it. Press Return:",
       });
       await chip.click();
       expect(
@@ -71,7 +71,7 @@ for (const colorScheme of ["light", "dark"] as const) {
       );
       await expect(
         page.getByRole("textbox", {
-          name: "Copy this path. In Finder, choose Go > Go to Folder and paste it:",
+          name: "Copy this path. In Finder, choose Go > Go to Folder and paste it. Press Return:",
           exact: true,
         }),
       ).toHaveValue("/Users/test/Library/Application Support/Aelomi");
@@ -85,7 +85,7 @@ for (const colorScheme of ["light", "dark"] as const) {
       ).toBeVisible();
       await expect(
         page.getByText(
-          'Finder should open a folder named "Aelomi" with your Aelomi files. If it can\'t find it, close Go to Folder. If the folder is in the window from step 1, rename it "Aelomi" again. If you moved it elsewhere, undo any rename first, then choose Edit > Undo Move of "Aelomi Notes" in Finder and repeat step 2. If you haven\'t moved it, repeat step 2.',
+          'Finder must open "Aelomi" directly inside "/Users/test/Library/Application Support", with format.json and docs. Continue to step 4 only after this exact path opens with those files.',
           { exact: true },
         ),
       ).toBeVisible();

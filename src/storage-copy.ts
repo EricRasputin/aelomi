@@ -25,6 +25,24 @@ export const storageCopy = {
   refusedEdit: "The core refused an edit.",
   invalidDoc: "The page ID isn't valid.",
   opening: "Opening your data folder…",
+  finishTitle: "Finish moving your pages",
+  finishMessage:
+    "Aelomi last found your pages in cloud storage. The destination has no workspace yet, so Aelomi hasn't opened a new one.",
+  lastSeen: "Where your pages were last seen",
+  expectedLocation: "Aelomi expects your pages at:",
+  showFolder: "Show in Finder",
+  showFolderError: "Aelomi couldn't show that folder.",
+  startEmpty: "Start a new empty workspace here",
+  startEmptyTitle: "Start a new empty workspace?",
+  startEmptyWarning:
+    "Your pages stay where they are. Aelomi won't move or delete them. The new workspace won't contain those pages.",
+  newLocation: "The new empty workspace will be created at:",
+  lostTrack:
+    "Aelomi lost track of where your pages were. Find the folder you moved before you restart, or explicitly choose a new empty workspace.",
+  locationForgotten:
+    "Aelomi will forget this last-seen location after you continue.",
+  cancelEmpty: "Keep moving my pages",
+  confirmEmpty: "Create empty workspace",
   cloudTitle: "Move your data folder out of cloud storage",
   cloudRisk: "Cloud sync corrupts the database.",
   cloudDataPath: "Where your data really is",
@@ -51,21 +69,31 @@ export const storageCopy = {
 
 export type RecoveryStep =
   | { kind: "text"; text: string }
-  | { kind: "folder"; text: string; path: string; after: string };
+  | {
+      kind: "folder";
+      text: string;
+      path: string;
+      after: string;
+      remedy?: { text: string; path: string; after: string };
+    }
+  | { kind: "show"; text: string };
+
+type Refusal = {
+  title: string;
+  message: string;
+  detail: string | null;
+  recovery: { resolved: string | null; steps: readonly RecoveryStep[] } | null;
+};
 
 export type StorageStartup =
   | { kind: "loading" }
   | { kind: "ready" }
-  | {
-      kind: "refused";
-      title: string;
-      message: string;
-      detail: string | null;
-      recovery: {
-        resolved: string;
-        steps: readonly RecoveryStep[];
-      } | null;
-    };
+  | ({ kind: "refused" } & Refusal)
+  | ({
+      kind: "finish-moving";
+      configured: string;
+      lastSeen: string | null;
+    } & Refusal);
 
 function cloudRecovery(
   cloud: Extract<StorageStatus, { CloudPath: object }>["CloudPath"],
@@ -103,30 +131,30 @@ function cloudRecovery(
       configured_name === resolved_name
         ? ""
         : ` Then rename it "${configured_name}".`;
-    const renameRemedy =
-      configured_name === resolved_name
-        ? ""
-        : ` If the folder is in the window from step 1, rename it "${configured_name}" again.`;
-    const undoRename =
-      configured_name === resolved_name ? "" : "undo any rename first, then ";
     steps = [
       {
         kind: "folder",
-        text: "Copy this path. In Finder, choose Go > Go to Folder (⇧⌘G) and paste it:",
+        text: "Copy this path. In Finder, choose Go > Go to Folder (⇧⌘G) and paste it. Press Return:",
         path: configured_parent,
         after: `Find "${configured_name}". It has a small arrow because it is a link. Drag it to the Trash. This removes only the link, not your pages. Choose View > as Icons. Leave this Finder window open.`,
       },
       {
         kind: "folder",
-        text: "Copy this path. In Finder, choose File > New Finder Window (⌘N). Then choose Go > Go to Folder and paste it:",
+        text: "Copy this path. In Finder, choose File > New Finder Window (⌘N). Then choose Go > Go to Folder and paste it. Press Return:",
         path: resolved_parent,
         after: `Move the new window aside so you can see the window from step 1. Drag "${resolved_name}" onto an empty area of the window from step 1, not onto a folder. Finder or your cloud app may warn that the folder will be removed from iCloud Drive or the cloud app. Continue. Your pages move to this Mac.${rename}`,
       },
       {
         kind: "folder",
-        text: "Copy this path. In Finder, choose Go > Go to Folder and paste it:",
+        text: "Copy this path. In Finder, choose Go > Go to Folder and paste it. Press Return:",
         path: configured,
-        after: `Finder should open a folder named "${configured_name}" with your Aelomi files. If it can't find it, close Go to Folder.${renameRemedy} If you moved it elsewhere, ${undoRename}choose Edit > Undo Move of "${resolved_name}" in Finder and repeat step 2. If you haven't moved it, repeat step 2.`,
+        ...configuredPathCheck(
+          configured_parent,
+          configured_name,
+          resolved_name,
+          2,
+          4,
+        ),
       },
       { kind: "text", text: storageCopy.restart },
     ];
@@ -134,8 +162,156 @@ function cloudRecovery(
   return { resolved, steps };
 }
 
+function configuredPathCheck(
+  parent: string,
+  name: string,
+  previousName: string,
+  moveStep: number,
+  restartStep: number,
+): { after: string; remedy: { text: string; path: string; after: string } } {
+  const rename =
+    name === previousName
+      ? ""
+      : ` If the folder is named "${previousName}" directly inside "${parent}", select it, press Return, type "${name}", and press Return.`;
+  const afterMove =
+    name === previousName
+      ? ""
+      : ` Select the moved folder, press Return, type "${name}", and press Return.`;
+  return {
+    after: `Finder must open "${name}" directly inside "${parent}", with format.json and docs. Continue to step ${restartStep} only after this exact path opens with those files.\n\nIf Finder can't find it, close Go to Folder.${rename}`,
+    remedy: {
+      text: "If the folder is elsewhere, copy this path. In Finder, choose File > New Finder Window (⌘N), then Go > Go to Folder (⇧⌘G). Paste the path and press Return:",
+      path: parent,
+      after: `In the other Finder window, select the folder that holds your pages and press ⌘C. Return to the destination window. Hold Option and choose Edit > Move Item Here (⌥⌘V).${afterMove} If you haven't moved the folder yet, repeat step ${moveStep}. Repeat this path check before you restart Aelomi.`,
+    },
+  };
+}
+
+function lostFolderGuidance(
+  pending: Extract<StorageStatus, { FinishMoving: object }>["FinishMoving"],
+): string {
+  const { configured, resolved, recovery } = pending;
+  const parent = configured.slice(0, configured.lastIndexOf("/")) || "/";
+  const configuredName = configured.slice(configured.lastIndexOf("/") + 1);
+  const resolvedName = resolved.slice(resolved.lastIndexOf("/") + 1);
+  const names =
+    recovery !== "Override" && recovery.LinkAtDataFolder !== undefined
+      ? recovery.LinkAtDataFolder
+      : { configured_name: configuredName, resolved_name: resolvedName };
+  return `Look inside each folder in "${parent}" for "${names.resolved_name}" or "${names.configured_name}". Finder search skips Library folders by default.`;
+}
+
+function finishRecovery(
+  pending: Extract<StorageStatus, { FinishMoving: object }>["FinishMoving"],
+) {
+  const { configured, resolved, recovery, destination_exists } = pending;
+  const steps: RecoveryStep[] = [
+    {
+      kind: "show",
+      text: lostFolderGuidance(pending),
+    },
+  ];
+  if (recovery !== "Override" && recovery.LinkAtDataFolder !== undefined) {
+    const { configured_parent, configured_name, resolved_name } =
+      recovery.LinkAtDataFolder;
+    const rename =
+      configured_name === resolved_name
+        ? ""
+        : ` Select the moved folder, press Return, type "${configured_name}", and press Return.`;
+    if (destination_exists)
+      steps.push(
+        destinationRename(configured, configured_parent, configured_name),
+      );
+    steps.push(
+      {
+        kind: "folder",
+        text: "Copy this destination path. In Finder, choose File > New Finder Window (⌘N), then Go > Go to Folder (⇧⌘G). Paste the path and press Return:",
+        path: configured_parent,
+        after: `In the other Finder window, select the folder that holds your pages and press ⌘C. Return to the destination window. Hold Option and choose Edit > Move Item Here (⌥⌘V).${rename} Your pages move to this Mac.`,
+      },
+      {
+        kind: "folder",
+        text: "Copy this path. In Finder, choose Go > Go to Folder and paste it. Press Return:",
+        path: configured,
+        ...configuredPathCheck(
+          configured_parent,
+          configured_name,
+          resolved_name,
+          destination_exists ? 3 : 2,
+          destination_exists ? 5 : 4,
+        ),
+      },
+    );
+  } else {
+    if (destination_exists) {
+      const parent = configured.slice(0, configured.lastIndexOf("/")) || "/";
+      const name = configured.slice(configured.lastIndexOf("/") + 1);
+      steps.push(destinationRename(configured, parent, name));
+    }
+    steps.push({
+      kind: "folder",
+      text: "Move the folder that holds your pages to this exact destination on this Mac. In Finder, use Go > Go to Folder to check it. Paste this path and press Return:",
+      path: configured,
+      after:
+        "Continue only after this exact path opens with format.json and docs. If it doesn't, find the folder you moved and put it at this path. Check the path again before you restart Aelomi.",
+    });
+  }
+  steps.push({ kind: "text", text: storageCopy.restart });
+  return { resolved, steps };
+}
+
+function destinationRename(
+  configured: string,
+  parent: string,
+  name: string,
+): RecoveryStep {
+  return {
+    kind: "folder",
+    text: "Before you rename anything, copy this path. In Finder, choose File > New Finder Window (⌘N), then Go > Go to Folder (⇧⌘G). Paste the path and press Return:",
+    path: configured,
+    after: `Go to Folder must open "${configured}". This is not the folder that Show in Finder selected. If this exact path does not open, stop this rename step and check the location.`,
+    remedy: {
+      text: "Now copy this parent path. In the same Finder window, choose Go > Go to Folder (⇧⌘G). Paste the path and press Return:",
+      path: parent,
+      after: `In this window, select the existing folder named "${name}", press Return, type "${name} (old)", and press Return. Keep this folder until your pages are back.`,
+    },
+  };
+}
+
 export function storageStartup(status: StorageStatus): StorageStartup {
   if (typeof status === "object") {
+    if (status.RecoveryRecordUnreadable !== undefined)
+      return {
+        kind: "finish-moving",
+        configured: status.RecoveryRecordUnreadable.configured,
+        lastSeen: null,
+        title: storageCopy.finishTitle,
+        message: storageCopy.lostTrack,
+        detail: null,
+        recovery: {
+          resolved: null,
+          steps: [
+            {
+              kind: "folder",
+              text: storageCopy.expectedLocation,
+              path: status.RecoveryRecordUnreadable.configured,
+              after:
+                "Move the folder that contains your pages to this exact path. Copy this path. In Finder, choose Go > Go to Folder (⇧⌘G), paste it, and press Return. Continue only after this exact path opens with format.json and docs.",
+            },
+            { kind: "text", text: storageCopy.restart },
+          ],
+        },
+      };
+    if (status.FinishMoving !== undefined)
+      return {
+        kind: "finish-moving",
+        configured: status.FinishMoving.configured,
+        lastSeen: status.FinishMoving.resolved,
+        title: storageCopy.finishTitle,
+        message: storageCopy.finishMessage,
+        detail: null,
+        recovery: finishRecovery(status.FinishMoving),
+      };
     if (status.CloudPath !== undefined)
       return {
         kind: "refused",
@@ -187,7 +363,11 @@ export function storageStartup(status: StorageStatus): StorageStartup {
 }
 
 export function storageErrorText(error: StorageError): string {
-  if (typeof error === "object") return error.Io;
+  if (typeof error === "object") {
+    if (error.DestinationNotEmpty !== undefined)
+      return `The new workspace location already contains: ${error.DestinationNotEmpty.items.join(", ")}. These may be your pages. Choose Keep moving my pages, then follow the step that adds "(old)" to the existing folder's name. Keep its contents.`;
+    return error.Io;
+  }
   switch (error) {
     case "Unavailable":
       return storageCopy.notOpen;
@@ -223,6 +403,7 @@ export function storageFailureReason(reason: FailReason): string {
 export function recordErrorText(error: RecordCommandError): string {
   if (typeof error === "string") return error;
   if ("Transport" in error) return error.Transport;
+  if ("DestinationNotEmpty" in error) return storageErrorText(error);
   if (error.Io !== undefined) return error.Io;
   if (error.Internal !== undefined) return error.Internal;
   return error.Malformed.reason;

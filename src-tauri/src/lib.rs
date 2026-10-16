@@ -5,6 +5,7 @@ mod index;
 mod macos;
 mod perf;
 mod quit;
+mod recovery;
 mod settings;
 mod storage;
 mod trace;
@@ -90,7 +91,17 @@ fn open_storage(app: &tauri::App) {
     );
     let handle = app.handle().clone();
     let started = std::time::Instant::now();
-    let storage = Storage::open(&location, move |event| publish_index(&handle, event));
+    #[cfg(target_os = "macos")]
+    let record = macos::recovery_directory();
+    #[cfg(not(target_os = "macos"))]
+    let record = app
+        .path()
+        .app_config_dir()
+        .unwrap_or_default()
+        .with_extension("recovery");
+    let storage = Storage::open_with_recovery(&location, record, move |event| {
+        publish_index(&handle, event)
+    });
     println!("{}", storage.startup_line());
     println!(
         "storage open ms={} t_ms={:.1}",
@@ -98,17 +109,24 @@ fn open_storage(app: &tauri::App) {
         trace::since_start_ms()
     );
     if let Ok(workspace) = storage.workspace() {
-        let settings_workspace = workspace.clone();
-        tauri::async_runtime::spawn_blocking(move || {
-            let _ = settings_workspace.settings();
-        });
-        warm_tree(workspace.clone());
-        let app = app.handle().clone();
-        workspace.subscribe_health(move |health| {
-            let _ = StorageHealthChanged(health.into()).emit(&app);
-        });
+        prepare_workspace(app.handle(), workspace);
     }
     app.manage(storage);
+}
+
+pub(crate) fn prepare_workspace<R: Runtime>(
+    app: &AppHandle<R>,
+    workspace: std::sync::Arc<aelomi_core::workspace::Workspace>,
+) {
+    let settings_workspace = workspace.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let _ = settings_workspace.settings();
+    });
+    warm_tree(workspace.clone());
+    let app = app.clone();
+    workspace.subscribe_health(move |health| {
+        let _ = StorageHealthChanged(health.into()).emit(&app);
+    });
 }
 
 /// Projects the page tree while the webview starts, so the first `page_tree` call finds it in

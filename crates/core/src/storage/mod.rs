@@ -42,3 +42,5 @@ pub use doc_id::{DocId, InvalidDocId};
 pub use health::{FailReason, Health};
 pub use state::Seq;
 pub use store::{AppendError, OpenError, Pending, Store};
+
+pub use store::{DestinationFolder, classify_destination};

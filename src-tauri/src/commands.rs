@@ -65,6 +65,42 @@ pub fn storage_health(storage: State<'_, Storage>) -> Health {
     storage.health()
 }
 
+#[tauri::command]
+#[specta::specta]
+pub fn show_recovery_folder(storage: State<'_, Storage>) -> Result<(), StorageError> {
+    show_recovery_folder_with(&storage, |path| {
+        tauri_plugin_opener::reveal_item_in_dir(path).map_err(|error| error.to_string())
+    })?;
+    println!("recovery folder revealed=true");
+    Ok(())
+}
+
+fn show_recovery_folder_with(
+    storage: &Storage,
+    opener: impl FnOnce(&str) -> Result<(), String>,
+) -> Result<(), StorageError> {
+    opener(&storage.recovery_folder()?).map_err(StorageError::Io)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub async fn start_empty_workspace(app: AppHandle) -> Result<StorageStatus, StorageError> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let handle = app.clone();
+        let storage = app.state::<Storage>();
+        let status =
+            storage.start_empty_workspace(move |event| crate::publish_index(&handle, event))?;
+        if let Ok(workspace) = storage.workspace() {
+            crate::prepare_workspace(&app, workspace);
+            storage.register_frontend();
+        }
+        println!("recovery new workspace status={status:?}");
+        Ok(status)
+    })
+    .await
+    .map_err(|error| StorageError::Io(error.to_string()))?
+}
+
 /// The quit decision as it stands, for a webview that starts listening after a refusal.
 #[tauri::command]
 #[specta::specta]
@@ -433,6 +469,8 @@ pub fn builder() -> tauri_specta::Builder<tauri::Wry> {
             perf_report,
             storage_status,
             storage_health,
+            show_recovery_folder,
+            start_empty_workspace,
             quit_status,
             keep_open,
             quit_anyway,
@@ -507,6 +545,61 @@ mod tests {
             crate::storage::tests::text_of(&reopened.load(&doc).unwrap()),
             "recovered x"
         );
+    }
+
+    #[test]
+    fn recovery_opener_receives_only_the_native_last_seen_path() {
+        use crate::storage::{DataLocation, Storage};
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path().canonicalize().unwrap();
+        let cloud = base.join("cloud");
+        let target = cloud.join("Aelomi");
+        std::fs::create_dir_all(&target).unwrap();
+        let configured = base.join("Aelomi");
+        std::os::unix::fs::symlink(&target, &configured).unwrap();
+        let location = DataLocation {
+            path: configured.clone(),
+            cloud_roots: vec![cloud],
+        };
+        let record = base.join("recovery.json");
+        for missing in [false, true] {
+            if missing {
+                std::fs::remove_file(&configured).unwrap();
+            }
+            let storage = Storage::open_with_recovery(&location, record.clone(), |_| {});
+            let mut opened = String::new();
+            super::show_recovery_folder_with(&storage, |path| {
+                opened = path.into();
+                Ok(())
+            })
+            .unwrap();
+            assert_eq!(opened, target.to_string_lossy());
+        }
+        let ready = Storage::open(
+            &DataLocation {
+                path: base.join("new"),
+                cloud_roots: vec![],
+            },
+            |_| {},
+        );
+        assert!(matches!(
+            super::show_recovery_folder_with(&ready, |_| panic!("no folder on Ready")),
+            Err(crate::storage::StorageError::Unavailable)
+        ));
+    }
+
+    #[test]
+    fn recovery_command_reveals_instead_of_opening() {
+        let source = include_str!("commands.rs");
+        let adapter = source
+            .split("pub fn show_recovery_folder(")
+            .nth(1)
+            .unwrap()
+            .split("fn show_recovery_folder_with(")
+            .next()
+            .unwrap();
+        assert!(adapter.contains("tauri_plugin_opener::reveal_item_in_dir(path)"));
+        assert_eq!(adapter.contains("open_path"), false);
     }
 
     #[test]

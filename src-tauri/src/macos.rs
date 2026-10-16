@@ -267,6 +267,23 @@ pub fn data_location() -> DataLocation {
     }
 }
 
+pub fn recovery_directory() -> std::path::PathBuf {
+    std::env::var_os("AELOMI_RECOVERY_DIR")
+        .filter(|path| !path.is_empty())
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| {
+            let name = if cfg!(debug_assertions) {
+                "Aelomi Dev Recovery"
+            } else {
+                "Aelomi Recovery"
+            };
+            std::env::home_dir()
+                .unwrap_or_default()
+                .join("Library/Preferences")
+                .join(name)
+        })
+}
+
 pub fn process_start_us() -> u64 {
     let mut info: libc::proc_bsdinfo = unsafe { std::mem::zeroed() };
     let size = std::mem::size_of::<libc::proc_bsdinfo>() as libc::c_int;

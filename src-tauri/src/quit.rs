@@ -42,7 +42,6 @@ pub struct QuitGate {
     gate: Arc<Mutex<Gate>>,
     record_edits_done: Arc<Condvar>,
     drain_timeout: Duration,
-    workspace_open: bool,
 }
 
 pub struct RecordEdit {
@@ -68,6 +67,7 @@ pub enum QuitRequest {
 
 #[derive(Default)]
 struct Gate {
+    workspace_open: bool,
     revision: u32,
     frontend: bool,
     phase: Phase,
@@ -124,19 +124,24 @@ impl Gate {
 
 impl QuitGate {
     pub fn for_workspace(workspace_open: bool) -> Self {
-        Self {
-            workspace_open,
-            ..Self::default()
-        }
+        let quit = Self::default();
+        quit.lock().workspace_open = workspace_open;
+        quit
     }
 
     pub fn with_drain_timeout(drain_timeout: Duration) -> Self {
         Self {
-            gate: Arc::default(),
+            gate: Arc::new(Mutex::new(Gate {
+                workspace_open: true,
+                ..Gate::default()
+            })),
             record_edits_done: Arc::default(),
             drain_timeout,
-            workspace_open: true,
         }
+    }
+
+    pub fn workspace_opened(&self) {
+        self.lock().workspace_open = true;
     }
 
     pub fn record_edit(&self) -> Option<RecordEdit> {
@@ -186,7 +191,7 @@ impl QuitGate {
         match gate.phase {
             Phase::Confirmed => QuitRequest::Allow,
             _ if !gate.frontend => {
-                if self.workspace_open {
+                if gate.workspace_open {
                     gate.phase = Phase::FlushingStore;
                 }
                 QuitRequest::FlushStore

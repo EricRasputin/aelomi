@@ -97,6 +97,16 @@
           }
         }
       }
+    },
+    {
+      "includes": ["src/components/storage-refusal.tsx"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noArrayIndexKey": "off"
+          }
+        }
+      }
     }
   ]
 }

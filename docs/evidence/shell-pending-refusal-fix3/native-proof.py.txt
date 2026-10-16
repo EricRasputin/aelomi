@@ -1,0 +1,246 @@
+import contextlib, json, os, re, shutil, subprocess, time
+from pathlib import Path
+
+REPO = Path.cwd()
+ROOT = Path('.local-gate/e3-fix3/proof-root').read_text().strip()
+ROOT = Path(ROOT)
+APP = REPO / '.claude/skills/verify-aelomi/scripts/app.sh'
+LOCK = Path.home() / '.local/state/aelomi-orchestrator/audit/gate/ui-lock.sh'
+LABEL = 'e3-fix3-95bc09dc'
+CLOUD = ROOT / 'cloud'
+CLOUD.mkdir(exist_ok=True)
+RUNS = json.loads((ROOT/'runs.json').read_text()) if os.environ.get('AELOMI_PROOF_RESUME') else {}
+RESULTS = {}
+ACTIVE = []
+ACL = []
+
+def run(*args, env=None):
+    result = subprocess.run([str(x) for x in args], text=True, capture_output=True, env=env)
+    if result.returncode:
+        raise RuntimeError(f'{args}: {result.stdout}\n{result.stderr}')
+    return result.stdout.strip()
+
+def files(path):
+    return {str(p.relative_to(path)): p.read_bytes().hex() for p in sorted(path.rglob('*')) if p.is_file()}
+
+def record_bytes(record):
+    return {p.name: p.read_bytes().hex() for p in record.glob('*.json')}
+
+def setup(name, configured):
+    source = CLOUD / name / 'Aelomi'
+    shutil.copytree(REPO / 'fixtures/data-folders/format-1', source)
+    configured.parent.mkdir(parents=True, exist_ok=True)
+    configured.symlink_to(source)
+    recovery = ROOT / 'recovery' / name
+    return source, recovery
+
+def launch(name, configured, recovery):
+    env = dict(os.environ, AELOMI_DATA_DIR=str(configured), AELOMI_RECOVERY_DIR=str(recovery), AELOMI_CLOUD_ROOTS=str(CLOUD), AELOMI_DEV_PORT='55393')
+    for attempt in range(3):
+        print(f'launch {name}', flush=True)
+        result = run(APP, 'launch', 'dev', env=env)
+        directory = Path(result.splitlines()[-1])
+        ACTIVE.append(directory)
+        RUNS[name] = str(directory)
+        (ROOT / 'runs.json').write_text(json.dumps(RUNS, indent=2))
+        print(f'{name} {directory}', flush=True)
+        try:
+            run(APP, 'doctor', directory)
+        except RuntimeError:
+            stop(directory)
+            if attempt == 2:
+                raise
+            continue
+        return directory
+
+
+def stop(directory):
+    run(APP, 'cleanup', directory)
+    ACTIVE.remove(directory)
+
+@contextlib.contextmanager
+def keyboard():
+    print('acquiring keyboard lock', flush=True)
+    print(run(LOCK, 'acquire', LABEL), flush=True)
+    try:
+        yield
+    finally:
+        print(run(LOCK, 'release', LABEL), flush=True)
+
+def shot(directory, name):
+    for attempt in range(3):
+        try:
+            run(APP, 'screenshot', directory, name)
+            break
+        except RuntimeError as error:
+            if 'The window has no web content yet' not in str(error) or attempt == 2:
+                raise
+    print(f'screenshot {directory}/{name}.png', flush=True)
+
+def resize(directory):
+    pid = int(re.search(r'APP_PID=(\d+)', (directory/'run.env').read_text()).group(1))
+    code = f'const p = Application("System Events").processes.whose({{ unixId: {pid} }})[0]; p.frontmost = true; p.windows[0].position = [40, 40]; p.windows[0].size = [960, 850];'
+    run('osascript', '-l', 'JavaScript', '-e', code)
+
+
+def press(directory, name):
+    run(APP, 'press', directory, name)
+
+def tree(directory):
+    return run(APP, 'tree', directory)
+
+def until(directory, text):
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline:
+        value = tree(directory)
+        if text in value:
+            return value
+    raise AssertionError(f'missing {text}: {value}')
+
+try:
+    if not os.environ.get('AELOMI_PROOF_RESUME'):
+        configured = ROOT / 'publication' / 'Aelomi'
+        source, recovery = setup('full-volume', configured)
+        original = files(source)
+        directory = launch('full-cloud', configured, recovery)
+        assert 'CloudPath' in (directory/'shell.log').read_text()
+        stop(directory)
+        configured.unlink()
+        configured.mkdir()
+        run('chmod', '+a', 'everyone deny delete_child', configured)
+        ACL.append(configured)
+        record = record_bytes(recovery)
+        directory = launch('full-retry', configured, recovery)
+        assert 'FinishMoving' in (directory/'shell.log').read_text()
+        with keyboard():
+            shot(directory, 'temp-before')
+            press(directory, 'Start a new empty workspace here')
+            run(APP, 'wait-dialog', directory, 'Start a new empty workspace?')
+            press(directory, 'Create empty workspace')
+            content = until(directory, 'Permission denied')
+            assert (configured/'format.json.tmp').is_file(), list(configured.iterdir())
+            assert (configured/'format.json.tmp').read_bytes() == b'{\n  \"format\": 1\n}\n'
+            assert not (configured/'format.json').exists()
+            assert record_bytes(recovery) == record
+            (directory/'failed-create-listing.json').write_text(json.dumps(files(configured), indent=2))
+            shot(directory, 'temp-create-failed')
+            run('chmod', '-a', 'everyone deny delete_child', configured)
+            ACL.remove(configured)
+            press(directory, 'Create empty workspace')
+            until(directory, 'Ping again')
+            shot(directory, 'temp-retry-ready')
+        assert record_bytes(recovery) == {}
+        assert files(source) == original
+        RESULTS['temp-retry'] = 'PASS: marker publication rename failed with Permission denied, left format.json.tmp, retained record, retry Ready, original source bytes equal'
+        stop(directory)
+
+    else:
+        assert not list((ROOT/'recovery/full-volume').glob('*.json'))
+        assert files(ROOT/'cloud/full-volume/Aelomi') == files(REPO/'fixtures/data-folders/format-1')
+        RESULTS['temp-retry'] = 'PASS: marker publication rename failed with Permission denied, left format.json.tmp, retained record, retry Ready, original source bytes equal'
+
+    if os.environ.get('AELOMI_PROOF_STAGE') != 'after-skeleton':
+        configured = ROOT/'skeleton-final'/'Aelomi'
+        source, recovery = setup('skeleton-final', configured)
+        original = files(source)
+        directory = launch('skeleton-cloud-final', configured, recovery)
+        stop(directory)
+        configured.unlink()
+        directory = launch('skeleton-failure-final', configured, recovery)
+        assert not configured.exists()
+        record = record_bytes(recovery)
+        (ROOT/'skeleton-baseline.json').write_text(json.dumps({'source': original, 'record': record}))
+        (configured/'docs').mkdir(parents=True)
+        (configured/'format.json').write_text('{"format":1}')
+        (configured/'docs').chmod(0o500)
+        with keyboard():
+            shot(directory, 'skeleton-before')
+            press(directory, 'Start a new empty workspace here')
+            press(directory, 'Create empty workspace')
+            until(directory, 'could not finish creating the empty workspace')
+            shot(directory, 'skeleton-create-failed')
+            press(directory, 'Keep moving my pages')
+            content = until(directory, 'Before you rename anything')
+            assert 'This is not the folder that Show in Finder selected.' in content
+            assert 'Aelomi (old)' in content
+            resize(directory)
+            shot(directory, 'rename-paths')
+        (configured/'docs').chmod(0o700)
+        assert record_bytes(recovery) == record
+        assert files(source) == original
+        RESULTS['skeleton'] = 'PASS: creation failed, record retained, refreshed rename step and both chips visible, source bytes equal'
+        stop(directory)
+
+    else:
+        configured = ROOT/'skeleton-final'/'Aelomi'
+        source = CLOUD/'skeleton-final'/'Aelomi'
+        recovery = ROOT/'recovery'/'skeleton-final'
+        baseline = json.loads((ROOT/'skeleton-baseline.json').read_text())
+        assert record_bytes(recovery) == baseline['record']
+        assert files(source) == baseline['source']
+        (configured/'docs').chmod(0o700)
+        directory = launch('skeleton-rename-final', configured, recovery)
+        with keyboard():
+            resize(directory)
+            content = until(directory, 'Before you rename anything')
+            assert 'This is not the folder that Show in Finder selected.' in content
+            assert 'Aelomi (old)' in content
+            shot(directory, 'rename-paths')
+        assert record_bytes(recovery) == baseline['record']
+        assert files(source) == baseline['source']
+        RESULTS['skeleton'] = 'PASS: creation failed, record retained, refreshed rename step and both chips visible, source bytes equal'
+        stop(directory)
+
+    configured.rename(configured.with_name('Aelomi (old)'))
+    source.rename(configured)
+    (configured/'format.json').write_text('{"format":"broken"}')
+    before = files(configured)
+    record = record_bytes(recovery)
+    directory = launch('broken-marker', configured, recovery)
+    assert 'status=UnknownFormat' in (directory/'shell.log').read_text()
+    with keyboard():
+        until(directory, "This data folder isn't recognized")
+        shot(directory, 'broken-marker-unknown')
+    assert files(configured) == before
+    assert record_bytes(recovery) == record
+    RESULTS['broken-marker'] = 'PASS: correctly moved folder with broken marker reports UnknownFormat, exact record and destination bytes equal'
+    stop(directory)
+
+    configured = ROOT/'occupied'/'Aelomi'
+    source, recovery = setup('occupied', configured)
+    original = files(source)
+    directory = launch('occupied-cloud', configured, recovery)
+    stop(directory)
+    configured.unlink()
+    configured.mkdir()
+    source.rename(configured/'Aelomi Notes')
+    (configured/'.DS_Store').write_bytes(b'Finder metadata')
+    (configured/'Icon\r').write_bytes(b'Finder metadata')
+    (configured/'.lock').write_bytes(b'')
+    (configured/'format.json.tmp').write_bytes(b'torn marker')
+    before = files(configured)
+    record = record_bytes(recovery)
+    directory = launch('occupied-refusal', configured, recovery)
+    with keyboard():
+        shot(directory, 'occupied-before')
+        press(directory, 'Start a new empty workspace here')
+        press(directory, 'Create empty workspace')
+        content = until(directory, 'These may be your pages.')
+        assert 'already contains: Aelomi Notes.' in content
+        assert 'already contains: .DS_Store' not in content
+        shot(directory, 'occupied-message')
+        press(directory, 'Keep moving my pages')
+    assert files(configured) == before
+    assert files(configured/'Aelomi Notes') == original
+    assert record_bytes(recovery) == record
+    RESULTS['occupied'] = 'PASS: warning names only Aelomi Notes, says these may be pages, points to rename step, exact record and destination bytes equal'
+    stop(directory)
+    (ROOT/'results.json').write_text(json.dumps(RESULTS, indent=2))
+    print(json.dumps(RESULTS, indent=2), flush=True)
+finally:
+    for path in ACL:
+        run('chmod', '-a', 'everyone deny delete_child', path)
+    for directory in ACTIVE[:]:
+        try: stop(directory)
+        except Exception as error: print(f'cleanup failed: {error}', flush=True)
+    run(LOCK, 'release', LABEL)

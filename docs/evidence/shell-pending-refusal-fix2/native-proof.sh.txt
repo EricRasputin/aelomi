@@ -1,0 +1,139 @@
+#!/usr/bin/env bash
+set -euo pipefail
+SCHEME=$(printf %s "$AELOMI_PROOF_THEME" | tr A-Z a-z)
+OUT=.local-gate/e3-fix2/native-head-$SCHEME
+mkdir -p "$OUT"
+S=.claude/skills/verify-aelomi/scripts
+BASE=$(mktemp -d /private/tmp/ae92-e3-fix2-XXXXXX)
+printf '%s\n' "$BASE" > "$OUT/base.txt"
+RUN=
+OWN_LOCK=0
+release_lock() {
+  if [[ "$OWN_LOCK" == 1 && -f /tmp/aelomi-ui.lock/owner && "$(awk '{print $1}' /tmp/aelomi-ui.lock/owner)" == "$$" ]]; then rm -rf /tmp/aelomi-ui.lock; fi
+  OWN_LOCK=0
+}
+take_lock() {
+  local started
+  started=$(date +%s)
+  until mkdir /tmp/aelomi-ui.lock 2>/dev/null; do
+    if [[ -f /tmp/aelomi-ui.lock/owner ]] && (( $(date +%s) - $(stat -f %m /tmp/aelomi-ui.lock/owner) > 1800 )); then rm -rf /tmp/aelomi-ui.lock; fi
+    if (( $(date +%s) - started > 2700 )); then echo 'INCONCLUSIVE: keyboard lock unavailable for 45 minutes'; exit 1; fi
+    sleep 15
+  done
+  printf '%s %s E3-fix2-native-proof\n' "$$" "$(date -u +%FT%TZ)" > /tmp/aelomi-ui.lock/owner
+  OWN_LOCK=1
+}
+finish() {
+  release_lock
+  if [[ -n "$RUN" ]]; then "$S/app.sh" cleanup "$RUN" >/dev/null || true; fi
+  ls -la "$HOME/Library/Application Support/Aelomi" > "$OUT/real-data-after.txt"
+  diff -u "$OUT/real-data-before.txt" "$OUT/real-data-after.txt"
+}
+trap finish EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+launch() {
+  RUN=$(AELOMI_DEV_PORT=55393 AELOMI_DATA_DIR="$BASE/Local/Aelomi" AELOMI_CLOUD_ROOTS="$BASE/Cloud" AELOMI_RECOVERY_DIR="$BASE/Recovery" "$S/app.sh" launch dev)
+  printf '%s\t%s\n' "$1" "$RUN" >> "$OUT/runs.tsv"
+  take_lock
+  osascript - "$(sed -n 's/^APP_PID=//p' "$RUN/run.env")" <<'AS'
+on run argv
+ tell application "System Events" to set frontmost of (first process whose unix id is (item 1 of argv as integer)) to true
+end run
+AS
+  "$S/app.sh" doctor "$RUN"
+  osascript - "$(sed -n 's/^APP_PID=//p' "$RUN/run.env")" <<'AS'
+on run argv
+ tell application "System Events" to tell (first process whose unix id is (item 1 of argv as integer))
+  set size of window 1 to {1080, 1000}
+ end tell
+end run
+AS
+}
+quit_run() {
+  release_lock
+  "$S/app.sh" cleanup "$RUN" >/dev/null
+  RUN=
+}
+capture_themes() {
+  "$S/app.sh" screenshot "$RUN" "$1-$SCHEME"
+}
+mkdir -p "$BASE/Cloud" "$BASE/Local"
+cp -R fixtures/data-folders/format-1 "$BASE/Cloud/Aelomi Notes"
+ln -s "$BASE/Cloud/Aelomi Notes" "$BASE/Local/Aelomi"
+cp /tmp/e3-fix2-real-data-before.txt "$OUT/real-data-before.txt"
+python3 - "$BASE" "$OUT/original-before.json.txt" <<'PY'
+import hashlib,json,sys
+from pathlib import Path
+root=Path(sys.argv[1])/'Cloud/Aelomi Notes'
+Path(sys.argv[2]).write_text(json.dumps({str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest() for p in root.rglob('*') if p.is_file()},sort_keys=True))
+PY
+launch cloud
+rg '^storage status=CloudPath' "$RUN/shell.log"
+quit_run
+RECORD=$(find "$BASE/Recovery" -name '*.json' -type f)
+cp "$RECORD" "$OUT/pending.json.txt"
+rm "$BASE/Local/Aelomi"
+mkdir "$BASE/Local/Aelomi"
+printf 'Finder metadata' > "$BASE/Local/Aelomi/.DS_Store"
+launch metadata
+rg '^storage status=FinishMoving' "$RUN/shell.log"
+capture_themes metadata-screen
+"$S/app.sh" press "$RUN" 'Start a new empty workspace here'
+capture_themes metadata-confirm
+"$S/app.sh" press "$RUN" 'Create empty workspace'
+"$S/app.sh" tree "$RUN" > "$OUT/metadata-ready-tree.txt"
+rg 'IPC round trip|Ping again|Aelomi' "$OUT/metadata-ready-tree.txt"
+capture_themes metadata-ready
+[[ ! -e "$RECORD" ]]
+[[ "$(cat "$BASE/Local/Aelomi/.DS_Store")" == 'Finder metadata' ]]
+[[ -f "$BASE/Local/Aelomi/format.json" ]]
+[[ -d "$BASE/Local/Aelomi/docs/workspace" ]]
+quit_run
+mv "$BASE/Local/Aelomi" "$BASE/Explicit workspace"
+cp "$OUT/pending.json.txt" "$RECORD"
+mkdir "$BASE/Local/Aelomi"
+printf 'keep these notes' > "$BASE/Local/Aelomi/notes.txt"
+launch occupied
+"$S/app.sh" tree "$RUN" > "$OUT/occupied-tree.txt"
+rg 'Aelomi \(old\)' "$OUT/occupied-tree.txt"
+capture_themes occupied-rename
+"$S/app.sh" press "$RUN" 'Start a new empty workspace here'
+"$S/app.sh" press "$RUN" 'Create empty workspace'
+"$S/app.sh" tree "$RUN" > "$OUT/occupied-error-tree.txt"
+rg 'already contains items: notes.txt' "$OUT/occupied-error-tree.txt"
+capture_themes occupied-error
+"$S/app.sh" press "$RUN" 'Keep moving my pages'
+quit_run
+[[ "$(cat "$BASE/Local/Aelomi/notes.txt")" == 'keep these notes' ]]
+cmp "$RECORD" "$OUT/pending.json.txt"
+mv "$BASE/Local/Aelomi" "$BASE/Occupied destination"
+printf 'broken JSON' > "$RECORD"
+launch unreadable
+rg '^storage status=RecoveryRecordUnreadable' "$RUN/shell.log"
+"$S/app.sh" tree "$RUN" > "$OUT/unreadable-tree.txt"
+rg 'Aelomi expects your pages at:|format.json and docs|Quit Aelomi and open it again' "$OUT/unreadable-tree.txt"
+capture_themes unreadable-path
+quit_run
+[[ ! -e "$BASE/Local/Aelomi" ]]
+[[ "$(cat "$RECORD")" == 'broken JSON' ]]
+cp "$OUT/pending.json.txt" "$RECORD"
+mkdir -p "$BASE/Local/Aelomi/docs"
+printf '{"format":1}' > "$BASE/Local/Aelomi/format.json"
+launch partial
+rg '^storage status=FinishMoving' "$RUN/shell.log"
+capture_themes partial-guard
+quit_run
+python3 - "$BASE" "$OUT" <<'PY'
+import hashlib,json,sys
+from pathlib import Path
+base,out=map(Path,sys.argv[1:])
+root=base/'Cloud/Aelomi Notes'
+actual={str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest() for p in root.rglob('*') if p.is_file()}
+assert actual==json.loads((out/'original-before.json.txt').read_text())
+assert sorted(p.name for p in (base/'Local/Aelomi').iterdir())==['docs','format.json']
+assert list((base/'Local/Aelomi/docs').iterdir())==[]
+assert (base/'Local/Aelomi/format.json').read_bytes()==b'{"format":1}'
+assert next((base/'Recovery').glob('*.json')).read_bytes()==(out/'pending.json.txt').read_bytes()
+print('PASS: original files, partial destination, and pending record are byte-identical')
+PY

@@ -1,18 +1,20 @@
 use std::ffi::OsString;
 use std::path::{Component, Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use aelomi_core::index::IndexEvent;
-use aelomi_core::storage::{self as core, DataPathError, DocId, OpenError, Pending};
+use aelomi_core::storage::{self as core, DocId, OpenError, Pending};
 use aelomi_core::workspace::Workspace;
 use serde::Serialize;
 use specta::Type;
 
 use crate::quit::QuitGate;
+use crate::recovery::{OpenMode, RecoveryDirectory, open_workspace};
 
 pub const QUIT_FLUSH_TIMEOUT: Duration = Duration::from_secs(2);
 
+#[derive(Clone)]
 pub struct DataLocation {
     pub path: PathBuf,
     pub cloud_roots: Vec<PathBuf>,
@@ -43,6 +45,15 @@ pub enum StorageStatus {
         resolved: String,
         recovery: CloudRecovery,
     },
+    FinishMoving {
+        destination_exists: bool,
+        configured: String,
+        resolved: String,
+        recovery: CloudRecovery,
+    },
+    RecoveryRecordUnreadable {
+        configured: String,
+    },
     Locked,
     NewerFormat,
     UnknownFormat,
@@ -64,7 +75,7 @@ pub enum CloudRecovery {
 }
 
 impl CloudRecovery {
-    fn from_paths(
+    pub(crate) fn from_paths(
         configured: &Path,
         resolved: &Path,
         link: Option<&Path>,
@@ -101,7 +112,7 @@ impl CloudRecovery {
     }
 }
 
-fn normalize_configured(path: &Path) -> std::io::Result<PathBuf> {
+pub(crate) fn normalize_configured(path: &Path) -> std::io::Result<PathBuf> {
     let mut normalized = PathBuf::new();
     for component in std::path::absolute(path)?.components() {
         if component == Component::ParentDir {
@@ -134,6 +145,9 @@ pub enum Health {
 
 #[derive(Debug, Serialize, Type)]
 pub enum StorageError {
+    DestinationNotEmpty {
+        items: Vec<String>,
+    },
     /// The store is not open. `storage_status` says why.
     Unavailable,
     InvalidDocId,
@@ -142,7 +156,8 @@ pub enum StorageError {
 }
 
 pub struct Storage {
-    opened: Result<Arc<Workspace>, StorageStatus>,
+    opened: Mutex<Result<Arc<Workspace>, StorageStatus>>,
+    recovery: Option<(DataLocation, RecoveryDirectory)>,
     path: PathBuf,
     quit: QuitGate,
     #[cfg(test)]
@@ -150,59 +165,140 @@ pub struct Storage {
 }
 
 impl Storage {
+    #[cfg(test)]
     pub fn open(
         location: &DataLocation,
         on_index: impl Fn(&IndexEvent) + Send + Sync + 'static,
     ) -> Self {
-        let storage = |opened: Result<Arc<Workspace>, StorageStatus>, path| Self {
+        Self::open_inner(location, None, on_index)
+    }
+
+    pub(crate) fn open_with_recovery(
+        location: &DataLocation,
+        record: PathBuf,
+        on_index: impl Fn(&IndexEvent) + Send + Sync + 'static,
+    ) -> Self {
+        Self::open_inner(location, Some(RecoveryDirectory(record)), on_index)
+    }
+
+    fn open_inner(
+        location: &DataLocation,
+        record: Option<RecoveryDirectory>,
+        on_index: impl Fn(&IndexEvent) + Send + Sync + 'static,
+    ) -> Self {
+        let (opened, path) = open_workspace(location, record.as_ref(), OpenMode::Startup, on_index);
+        Self {
             quit: QuitGate::for_workspace(opened.is_ok()),
-            opened,
+            opened: Mutex::new(opened),
+            recovery: record.map(|file| (location.clone(), file)),
             path,
             #[cfg(test)]
             _index_dir: None,
+        }
+    }
+
+    pub(crate) fn start_empty_workspace(
+        &self,
+        on_index: impl Fn(&IndexEvent) + Send + Sync + 'static,
+    ) -> Result<StorageStatus, StorageError> {
+        let (location, record) = self.recovery.as_ref().ok_or(StorageError::Unavailable)?;
+        let on_index = Arc::new(on_index);
+        self.start_empty_workspace_with(|mode| {
+            let on_index = Arc::clone(&on_index);
+            open_workspace(location, Some(record), mode, move |event| on_index(event))
+        })
+    }
+
+    fn start_empty_workspace_with(
+        &self,
+        mut open: impl FnMut(OpenMode) -> (Result<Arc<Workspace>, StorageStatus>, PathBuf),
+    ) -> Result<StorageStatus, StorageError> {
+        if !matches!(
+            self.status(),
+            StorageStatus::FinishMoving { .. } | StorageStatus::RecoveryRecordUnreadable { .. }
+        ) {
+            return Err(StorageError::Unavailable);
+        }
+        let (location, _) = self.recovery.as_ref().ok_or(StorageError::Unavailable)?;
+        let configured = normalize_configured(&location.path)
+            .map_err(|error| StorageError::Io(error.to_string()))?;
+        let mode = match core::check_data_path(&configured, &location.cloud_roots) {
+            Ok(resolved) => match core::classify_destination(&resolved)
+                .map_err(|error| StorageError::Io(error.to_string()))?
+            {
+                core::DestinationFolder::Absent | core::DestinationFolder::Empty => {
+                    OpenMode::CreateEmpty
+                }
+                core::DestinationFolder::Workspace => OpenMode::Startup,
+                core::DestinationFolder::NotEmpty { items }
+                | core::DestinationFolder::Unrecognized { items } => {
+                    if let Err(StorageStatus::FinishMoving {
+                        destination_exists, ..
+                    }) = self
+                        .opened
+                        .lock()
+                        .unwrap_or_else(std::sync::PoisonError::into_inner)
+                        .as_mut()
+                    {
+                        *destination_exists = true;
+                    }
+                    return Err(StorageError::DestinationNotEmpty { items });
+                }
+            },
+            Err(_) => OpenMode::CreateEmpty,
         };
-        let configured = match normalize_configured(&location.path) {
-            Ok(path) => path,
-            Err(error) => {
-                return storage(
-                    Err(StorageStatus::Io(error.to_string())),
-                    location.path.clone(),
-                );
-            }
+        let (mut result, _) = open(mode);
+        let creation_error = match &result {
+            Err(StorageStatus::Io(error)) if mode == OpenMode::CreateEmpty => Some(error.clone()),
+            _ => None,
         };
-        match core::check_data_path(&configured, &location.cloud_roots) {
-            Ok(resolved) => storage(
-                Workspace::prepare(&resolved)
-                    .map(|mut prepared| {
-                        prepared.seed_getting_started(Instant::now() + QUIT_FLUSH_TIMEOUT);
-                        Arc::new(prepared.start(on_index))
-                    })
-                    .map_err(StorageStatus::from),
-                resolved,
-            ),
-            Err(DataPathError::CloudFolder { resolved, link, .. }) => {
-                let status =
-                    match CloudRecovery::from_paths(&configured, &resolved, link.as_deref()) {
-                        Ok(recovery) => StorageStatus::CloudPath {
-                            configured: configured.to_string_lossy().into_owned(),
-                            resolved: resolved.to_string_lossy().into_owned(),
-                            recovery,
-                        },
-                        Err(error) => StorageStatus::Io(error.to_string()),
-                    };
-                storage(Err(status), resolved)
+        if creation_error.is_some() {
+            (result, _) = open(OpenMode::Startup);
+        }
+        let mut opened = self
+            .opened
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if opened.is_ok() {
+            return Ok(StorageStatus::Ready);
+        }
+        if let Some(error) = creation_error {
+            if result.is_err() {
+                *opened = result;
+                return Err(StorageError::Io(error));
             }
-            Err(DataPathError::Io(error)) => storage(
-                Err(StorageStatus::Io(error.to_string())),
-                location.path.clone(),
+        }
+        match result {
+            Err(StorageStatus::Io(error)) => Err(StorageError::Io(error)),
+            Err(status) if !matches!(status, StorageStatus::CloudPath { .. }) => Err(
+                StorageError::Io(format!("could not open the destination: {status:?}")),
             ),
+            other => {
+                let ready = other.is_ok();
+                *opened = other;
+                if ready {
+                    self.quit.workspace_opened();
+                }
+                Ok(opened
+                    .as_ref()
+                    .map_or_else(Clone::clone, |_| StorageStatus::Ready))
+            }
+        }
+    }
+
+    pub(crate) fn recovery_folder(&self) -> Result<String, StorageError> {
+        match self.status() {
+            StorageStatus::CloudPath { resolved, .. }
+            | StorageStatus::FinishMoving { resolved, .. } => Ok(resolved),
+            _ => Err(StorageError::Unavailable),
         }
     }
 
     #[cfg(test)]
     pub(crate) fn not_open() -> Self {
         Self {
-            opened: Err(StorageStatus::Locked),
+            opened: Mutex::new(Err(StorageStatus::Locked)),
+            recovery: None,
             path: "/data".into(),
             quit: QuitGate::for_workspace(false),
             _index_dir: None,
@@ -211,13 +307,19 @@ impl Storage {
 
     pub fn workspace(&self) -> Result<Arc<Workspace>, StorageError> {
         self.opened
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .as_ref()
             .map(Arc::clone)
             .map_err(|_| StorageError::Unavailable)
     }
 
     pub fn index_status(&self) -> crate::index::IndexStatus {
-        match &self.opened {
+        match &*self
+            .opened
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+        {
             Ok(workspace) => workspace.index_status().into(),
             Err(_) => crate::index::IndexStatus::Failed {
                 reason: "the data folder is not open".into(),
@@ -226,7 +328,12 @@ impl Storage {
     }
 
     pub(crate) fn register_frontend(&self) {
-        if self.opened.is_ok() {
+        if self
+            .opened
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .is_ok()
+        {
             self.quit.register_frontend();
             println!("quit frontend ready");
         } else {
@@ -239,7 +346,11 @@ impl Storage {
     }
 
     pub fn status(&self) -> StorageStatus {
-        match &self.opened {
+        match &*self
+            .opened
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+        {
             Ok(_) => StorageStatus::Ready,
             Err(status) => status.clone(),
         }
@@ -281,7 +392,7 @@ impl Storage {
             pending.docs.dedup();
             return Err(pending);
         }
-        let Ok(workspace) = &self.opened else {
+        let Ok(workspace) = self.workspace() else {
             return Ok(());
         };
         let pending = workspace.flush(deadline);
@@ -668,7 +779,8 @@ pub(crate) mod tests {
             .join(aelomi_core::index::FILE);
         let store = disk.open(Path::new("/data")).expect("opens");
         Storage {
-            opened: Ok(Arc::new(Workspace::with_store(store, index, |_| {}))),
+            opened: Mutex::new(Ok(Arc::new(Workspace::with_store(store, index, |_| {})))),
+            recovery: None,
             path: "/data".into(),
             quit,
             _index_dir: Some(index_dir),
@@ -782,7 +894,8 @@ pub(crate) mod tests {
     #[test]
     fn quitting_goes_ahead_when_the_store_never_opened() {
         let storage = Storage {
-            opened: Err(StorageStatus::Locked),
+            opened: Mutex::new(Err(StorageStatus::Locked)),
+            recovery: None,
             path: "/data".into(),
             quit: QuitGate::default(),
             _index_dir: None,
@@ -804,3 +917,7 @@ pub(crate) mod tests {
         body.get_string(&doc.transact())
     }
 }
+
+#[cfg(test)]
+#[path = "recovery_tests.rs"]
+mod recovery_tests;

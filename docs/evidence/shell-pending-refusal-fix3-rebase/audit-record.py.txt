@@ -1,0 +1,22 @@
+import hashlib
+import re
+import subprocess
+from pathlib import Path
+
+text = Path('docs/evidence/shell-pending-refusal-fix3-rebase/README.md').read_text()
+source = re.search(r'Source commit `([0-9a-f]{40})`', text).group(1)
+base = re.search(r'Recorded merge base `([0-9a-f]{40})`', text).group(1)
+expected = re.search(r'Verbatim patch-id `([0-9a-f]{40})`', text).group(1)
+patch = subprocess.run(['git', 'diff', '--full-index', '--binary', base, source], check=True, capture_output=True).stdout
+actual = subprocess.run(['git', 'patch-id', '--verbatim'], input=patch, check=True, capture_output=True).stdout.decode().split()[0]
+assert actual == expected
+paths = re.findall(r'\| `([^`]+\.r(?:s))` \| `([0-9a-f]{64})` \||\| `([^`]+\.tsx?)` \| `([0-9a-f]{64})` \|', text)
+assert len(paths) == 5
+changed = subprocess.run(['git', 'diff', '--name-only', base, source], check=True, capture_output=True, text=True).stdout.splitlines()
+for rust, rust_hash, ts, ts_hash in paths:
+    path, expected_hash = (rust, rust_hash) if rust else (ts, ts_hash)
+    assert path in changed
+    data = subprocess.run(['git', 'show', f'HEAD:{path}'], check=True, capture_output=True).stdout
+    assert hashlib.sha256(data).hexdigest() == expected_hash
+    subprocess.run(['git', 'diff', '--exit-code', source, 'HEAD', '--', path], check=True)
+print('PASS: rebased source patch-id and all five runtime hashes match HEAD')

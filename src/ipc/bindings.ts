@@ -9,6 +9,8 @@ export const commands = {
 	perfReport: (marks: ColdStartMarks) => __TAURI_INVOKE<void>("perf_report", { marks }),
 	storageStatus: () => __TAURI_INVOKE<StorageStatus>("storage_status"),
 	storageHealth: () => __TAURI_INVOKE<Health>("storage_health"),
+	showRecoveryFolder: () => typedError<null, StorageError>(__TAURI_INVOKE("show_recovery_folder")),
+	startEmptyWorkspace: () => typedError<StorageStatus, StorageError>(__TAURI_INVOKE("start_empty_workspace")),
 	/**  The quit decision as it stands, for a webview that starts listening after a refusal. */
 	quitStatus: () => __TAURI_INVOKE<QuitStatus>("quit_status"),
 	/**
@@ -301,9 +303,11 @@ export type SettingsPatch = {
 	expanded_rows?: string[] | null,
 };
 
-export type StorageError = 
+export type StorageError = ({ DestinationNotEmpty: {
+	items: string[],
+} }) & { Io?: never } | 
 /**  The store is not open. `storage_status` says why. */
-"Unavailable" | "InvalidDocId" | "InvalidUpdate" | { Io: string };
+"Unavailable" | "InvalidDocId" | "InvalidUpdate" | ({ Io: string }) & { DestinationNotEmpty?: never };
 
 export type StorageHealthChanged = Health;
 
@@ -311,7 +315,14 @@ export type StorageStatus = "Ready" | ({ CloudPath: {
 	configured: string,
 	resolved: string,
 	recovery: CloudRecovery,
-} }) & { Io?: never } | "Locked" | "NewerFormat" | "UnknownFormat" | ({ Io: string }) & { CloudPath?: never };
+} }) & { FinishMoving?: never; Io?: never; RecoveryRecordUnreadable?: never } | ({ FinishMoving: {
+	destination_exists: boolean,
+	configured: string,
+	resolved: string,
+	recovery: CloudRecovery,
+} }) & { CloudPath?: never; Io?: never; RecoveryRecordUnreadable?: never } | ({ RecoveryRecordUnreadable: {
+	configured: string,
+} }) & { CloudPath?: never; FinishMoving?: never; Io?: never } | "Locked" | "NewerFormat" | "UnknownFormat" | ({ Io: string }) & { CloudPath?: never; FinishMoving?: never; RecoveryRecordUnreadable?: never };
 
 export type TextPart = {
 	text: string,
