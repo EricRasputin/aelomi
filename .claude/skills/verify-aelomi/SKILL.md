@@ -21,15 +21,16 @@ Run every command from the repo root. The examples use `S=.claude/skills/verify-
 ## Rules
 
 - Never change the Mac's appearance or any other system setting, even to restore it. The maintainer uses this Mac during verification.
-- If the appearance or another system setting differs from what the evidence expects, stop and report it. Do not restore it.
+- If a system setting changes unexpectedly during your run or was left changed by a failed script, report it. Do not restore it. For appearance evidence, capture the current state and name it, even if historical evidence shows another appearance.
 - If macOS shows a permission prompt, do not answer it. Stop and report it.
+- If a required permission is missing or denied, do not grant it. Stop and report it. Signs include an `osascript` error `-1743`, an Apple event that hangs, or a failed doctor System Events check.
 - For either light or dark captures, use the app's theme controls where the branch has them. SHELL-5 specifies **System**, **Light**, and **Dark** in **Settings**. CMD-8 specifies **Toggle theme** in ⌘K. Label these as app-theme captures. The native menu bar and title bar still follow the Mac's appearance.
 - Alternatively, use the mock browser with Playwright's `page.emulateMedia({ colorScheme: "light" })` or `page.emulateMedia({ colorScheme: "dark" })`. If neither route is available, capture only the current appearance and name it in the evidence.
 
 ## Before the first run
 
 - Run `pnpm install --frozen-lockfile`.
-- The app that runs your shell (Terminal, an IDE, or an agent host) must already have **Accessibility**, **Screen Recording**, and **Automation (System Events)** permissions. `app.sh doctor` checks Accessibility. Screen Recording has no check, so look at every screenshot. If a screenshot does not show the Aelomi window, Screen Recording is missing. For missing permissions or a macOS permission prompt, stop and report as required by the [rules](#rules).
+- The app that runs your shell (Terminal, an IDE, or an agent host) must already have **Accessibility**, **Screen Recording**, and **Automation (System Events)** permissions. `app.sh doctor` runs the System Events (Accessibility and Automation) check. Screen Recording has no check, so look at every screenshot. If a screenshot does not show the Aelomi window, Screen Recording is missing. For missing permissions or a macOS permission prompt, stop and report as required by the [rules](#rules).
 - For the mock browser, install WebKit once with `pnpm exec e2e-web install webkit`.
 
 ## Launch the real app
@@ -66,12 +67,12 @@ $S/app.sh doctor "$RUN"
 Run it after launch and whenever a command behaves oddly. It changes nothing, writes `doctor.txt` into the run directory, and exits 1 if any check fails. It checks that:
 
 - The launch process and the app process still run the commands this run started.
-- System Events has Accessibility access.
+- The System Events (Accessibility and Automation) check succeeds.
 - The app window is on screen, and its web content has a `role="status"` region or an alert dialog. A modal dialog hides the background status from accessibility while it is open.
 - For `dev`, a process from this run listens on the run's `DEV_PORT`. For `app`, the bundle is newer than `src/`, `src-tauri/src/`, `crates/`, and `index.html`.
 - The shell log has `ping seq=1`.
 
-If the Accessibility check fails, stop and report as required by the [rules](#rules). A relaunch cannot grant permission. For other failed checks, do not drive the instance. Run cleanup and launch again. Apply the [rules](#rules) if a permission prompt appears during any check.
+If the System Events (Accessibility and Automation) check fails, stop and report as required by the [rules](#rules). A relaunch cannot grant permission. For other failed checks, do not drive the instance. Run cleanup and launch again. Apply the [rules](#rules) if a permission prompt appears during any check.
 
 ## Drive the real app
 
