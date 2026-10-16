@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+OUT=.local-gate/e2-fix1
+base=$(mktemp -d /private/tmp/ae90-r1-XXXXXX)
+printf '%s\n' "$base" > "$OUT/base.txt"
+mkdir -p "$base/Proof Cloud" "$base/Recovery Destination/Archive" "$base/Recovery Destination/Design" "$base/Recovery Destination/Research" "$base/Recovery Destination/OtherApp"
+ln -s "$base/Proof Cloud/Aelomi" "$base/Recovery Destination/Aelomi"
+ln -s "$base/Proof Cloud" "$base/Shared Support"
+node "$OUT/generate-body.mjs"
+trap 'rm -f crates/core/examples/pr90_r1_seed.rs' EXIT
+cp "$OUT/seed.rs.txt" crates/core/examples/pr90_r1_seed.rs
+cargo run -p aelomi-core --features test-support --example pr90_r1_seed -- "$base/Proof Cloud/Aelomi" "$OUT/original.yupdate"
+python3 - "$base/Proof Cloud/Aelomi" "$OUT/before-move.json" <<'PY'
+import hashlib,json,sys
+from pathlib import Path
+root=Path(sys.argv[1])
+Path(sys.argv[2]).write_text(json.dumps({str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest() for p in root.rglob('*') if p.is_file()}))
+PY
