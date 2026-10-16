@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+set -euo pipefail
+if cmp -s .local-gate/e2/owned-lock.txt /tmp/aelomi-ui.lock/owner; then rm -rf /tmp/aelomi-ui.lock; echo 'Released E2 keyboard lock'; fi

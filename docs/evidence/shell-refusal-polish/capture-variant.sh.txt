@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+set -euo pipefail
+variant=$1
+run=$(cat ".local-gate/e2/$variant-run.txt")
+S=.claude/skills/verify-aelomi/scripts
+old_dark=
+finish() {
+  if cmp -s .local-gate/e2/owned-lock.txt /tmp/aelomi-ui.lock/owner; then
+    if [ -n "$old_dark" ]; then osascript -e "tell application \"System Events\" to tell appearance preferences to set dark mode to $old_dark" >/dev/null || true; fi
+    bash .local-gate/e2/release-lock.sh
+  fi
+  "$S/app.sh" cleanup "$run" >/dev/null || true
+}
+trap finish EXIT INT TERM
+bash .local-gate/e2/take-lock.sh
+old_dark=$(osascript -e 'tell application "System Events" to tell appearance preferences to get dark mode')
+"$S/app.sh" doctor "$run"
+osascript - "$(sed -n 's/^APP_PID=//p' "$run/run.env")" <<'APPLESCRIPT'
+on run argv
+ tell application "System Events" to tell (first process whose unix id is (item 1 of argv as integer))
+  set size of window 1 to {960, 900}
+ end tell
+end run
+APPLESCRIPT
+for scheme in dark light; do
+  if [ "$scheme" = dark ]; then dark=true; else dark=false; fi
+  osascript -e "tell application \"System Events\" to tell appearance preferences to set dark mode to $dark"
+  "$S/app.sh" screenshot "$run" "$variant-$scheme"
+done
+"$S/app.sh" keys "$run" q command

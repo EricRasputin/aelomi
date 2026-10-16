@@ -1,0 +1,15 @@
+import hashlib,json,sys
+from pathlib import Path
+mode,folder,manifest=sys.argv[1:]
+root=Path(folder)
+assert str(root).startswith('/private/tmp/ae90-e2-')
+actual={str(p.relative_to(root)):hashlib.sha256(p.read_bytes()).hexdigest() for p in root.rglob('*') if p.is_file()}
+if mode=='snapshot':
+ Path(manifest).write_text(json.dumps(actual,sort_keys=True))
+ print(f'Recorded {len(actual)} original files')
+else:
+ assert not root.is_symlink()
+ expected=json.loads(Path(manifest).read_text())
+ assert {name:actual[name] for name in expected}==expected
+ assert all(Path(name).name=='.DS_Store' for name in actual.keys()-expected.keys())
+ print('PASS: every original workspace file is byte-identical; only Finder .DS_Store metadata may be added')

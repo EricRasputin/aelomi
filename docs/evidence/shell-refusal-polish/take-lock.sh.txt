@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -euo pipefail
+deadline=$(( $(date +%s) + 2700 ))
+until mkdir /tmp/aelomi-ui.lock 2>/dev/null; do
+  if [ -f /tmp/aelomi-ui.lock/owner ] && [ $(( $(date +%s) - $(stat -f %m /tmp/aelomi-ui.lock/owner) )) -gt 1800 ]; then rm -rf /tmp/aelomi-ui.lock; fi
+  if [ "$(date +%s)" -ge "$deadline" ]; then echo 'INCONCLUSIVE: keyboard lock unavailable for 45 minutes'; exit 2; fi
+  sleep 15
+done
+echo "$$ $(date -u +%FT%TZ) E2-pr90" > /tmp/aelomi-ui.lock/owner
+cat /tmp/aelomi-ui.lock/owner > .local-gate/e2/owned-lock.txt
+cat /tmp/aelomi-ui.lock/owner
