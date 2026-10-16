@@ -348,6 +348,15 @@ mark {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.palette-page-title {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+.palette-page-title > .palette-title {
+  min-width: 0;
+  flex: 1;
+}
 
 .palette-snippet {
   color: var(--muted);

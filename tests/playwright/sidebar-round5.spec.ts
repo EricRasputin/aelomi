@@ -244,3 +244,28 @@ test("SHELL-1 status messages never move sidebar rows and failed rows stay disti
     await alpha.evaluate((el) => getComputedStyle(el).color),
   );
 });
+
+test("TREE-7 a long failed palette title leaves its failure label fully visible", async ({
+  page,
+}) => {
+  await page.goto("/page/a");
+  await expect(title(page)).toHaveValue("Alpha");
+  await hold(page);
+  await page.keyboard.press("Meta+n");
+  const full =
+    "Quarterly planning https://example.com/platform-infrastructure/research/王秀英-👩🏽‍💻-نور";
+  await title(page).fill(full);
+  await page.evaluate(() =>
+    window.__aelomiMock?.storage.refuseRecords({ Internal: "terminal" }),
+  );
+  await expect(title(page)).toHaveJSProperty("readOnly", true);
+  await page.keyboard.press("Meta+k");
+  await page.getByRole("combobox").fill("Quarterly");
+  const option = page.getByRole("option", { name: full, exact: true });
+  const suffix = option.getByText("Not created", { exact: true });
+  await expect(suffix).toBeVisible();
+  const box = await suffix.boundingBox();
+  const row = await option.boundingBox();
+  if (!box || !row) throw new Error("Missing palette result");
+  expect(box.x + box.width).toBeLessThanOrEqual(row.x + row.width - 10);
+});

@@ -272,8 +272,10 @@ export function CommandPalette() {
                   {row.kind === "command" ? (
                     <span className="palette-title">{row.command.label}</span>
                   ) : row.kind === "title" ? (
-                    <span className="palette-title">
-                      <HighlightedText parts={row.match.parts} />
+                    <span className="palette-page-title">
+                      <span className="palette-title">
+                        <HighlightedText parts={row.match.parts} />
+                      </span>
                       {newPages.get(row.match.id)?.stage === "failed" && (
                         <span className="sidebar-failure" aria-hidden="true">
                           Not created
