@@ -94,6 +94,10 @@ for (const colorScheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme });
     await page.setViewportSize({ width: 480, height: 720 });
     await page.goto("/");
+    await expect(page.locator("html")).toHaveAttribute(
+      "data-theme",
+      colorScheme,
+    );
     const reason =
       "A storage write failed. ".repeat(20) + "unbreakable".repeat(50);
     await page.evaluate(async (reason) => {
@@ -125,15 +129,24 @@ for (const colorScheme of ["light", "dark"] as const) {
         `${label} meets the WCAG AA text contrast`,
       ).toBeGreaterThanOrEqual(4.5);
     }
-    await page.emulateMedia({
-      colorScheme: colorScheme === "light" ? "dark" : "light",
-    });
+    const opposite = colorScheme === "light" ? "dark" : "light";
+    await page.emulateMedia({ colorScheme: opposite });
+    await expect(page.locator("html")).toHaveAttribute("data-theme", opposite);
     const otherTheme = await banner.evaluate(readRenderedText);
     expect(
       otherTheme.map(({ background }) => background),
       `${colorScheme} warning background changes with the theme`,
     ).not.toEqual(texts.map(({ background }) => background));
     await page.emulateMedia({ colorScheme });
+    await expect(page.locator("html")).toHaveAttribute(
+      "data-theme",
+      colorScheme,
+    );
+    expect(
+      (await banner.evaluate(readRenderedText)).map(
+        ({ background }) => background,
+      ),
+    ).toEqual(texts.map(({ background }) => background));
     await page.getByRole("button", { name: "Ping again" }).focus();
     await page.evaluate(() => window.__aelomiMock?.quit.request());
     const dialog = page.getByRole("alertdialog");
