@@ -27,7 +27,8 @@ export function SaveFailureBanner() {
   const dismissFailed = useRecordCommandStore((state) => state.dismissFailed);
   const recordFailing = useRecordCommandStore(failing);
   const recordFailure = record ?? failed;
-  const settingsFailure = useSettingsWriteStore((state) => state.error);
+  const settingsFailure = useSettingsWriteStore((state) => state.failure);
+  const dismissSettings = useSettingsWriteStore((state) => state.dismissFailed);
   const reason =
     health && health !== "Healthy"
       ? storageFailureReason(health.Failing.reason)
@@ -36,7 +37,7 @@ export function SaveFailureBanner() {
         : recordFailing && recordFailure
           ? recordErrorText(recordFailure.error)
           : settingsFailure
-            ? settingsErrorText(settingsFailure)
+            ? settingsErrorText(settingsFailure.error)
             : null;
   if (reason === null) return null;
   return (
@@ -44,7 +45,21 @@ export function SaveFailureBanner() {
       <p>
         <span className="font-medium">{storageCopy.banner}</span> {reason}
       </p>
-      {record || !failed ? <p className="mt-1">{storageCopy.retry}</p> : null}
+      {record ||
+      refused ||
+      (health && health !== "Healthy") ||
+      settingsFailure?.kind === "retrying" ? (
+        <p className="mt-1">{storageCopy.retry}</p>
+      ) : null}
+      {settingsFailure?.kind === "failed" ? (
+        <button
+          type="button"
+          className="quit-button mt-1"
+          onClick={dismissSettings}
+        >
+          Dismiss failed settings change
+        </button>
+      ) : null}
       {failed ? (
         <button
           type="button"

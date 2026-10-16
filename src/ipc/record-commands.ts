@@ -9,6 +9,7 @@ import {
   useRecordCommandStore,
 } from "../stores/record-commands";
 import type { PageError } from "./bindings";
+import { retryCommandError } from "./command-retry";
 import {
   commandsAccepted,
   forgetCommand,
@@ -162,11 +163,7 @@ export function withRecordCommands(transport: Transport): Commands {
     try {
       const reply = job.accepted ?? (await invoke());
       if (!active()) return true;
-      if (
-        reply.status === "error" &&
-        ((typeof reply.error === "object" && "Io" in reply.error) ||
-          (retained && reply.error === "Quitting"))
-      )
+      if (reply.status === "error" && retryCommandError(reply.error, retained))
         return retain(reply.error);
       if (reply.status === "ok" && job.accepted === null) {
         job.accepted = reply;

@@ -3,10 +3,20 @@ const retained = new Map<
   object,
   { retry: () => void; docs: readonly string[]; settings?: boolean }
 >();
+const admissionOpened = new Set<() => void>();
 let admission: "open" | "completing" = "open";
 
 export function setCommandAdmission(next: typeof admission) {
+  if (admission === next) return;
   admission = next;
+  if (next === "open") for (const retry of [...admissionOpened]) retry();
+}
+
+export function onCommandAdmissionOpen(retry: () => void): () => void {
+  admissionOpened.add(retry);
+  return () => {
+    admissionOpened.delete(retry);
+  };
 }
 
 export function commandsAccepted(): boolean {

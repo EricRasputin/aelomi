@@ -33,7 +33,6 @@ export type {
   RecordCommandStore,
   RecordOp,
   RetainedRecordOp,
-  TransportFailure,
 } from "../stores/record-commands";
 export {
   failing,
@@ -75,4 +74,5 @@ export type {
   TrashedPage,
   TreePage,
 } from "./bindings";
+export type { TransportFailure } from "./command-retry";
 export type { RecordCommandResult } from "./record-commands";

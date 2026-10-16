@@ -1,14 +1,21 @@
 import { create } from "zustand";
+import { isPageId } from "../editor/body-reader";
 import { commands, type SettingsError, type SettingsPatch } from "../ipc";
+import { retryCommandError, type TransportFailure } from "../ipc/command-retry";
 import {
+  commandsAccepted,
   forgetCommand,
+  onCommandAdmissionOpen,
   retainCommand,
   trackCommand,
 } from "../ipc/pending-commands";
 import { storageRetry } from "../storage-retry";
-import type { TransportFailure } from "./record-commands";
 
 export type SettingsWriteError = SettingsError | TransportFailure;
+export type SettingsWriteFailure = {
+  kind: "retrying" | "failed";
+  error: SettingsWriteError;
+};
 type UpdateSettings = typeof commands.settingsUpdate;
 
 function mergePatch(
@@ -23,18 +30,45 @@ function mergePatch(
   return patch;
 }
 
+function withoutInvalidPageFields(patch: SettingsPatch): SettingsPatch | null {
+  const valid = { ...patch };
+  if (patch.expanded_rows?.some((id) => !isPageId(id)))
+    delete valid.expanded_rows;
+  if (patch.recent_pages?.some((id) => !isPageId(id)))
+    delete valid.recent_pages;
+  if (
+    patch.open_page &&
+    typeof patch.open_page === "object" &&
+    !isPageId(patch.open_page.Set.page_id)
+  )
+    delete valid.open_page;
+  return Object.keys(valid).length < Object.keys(patch).length &&
+    Object.keys(valid).length > 0
+    ? valid
+    : null;
+}
+
 export function createSettingsWriteJob(
   update: UpdateSettings,
-  report: (error: SettingsWriteError | null) => void,
+  report: (failure: SettingsWriteFailure | null) => void,
 ) {
   let pending: SettingsPatch | null = null;
   let running = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let backoff = storageRetry.firstMs;
   const job = {};
+  let retainedError: SettingsWriteError | null = null;
+  let stopAdmission: (() => void) | undefined;
+  const forget = () => {
+    forgetCommand(job);
+    retainedError = null;
+    stopAdmission?.();
+    stopAdmission = undefined;
+    backoff = storageRetry.firstMs;
+  };
   const pump = () => {
     clearTimeout(timer);
-    if (running || pending === null) return;
+    if (running || pending === null || !commandsAccepted()) return;
     running = true;
     void trackCommand(
       (async () => {
@@ -57,16 +91,28 @@ export function createSettingsWriteJob(
               };
             }
             if (failure !== null) {
-              pending = mergePatch(patch, pending);
-              retainCommand(job, { retry: pump, docs: [], settings: true });
-              report(failure);
-              timer = setTimeout(pump, backoff);
-              backoff = Math.min(backoff * 2, storageRetry.maxMs);
-              return;
+              if (retryCommandError(failure, retainedError !== null)) {
+                pending = mergePatch(patch, pending);
+                retainCommand(job, { retry: pump, docs: [], settings: true });
+                if (failure !== "Quitting" || retainedError === null) {
+                  retainedError = failure;
+                  report({ kind: "retrying", error: failure });
+                }
+                stopAdmission ??= onCommandAdmissionOpen(pump);
+                timer = setTimeout(pump, backoff);
+                backoff = Math.min(backoff * 2, storageRetry.maxMs);
+                return;
+              }
+              if (failure === "InvalidPageId") {
+                const valid = withoutInvalidPageFields(patch);
+                if (valid !== null) pending = mergePatch(valid, pending);
+              }
+              forget();
+              report({ kind: "failed", error: failure });
+              continue;
             }
-            forgetCommand(job);
+            forget();
             report(null);
-            backoff = storageRetry.firstMs;
           }
         } finally {
           running = false;
@@ -81,10 +127,16 @@ export function createSettingsWriteJob(
 }
 
 export const useSettingsWriteStore = create<{
-  error: SettingsWriteError | null;
-}>(() => ({ error: null }));
+  failure: SettingsWriteFailure | null;
+  dismissFailed: () => void;
+}>((set, get) => ({
+  failure: null,
+  dismissFailed: () => {
+    if (get().failure?.kind === "failed") set({ failure: null });
+  },
+}));
 
 export const updateSettings = createSettingsWriteJob(
   (patch) => commands.settingsUpdate(patch),
-  (error) => useSettingsWriteStore.setState({ error }),
+  (failure) => useSettingsWriteStore.setState({ failure }),
 );

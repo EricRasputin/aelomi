@@ -64,7 +64,7 @@ test("SHELL-8 latest field values survive an outage with one write in flight", a
   });
 });
 
-test.each([{ Io: "Settings read denied" }, "Internal", "Quitting"] as const)(
+test.each([{ Io: "Settings read denied" }] as const)(
   "SHELL-9 drain retries a retained settings failure %j without waiting for backoff",
   async (error) => {
     const update = vi
@@ -78,13 +78,13 @@ test.each([{ Io: "Settings read denied" }, "Internal", "Quitting"] as const)(
     job({ theme: "Dark" });
     await drainCommands();
     expect(commandFailures()).toEqual({ docs: [], settings: true });
-    expect(report.mock.calls).toEqual([[error]]);
+    expect(report.mock.calls).toEqual([[{ kind: "retrying", error }]]);
     await drainCommands();
     expect(update.mock.calls).toEqual([
       [{ theme: "Dark" }],
       [{ theme: "Dark" }],
     ]);
-    expect(report.mock.calls).toEqual([[error], [null]]);
+    expect(report.mock.calls).toEqual([[{ kind: "retrying", error }], [null]]);
     expect(commandFailures()).toEqual({ docs: [], settings: false });
     expect(await commands.settingsGet()).toEqual({
       status: "ok",
@@ -97,3 +97,138 @@ test.each([{ Io: "Settings read denied" }, "Internal", "Quitting"] as const)(
     });
   },
 );
+
+test.each(["InvalidPageId", "Unavailable", "Internal", "Quitting"] as const)(
+  "SHELL-8 a terminal settings rejection %s settles without retry",
+  async (error) => {
+    const update = vi
+      .spyOn(commands, "settingsUpdate")
+      .mockResolvedValueOnce({ status: "error", error });
+    const report = vi.fn();
+    const job = createSettingsWriteJob(
+      (patch) => commands.settingsUpdate(patch),
+      report,
+    );
+    job({ expanded_rows: ["Bad ID"] });
+    await drainCommands();
+    expect(commandFailures()).toEqual({ docs: [], settings: false });
+    expect(report.mock.calls).toEqual([[{ kind: "failed", error }]]);
+    await vi.advanceTimersByTimeAsync(10_000);
+    job({ theme: "Dark" });
+    await drainCommands();
+    expect(update.mock.calls).toEqual([
+      [{ expanded_rows: ["Bad ID"] }],
+      [{ theme: "Dark" }],
+    ]);
+    expect(await commands.settingsGet()).toEqual({
+      status: "ok",
+      data: {
+        theme: "Dark",
+        open_page: null,
+        recent_pages: [],
+        expanded_rows: [],
+      },
+    });
+  },
+);
+
+test("SHELL-8 InvalidPageId drops the rejected fields and saves the pending theme", async () => {
+  let release = () => {};
+  const update = vi.spyOn(commands, "settingsUpdate").mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        release = () => resolve({ status: "error", error: "InvalidPageId" });
+      }),
+  );
+  const report = vi.fn();
+  const job = createSettingsWriteJob(
+    (patch) => commands.settingsUpdate(patch),
+    report,
+  );
+  job({ expanded_rows: ["Bad ID"] });
+  job({ theme: "Dark" });
+  release();
+  await drainCommands();
+  expect(report.mock.calls).toEqual([
+    [{ kind: "failed", error: "InvalidPageId" }],
+    [null],
+  ]);
+  expect(commandFailures()).toEqual({ docs: [], settings: false });
+  expect(update.mock.calls).toEqual([
+    [{ expanded_rows: ["Bad ID"] }],
+    [{ theme: "Dark" }],
+  ]);
+  expect(await commands.settingsGet()).toEqual({
+    status: "ok",
+    data: {
+      theme: "Dark",
+      open_page: null,
+      recent_pages: [],
+      expanded_rows: [],
+    },
+  });
+});
+
+test("SHELL-10 closed admission preserves the Io reason and reopening retries immediately", async () => {
+  const update = vi
+    .spyOn(commands, "settingsUpdate")
+    .mockResolvedValueOnce({ status: "error", error: { Io: "read denied" } });
+  const report = vi.fn();
+  const job = createSettingsWriteJob(
+    (patch) => commands.settingsUpdate(patch),
+    report,
+  );
+  job({ theme: "Dark" });
+  await drainCommands();
+  setCommandAdmission("completing");
+  await vi.advanceTimersByTimeAsync(20_000);
+  expect(update.mock.calls).toEqual([[{ theme: "Dark" }]]);
+  expect(report.mock.calls).toEqual([
+    [{ kind: "retrying", error: { Io: "read denied" } }],
+  ]);
+  setCommandAdmission("open");
+  await drainCommands();
+  expect(update.mock.calls).toEqual([[{ theme: "Dark" }], [{ theme: "Dark" }]]);
+  expect(report.mock.calls).toEqual([
+    [{ kind: "retrying", error: { Io: "read denied" } }],
+    [null],
+  ]);
+  expect(await commands.settingsGet()).toEqual({
+    status: "ok",
+    data: {
+      theme: "Dark",
+      open_page: null,
+      recent_pages: [],
+      expanded_rows: [],
+    },
+  });
+});
+
+test("SHELL-8 a merged invalid field cannot discard valid settings after a retained outage", async () => {
+  const update = vi
+    .spyOn(commands, "settingsUpdate")
+    .mockResolvedValueOnce({ status: "error", error: { Io: "read denied" } });
+  const job = createSettingsWriteJob(
+    (patch) => commands.settingsUpdate(patch),
+    () => {},
+  );
+  job({ expanded_rows: ["Bad ID"] });
+  await drainCommands();
+  job({ theme: "Dark", recent_pages: ["page-a"] });
+  await drainCommands();
+  expect(commandFailures()).toEqual({ docs: [], settings: false });
+  expect(update.mock.calls).toEqual([
+    [{ expanded_rows: ["Bad ID"] }],
+    [{ expanded_rows: ["Bad ID"], theme: "Dark", recent_pages: ["page-a"] }],
+    [{ theme: "Dark", recent_pages: ["page-a"] }],
+  ]);
+  expect(await commands.settingsGet()).toEqual({
+    status: "ok",
+    data: {
+      theme: "Dark",
+      open_page: null,
+      recent_pages: ["page-a"],
+      expanded_rows: [],
+    },
+  });
+});
