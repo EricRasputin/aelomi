@@ -47,6 +47,7 @@ test("TREE-1 TREE-7 EDIT-1 Rename updates the sidebar and Return moves to the bo
   screen,
 }) => {
   await app.open("/");
+  await expect(screen.getByRole("region", "No page open")).toBeVisible();
   await browser.keyboard.press("Meta+n");
   await expect(screen.getByRole("textbox", "Page title")).toBeVisible();
   await browser.keyboard.type("Projects");
@@ -76,6 +77,7 @@ test("TREE-9 Trash the open page chooses its sibling then the empty state", asyn
     };
   });
   await app.open("/page/a");
+  await expect(screen.getByRole("textbox", "Page body")).toBeVisible();
   await browser.keyboard.press("Meta+k");
   await browser.keyboard.type("Move to trash");
   await screen.getByRole("option", "Move to trash").click();
