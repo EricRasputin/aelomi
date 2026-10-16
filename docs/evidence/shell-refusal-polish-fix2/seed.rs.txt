@@ -1,0 +1,13 @@
+use std::{path::Path, time::{Duration, Instant}};
+use aelomi_core::{storage::{DocId, Store}, workspace::{fixture::{Editor, put_page}, records::{PageId, PageRecord, Placement}}};
+fn main() {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let store = Store::open(Path::new(&args[0])).unwrap();
+    let mut editor = Editor::new(86);
+    let page = PageId::new("page-proof").unwrap();
+    let record = PageRecord { title: "Finder recovery proof".into(), placement: Placement { parent: None, order: 0 }, favorite: None, trash: None, created_at: 1, updated_at: 1 };
+    let update = editor.edit(&DocId::workspace(), |txn| put_page(txn, &page, &record));
+    store.append(&DocId::workspace(), &update).unwrap();
+    store.append(page.doc_id(), &std::fs::read(&args[1]).unwrap()).unwrap();
+    assert!(store.flush(Instant::now() + Duration::from_secs(2)).is_empty());
+}

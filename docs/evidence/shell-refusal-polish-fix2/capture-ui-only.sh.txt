@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+OUT=.local-gate/e2-fix2
+S=.claude/skills/verify-aelomi/scripts
+base=$(mktemp -d /private/tmp/ae90-r2-ui-XXXXXX)
+printf '%s\n' "$base" > "$OUT/ui-base.txt"
+mkdir -p "$base/Proof Cloud/Aelomi Notes" "$base/Local Support"
+ln -s "$base/Proof Cloud/Aelomi Notes" "$base/Local Support/Aelomi"
+ln -s "$base/Proof Cloud" "$base/Shared Support"
+RUN=
+OWN=0
+OLD_DARK=
+release_lock() {
+ python3 - "$$" <<'PY'
+from pathlib import Path
+import sys
+lock=Path('/tmp/aelomi-ui.lock'); owner=lock/'owner'
+if owner.exists() and owner.read_text().split()[0]==sys.argv[1]:
+ owner.unlink(); lock.rmdir()
+PY
+ OWN=0
+}
+finish() {
+ if [[ "$OWN" == 1 && -n "$OLD_DARK" ]]; then osascript -e "tell application \"System Events\" to tell appearance preferences to set dark mode to $OLD_DARK" >/dev/null || true; fi
+ if [[ "$OWN" == 1 ]]; then release_lock; fi
+ if [[ -n "$RUN" ]]; then "$S/app.sh" cleanup "$RUN" >/dev/null || true; fi
+ ls -la "$HOME/Library/Application Support/Aelomi" > "$OUT/real-data-after-ui.txt"
+ diff -u "$OUT/real-data-before-ui.txt" "$OUT/real-data-after-ui.txt"
+}
+trap finish EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+ls -la "$HOME/Library/Application Support/Aelomi" > "$OUT/real-data-before-ui.txt"
+for variant in leaf shared override; do
+ case "$variant" in
+  leaf) path="$base/Local Support/Aelomi" ;;
+  shared) path="$base/Shared Support/Aelomi" ;;
+  override) path="$base/Proof Cloud/Override" ;;
+ esac
+ RUN=$(AELOMI_DATA_DIR="$path" AELOMI_CLOUD_ROOTS="$base/Proof Cloud" "$S/app.sh" launch dev)
+ printf '%s\n' "$RUN" > "$OUT/$variant-ui-run.txt"
+ started=$(date +%s)
+ until mkdir /tmp/aelomi-ui.lock 2>/dev/null; do
+  if (( $(date +%s)-started>2700 )); then echo 'INCONCLUSIVE: keyboard lock unavailable for 45 minutes'; exit 1; fi
+  sleep 15
+ done
+ printf '%s %s PR90-ui-only\n' "$$" "$(date -u +%FT%TZ)" > /tmp/aelomi-ui.lock/owner
+ OWN=1
+ "$S/app.sh" doctor "$RUN"
+ OLD_DARK=$(osascript -e 'tell application "System Events" to tell appearance preferences to get dark mode')
+ osascript - "$(sed -n 's/^APP_PID=//p' "$RUN/run.env")" <<'AS'
+on run argv
+ tell application "System Events" to tell (first process whose unix id is (item 1 of argv as integer)) to set size of window 1 to {960, 1200}
+end run
+AS
+ for scheme in dark light; do
+  if [[ "$scheme" == dark ]]; then dark=true; else dark=false; fi
+  osascript -e "tell application \"System Events\" to tell appearance preferences to set dark mode to $dark" >/dev/null
+  "$S/app.sh" screenshot "$RUN" "$variant-$scheme"
+ done
+ osascript -e "tell application \"System Events\" to tell appearance preferences to set dark mode to $OLD_DARK" >/dev/null
+ release_lock
+ "$S/app.sh" cleanup "$RUN" >/dev/null
+ RUN=
+done
+echo 'PASS: all refusal variants captured in light and dark without keystrokes or Finder calls; owned processes stopped; appearance restored'

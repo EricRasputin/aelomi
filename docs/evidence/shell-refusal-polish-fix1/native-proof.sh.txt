@@ -77,7 +77,7 @@ quit_app() {
     grep '^quit draining via=ExitRequested' "$RUN/shell.log"
     grep '^quit confirmed via=drain' "$RUN/shell.log"
   else
-    if grep -q '^quit frontend ready$\|^quit draining\|via=CompleteQuit' "$RUN/shell.log"; then echo 'FAIL: refused app registered a frontend drain'; exit 1; fi
+    if grep -Eq '^quit frontend ready$|^quit draining|via=CompleteQuit' "$RUN/shell.log"; then echo 'FAIL: refused app registered a frontend drain'; exit 1; fi
     grep '^quit flush via=ExitRequested pending=None' "$RUN/shell.log"
     echo 'PASS: refused app quit without a frontend drain or dialog'
   fi
