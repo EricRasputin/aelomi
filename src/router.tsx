@@ -143,6 +143,7 @@ function useWorkspaceNavigation() {
     select: (state) => state.location.pathname,
   });
   const source = usePageTreeStore((state) => state.source);
+  const pendingCreation = useShellStore((state) => state.pendingCreation);
   const previous = useRef(source);
   const entered = useRef(false);
   useLayoutEffect(() => {
@@ -150,6 +151,11 @@ function useWorkspaceNavigation() {
   }, [pageId]);
   useEffect(() => {
     if (source.kind !== "ready") return;
+    if (pendingCreation) {
+      if (source.byId.has(pendingCreation.pageId))
+        useShellStore.setState({ pendingCreation: null });
+      else if (pendingCreation.pageId === pageId) return;
+    }
     const before = previous.current;
     if (!pageId || source.byId.has(pageId)) previous.current = source;
     if (!entered.current) {
@@ -184,7 +190,7 @@ function useWorkspaceNavigation() {
         replace: true,
       });
     } else void navigate({ to: "/", replace: true });
-  }, [source, pageId, pathname, navigate]);
+  }, [source, pageId, pathname, navigate, pendingCreation]);
 }
 
 export const workspaceCopy = {

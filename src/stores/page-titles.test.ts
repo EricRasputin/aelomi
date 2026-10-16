@@ -5,6 +5,7 @@ import { drainCommands, setCommandAdmission } from "../ipc/pending-commands";
 import { usePageTitlesStore } from "./page-titles";
 import { connectPageTreeEvents, usePageTreeStore } from "./page-tree";
 import { useQuitStore } from "./quit";
+import { useRecordCommandStore } from "./record-commands";
 
 vi.mock("../ipc", async (importOriginal) => {
   const mock = await import("../ipc/mock");
@@ -45,6 +46,9 @@ test("TREE-7 a retained rename stays a draft without an error until retry acknow
   });
   await usePageTitlesStore.getState().rename("a", "Retried title");
   expect(usePageTitlesStore.getState().drafts.get("a")?.error).toBe(null);
+  expect([...useRecordCommandStore.getState().retained.values()]).toMatchObject(
+    [{ op: "rename", pageId: "a", attempts: 1 }],
+  );
   expect(usePageTitlesStore.getState().drafts.get("a")?.title).toBe(
     "Retried title",
   );
@@ -107,4 +111,38 @@ test("TREE-7 a final rename refusal keeps the draft and shows a failure", async 
   expect(
     window.__aelomiMock?.workspace.tree().pages.map((p) => p.title),
   ).toEqual(["Original"]);
+});
+
+test("TREE-7 a matching source title stays a draft until the retained operation is acknowledged", async () => {
+  vi.spyOn(transport, "pageRename").mockResolvedValueOnce({
+    status: "error",
+    error: { Io: "read failed" },
+  });
+  let finish = (
+    _reply: Awaited<ReturnType<typeof transport.storageFlush>>,
+  ) => {};
+  vi.spyOn(transport, "storageFlush").mockImplementationOnce(
+    () =>
+      new Promise((done) => {
+        finish = done;
+      }),
+  );
+  await usePageTitlesStore.getState().rename("a", "Durable title");
+  try {
+    await vi.waitFor(() =>
+      expect(
+        window.__aelomiMock?.workspace.tree().pages.map((p) => p.title),
+      ).toEqual(["Durable title"]),
+    );
+    expect(usePageTitlesStore.getState().drafts.get("a")?.title).toBe(
+      "Durable title",
+    );
+    expect(useRecordCommandStore.getState().retained.size).toBe(1);
+  } finally {
+    finish({ status: "ok", data: true });
+  }
+  await vi.waitFor(() =>
+    expect(usePageTitlesStore.getState().drafts.size).toBe(0),
+  );
+  expect(useRecordCommandStore.getState().retained.size).toBe(0);
 });

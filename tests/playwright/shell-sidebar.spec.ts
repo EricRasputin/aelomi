@@ -491,3 +491,130 @@ test("TREE-7 whitespace titles stay named and IME confirmation Return keeps titl
     ),
   ).toBe("   ");
 });
+
+test("TREE-1 a retrying create keeps its returned route until the record arrives and then focuses the title", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.__aelomiMockSetup = { pages: [{ id: "a", title: "A" }] };
+  });
+  await page.goto("/page/a");
+  await expect(
+    page.getByRole("textbox", { name: "Page title", exact: true }),
+  ).toHaveValue("A");
+  await page.evaluate(() =>
+    window.__aelomiMock?.storage.refuseRecords({
+      Io: "synthetic read failure",
+    }),
+  );
+  await page.keyboard.press("Meta+n");
+  await expect
+    .poll(async () =>
+      page.evaluate(
+        () =>
+          window.__aelomiMock?.calls.find(
+            (call) => call.command === "pageCreate",
+          )?.args[1],
+      ),
+    )
+    .toBeTruthy();
+  const pageId = await page.evaluate(
+    () =>
+      window.__aelomiMock?.calls.find((call) => call.command === "pageCreate")
+        ?.args[1],
+  );
+  expect(typeof pageId).toBe("string");
+  await expect(page).toHaveURL(new RegExp(`/page/${String(pageId)}$`));
+  await expect(
+    page.getByRole("region", { name: "Creating page" }),
+  ).toContainText("Aelomi will keep trying");
+  await expect(
+    page.getByText("A new page couldn't be created. Try again.", {
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  expect(
+    await page.evaluate(() =>
+      window.__aelomiMock?.workspace.tree().pages.map((p) => p.title),
+    ),
+  ).toEqual(["A"]);
+  expect(
+    await page.evaluate(
+      (id) =>
+        window.__aelomiMock?.calls.filter(
+          (call) => call.command === "docLoad" && call.args[0] === id,
+        ),
+      pageId,
+    ),
+  ).toEqual([]);
+  await page.evaluate(() => window.__aelomiMock?.storage.refuseRecords(null));
+  const title = page.getByRole("textbox", { name: "Page title", exact: true });
+  await expect(title).toBeFocused();
+  await page.keyboard.type("Created after retry");
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        window.__aelomiMock?.workspace.tree().pages.map((p) => p.title),
+      ),
+    )
+    .toEqual(["A", "Created after retry"]);
+});
+
+test("CMD-6 final create and trash errors show failures while a retrying trash waits for source recovery", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.__aelomiMockSetup = { pages: [{ id: "a", title: "A" }] };
+  });
+  await page.goto("/page/a");
+  await expect(
+    page.getByRole("textbox", { name: "Page title", exact: true }),
+  ).toHaveValue("A");
+  await page.evaluate(() =>
+    window.__aelomiMock?.storage.refuseRecords({
+      Internal: "synthetic failure",
+    }),
+  );
+  await page.keyboard.press("Meta+n");
+  await expect(
+    page.getByText("A new page couldn't be created. Try again.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await page.keyboard.press("Meta+k");
+  await page.getByRole("combobox").fill("Move to trash");
+  await page.getByRole("option", { name: "Move to trash" }).click();
+  await expect(
+    page.getByText("This page couldn't be moved to trash. Try again.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(() =>
+      window.__aelomiMock?.workspace.tree().pages.map((p) => p.title),
+    ),
+  ).toEqual(["A"]);
+  await page.evaluate(() =>
+    window.__aelomiMock?.storage.refuseRecords({
+      Io: "synthetic read failure",
+    }),
+  );
+  await page.keyboard.press("Meta+k");
+  await page.getByRole("combobox").fill("Move to trash");
+  await page.getByRole("option", { name: "Move to trash" }).click();
+  await expect(
+    page.getByText("This page couldn't be moved to trash. Try again.", {
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("textbox", { name: "Page title", exact: true }),
+  ).toHaveValue("A");
+  await page.evaluate(() => window.__aelomiMock?.storage.refuseRecords(null));
+  await expect(
+    page.getByRole("region", { name: "No page open" }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(() => window.__aelomiMock?.workspace.tree().pages),
+  ).toEqual([]);
+});

@@ -1,14 +1,14 @@
 import { create } from "zustand";
-import { commands } from "../ipc";
+import { commands, type RecordCommandResult } from "../ipc";
 import { commandsAccepted } from "../ipc/pending-commands";
-import { observeRename, renameState } from "../ipc/record-commands";
 import { usePageTreeStore } from "./page-tree";
 import { useQuitStore } from "./quit";
+import { useRecordCommandStore } from "./record-commands";
 
 type Draft = {
   title: string;
   version: number;
-  operation: ReturnType<typeof commands.pageRename>;
+  result: RecordCommandResult<null> | null;
   error: string | null;
 };
 type TitleStore = {
@@ -16,7 +16,6 @@ type TitleStore = {
   rename: (pageId: string, title: string) => Promise<void>;
 };
 let version = 0;
-const observers = new Map<string, () => void>();
 
 export const usePageTitlesStore = create<TitleStore>((set, get) => ({
   drafts: new Map(),
@@ -31,19 +30,21 @@ export const usePageTitlesStore = create<TitleStore>((set, get) => ({
       !source.byId.has(pageId)
     )
       return;
-    observers.get(pageId)?.();
+    const submitted = ++version;
     const operation = commands.pageRename(pageId, title);
     set({
       drafts: new Map(get().drafts).set(pageId, {
         title,
-        version: ++version,
-        operation,
+        version: submitted,
+        result: null,
         error: null,
       }),
     });
-    observers.set(pageId, observeRename(operation, reconcile));
+    const result = await operation;
+    const draft = get().drafts.get(pageId);
+    if (draft?.version !== submitted) return;
+    set({ drafts: new Map(get().drafts).set(pageId, { ...draft, result }) });
     reconcile();
-    await operation.catch(() => {});
   },
 }));
 
@@ -52,19 +53,21 @@ function reconcile() {
   const current = usePageTitlesStore.getState().drafts;
   const drafts = new Map(current);
   for (const [pageId, draft] of current) {
-    const state = renameState(draft.operation);
+    const result = draft.result;
+    const acknowledged =
+      result?.status === "ok" ||
+      (result?.status === "retrying" &&
+        !useRecordCommandStore.getState().retained.has(result.operationId));
     if (
-      state?.kind === "acknowledged" &&
+      acknowledged &&
       source.kind === "ready" &&
       source.byId.get(pageId)?.title === draft.title
     ) {
       drafts.delete(pageId);
-      observers.get(pageId)?.();
-      observers.delete(pageId);
       continue;
     }
     const error =
-      state?.kind === "refused"
+      result?.status === "error"
         ? "This title couldn't be changed. Your text is kept here."
         : null;
     if (error !== draft.error) drafts.set(pageId, { ...draft, error });
@@ -74,6 +77,7 @@ function reconcile() {
 }
 
 usePageTreeStore.subscribe(reconcile);
+useRecordCommandStore.subscribe(reconcile);
 
 export function usePageTitle(pageId: string) {
   const title = usePageTreeStore((state) =>

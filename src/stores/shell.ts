@@ -8,6 +8,7 @@ type ShellStore = {
   focusRequest: FocusRequest | null;
   message: string | null;
   creating: boolean;
+  pendingCreation: { pageId: string; operationId: string } | null;
   toggleSidebar: () => void;
   requestFocus: (request: FocusRequest) => void;
 };
@@ -18,6 +19,7 @@ export const useShellStore = create<ShellStore>((set) => ({
   focusRequest: null,
   message: null,
   creating: false,
+  pendingCreation: null,
   toggleSidebar: () =>
     set((state) => ({ sidebarVisible: !state.sidebarVisible })),
   requestFocus: (focusRequest) => set({ focusRequest }),

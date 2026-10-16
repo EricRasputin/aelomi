@@ -44,3 +44,5 @@ Preconditions: launch only through app.sh with a fresh synthetic `AELOMI_DATA_DI
 - `Page title` is a textarea. Use its accessibility name, not a heading, to focus it.
 - The stress picker exists only in mock builds. It clears synthetic mock data when changing datasets.
 - Native proof uses real buttons and keys. Read settings afterward to confirm persistence.
+
+- A retrying New page navigates to the returned page ID and shows Creating page while its record is absent. On recovery, its title becomes focused. A retrying Move to trash waits for source change without a final failure message. Final error replies show the action failure and preserve the source. Both use #84's record-command store and typed results; D1 adds no observer API.
