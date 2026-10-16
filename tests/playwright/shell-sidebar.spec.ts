@@ -618,3 +618,43 @@ test("CMD-6 final create and trash errors show failures while a retrying trash w
     await page.evaluate(() => window.__aelomiMock?.workspace.tree().pages),
   ).toEqual([]);
 });
+
+test("TREE-1 a retained create that becomes terminal returns to the existing page with a final failure", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.__aelomiMockSetup = { pages: [{ id: "a", title: "A" }] };
+  });
+  await page.goto("/page/a");
+  await expect(
+    page.getByRole("textbox", { name: "Page title", exact: true }),
+  ).toHaveValue("A");
+  await page.evaluate(() =>
+    window.__aelomiMock?.storage.refuseRecords({
+      Io: "synthetic read failure",
+    }),
+  );
+  await page.keyboard.press("Meta+n");
+  await expect(
+    page.getByRole("region", { name: "Creating page" }),
+  ).toBeVisible();
+  await page.evaluate(() =>
+    window.__aelomiMock?.storage.refuseRecords({
+      Internal: "synthetic final failure",
+    }),
+  );
+  await expect(
+    page.getByText("A new page couldn't be created. Try again.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(page).toHaveURL(/\/page\/a$/);
+  await expect(
+    page.getByRole("textbox", { name: "Page title", exact: true }),
+  ).toHaveValue("A");
+  expect(
+    await page.evaluate(() =>
+      window.__aelomiMock?.workspace.tree().pages.map((p) => p.title),
+    ),
+  ).toEqual(["A"]);
+});
