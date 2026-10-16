@@ -53,7 +53,7 @@ function ShellStatus({ landmark }: { landmark: boolean }) {
     if (usePingStore.getState().seq === 0) void usePingStore.getState().ping();
   }, []);
   return landmark ? (
-    <p role="status" className="sr-only">
+    <p role="status" aria-label="Connection status" className="sr-only">
       {pingText(status)}
     </p>
   ) : null;
@@ -272,7 +272,11 @@ function ConnectionProbe() {
   const status = usePingStore((state) => state.status);
   return (
     <section className="m-auto w-full max-w-md px-8 py-12">
-      <p role="status" className="text-sm text-[var(--muted)] tabular-nums">
+      <p
+        role="status"
+        aria-label="Connection status"
+        className="text-sm text-[var(--muted)] tabular-nums"
+      >
         {pingText(status)}
       </p>
       <Tooltip.Root>

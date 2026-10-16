@@ -615,6 +615,13 @@ test("SHELL-9 a title mounted during an existing drain starts frozen", async ({
     await page.evaluate(() => window.__aelomiMock?.quit.status.phase),
   ).toBe("Draining");
   await expect(titleOf(page)).toHaveJSProperty("readOnly", true);
+  await expect(page.locator(".page-notice")).toHaveText(
+    "Aelomi is closing. New actions are paused while pending changes finish.",
+  );
+  await expect(titleOf(page)).toHaveAttribute(
+    "aria-describedby",
+    (await page.locator(".page-notice").getAttribute("id")) ?? "missing",
+  );
   await titleOf(page).focus();
   await page.keyboard.type("Refused");
   expect(await tree(page)).toEqual(["Alpha", "Beta"]);

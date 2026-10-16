@@ -185,7 +185,7 @@ function PageTitle({
           ? "Titles can't be edited until pages can be refreshed."
           : refusal === "connecting"
             ? "Editing pauses while Aelomi connects to its shell."
-            : refusal === "closing"
+            : refusal === "closing" || frozen
               ? "Aelomi is closing. New actions are paused while pending changes finish."
               : error;
   const canRetry = useQuitStore(canEdit);

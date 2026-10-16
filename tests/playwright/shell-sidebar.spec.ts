@@ -357,6 +357,9 @@ for (const titleText of [
       exact: true,
     });
     await expect(title).toHaveValue(titleText);
+    await expect(
+      page.getByRole("textbox", { name: "Page body" }),
+    ).toBeFocused();
     await page.keyboard.press("Meta+k");
     await page.getByRole("combobox").fill("new");
     const command = page.getByRole("option", { name: "New page" });
