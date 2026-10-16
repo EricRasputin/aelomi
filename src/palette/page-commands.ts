@@ -13,11 +13,10 @@ export function matchingPageCommands(
   query: string,
   active: boolean,
 ): PageCommand[] {
-  if (!active) return [];
-  if (query.trim() === "") return entries;
+  if (query.trim() === "") return [];
   const matches = rankTitles(titles, query, new Map(), entries.length);
   return matches.flatMap((match) => {
     const entry = entries.find((entry) => entry.command === match.id);
-    return entry ? [entry] : [];
+    return entry && (active || entry.command !== "trashPage") ? [entry] : [];
   });
 }
