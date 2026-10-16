@@ -84,7 +84,7 @@ export function CommandPalette() {
   const settled = usePaletteStore((state) => state.answered === state.request);
   const status = useIndexStatusStore((state) => state.status);
   const source = usePageTreeStore((state) => state.source);
-  useNewPagesStore((s) => s.pages);
+  const newPages = useNewPagesStore((s) => s.pages);
   useShellStore((s) => s.trashed);
   useQuitStore((s) => s.decision.kind);
   const openPage = useOpenPage();
@@ -125,11 +125,9 @@ export function CommandPalette() {
 
   const activate = (row: Row | undefined) => {
     if (!row || row.kind === "header") return;
-    if (!acceptsUserCommands(useQuitStore.getState().decision)) return;
-    if (row.kind === "title" && !canOpenPage(row.match.id)) return;
-    if (row.kind === "content" && !canOpenPage(row.hit.page_id)) return;
-    close();
     if (row.kind === "command") {
+      if (!acceptsUserCommands(useQuitStore.getState().decision)) return;
+      close();
       commandDispatcher.dispatch(row.command.command, {
         source: "palette",
         target: document.activeElement,
@@ -137,6 +135,8 @@ export function CommandPalette() {
       });
       return;
     }
+    const id = row.kind === "title" ? row.match.id : row.hit.page_id;
+    if (canOpenPage(id)) close();
     if (row.kind === "title") openPage(row.match.id, "body");
     else openPage(row.hit.page_id, "body", { block: row.hit.block?.block_id });
   };
@@ -274,6 +274,11 @@ export function CommandPalette() {
                   ) : row.kind === "title" ? (
                     <span className="palette-title">
                       <HighlightedText parts={row.match.parts} />
+                      {newPages.get(row.match.id)?.stage === "failed" && (
+                        <span className="sidebar-failure" aria-hidden="true">
+                          Not created
+                        </span>
+                      )}
                     </span>
                   ) : (
                     <>

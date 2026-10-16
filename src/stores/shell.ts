@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { bodyReady, pagePresence } from "../shell/page-presence";
 
 type FocusRequest = { pageId: string; target: "title" | "body" | "bodyStart" };
 
@@ -26,5 +27,11 @@ export const useShellStore = create<ShellStore>((set) => ({
   trashRequest: null,
   toggleSidebar: () =>
     set((state) => ({ sidebarVisible: !state.sidebarVisible })),
-  requestFocus: (focusRequest) => set({ focusRequest }),
+  requestFocus: (request) =>
+    set({
+      focusRequest:
+        request.target !== "title" && !bodyReady(pagePresence(request.pageId))
+          ? { ...request, target: "title" }
+          : request,
+    }),
 }));

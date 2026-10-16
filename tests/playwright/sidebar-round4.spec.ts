@@ -262,6 +262,16 @@ test("SHELL-10 held create asks immediately and retains Q during recovery in Ask
   const id = await newId(page);
   await page.evaluate(() => window.__aelomiMock?.quit.request());
   await expect(page.getByRole("alertdialog")).toBeVisible();
+  await page
+    .locator(".sidebar-page")
+    .filter({ hasText: "Beta" })
+    .evaluate((el) => {
+      if (el instanceof HTMLElement) el.click();
+    });
+  await expect(page).toHaveURL(`/page/${id}`);
+  await page.keyboard.press("Meta+k");
+  await expect(page.getByRole("combobox")).toHaveCount(0);
+  await expect(page).toHaveURL(`/page/${id}`);
   expect(
     await page.evaluate(() =>
       window.__aelomiMock?.calls

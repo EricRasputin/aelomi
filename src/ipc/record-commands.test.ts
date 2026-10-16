@@ -326,3 +326,24 @@ test("TREE-1 a retained create coalesces its queued title to the latest draft", 
   ]);
   vi.useRealTimers();
 });
+
+test("TREE-1 a terminal durability failure reports that the create was accepted", async () => {
+  vi.useFakeTimers();
+  const create = vi.spyOn(transport, "pageCreate");
+  create.mockResolvedValueOnce({ status: "error", error: { Io: "held" } });
+  vi.spyOn(transport, "storageFlush").mockResolvedValue({
+    status: "error",
+    error: "Unavailable",
+  });
+  const pending = withRecordCommands(transport).pageCreate(null, "c0ffee");
+  await vi.advanceTimersByTimeAsync(100);
+  expect(await pending).toEqual({
+    status: "error",
+    error: "Unavailable",
+    accepted: true,
+  });
+  expect(window.__aelomiMock?.workspace.tree().pages.map((p) => p.id)).toEqual([
+    "c0ffee",
+  ]);
+  vi.useRealTimers();
+});

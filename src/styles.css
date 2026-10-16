@@ -804,6 +804,8 @@ mark {
   border-radius: inherit;
 }
 .sidebar-page {
+  display: flex;
+  align-items: center;
   min-width: 0;
   flex: 1;
   height: 100%;
@@ -812,6 +814,8 @@ mark {
   border-radius: 4px;
 }
 .sidebar-title {
+  min-width: 0;
+  flex: 1;
   text-align: left;
   display: block;
   overflow: hidden;
@@ -949,10 +953,28 @@ mark {
   border: 0;
 }
 .sidebar-page[aria-disabled="true"],
-.palette-row[aria-disabled="true"],
-.sidebar-row[data-state="failed"] {
+.palette-row[aria-disabled="true"] {
   color: var(--muted);
   cursor: default;
+}
+.shell-notice {
+  position: fixed;
+  inset-inline-start: 16px;
+  bottom: 16px;
+  max-width: calc(100vw - 32px);
+  z-index: 10;
+  pointer-events: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--background);
+  color: var(--foreground);
+}
+.sidebar-failure {
+  flex-shrink: 0;
+  margin-inline-start: 8px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--foreground);
 }
 @media (hover: hover) and (pointer: fine) {
   .sidebar-row:has(.sidebar-page[aria-disabled="true"]):hover,

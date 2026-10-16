@@ -9,7 +9,9 @@ import { usePageTitlesStore } from "../stores/page-titles";
 import { usePageTreeStore } from "../stores/page-tree";
 import { useQuitStore } from "../stores/quit";
 import {
+  activateNewPage,
   createNewPage,
+  forgetEmptyFailuresExcept,
   forgetNewPage,
   retryNewPage,
   settleNewPage,
@@ -52,10 +54,21 @@ test.each([
 ][])(
   "TREE-1 create settlement %j retry %s becomes %s",
   (reply, retry, expected) => {
-    useNewPagesStore.setState({ pages: new Map([["n", "creating"]]) });
+    useNewPagesStore.setState({
+      pages: new Map([["n", { stage: "creating", accepted: false }]]),
+    });
     settleNewPage("n", reply, retry);
     settleNewPage("unknown", reply, retry);
-    expect([...useNewPagesStore.getState().pages]).toEqual([["n", expected]]);
+    expect([...useNewPagesStore.getState().pages]).toEqual([
+      [
+        "n",
+        expected === "failed"
+          ? { stage: expected, accepted: false }
+          : expected === "creating"
+            ? { stage: expected, accepted: false }
+            : { stage: expected },
+      ],
+    ]);
   },
 );
 test("SHELL-10 a failed page with text retains a quit retry using the same ID", async () => {
@@ -74,15 +87,17 @@ test("SHELL-10 a failed page with text retains a quit retry using the same ID", 
 test("SHELL-10 an empty failed page needs no retained title retry", () => {
   const id = createNewPage();
   settleNewPage(id, { status: "error", error: { Internal: "x" } }, false);
-  expect([...useNewPagesStore.getState().pages]).toEqual([[id, "failed"]]);
+  expect([...useNewPagesStore.getState().pages]).toEqual([
+    [id, { stage: "failed", accepted: false }],
+  ]);
   expect(commandFailures()).toEqual([]);
 });
 test("TREE-1 a fresh tree forgets listed settled entries but keeps creating and failed entries", () => {
   useNewPagesStore.setState({
     pages: new Map([
-      ["a", "created"],
-      ["b", "creating"],
-      ["failed", "failed"],
+      ["a", { stage: "created" }],
+      ["b", { stage: "creating", accepted: false }],
+      ["failed", { stage: "failed", accepted: false }],
     ]),
   });
   const pages = ["a", "b", "failed"].map((id) => ({
@@ -100,7 +115,38 @@ test("TREE-1 a fresh tree forgets listed settled entries but keeps creating and 
     },
   });
   expect([...useNewPagesStore.getState().pages]).toEqual([
-    ["b", "creating"],
-    ["failed", "failed"],
+    ["b", { stage: "creating", accepted: false }],
+    ["failed", { stage: "failed", accepted: false }],
+  ]);
+});
+
+test("TREE-1 only an uncreated empty activation can be reused", () => {
+  const first = activateNewPage(null);
+  expect(activateNewPage(first)).toBe(first);
+  settleNewPage(first, { status: "ok", data: first }, false);
+  const second = activateNewPage(first);
+  expect(vi.mocked(commands.pageCreate).mock.calls).toEqual([
+    [null, first],
+    [null, second],
+  ]);
+  expect(second).not.toBe(first);
+});
+
+test("TREE-1 acceptance survives a later retry failure and prevents forgetting under stale reads", () => {
+  const id = createNewPage();
+  settleNewPage(
+    id,
+    { status: "error", error: "Unavailable", accepted: true },
+    false,
+  );
+  retryNewPage(id);
+  settleNewPage(
+    id,
+    { status: "error", error: { Internal: "failed retry" } },
+    true,
+  );
+  forgetEmptyFailuresExcept("another-page");
+  expect([...useNewPagesStore.getState().pages]).toEqual([
+    [id, { stage: "failed", accepted: true }],
   ]);
 });

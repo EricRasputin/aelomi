@@ -61,6 +61,7 @@ function PageRow({
   useQuitStore((s) => s.decision.kind);
   const presence = usePagePresence(pageId);
   const openable = canOpenPage(pageId);
+  const failed = presence.kind === "new" && presence.stage === "failed";
   const [truncated, setTruncated] = useState(false);
   return (
     <>
@@ -83,17 +84,16 @@ function PageRow({
         className="sidebar-page"
         aria-current={active ? "page" : undefined}
         aria-disabled={!openable}
-        aria-description={
-          presence.kind === "new" && presence.stage === "failed"
-            ? "Not created"
-            : undefined
-        }
+        aria-description={failed ? "Not created" : undefined}
         title={truncated ? title : undefined}
-        onClick={() => {
-          if (openable) openPage(pageId);
-        }}
+        onClick={() => openPage(pageId)}
       >
         <RowTitle title={title} onTruncated={setTruncated} />
+        {failed && (
+          <span className="sidebar-failure" aria-hidden="true">
+            Not created
+          </span>
+        )}
       </Button>
     </>
   );
@@ -226,7 +226,7 @@ export function Sidebar({
                 className="sidebar-row"
                 data-active={activePageId === row.page.id || undefined}
                 data-depth={row.depth}
-                data-state={newPages.get(row.page.id)}
+                data-state={newPages.get(row.page.id)?.stage}
                 style={{
                   position: "absolute",
                   top: 0,

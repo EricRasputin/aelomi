@@ -3,19 +3,13 @@ import { useCallback, useEffect } from "react";
 import { flushSync } from "react-dom";
 import { commandDispatcher } from "../command-dispatcher";
 import { commands } from "../ipc";
-import { usePageTitlesStore } from "../stores/page-titles";
 import { usePageTreeStore } from "../stores/page-tree";
 import { usePaletteStore } from "../stores/palette";
 import { canEdit, useQuitStore } from "../stores/quit";
 import { useShellStore } from "../stores/shell";
-import {
-  createNewPage,
-  forgetNewPage,
-  retryNewPage,
-  useNewPagesStore,
-} from "./new-pages";
+import { activateNewPage, forgetEmptyFailuresExcept } from "./new-pages";
 import { subtreeIds } from "./page-navigation";
-import { bodyReady, canOpenPage, pagePresence } from "./page-presence";
+import { canOpenPage, pagePresence } from "./page-presence";
 
 export function useOpenPage() {
   const navigate = useNavigate();
@@ -26,24 +20,14 @@ export function useOpenPage() {
       search: { block?: string } = {},
     ) => {
       if (!canOpenPage(pageId)) return;
-      for (const [id, stage] of useNewPagesStore.getState().pages) {
-        if (
-          id !== pageId &&
-          stage === "failed" &&
-          !usePageTitlesStore.getState().drafts.get(id)?.title
-        )
-          forgetNewPage(id);
-      }
-      flushSync(() =>
+      forgetEmptyFailuresExcept(pageId);
+      flushSync(() => {
+        useShellStore.getState().requestFocus({ pageId, target });
         useShellStore.setState({
           activePageId: pageId,
-          focusRequest:
-            target === "body" && !bodyReady(pagePresence(pageId))
-              ? null
-              : { pageId, target },
           message: null,
-        }),
-      );
+        });
+      });
       void navigate({ to: "/page/$pageId", params: { pageId }, search });
     },
     [navigate],
@@ -78,16 +62,7 @@ export function usePageCommands() {
           if (usePaletteStore.getState().open)
             flushSync(() => usePaletteStore.getState().hide());
           const current = useShellStore.getState().activePageId;
-          const presence = current ? pagePresence(current) : null;
-          let id: string;
-          if (
-            current &&
-            presence?.kind === "new" &&
-            !usePageTitlesStore.getState().drafts.get(current)?.title
-          ) {
-            id = current;
-            if (presence.stage === "failed") retryNewPage(id);
-          } else id = createNewPage();
+          const id = activateNewPage(current);
           open(id, "title");
         },
       }),

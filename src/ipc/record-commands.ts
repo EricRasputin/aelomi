@@ -20,7 +20,7 @@ import {
 
 export type RecordCommandResult<T> =
   | { status: "ok"; data: T }
-  | { status: "error"; error: RecordCommandError };
+  | { status: "error"; error: RecordCommandError; accepted?: true };
 type Transport = typeof import("./bindings").commands;
 type Commands = Omit<Transport, "pageCreate" | "pageRename" | "pageTrash"> & {
   pageCreate: (
@@ -178,7 +178,11 @@ export function withRecordCommands(transport: Transport): Commands {
         if (!active()) return true;
         if (flushed.status === "error") {
           if (typeof flushed.error === "object") return retain(flushed.error);
-          const failure = { status: "error", error: flushed.error } as const;
+          const failure = {
+            status: "error",
+            error: flushed.error,
+            accepted: true,
+          } as const;
           settle(job, failure);
           job.resolve(failure);
           return true;

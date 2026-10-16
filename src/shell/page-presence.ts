@@ -2,7 +2,7 @@ import type { PageId, TreePage } from "../ipc";
 import { type SourceTree, usePageTreeStore } from "../stores/page-tree";
 import { acceptsUserCommands, useQuitStore } from "../stores/quit";
 import { useShellStore } from "../stores/shell";
-import { type NewPageStage, useNewPagesStore } from "./new-pages";
+import { type NewPage, type NewPageStage, useNewPagesStore } from "./new-pages";
 
 export type PagePresence =
   | { kind: "trashed" }
@@ -12,12 +12,12 @@ export type PagePresence =
 export function presenceOf(
   id: PageId,
   source: SourceTree,
-  pages: ReadonlyMap<PageId, NewPageStage>,
+  pages: ReadonlyMap<PageId, NewPage>,
   trashed: ReadonlySet<PageId>,
 ): PagePresence {
   if (trashed.has(id)) return { kind: "trashed" };
-  const stage = pages.get(id);
-  if (stage) return { kind: "new", stage };
+  const entry = pages.get(id);
+  if (entry) return { kind: "new", stage: entry.stage };
   const fresh = source.kind === "ready" && !source.error;
   return source.kind === "ready" && source.byId.has(id)
     ? { kind: "listed", fresh }
@@ -38,7 +38,7 @@ export function usePagePresence(id: PageId) {
   return presenceOf(id, source, pages, trashed);
 }
 export function bodyReady(p: PagePresence) {
-  return p.kind !== "trashed" && !(p.kind === "new" && p.stage !== "created");
+  return p.kind === "listed" || (p.kind === "new" && p.stage === "created");
 }
 export function canOpenPage(id: PageId) {
   return (
@@ -48,7 +48,7 @@ export function canOpenPage(id: PageId) {
 }
 export function visiblePages(
   source: SourceTree,
-  pages: ReadonlyMap<PageId, NewPageStage>,
+  pages: ReadonlyMap<PageId, NewPage>,
   trashed: ReadonlySet<PageId>,
 ): TreePage[] {
   const visible =

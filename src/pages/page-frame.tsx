@@ -47,10 +47,9 @@ export function PageFrame({
       <PageTitle
         pageId={pageId}
         focusBody={() => {
-          if (ready)
-            useShellStore
-              .getState()
-              .requestFocus({ pageId, target: "bodyStart" });
+          useShellStore
+            .getState()
+            .requestFocus({ pageId, target: "bodyStart" });
         }}
       />
       {ready ? (
@@ -87,6 +86,7 @@ function PageTitle({
   );
   const decision = useQuitStore((state) => state.decision.kind);
   const refusal = useTitleRefusal(pageId);
+  const presence = usePagePresence(pageId);
   const editable = !frozen && refusal === null;
   useLayoutEffect(() => {
     if (decision === "open") setFrozen(false);
@@ -181,7 +181,10 @@ function PageTitle({
       ? "This page couldn't be created. Its title is kept here."
       : refusal === "trashing"
         ? "Moving to trash…"
-        : refusal === "stale"
+        : refusal === "stale" ||
+            (refusal === "missing" &&
+              presence.kind === "missing" &&
+              !presence.fresh)
           ? "Titles can't be edited until pages can be refreshed."
           : refusal === "connecting"
             ? "Editing pauses while Aelomi connects to its shell."

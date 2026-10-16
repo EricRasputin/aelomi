@@ -28,6 +28,7 @@ import { pageAfterTrash } from "./shell/page-navigation";
 import { canOpenPage, presenceOf, visiblePages } from "./shell/page-presence";
 import { usePageCommands } from "./shell/use-page-commands";
 import { usePageTreeStore } from "./stores/page-tree";
+import { usePaletteStore } from "./stores/palette";
 import { usePingStore } from "./stores/ping";
 import { acceptsUserCommands, useQuitStore } from "./stores/quit";
 import { useRecentPagesStore } from "./stores/recent-pages";
@@ -170,6 +171,7 @@ function useWorkspaceNavigation() {
   const trashed = useShellStore((s) => s.trashed);
   const newPages = useNewPagesStore((s) => s.pages);
   const decision = useQuitStore((state) => state.decision);
+  const paletteOpen = usePaletteStore((state) => state.open);
   const previous = useRef(source);
   const entered = useRef(false);
   useLayoutEffect(() => {
@@ -205,6 +207,7 @@ function useWorkspaceNavigation() {
       !(presence.kind === "missing" && presence.fresh)
     )
       return;
+    if (paletteOpen) return;
     const next = pageAfterTrash({
       pageId: activePageId,
       before: before.kind === "ready" ? before.tree.pages : [],
@@ -212,9 +215,9 @@ function useWorkspaceNavigation() {
       openedAt: useRecentPagesStore.getState().openedAt,
     });
     if (next) {
+      useShellStore.getState().requestFocus({ pageId: next, target: "body" });
       useShellStore.setState({
         activePageId: next,
-        focusRequest: { pageId: next, target: "body" },
       });
       void navigate({
         to: "/page/$pageId",
@@ -236,6 +239,7 @@ function useWorkspaceNavigation() {
     activePageId,
     trashed,
     newPages,
+    paletteOpen,
   ]);
 }
 

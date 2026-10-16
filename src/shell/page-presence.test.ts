@@ -17,7 +17,12 @@ test("TREE-1 presence checks trash and new pages before the listed tree", () => 
     kind: "trashed",
   });
   expect(
-    presenceOf("a", source, new Map([["a", "creating"]]), new Set()),
+    presenceOf(
+      "a",
+      source,
+      new Map([["a", { stage: "creating", accepted: false }]]),
+      new Set(),
+    ),
   ).toEqual({ kind: "new", stage: "creating" });
   expect(presenceOf("b", source, new Map(), new Set())).toEqual({
     kind: "listed",
@@ -31,13 +36,17 @@ test("TREE-1 only a successful create unlocks its body", () => {
     bodyReady({ kind: "trashed" }),
     bodyReady({ kind: "new", stage: "created" }),
     bodyReady({ kind: "listed", fresh: false }),
-  ]).toEqual([false, false, false, true, true]);
+    bodyReady({ kind: "missing", fresh: false }),
+    bodyReady({ kind: "missing", fresh: true }),
+  ]).toEqual([false, false, false, true, true, false, false]);
 });
 test("TREE-9 visible pages omit session trash and append new IDs in activation order", () => {
   expect(
-    visiblePages(source, new Map([["n", "creating"]]), new Set(["b"])).map(
-      (p) => p.id,
-    ),
+    visiblePages(
+      source,
+      new Map([["n", { stage: "creating", accepted: false }]]),
+      new Set(["b"]),
+    ).map((p) => p.id),
   ).toEqual(["a", "n"]);
 });
 
