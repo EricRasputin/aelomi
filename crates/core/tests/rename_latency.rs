@@ -42,40 +42,45 @@ fn measure_edit_page_rename_on_10000_pages() {
     for round in 0..5 {
         let mut accepted = Vec::new();
         let mut durable = Vec::new();
+        let mut successes = 0;
+        let mut failures = 0;
         for sample in 0..23 {
             let title = format!("D1 title round {round} sample {sample}");
             let start = Instant::now();
-            workspace
-                .edit_page(PageEdit::Rename {
-                    page: target.clone(),
-                    title: title.clone(),
-                })
-                .unwrap();
+            let edited = workspace.edit_page(PageEdit::Rename {
+                page: target.clone(),
+                title: title.clone(),
+            });
             let acceptance = start.elapsed().as_secs_f64() * 1000.0;
-            assert!(
-                workspace
-                    .flush(Instant::now() + Duration::from_secs(10))
-                    .is_empty()
-            );
+            let flushed_ok = workspace
+                .flush(Instant::now() + Duration::from_secs(10))
+                .is_empty();
             let flushed = start.elapsed().as_secs_f64() * 1000.0;
             let tree = workspace.tree().unwrap();
-            assert_eq!(
-                tree.pages
-                    .iter()
-                    .find(|page| page.id == target)
-                    .unwrap()
-                    .title,
-                title
-            );
-            if sample >= 3 {
+            let matches = tree
+                .pages
+                .iter()
+                .find(|page| page.id == target)
+                .unwrap()
+                .title
+                == title;
+            let succeeded = edited.is_ok() && flushed_ok && matches;
+            if sample < 3 {
+                assert!(succeeded, "warm-up rename failed");
+            } else if succeeded {
+                successes += 1;
                 accepted.push(acceptance);
                 durable.push(flushed);
+            } else {
+                failures += 1;
             }
         }
+        assert_eq!(failures, 0, "rename samples failed");
+        assert_eq!(successes, 20);
         accepted.sort_by(f64::total_cmp);
         durable.sort_by(f64::total_cmp);
         println!(
-            "rename pages=10000 round={round} successes=20 failures=0 accepted_p50_ms={:.3} accepted_p95_ms={:.3} durable_p50_ms={:.3} durable_p95_ms={:.3}",
+            "rename pages=10000 round={round} successes={successes} failures={failures} accepted_p50_ms={:.3} accepted_p95_ms={:.3} durable_p50_ms={:.3} durable_p95_ms={:.3}",
             accepted[9], accepted[18], durable[9], durable[18]
         );
     }
