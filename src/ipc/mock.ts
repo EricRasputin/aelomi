@@ -82,10 +82,8 @@ declare global {
     __aelomiMockSetup?: MockSetup;
   }
 }
-
 const calls: MockCall[] = [];
 const errors: string[] = [];
-
 type MockDoc = { doc: Y.Doc; updates: Uint8Array[]; pending: boolean };
 
 const storage: {
@@ -119,16 +117,13 @@ const settings = createSettingsMock({
 let registration = Promise.resolve();
 let releaseRegistration = () => {};
 let appearance: "light" | "dark" | null = null;
-
 type FixturePage = { id: string; title: string; lines: string[] };
 const fixtureBodies = new Map<string, string[]>();
-
 const quit: { revision: number; phase: QuitPhase; frontendReady: boolean } = {
   revision: 0,
   phase: "Open",
   frontendReady: false,
 };
-
 const listeners = new Map<string, Set<EventCallback<unknown>>>();
 let eventId = 0;
 
@@ -163,7 +158,6 @@ function mockSignal(name: string) {
   const base = { ...event(), emit: () => event.emit(null) };
   return Object.assign(() => base, base);
 }
-
 export const events = {
   menuCommand: mockEvent<MenuCommand>("menu-command"),
   pageRecordsChanged: mockSignal("page-records-changed"),
@@ -440,7 +434,6 @@ const recordCommands = createRecordCommands({
     return doc !== undefined && Y.encodeStateAsUpdate(doc).length > 2;
   },
 });
-
 let recovery: ReturnType<typeof createRecoveryMock> | undefined;
 function recoveryMock() {
   if (recovery) return recovery;
@@ -807,7 +800,6 @@ function pageWrite(update: () => void) {
   update();
   markChanged({ workspace: true, pages: [] });
 }
-
 const control = {
   recovery: { releaseTree: () => recoveryMock().control.releaseTree() },
   menu: {

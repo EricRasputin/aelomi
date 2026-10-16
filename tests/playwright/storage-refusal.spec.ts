@@ -1,5 +1,63 @@
 import { expect, test } from "./fixtures";
 
+for (const status of [
+  "CloudPath",
+  "FinishMoving",
+  "RecoveryRecordUnreadable",
+] as const) {
+  test(`SHELL-5 SHELL-11 ${status} uses explicit Dark tokens on a light system`, async ({
+    page,
+  }) => {
+    await page.emulateMedia({ colorScheme: "light" });
+    await page.addInitScript((status) => {
+      window.__aelomiInitialTheme = "Dark";
+      const location = {
+        configured: "/synthetic/local/Aelomi",
+        resolved: "/synthetic/cloud/Aelomi",
+        recovery: "Override" as const,
+      };
+      window.__aelomiMockSetup = {
+        appearance: "light",
+        settings: { theme: "Dark" },
+        storageStatus:
+          status === "CloudPath"
+            ? { CloudPath: location }
+            : status === "FinishMoving"
+              ? { FinishMoving: { ...location, destination_exists: false } }
+              : {
+                  RecoveryRecordUnreadable: { configured: location.configured },
+                },
+      };
+    }, status);
+    await page.goto("/");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+      status === "CloudPath"
+        ? "Move your data folder out of cloud storage"
+        : "Finish moving your pages",
+    );
+    await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+    await expect(page.locator("html")).toHaveCSS(
+      "background-color",
+      "rgb(24, 24, 27)",
+    );
+    const chip = page.locator(".storage-refusal-path").first();
+    await expect(chip).toHaveCSS("background-color", "rgb(31, 31, 35)");
+    await expect(chip).toHaveCSS("color", "rgb(237, 237, 240)");
+    await expect(chip).toHaveCSS("border-color", "rgb(48, 48, 54)");
+    if (status !== "CloudPath") {
+      await page
+        .getByRole("button", { name: "Start a new empty workspace here" })
+        .click();
+      const dialog = page.getByRole("alertdialog");
+      await expect(dialog).toBeVisible();
+      await expect(dialog).toHaveCSS("background-color", "rgb(24, 24, 27)");
+      await expect(dialog).toHaveCSS("color", "rgb(237, 237, 240)");
+      await page.getByRole("button", { name: "Keep moving my pages" }).click();
+      await expect(dialog).toBeHidden();
+    }
+  });
+}
+
 for (const colorScheme of ["light", "dark"] as const) {
   test(`SHELL-11 ${colorScheme} recovery chips wrap and select without automatic field sizing`, async ({
     page,
