@@ -157,3 +157,28 @@ test.each(["NotActive", "OrderExhausted"] as const)(
     ).toEqual(["Next"]);
   },
 );
+
+test("Quitting on retry retains the operation until admission recovers", async () => {
+  vi.spyOn(transport, "pageRename")
+    .mockResolvedValueOnce({ status: "error", error: { Io: "read failed" } })
+    .mockResolvedValueOnce({ status: "error", error: "Quitting" });
+  const result = await withRecordCommands(transport).pageRename(
+    "a",
+    "Recovered",
+  );
+  expect(result).toMatchObject({ status: "retrying" });
+  await drainCommands();
+  expect(commandFailures()).toEqual(["workspace"]);
+  expect(
+    [...useRecordCommandStore.getState().retained.values()].map((op) => [
+      op.pageId,
+      op.error,
+      op.attempts,
+    ]),
+  ).toEqual([["a", "Quitting", 2]]);
+  await drainCommands();
+  expect(commandFailures()).toEqual([]);
+  expect(
+    window.__aelomiMock?.workspace.tree().pages.map((p) => p.title),
+  ).toEqual(["Recovered"]);
+});

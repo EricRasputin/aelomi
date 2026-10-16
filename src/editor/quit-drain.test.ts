@@ -172,8 +172,7 @@ test("open editors stop accepting edits before the drain collects what is in fli
 test("a page rename promise must finish before the webview completes its quit drain", async () => {
   await connect();
   const created = await commands.pageCreate(null);
-  if (created.status === "error")
-    throw new Error(JSON.stringify(created.error));
+  if (created.status !== "ok") throw new Error(JSON.stringify(created));
   const original = mockCommands.pageRename;
   let release = () => {};
   vi.spyOn(mockCommands, "pageRename").mockImplementationOnce(

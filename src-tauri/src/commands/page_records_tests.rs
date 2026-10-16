@@ -432,7 +432,7 @@ fn complete_quit_waits_for_a_rename_and_settings_and_reopens_with_both() {
 fn a_record_planner_panic_returns_terminal_internal_and_releases_admission() {
     let disk = SimDisk::default();
     let shell = shell(crate::storage::tests::open_on(&disk));
-    disk.panic_workspace_load();
+    disk.panic_doc_load("panicked");
     let failure = invoke(
         &shell,
         "page_create",

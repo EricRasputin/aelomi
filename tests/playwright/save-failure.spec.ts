@@ -214,3 +214,42 @@ test("SHELL-10 names pending settings in quit confirmation and retries after rec
     false,
   );
 });
+
+test("SHELL-10 a pre-acceptance rename failure shows the banner with healthy storage and clears on recovery", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.__aelomiMockSetup = { pages: [{ id: "a", title: "Before" }] };
+  });
+  await page.goto("/");
+  await expect(
+    page.getByRole("heading", { name: "Before", exact: true }),
+  ).toBeVisible();
+  const result = await page.evaluate(async () => {
+    const mock = window.__aelomiMock;
+    if (!mock) throw new Error("Missing IPC mock");
+    mock.storage.refuseRecords({ Io: "record read failed" });
+    return mock.workspace.rename("a", "Recovered");
+  });
+  expect(result).toEqual({
+    status: "retrying",
+    pageId: "a",
+    operationId: expect.any(String),
+  });
+  await expect(page.getByRole("alert")).toContainText("record read failed");
+  expect(
+    await page.evaluate(() =>
+      window.__aelomiMock?.workspace.tree().pages.map((p) => p.title),
+    ),
+  ).toEqual(["Before"]);
+  await page.evaluate(() => window.__aelomiMock?.storage.refuseRecords(null));
+  await expect(
+    page.getByRole("heading", { name: "Recovered", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  expect(
+    await page.evaluate(() =>
+      window.__aelomiMock?.workspace.tree().pages.map((p) => p.title),
+    ),
+  ).toEqual(["Recovered"]);
+});

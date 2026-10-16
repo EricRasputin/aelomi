@@ -1,6 +1,10 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { installMock, commands as mockTransport } from "./mock";
-import { drainCommands, setCommandAdmission } from "./pending-commands";
+import {
+  commandFailures,
+  drainCommands,
+  setCommandAdmission,
+} from "./pending-commands";
 import { withRecordCommands } from "./record-commands";
 
 const transport: typeof import("./bindings").commands = mockTransport;
@@ -58,7 +62,8 @@ test("the IPC boundary drains create rename and trash promises before reporting 
     { status: "ok", data: null },
     { status: "ok", data: "trash-batch" },
   ]);
-  expect(await drain).toEqual([]);
+  await drain;
+  expect(commandFailures()).toEqual([]);
 });
 
 test("a refused in-flight record command reports the workspace to the quit drain", async () => {
@@ -68,10 +73,12 @@ test("a refused in-flight record command reports the workspace to the quit drain
   const drain = drainCommands();
   rename.resolve({ status: "error", error: { Io: "read failed" } });
   expect(await command).toEqual({
-    status: "error",
-    error: { Io: "read failed" },
+    status: "retrying",
+    pageId: expect.any(String),
+    operationId: expect.any(String),
   });
-  expect(await drain).toEqual(["workspace"]);
+  await drain;
+  expect(commandFailures()).toEqual(["workspace"]);
 });
 
 test("back-to-back renames retain submission order even when the native scheduler runs newest first", async () => {
@@ -101,7 +108,8 @@ test("back-to-back renames retain submission order even when the native schedule
     { status: "ok", data: null },
     { status: "ok", data: null },
   ]);
-  expect(await drain).toEqual([]);
+  await drain;
+  expect(commandFailures()).toEqual([]);
   expect(submitted).toEqual(["a", "ab"]);
   expect(
     window.__aelomiMock?.workspace.tree().pages.map((page) => page.title),
@@ -131,7 +139,8 @@ test("queued consecutive renames coalesce but never cross another record command
     held.resolve({ status: "ok", data: "new-page" });
     await Promise.all(pending);
   }
-  expect(await drain).toEqual([]);
+  await drain;
+  expect(commandFailures()).toEqual([]);
   expect(rename.mock.calls).toEqual([
     ["a", "ab"],
     ["a", "abc"],
@@ -152,7 +161,8 @@ test.each(["Quitting", "NotActive", "InvalidPageId", "Cycle"] as const)(
     const drain = drainCommands();
     rename.resolve({ status: "error", error });
     expect(await command).toEqual({ status: "error", error });
-    expect(await drain).toEqual([]);
+    await drain;
+    expect(commandFailures()).toEqual([]);
   },
 );
 
@@ -169,11 +179,13 @@ test("failed operations retry before newer commands and keep each edit in FIFO o
   });
   const commands = withRecordCommands(transport);
   expect(await commands.pageRename("a", "First")).toEqual({
-    status: "error",
-    error: { Io: "read failed" },
+    status: "retrying",
+    pageId: expect.any(String),
+    operationId: expect.any(String),
   });
   const newer = commands.pageRename("a", "Second");
-  expect(await drainCommands()).toEqual([]);
+  await drainCommands();
+  expect(commandFailures()).toEqual([]);
   expect(await newer).toEqual({ status: "ok", data: null });
   expect(calls).toEqual(["First", "First", "Second"]);
   expect(
@@ -194,10 +206,12 @@ test("an uncertain create retries the same client ID and never creates a second 
     }
     return reply;
   });
-  await expect(withRecordCommands(transport).pageCreate(null)).rejects.toThrow(
-    "reply lost after acceptance",
-  );
-  expect(await drainCommands()).toEqual([]);
+  expect(await withRecordCommands(transport).pageCreate(null)).toMatchObject({
+    status: "retrying",
+    pageId: expect.any(String),
+  });
+  await drainCommands();
+  expect(commandFailures()).toEqual([]);
   const tree = window.__aelomiMock?.workspace.tree();
   expect(tree?.pages.map((p) => p.id)).toEqual([calls[0]]);
   expect(calls).toEqual([tree?.pages[0]?.id, tree?.pages[0]?.id]);
@@ -217,10 +231,12 @@ test("an uncertain trash retries the original batch without changing its records
     }
     return reply;
   });
-  await expect(withRecordCommands(transport).pageTrash("a")).rejects.toThrow(
-    "reply lost after acceptance",
-  );
-  expect(await drainCommands()).toEqual([]);
+  expect(await withRecordCommands(transport).pageTrash("a")).toMatchObject({
+    status: "retrying",
+    pageId: "a",
+  });
+  await drainCommands();
+  expect(commandFailures()).toEqual([]);
   expect(window.__aelomiMock?.workspace.tree()).toEqual(accepted);
 });
 
@@ -240,7 +256,7 @@ test("failed record retries back off from 100 ms to a five second cap and recove
   try {
     expect(
       await withRecordCommands(transport).pageRename("a", "Recovered"),
-    ).toEqual({ status: "error", error: { Io: "read failed" } });
+    ).toMatchObject({ status: "retrying", pageId: "a" });
     await vi.advanceTimersByTimeAsync(16300);
     expect(attempts).toEqual([
       0, 100, 300, 700, 1500, 3100, 6300, 11300, 16300,
@@ -250,7 +266,8 @@ test("failed record retries back off from 100 ms to a five second cap and recove
     expect(
       window.__aelomiMock?.workspace.tree().pages.map((p) => p.title),
     ).toEqual(["Recovered"]);
-    expect(await drainCommands()).toEqual([]);
+    await drainCommands();
+    expect(commandFailures()).toEqual([]);
   } finally {
     failing = false;
     await drainCommands();

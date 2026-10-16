@@ -30,7 +30,7 @@ afterEach(() => {
 
 async function create(parent: string | null = null) {
   const reply = await commands.pageCreate(parent);
-  if (reply.status === "error") throw new Error(JSON.stringify(reply.error));
+  if (reply.status !== "ok") throw new Error(JSON.stringify(reply));
   return reply.data;
 }
 
@@ -64,7 +64,7 @@ test("create rename and subtree trash refresh the source tree while the index re
     },
   });
   const reply = await commands.pageTrash(parent);
-  if (reply.status === "error") throw new Error(JSON.stringify(reply.error));
+  if (reply.status !== "ok") throw new Error(JSON.stringify(reply));
   await vi.waitFor(() => expect(shown().pages).toEqual([]));
   expect(shown().trash).toEqual([
     {
@@ -258,8 +258,10 @@ test("an accepted command refreshes the source tree even when its native event i
   connections.push(connection);
   await connection.ready;
   vi.spyOn(events.pageRecordsChanged, "emit").mockResolvedValueOnce(undefined);
-  const reply = await withRecordCommands(commands).pageCreate(null);
-  if (reply.status === "error") throw new Error(JSON.stringify(reply.error));
+  const reply = await withRecordCommands(
+    (await import("../ipc/mock")).commands,
+  ).pageCreate(null);
+  if (reply.status !== "ok") throw new Error(JSON.stringify(reply));
   await vi.waitFor(() =>
     expect(shown().pages.map((page) => page.id)).toEqual([reply.data]),
   );
@@ -321,4 +323,45 @@ test("a failed tree listener still reads the initial page and retries the subscr
   expect(error.mock.calls[0]?.[0]).toBe(
     "Page tree event connection failed; retrying",
   );
+});
+
+test("mock create replays require the original active placement and empty title and reject orphaned bodies", async () => {
+  const { commands: transport } = await import("../ipc/mock");
+  expect(await transport.pageCreate(null, "same")).toEqual({
+    status: "ok",
+    data: "same",
+  });
+  expect(await transport.pageCreate(null, "same")).toEqual({
+    status: "ok",
+    data: "same",
+  });
+  expect(await transport.pageCreate("missing", "same")).toEqual({
+    status: "error",
+    error: "AlreadyExists",
+  });
+  await transport.pageRename("same", "Changed");
+  expect(await transport.pageCreate(null, "same")).toEqual({
+    status: "error",
+    error: "AlreadyExists",
+  });
+  await transport.pageTrash("same");
+  expect(await transport.pageCreate(null, "same")).toEqual({
+    status: "error",
+    error: "AlreadyExists",
+  });
+  window.__aelomiMock?.bodies.seed("orphan", [
+    { id: "old", content: ["Old body"] },
+  ]);
+  expect(await transport.pageCreate(null, "orphan")).toEqual({
+    status: "error",
+    error: "AlreadyExists",
+  });
+  expect(window.__aelomiMock?.workspace.tree().pages).toEqual([]);
+  expect(await transport.pageCreate(null, "new")).toEqual({
+    status: "ok",
+    data: "new",
+  });
+  expect(window.__aelomiMock?.workspace.tree().pages.map((p) => p.id)).toEqual([
+    "new",
+  ]);
 });
