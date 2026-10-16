@@ -171,7 +171,7 @@ test("TREE-2 TREE-6 disclosure persists settings and a row click focuses the edi
   await rows.getByRole("button", { name: "Projects children" }).click();
   await rows
     .locator(".sidebar-row")
-    .filter({ has: rows.getByRole("button", { name: "A", exact: true }) })
+    .filter({ has: page.getByRole("button", { name: "A", exact: true }) })
     .click({ position: { x: 5, y: 15 } });
   await expect(
     page.getByRole("textbox", { name: "Page title", exact: true }),
