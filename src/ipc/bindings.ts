@@ -161,9 +161,9 @@ export type MenuCommand = {
 
 export type OpenPagePatch = { Set: SettingsOpenPage } | "Clear";
 
-export type PageError = "Unavailable" | "Quitting" | "InvalidPageId" | "NotActive" | "MissingBatch" | "Cycle" | "OrderExhausted" | "InvalidTime" | "InvalidUpdate" | ({ Malformed: {
+export type PageError = "Unavailable" | "Quitting" | "InvalidPageId" | "NotActive" | "AlreadyExists" | "Cycle" | "OrderExhausted" | "InvalidTime" | "InvalidUpdate" | ({ Malformed: {
 	reason: string,
-} }) & { Io?: never } | ({ Io: string }) & { Malformed?: never };
+} }) & { Internal?: never; Io?: never } | ({ Io: string }) & { Internal?: never; Malformed?: never } | ({ Internal: string }) & { Io?: never; Malformed?: never };
 
 /**  An active page whose body the index could read only in part. Its doc is unchanged. */
 export type PageIssue = {

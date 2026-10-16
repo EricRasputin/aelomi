@@ -2,11 +2,13 @@ import { AlertDialog } from "@base-ui/react/alert-dialog";
 import { useRef } from "react";
 import { useDeliveryStore } from "../editor/delivery";
 import {
+  recordErrorText,
   storageCopy,
   storageErrorText,
   storageFailureReason,
 } from "../storage-copy";
 import { quitDialogOpen, useQuitStore } from "../stores/quit";
+import { useRecordCommandStore } from "../stores/record-commands";
 import { useStorageHealthStore } from "../stores/storage-health";
 
 export function SaveFailureBanner() {
@@ -14,12 +16,18 @@ export function SaveFailureBanner() {
   const refused = useDeliveryStore(
     (state) => state.failing.values().next().value ?? null,
   );
+  const record = useRecordCommandStore(
+    (state) => state.retained.values().next().value ?? null,
+  );
+  const failing = useRecordCommandStore((state) => state.failing);
   const reason =
     health && health !== "Healthy"
       ? storageFailureReason(health.Failing.reason)
       : refused
         ? storageErrorText(refused)
-        : null;
+        : failing && record
+          ? recordErrorText(record.error)
+          : null;
   if (reason === null) return null;
   return (
     <div role="alert" className="save-failure-banner">

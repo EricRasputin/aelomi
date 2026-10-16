@@ -238,13 +238,14 @@ pub enum PageError {
     Quitting,
     InvalidPageId,
     NotActive,
-    MissingBatch,
+    AlreadyExists,
     Cycle,
     OrderExhausted,
     InvalidTime,
     InvalidUpdate,
     Malformed { reason: String },
     Io(String),
+    Internal(String),
 }
 
 #[derive(Clone, Serialize, Type, tauri_specta::Event)]
@@ -259,7 +260,7 @@ impl From<aelomi_core::workspace::PageEditError> for PageError {
                 reason: e.to_string(),
             },
             E::NotActive => Self::NotActive,
-            E::MissingBatch => Self::MissingBatch,
+            E::AlreadyExists => Self::AlreadyExists,
             E::Cycle => Self::Cycle,
             E::OrderExhausted => Self::OrderExhausted,
             E::InvalidTime => Self::InvalidTime,
@@ -288,7 +289,7 @@ async fn apply_page_edit<R: Runtime>(
         Ok(reply)
     })
     .await
-    .map_err(|e| PageError::Io(e.to_string()))?
+    .map_err(|e| PageError::Internal(e.to_string()))?
 }
 
 fn page_id(id: String) -> Result<aelomi_core::workspace::records::PageId, PageError> {

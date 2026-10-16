@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::{fmt, io};
 
 use yrs::updates::decoder::Decode;
-use yrs::{Doc, Transact, Update};
+use yrs::{Doc, ReadTxn, Transact, Update};
 
 use super::records::{
     MAX_SAFE_INTEGER, PageId, PageRecord, Placement, RecordError, Trash, read_pages,
@@ -72,7 +72,7 @@ pub enum PageEditError {
     Io(io::Error),
     Malformed(RecordError),
     NotActive,
-    MissingBatch,
+    AlreadyExists,
     Cycle,
     OrderExhausted,
     InvalidTime,
@@ -85,7 +85,7 @@ impl fmt::Display for PageEditError {
             Self::Io(e) => e.fmt(f),
             Self::Malformed(e) => e.fmt(f),
             Self::NotActive => f.write_str("the page or parent is not active"),
-            Self::MissingBatch => f.write_str("the trash batch does not exist"),
+            Self::AlreadyExists => f.write_str("the page ID already belongs to another page"),
             Self::Cycle => f.write_str("a page cannot move under itself or its descendants"),
             Self::OrderExhausted => f.write_str("sibling orders exceed the safe integer range"),
             Self::InvalidTime => f.write_str("the clock exceeds the safe integer range"),
@@ -128,6 +128,21 @@ impl Workspace {
             )
             .map_err(|_| PageEditError::InvalidUpdate)?;
         let prior = read_pages(&doc.transact()).map_err(PageEditError::Malformed)?;
+        if let PageEdit::CreateWithId { page, .. } = &edit {
+            if !prior.contains_key(page) {
+                let body = Doc::new();
+                body.transact_mut()
+                    .apply_update(
+                        Update::decode_v1(&self.load(page.doc_id())?)
+                            .map_err(|_| PageEditError::InvalidUpdate)?,
+                    )
+                    .map_err(|_| PageEditError::InvalidUpdate)?;
+                let txn = body.transact();
+                if !txn.state_vector().is_empty() || txn.has_missing_updates() {
+                    return Err(PageEditError::AlreadyExists);
+                }
+            }
+        }
         let (records, change) = plan(edit, &prior, self.store.unix_ms())?;
         let update = {
             let mut txn = doc.transact_mut();
@@ -184,7 +199,13 @@ fn plan(
             parent,
             title,
         } => {
-            if records.contains_key(&page) {
+            if let Some(record) = records.get(&page) {
+                if record.placement.parent != parent
+                    || record.trash.is_some()
+                    || record.title != title
+                {
+                    return Err(PageEditError::AlreadyExists);
+                }
                 return Ok((records, PageChange::Created(page)));
             }
             if let Some(parent) = &parent {

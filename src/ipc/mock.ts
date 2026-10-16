@@ -16,7 +16,6 @@ import {
   type IndexStatus,
   MAX_EXCLUDED_PAGES,
   type MenuCommand,
-  type PageError,
   type PageIssue,
   type PageProblem,
   type PageTree,
@@ -30,6 +29,7 @@ import {
   type StorageStatus,
 } from "./bindings";
 import { type SeedBlock, writeBody } from "./mock-body";
+import { createRecordCommands } from "./mock-records";
 import {
   type MockHit,
   PageIndex,
@@ -88,6 +88,7 @@ type MockDoc = { doc: Y.Doc; updates: Uint8Array[]; pending: boolean };
 const storage: {
   status: StorageStatus;
   appendError: StorageError | null;
+  recordError: import("./bindings").PageError | null;
   failWrites: boolean;
   docs: Map<string, MockDoc>;
   seq: number;
@@ -96,6 +97,7 @@ const storage: {
 } = {
   status: "Ready",
   appendError: null,
+  recordError: null,
   failWrites: false,
   docs: new Map<string, MockDoc>(),
   seq: 0,
@@ -389,27 +391,6 @@ function search(text: string, limit: number, scope: Scope): MockHit[] {
   return searchPages(orderedPages(), text, limit, scope);
 }
 
-function recordFailure(ids: readonly string[]): PageError | null {
-  if (storage.status !== "Ready") return "Unavailable";
-  if (quit.phase === "Confirmed") return "Quitting";
-  if (ids.some((id) => !isPageId(id))) return "InvalidPageId";
-  const problem = pagesRootProblem(workspaceDoc());
-  const all = records();
-  if (
-    problem !== null ||
-    all.size !== workspaceDoc().getMap("pages").size ||
-    [...all].some(
-      ([id, record]) =>
-        !isPageId(id) ||
-        (record.parentId !== null && !isPageId(record.parentId)) ||
-        (record.trash?.originalParentId != null &&
-          !isPageId(record.trash.originalParentId)),
-    )
-  )
-    return { Malformed: { reason: problem ?? "malformed page record" } };
-  return null;
-}
-
 function acceptRecordEdit(edit: () => void) {
   const stored = mockDoc(workspaceDocId);
   const updates: Uint8Array[] = [];
@@ -431,6 +412,23 @@ function acceptRecordEdit(edit: () => void) {
   markChanged({ workspace: true, pages: [] });
   void events.pageRecordsChanged.emit();
 }
+
+const recordCommands = createRecordCommands({
+  doc: workspaceDoc,
+  records,
+  tree: () => sourceTree().tree,
+  accept: acceptRecordEdit,
+  error: () =>
+    storage.status !== "Ready"
+      ? "Unavailable"
+      : quit.phase === "Confirmed"
+        ? "Quitting"
+        : storage.recordError,
+  hasBody: (id) => {
+    const doc = storage.docs.get(id)?.doc;
+    return doc !== undefined && Y.encodeStateAsUpdate(doc).length > 2;
+  },
+});
 
 export const commands = {
   settingsGet: async () => {
@@ -603,79 +601,17 @@ export const commands = {
   pageCreate: async (parentId, pageId = null) => {
     calls.push({ command: "pageCreate", args: [parentId, pageId] });
     await setupReady;
-    const error = recordFailure(parentId === null ? [] : [parentId]);
-    if (error) return { status: "error", error };
-    if (pageId !== null && records().has(pageId))
-      return { status: "ok", data: pageId };
-    if (
-      parentId !== null &&
-      !sourceTree().tree.pages.some((p) => p.id === parentId)
-    )
-      return { status: "error", error: "NotActive" };
-    const step = 2 ** 20;
-    const siblings = new Set(
-      sourceTree()
-        .tree.pages.filter((page) => page.parent_id === parentId)
-        .map((page) => page.id),
-    );
-    const order =
-      [...records().entries()]
-        .filter(([id]) => siblings.has(id))
-        .reduce((max, [, record]) => Math.max(max, record.order), 0) + step;
-    if (!Number.isSafeInteger(order))
-      return { status: "error", error: "OrderExhausted" };
-    const id = pageId ?? crypto.randomUUID().replaceAll("-", "");
-    const now = Date.now();
-    acceptRecordEdit(() =>
-      writeRecords(workspaceDoc(), [
-        {
-          id,
-          title: "",
-          parentId,
-          order,
-          createdAt: now,
-          updatedAt: now,
-        },
-      ]),
-    );
-    return { status: "ok", data: id };
+    return recordCommands.pageCreate(parentId, pageId);
   },
   pageRename: async (pageId, title) => {
     calls.push({ command: "pageRename", args: [pageId, title] });
     await setupReady;
-    const error = recordFailure([pageId]);
-    if (error) return { status: "error", error };
-    if (!sourceTree().tree.pages.some((p) => p.id === pageId))
-      return { status: "error", error: "NotActive" };
-    if (
-      workspaceDoc()
-        .getMap<Y.Map<unknown>>("pages")
-        .get(pageId)
-        ?.get("title") === title
-    )
-      return { status: "ok", data: null };
-    acceptRecordEdit(() => {
-      const map = workspaceDoc().getMap<Y.Map<unknown>>("pages").get(pageId);
-      const now = Date.now();
-      if (map?.get("title") !== title) map?.set("title", title);
-      if (map?.get("updatedAt") !== now) map?.set("updatedAt", now);
-    });
-    return { status: "ok", data: null };
+    return recordCommands.pageRename(pageId, title);
   },
   pageTrash: async (pageId) => {
     calls.push({ command: "pageTrash", args: [pageId] });
     await setupReady;
-    const error = recordFailure([pageId]);
-    if (error) return { status: "error", error };
-    const existing = records().get(pageId)?.trash;
-    if (existing) return { status: "ok", data: existing.batchId };
-    if (!sourceTree().tree.pages.some((p) => p.id === pageId))
-      return { status: "error", error: "NotActive" };
-    const batch = crypto.randomUUID().replaceAll("-", "");
-    acceptRecordEdit(() =>
-      trashPage(workspaceDoc(), pageId, batch, Date.now()),
-    );
-    return { status: "ok", data: batch };
+    return recordCommands.pageTrash(pageId);
   },
   devProbeLog: async (line) => {
     calls.push({ command: "devProbeLog", args: [line] });
@@ -813,6 +749,7 @@ function resetState() {
   settingsPending = false;
   storage.status = "Ready";
   storage.appendError = null;
+  storage.recordError = null;
   storage.failWrites = false;
   storage.docs.clear();
   storage.seq = 0;
@@ -902,6 +839,10 @@ const control = {
     },
   },
   workspace: {
+    async rename(pageId: string, title: string) {
+      const { commands } = await import("./index");
+      return commands.pageRename(pageId, title);
+    },
     seed(pages: SeedPage[]) {
       pageWrite(() => writeRecords(workspaceDoc(), pages));
     },
@@ -939,6 +880,9 @@ const control = {
     update: (patch: SettingsPatch) => commands.settingsUpdate(patch),
   },
   storage: {
+    refuseRecords(error: import("./bindings").PageError | null) {
+      storage.recordError = error;
+    },
     refuseAppends(error: StorageError | null) {
       storage.appendError = error;
     },

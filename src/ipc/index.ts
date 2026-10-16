@@ -26,6 +26,11 @@ for (const name of quitTrackedCommands) {
 }
 
 export type {
+  OperationId,
+  PageId,
+  RetainedRecordOp,
+} from "../stores/record-commands";
+export type {
   Backlink,
   BacklinkBlock,
   BacklinksReply,
@@ -60,3 +65,4 @@ export type {
   TrashedPage,
   TreePage,
 } from "./bindings";
+export type { RecordCommandResult } from "./record-commands";
