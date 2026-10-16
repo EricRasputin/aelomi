@@ -753,17 +753,34 @@ pub(super) fn destination_folder(
     let version = match check_format(fs, layout, &names, FORMAT_VERSION) {
         Ok(version) => version,
         Err(OpenError::UnknownFormat) => {
-            return Ok(DestinationFolder::Unrecognized { items: names });
+            return Ok(DestinationFolder::Unrecognized {
+                items: blocking_items(fs, layout, names, true)?,
+            });
         }
         Err(error) => return Err(error),
     };
     if version.is_some() && !doc_is_pristine(fs, layout, &DocId::workspace())? {
         return Ok(DestinationFolder::Workspace);
     }
+    let items = blocking_items(fs, layout, names, version.is_some())?;
+    Ok(if items.is_empty() {
+        DestinationFolder::Empty
+    } else {
+        DestinationFolder::NotEmpty { items }
+    })
+}
+
+fn blocking_items(
+    fs: &dyn Fs,
+    layout: &Layout,
+    names: Vec<String>,
+    has_marker: bool,
+) -> io::Result<Vec<String>> {
     let mut items = Vec::new();
     for name in names {
         let empty_skeleton = match name.as_str() {
-            "format.json" => version.is_some(),
+            "format.json" => has_marker,
+            "format.json.tmp" => true,
             ".lock" => fs.read(&layout.lock())?.is_empty(),
             "docs" => empty_document_skeleton(fs, layout)?,
             _ => false,
@@ -772,15 +789,16 @@ pub(super) fn destination_folder(
             items.push(name);
         }
     }
-    Ok(if items.is_empty() {
-        DestinationFolder::Empty
-    } else {
-        DestinationFolder::NotEmpty { items }
-    })
+    Ok(items)
 }
 
 fn empty_document_skeleton(fs: &dyn Fs, layout: &Layout) -> io::Result<bool> {
-    for name in fs.list(&layout.docs())? {
+    let names = match fs.list(&layout.docs()) {
+        Ok(names) => names,
+        Err(error) if error.kind() == io::ErrorKind::NotADirectory => return Ok(false),
+        Err(error) => return Err(error),
+    };
+    for name in names {
         if finder_metadata(&name) {
             continue;
         }
@@ -797,7 +815,8 @@ fn empty_document_skeleton(fs: &dyn Fs, layout: &Layout) -> io::Result<bool> {
                 return Ok(false);
             };
             let bytes = fs.read(&layout.doc_file(&DocId::workspace(), file))?;
-            if bytes.len() > format.file_header_len() {
+            let contents = super::log::read(format, &bytes);
+            if !contents.records.is_empty() || contents.end == super::log::LogEnd::Corrupt {
                 return Ok(false);
             }
         }
