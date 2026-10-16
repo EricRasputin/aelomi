@@ -216,3 +216,21 @@ test("SHELL-10 resetting the observer snapshot cannot change retained create ret
   });
   expect(flush.mock.calls).toEqual([[]]);
 });
+
+test("SHELL-9 Quit anyway refuses new work from abandoned callers", async () => {
+  vi.spyOn(transport, "pageRename").mockResolvedValue({
+    status: "error",
+    error: { Io: "read failed" },
+  });
+  vi.spyOn(transport, "quitAnyway").mockResolvedValue();
+  const commands = withRecordCommands(transport);
+  const head = commands.pageRename("a", "Abandoned");
+  const followup = head.then(() => commands.pageCreate(null));
+  await new Promise((done) => setTimeout(done, 0));
+  await commands.quitAnyway();
+  expect(await followup).toEqual({ status: "error", error: "Quitting" });
+  expect(await head).toEqual({ status: "error", error: "Abandoned" });
+  expect(
+    window.__aelomiMock?.workspace.tree().pages.map((page) => page.id),
+  ).toEqual(["a", "b"]);
+});

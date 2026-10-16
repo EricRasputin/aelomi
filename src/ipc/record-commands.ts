@@ -13,6 +13,7 @@ import {
   commandsAccepted,
   forgetCommand,
   retainCommand,
+  setCommandAdmission,
   trackCommand,
 } from "./pending-commands";
 
@@ -223,6 +224,7 @@ export function withRecordCommands(transport: Transport): Commands {
   return {
     ...transport,
     quitAnyway: async () => {
+      setCommandAdmission("completing");
       clearTimeout(timer);
       for (const job of [...queue]) {
         const reply = { status: "error", error: "Abandoned" } as const;
