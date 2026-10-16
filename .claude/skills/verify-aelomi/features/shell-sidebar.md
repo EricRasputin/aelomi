@@ -31,7 +31,7 @@ Preconditions: launch only through app.sh with a fresh synthetic `AELOMI_DATA_DI
 - **Safe command selection.** Press ⌘K, type `to`, then Return. Expect the palette still open and the page unchanged. Press Down and Return to explicitly choose Move to trash.
 - **Quit navigation.** Hold a create delivery, start Quit, and try another sidebar row and ⌘K. Expect the current route unchanged and Page title read-only. Recover storage, relaunch the synthetic folder, and assert the exact title.
 - **Late create.** Hold New page, open another page, and type in its body. Recover storage. Expect New page created with its row revealed and the same body focus, route, and text.
-- **Pending opening.** While an accepted create is still pending, click its row and palette result. Neither opens an editor. A direct route shows Creating page until durable success, with no body load.
+- **Pending opening.** While an accepted create is still pending, click its row and palette result. Neither opens an editor, including before a create has its first retained failure. A direct route shows Creating page until durable success, with no body load.
 - **Pending trash.** Hold Move to trash. Expect its title and any opened descendant title to be read-only with Moving to Trash.
 - **Read retry.** Fail a tree refresh. Expect the previous rows and title, an explanatory notice, and Try again. Retry and automatic backoff recover the list without changing the title.
 - **Title Return.** Send Return with the native key-code helper. Type `body token`. Expect Page body to contain body token.

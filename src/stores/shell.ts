@@ -4,6 +4,7 @@ type FocusRequest = { pageId: string; target: "title" | "body" | "bodyStart" };
 
 export type CreateIntent = {
   originPageId: string | null;
+  existingPageIds: ReadonlySet<string>;
   editorFocus: number;
   title: string;
   source: "button" | "keyboard" | "menu" | "palette";

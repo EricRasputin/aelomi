@@ -104,8 +104,11 @@ export function NewPageButton() {
       disabled={!editable || !ready || busy}
       focusableWhenDisabled
       aria-busy={busy}
-      onClick={newPage}
-      onKeyDown={(event) => {
+      onClick={(event) => {
+        event.currentTarget.focus();
+        newPage();
+      }}
+      onKeyDownCapture={(event) => {
         if (
           !busy ||
           event.metaKey ||

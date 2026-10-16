@@ -66,6 +66,32 @@ test("TREE-1 typing immediately after Command N reaches only the new title", asy
     .toEqual(["Alpha", "Beta", "Immediate title"]);
 });
 
+test("TREE-1 accessible New page activation keeps focus and buffers typing", async ({
+  page,
+}) => {
+  await page.goto("/page/a");
+  const body = page.getByRole("textbox", { name: "Page body" });
+  await expect(body).toHaveText("Original body");
+  await body.focus();
+  await page.evaluate(() =>
+    window.__aelomiMock?.storage.refuseRecords({ Io: "held create" }),
+  );
+  await page
+    .getByRole("button", { name: "New page", exact: true })
+    .dispatchEvent("click");
+  await expect(
+    page.getByRole("button", { name: "Creating page…", exact: true }),
+  ).toBeFocused();
+  await page.keyboard.type("Accessible title");
+  await page.evaluate(() => window.__aelomiMock?.storage.refuseRecords(null));
+  const title = page.getByRole("textbox", { name: "Page title", exact: true });
+  await expect(title).toHaveValue("Accessible title");
+  await expect(title).toBeFocused();
+  expect(await page.evaluate(() => window.__aelomiMock?.bodies.text("a"))).toBe(
+    "Original body",
+  );
+});
+
 test("TREE-1 buffered title keeps its insertion point and Undo after creation", async ({
   page,
 }) => {
@@ -338,8 +364,22 @@ test("SHELL-9 draining blocks sidebar and palette navigation and preserves the e
     window.__aelomiMock?.storage.refuseRecords({ Io: "held delivery" }),
   );
   await page.getByRole("button", { name: "New page", exact: true }).click();
+  await page.keyboard.press("Meta+k");
+  await page.getByRole("combobox").fill("Beta");
+  await expect(
+    page.getByRole("option", { name: "Beta", exact: true }),
+  ).toBeVisible();
   await page.evaluate(() => window.__aelomiMock?.quit.request());
-  await expect(title).toHaveJSProperty("readOnly", true);
+  await expect(page.locator('[aria-label="Page title"]')).toHaveJSProperty(
+    "readOnly",
+    true,
+  );
+  await page
+    .getByRole("option", { name: "Beta", exact: true })
+    .click({ force: true });
+  await expect(page).toHaveURL(/\/page\/a$/);
+  await page.keyboard.press("Meta+n");
+  await page.keyboard.press("Escape");
   await page
     .getByRole("navigation", { name: "Pages" })
     .getByRole("button", { name: "Beta", exact: true })

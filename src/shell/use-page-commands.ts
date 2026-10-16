@@ -56,8 +56,12 @@ export function usePageCommands() {
           if (usePaletteStore.getState().open)
             flushSync(() => usePaletteStore.getState().hide());
           const shell = useShellStore.getState();
+          const { source } = usePageTreeStore.getState();
           const intent = {
             originPageId: shell.activePageId,
+            existingPageIds: new Set(
+              source.kind === "ready" ? source.byId.keys() : [],
+            ),
             editorFocus: shell.editorFocus,
             title:
               shell.createIntent?.stage.kind === "failed"
