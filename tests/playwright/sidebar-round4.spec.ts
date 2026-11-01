@@ -431,7 +431,9 @@ test("TREE-1 a body mounted after a gated create never steals row focus", async 
   const row = rowsOf(page).getByRole("button", { name: "Beta", exact: true });
   await row.focus();
   await release(page);
-  await expect(page.locator('[contenteditable="true"]')).toBeVisible();
+  await expect(page.locator('[contenteditable="true"]')).toBeVisible(
+    afterOutage,
+  );
   await expect(row).toBeFocused();
 });
 

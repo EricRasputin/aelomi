@@ -4,7 +4,7 @@ import { isLocalUrl } from "../is-local-url";
 
 export type { Page } from "@playwright/test";
 export { expect };
-// A poll after a storage outage ends must outlast one record retry at the backoff cap.
+// A wait after a storage outage ends must outlast one record retry at the backoff cap.
 export const afterOutage = { timeout: 2 * storageRetry.maxMs };
 export const test = base.extend<{ nonLocalRequests: string[] }>({
   nonLocalRequests: [

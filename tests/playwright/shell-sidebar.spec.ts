@@ -1,4 +1,4 @@
-import { expect, test } from "./fixtures";
+import { afterOutage, expect, test } from "./fixtures";
 
 test("SHELL-1 SHELL-6 hidden sidebar gives its width to the editor", async ({
   page,
@@ -529,16 +529,18 @@ test("TREE-9 opening a child during retained parent trash waits for durable ok b
     window.__aelomiMock?.storage.refuseRecords(null);
   });
   await expect
-    .poll(() =>
-      page.evaluate(() => window.__aelomiMock?.workspace.tree().pages.length),
+    .poll(
+      () =>
+        page.evaluate(() => window.__aelomiMock?.workspace.tree().pages.length),
+      afterOutage,
     )
     .toBe(0);
   await expect(page).toHaveURL(/\/page\/child$/);
   await expect(title).toHaveValue("Child");
   await page.evaluate(() => window.__aelomiMock?.storage.failWrites(false));
-  await expect(
-    page.getByRole("region", { name: "No page open" }),
-  ).toBeVisible();
+  await expect(page.getByRole("region", { name: "No page open" })).toBeVisible(
+    afterOutage,
+  );
   expect(
     await page.evaluate(() => window.__aelomiMock?.workspace.tree().pages),
   ).toEqual([]);

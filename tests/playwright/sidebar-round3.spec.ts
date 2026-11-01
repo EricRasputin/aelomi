@@ -1,4 +1,4 @@
-import { expect, test } from "./fixtures";
+import { afterOutage, expect, test } from "./fixtures";
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
@@ -157,9 +157,9 @@ test("TREE-9 pending trash freezes the target title and its descendants", async 
   await title.focus();
   await page.keyboard.type("lost");
   await page.evaluate(() => window.__aelomiMock?.storage.refuseRecords(null));
-  await expect(
-    page.getByRole("region", { name: "No page open" }),
-  ).toBeVisible();
+  await expect(page.getByRole("region", { name: "No page open" })).toBeVisible(
+    afterOutage,
+  );
   expect(
     await page.evaluate(() =>
       window.__aelomiMock?.workspace.tree().trash.map((p) => p.title),

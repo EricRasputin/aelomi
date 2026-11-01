@@ -1,4 +1,4 @@
-import { expect, type Page, test } from "./fixtures";
+import { afterOutage, expect, type Page, test } from "./fixtures";
 
 const title = (page: Page) =>
   page.getByRole("textbox", { name: "Page title", exact: true });
@@ -99,7 +99,7 @@ test("TREE-1 Return in a held title preserves its middle caret through recovery"
   await expect(title(page)).toHaveJSProperty("selectionStart", 7);
   await expect(title(page)).toHaveJSProperty("selectionEnd", 7);
   await page.evaluate(() => window.__aelomiMock?.storage.refuseRecords(null));
-  await expect(body(page)).toHaveText("");
+  await expect(body(page)).toHaveText("", afterOutage);
   await expect(title(page)).toBeFocused();
   await expect(title(page)).toHaveJSProperty("selectionStart", 7);
   await page.keyboard.type(" final");
