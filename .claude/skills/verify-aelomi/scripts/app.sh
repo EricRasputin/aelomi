@@ -10,7 +10,7 @@ BUNDLE="$REPO/target/release/bundle/macos/Aelomi.app"
 usage() {
   cat <<'EOF'
 Usage: app.sh <command> [args]
-  launch dev|app [--timeout S]   start the app, wait for "ping seq=1", print the run directory
+  launch dev|app [--timeout S]   start the app, wait for "ping seq=1", print the run directory; cleans up on failure
   frontmost RUN                  exit 0 only when this run's app PID is frontmost
   doctor RUN                     check that the instance in RUN is worth driving
   tree RUN                       print the web content's accessibility tree
@@ -93,7 +93,10 @@ log_action() { printf '%s %s\n' "$(date +%H:%M:%S)" "$*" >>"$RUN/actions.log"; }
 
 launch_failed() {
   tail -20 "$RUN/shell.log" >&2
-  die "launch failed: $1. Run: $0 cleanup $RUN"
+  # The launch PID may have exec'd since the last record, and cleanup only trusts a recorded
+  # command. It is this shell's unreaped child, so recording it again cannot hit a reused PID.
+  (load "$RUN" && record_tree "$RUN" "$LAUNCH_PID" && cleanup "$RUN") >&2 || true
+  die "launch failed: $1. Evidence is in $RUN"
 }
 
 launch() {

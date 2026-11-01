@@ -22,4 +22,7 @@ test("verification UI lock and frontmost CLI contracts", {
   expect(output).toContain(
     "PASS: input commands and launch refuse before osascript unless the caller holds the lock, and renew it when it does",
   );
+  expect(output).toContain(
+    "PASS: a failed launch stops every process it started",
+  );
 });

@@ -157,4 +157,15 @@ grep -qx keys "$AELOMI_TEST_SCRIPT_ARGS"
 [ "$(stat -f %m "$AELOMI_UI_LOCK/owner")" -ge "$renewed_after" ]
 echo 'PASS: input commands and launch refuse before osascript unless the caller holds the lock, and renew it when it does'
 
+if AELOMI_UI_LOCK_LABEL=holder "$S/app.sh" launch dev >"$TEST_ROOT/launch.out" 2>"$TEST_ROOT/launch.err"; then exit 1; else assert_equal "$?" 1; fi
+assert_equal "$(cat "$TEST_ROOT/launch.out")" ''
+grep -q 'launch failed: the build or the app failed' "$TEST_ROOT/launch.err"
+grep -q 'stopped every process this run started' "$TEST_ROOT/launch.err"
+launch_runs=("$AELOMI_VERIFY_ROOT"/*)
+assert_equal "${#launch_runs[@]}" 1
+grep -q $'\tsleep 120$' "${launch_runs[0]}/pids"
+while IFS=$'\t' read -r pid cmd; do
+  if [ "$(ps -ww -o command= -p "$pid" 2>/dev/null || true)" = "$cmd" ]; then exit 1; fi
+done <"${launch_runs[0]}/pids"
 "$S/ui-lock.sh" release holder
+echo 'PASS: a failed launch stops every process it started'
