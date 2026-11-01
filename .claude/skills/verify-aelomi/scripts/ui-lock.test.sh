@@ -65,6 +65,26 @@ if "$S/ui-lock.sh" acquire '' >/dev/null 2>&1; then exit 1; else assert_equal "$
 assert_equal "$("$S/ui-lock.sh" status)" free
 echo 'PASS: an invalid label creates no lock'
 
+"$S/ui-lock.sh" acquire holder >/dev/null
+touch -t 200001010000 "$AELOMI_UI_LOCK/owner"
+renewed_after=$(date +%s)
+"$S/ui-lock.sh" renew holder
+[ "$(stat -f %m "$AELOMI_UI_LOCK/owner")" -ge "$renewed_after" ]
+if "$S/ui-lock.sh" acquire intruder >/dev/null 2>&1; then exit 1; else assert_equal "$?" 1; fi
+assert_equal "$(cat "$AELOMI_UI_LOCK/owner")" holder
+echo 'PASS: renew by the owner refreshes the heartbeat, so a waiter cannot reclaim the lock'
+
+touch -t 200001010000 "$AELOMI_UI_LOCK/owner"
+if "$S/ui-lock.sh" renew intruder 2>"$TEST_ROOT/renew-refused"; then exit 1; else assert_equal "$?" 1; fi
+assert_equal "$(cat "$TEST_ROOT/renew-refused")" 'ui-lock.sh: renew refused: the lock is held by holder'
+assert_equal "$(cat "$AELOMI_UI_LOCK/owner")" holder
+assert_equal "$(stat -f %Sm -t %Y%m%d%H%M "$AELOMI_UI_LOCK/owner")" 200001010000
+"$S/ui-lock.sh" release holder
+if "$S/ui-lock.sh" renew holder 2>"$TEST_ROOT/renew-free"; then exit 1; else assert_equal "$?" 1; fi
+assert_equal "$(cat "$TEST_ROOT/renew-free")" 'ui-lock.sh: renew refused: the lock is not held'
+assert_equal "$("$S/ui-lock.sh" status)" free
+echo 'PASS: renew by a non-owner or on a free lock fails and changes nothing'
+
 "$S/ui-lock.sh" acquire guarded >/dev/null
 python3 - "$AELOMI_UI_LOCK.guard" "$TEST_ROOT/guard-ready" <<'PYTEST' &
 import fcntl
@@ -107,3 +127,34 @@ if "$S/app.sh" frontmost "$TEST_ROOT/run"; then exit 1; else assert_equal "$?" 1
 export AELOMI_TEST_APPLE_EVENT_ERROR=1
 if "$S/app.sh" frontmost "$TEST_ROOT/run"; then exit 1; else assert_equal "$?" 1; fi
 echo 'PASS: frontmost accepts only the run PID and refuses Apple event errors'
+
+unset AELOMI_TEST_APPLE_EVENT_ERROR
+cat >"$TEST_ROOT/bin/pnpm" <<'MOCK'
+#!/usr/bin/env bash
+sleep 120 &
+echo 'error: could not compile `aelomi`'
+wait
+MOCK
+chmod +x "$TEST_ROOT/bin/pnpm"
+export AELOMI_VERIFY_ROOT="$TEST_ROOT/verify"
+"$S/ui-lock.sh" acquire holder >/dev/null
+rm -f "$AELOMI_TEST_SCRIPT_ARGS"
+if env -u AELOMI_UI_LOCK_LABEL "$S/app.sh" keys "$TEST_ROOT/run" x 2>"$TEST_ROOT/no-label"; then exit 1; else assert_equal "$?" 1; fi
+grep -q 'set AELOMI_UI_LOCK_LABEL' "$TEST_ROOT/no-label"
+for input in "press $TEST_ROOT/run Ping" "focus $TEST_ROOT/run Ping" "keys $TEST_ROOT/run x" "rename-quit $TEST_ROOT/run" "both-quit $TEST_ROOT/run" "launch dev"; do
+  read -r -a argv <<<"$input"
+  if AELOMI_UI_LOCK_LABEL=intruder "$S/app.sh" "${argv[@]}" 2>"$TEST_ROOT/refused"; then exit 1; else assert_equal "$?" 1; fi
+  grep -q "the keyboard lock is not held by 'intruder'" "$TEST_ROOT/refused"
+done
+[ ! -e "$AELOMI_TEST_SCRIPT_ARGS" ]
+[ ! -e "$AELOMI_VERIFY_ROOT" ]
+[ ! -e "$TEST_ROOT/run/actions.log" ]
+assert_equal "$(cat "$AELOMI_UI_LOCK/owner")" holder
+touch -t 200001010000 "$AELOMI_UI_LOCK/owner"
+renewed_after=$(date +%s)
+AELOMI_UI_LOCK_LABEL=holder "$S/app.sh" keys "$TEST_ROOT/run" x >/dev/null
+grep -qx keys "$AELOMI_TEST_SCRIPT_ARGS"
+[ "$(stat -f %m "$AELOMI_UI_LOCK/owner")" -ge "$renewed_after" ]
+echo 'PASS: input commands and launch refuse before osascript unless the caller holds the lock, and renew it when it does'
+
+"$S/ui-lock.sh" release holder

@@ -16,10 +16,10 @@ def fail(message, code=1):
 
 args = sys.argv[1:]
 if not (args == ["status"] or (
-    len(args) == 2 and args[0] in ("acquire", "release") and args[1].strip()
+    len(args) == 2 and args[0] in ("acquire", "release", "renew") and args[1].strip()
     and "\n" not in args[1] and "\r" not in args[1]
 )):
-    fail("usage: ui-lock.sh acquire <label> | release <label> | status", 2)
+    fail("usage: ui-lock.sh acquire <label> | release <label> | renew <label> | status", 2)
 
 lock = Path(os.environ.get("AELOMI_UI_LOCK", "/tmp/aelomi-ui.lock"))
 owner = lock / "owner"
@@ -58,6 +58,12 @@ def attempt():
         if read_owner() != label:
             fail("release refused: owner label does not match")
         remove_lock()
+        return True
+    if command == "renew":
+        holder = read_owner() if lock.exists() else None
+        if holder != label:
+            fail(f"renew refused: the lock is held by {holder}" if holder else "renew refused: the lock is not held")
+        os.utime(owner)
         return True
     if lock.exists():
         stamp = owner.stat() if owner.exists() else lock.stat()

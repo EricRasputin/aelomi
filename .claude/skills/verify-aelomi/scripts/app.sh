@@ -83,7 +83,18 @@ require_app() {
   [ -n "${APP_PID:-}" ] || die "launch never reached readiness in $RUN, so there is no app PID. Run cleanup."
 }
 
+# Renewing on every input refreshes the owner file's mtime, which is the lock's heartbeat.
+require_lock() {
+  [ -n "${AELOMI_UI_LOCK_LABEL:-}" ] || die "set AELOMI_UI_LOCK_LABEL to the label you acquired with ui-lock.sh. Nothing was sent or launched."
+  "$HERE/ui-lock.sh" renew "$AELOMI_UI_LOCK_LABEL" || die "the keyboard lock is not held by '$AELOMI_UI_LOCK_LABEL'. Nothing was sent or launched."
+}
+
 log_action() { printf '%s %s\n' "$(date +%H:%M:%S)" "$*" >>"$RUN/actions.log"; }
+
+launch_failed() {
+  tail -20 "$RUN/shell.log" >&2
+  die "launch failed: $1. Run: $0 cleanup $RUN"
+}
 
 launch() {
   local mode=${1:-} timeout=900
@@ -105,6 +116,7 @@ launch() {
     *) usage >&2; exit 2 ;;
   esac
 
+  require_lock
   mkdir -p "$VERIFY_ROOT"
   RUN=$(mktemp -d "$VERIFY_ROOT/$(date +%Y%m%d-%H%M%S)-$mode-XXXX")
   (cd "$REPO" && export AELOMI_DATA_DIR="${AELOMI_DATA_DIR:-$RUN/data}" AELOMI_RECOVERY_DIR="${AELOMI_RECOVERY_DIR:-$RUN/recovery}" && exec nohup "${cmd[@]}" >"$RUN/shell.log" 2>&1 </dev/null) &
@@ -119,10 +131,7 @@ launch() {
     kill -0 "$launch_pid" 2>/dev/null || reason="the launch process exited"
     grep -qE 'could not compile|panicked at' "$RUN/shell.log" && reason="the build or the app failed"
     [ "$SECONDS" -lt "$deadline" ] || reason="no 'ping seq=1' within $timeout s"
-    if [ -n "$reason" ]; then
-      tail -20 "$RUN/shell.log" >&2
-      die "launch failed: $reason. Run: $0 cleanup $RUN"
-    fi
+    [ -z "$reason" ] || launch_failed "$reason"
     sleep 1
   done
   record_tree "$RUN" "$launch_pid"
@@ -131,13 +140,13 @@ launch() {
   if [ "$mode" = dev ]; then
     local port
     port=$(sed -n 's/^AELOMI_DEV_PORT=\([0-9]*\)$/\1/p' "$RUN/shell.log" | head -1)
-    [ -n "$port" ] || die "logged 'ping seq=1' but no AELOMI_DEV_PORT line. Run: $0 cleanup $RUN"
+    [ -n "$port" ] || launch_failed "logged 'ping seq=1' but no AELOMI_DEV_PORT line"
     printf 'DEV_PORT=%q\n' "$port" >>"$RUN/run.env"
     app_pid=""
     for pid in $(descendants "$launch_pid"); do
       case $(proc_cmd "$pid") in */target/debug/aelomi) app_pid=$pid ;; esac
     done
-    [ -n "$app_pid" ] || die "logged 'ping seq=1' but found no target/debug/aelomi under PID $launch_pid. Run: $0 cleanup $RUN"
+    [ -n "$app_pid" ] || launch_failed "logged 'ping seq=1' but found no target/debug/aelomi under PID $launch_pid"
   fi
   printf 'APP_PID=%q\n' "$app_pid" >>"$RUN/run.env"
   # The first accessibility query after launch can find no web content, so poll until one does.
@@ -250,9 +259,9 @@ case $command in
   tree | status | menus) load "${1:-}"; require_app; ax "$command" "$APP_PID" ;;
   wait-status) load "${1:-}"; require_app; ax wait-status "$APP_PID" "${2:?wait-status needs TEXT}" "${3:-10}" ;;
   wait-dialog) load "${1:-}"; require_app; ax wait-dialog "$APP_PID" "${2:?wait-dialog needs TITLE}" "${3:-10}" ;;
-  press | focus) load "${1:-}"; require_app; log_action "$command \"${2:?$command needs NAME}\""; ax "$command" "$APP_PID" "$2" ;;
-  keys) load "${1:-}"; require_app; log_action "keys \"${2:?keys needs TEXT}\" ${3:-}"; ax keys "$APP_PID" "$2" "${3:-}" ;;
-  rename-quit | both-quit) load "${1:-}"; require_app; log_action "$command"; ax "$command" "$APP_PID" ;;
+  press | focus) load "${1:-}"; require_app; require_lock; log_action "$command \"${2:?$command needs NAME}\""; ax "$command" "$APP_PID" "$2" ;;
+  keys) load "${1:-}"; require_app; require_lock; log_action "keys \"${2:?keys needs TEXT}\" ${3:-}"; ax keys "$APP_PID" "$2" "${3:-}" ;;
+  rename-quit | both-quit) load "${1:-}"; require_app; require_lock; log_action "$command"; ax "$command" "$APP_PID" ;;
   screenshot) screenshot "$@" ;;
   cleanup) cleanup "$@" ;;
   *) usage >&2; exit 2 ;;

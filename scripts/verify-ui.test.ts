@@ -16,4 +16,10 @@ test("verification UI lock and frontmost CLI contracts", {
   expect(output).toContain(
     "PASS: frontmost accepts only the run PID and refuses Apple event errors",
   );
+  expect(output).toContain(
+    "PASS: renew by a non-owner or on a free lock fails and changes nothing",
+  );
+  expect(output).toContain(
+    "PASS: input commands and launch refuse before osascript unless the caller holds the lock, and renew it when it does",
+  );
 });
