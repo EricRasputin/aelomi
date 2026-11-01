@@ -1,0 +1,3 @@
+const realFlush = transport.storageFlush;
+button('Hold durability', () => { transport.storageFlush = async () => ({ status: 'ok', data: false }); output.textContent = 'DURABILITY_HELD'; });
+button('Recover durability', () => { transport.storageFlush = realFlush; output.textContent = 'DURABILITY_RECOVERED'; });

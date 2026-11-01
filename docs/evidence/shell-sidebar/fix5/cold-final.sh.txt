@@ -1,0 +1,12 @@
+#!/bin/bash
+set -euo pipefail
+lock=${AELOMI_UI_LOCK:?}
+label=pr89-fix5-final-cold
+"$lock" acquire "$label"
+trap '"$lock" release "$label"' EXIT
+for revision in main r3 final; do
+ pnpm perf:cold --ci --expected-variant page --app "/tmp/aelomi-d1-fix5-perf/apps/$revision.app" --out "/tmp/aelomi-d1-fix5-perf/final-$revision" > "/tmp/aelomi-d1-fix5-perf/final-$revision.log" 2>&1
+done
+for revision in main final; do
+ pnpm perf:cold --ci --expected-variant page --app "/tmp/aelomi-d1-fix5-perf/apps/$revision.app" --data-dir "${AELOMI_PROOF_DATA:?}" --out "/tmp/aelomi-d1-fix5-perf/relaunch-$revision" > "/tmp/aelomi-d1-fix5-perf/relaunch-$revision.log" 2>&1
+done

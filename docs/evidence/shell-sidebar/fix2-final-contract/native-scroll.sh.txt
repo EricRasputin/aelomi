@@ -1,0 +1,23 @@
+#!/bin/bash
+set -euo pipefail
+S=.claude/skills/verify-aelomi/scripts
+D1_RUN=$(cat .local-gate/scroll-run.txt)
+source "$D1_RUN/run.env"
+appearance=$(osascript -e 'tell application "System Events" to tell appearance preferences to get dark mode')
+finish() { osascript -e "tell application \"System Events\" to tell appearance preferences to set dark mode to $appearance" || true; }
+trap finish EXIT
+bash "$S/app.sh" doctor "$D1_RUN"
+bash "$S/app.sh" press "$D1_RUN" '日本語の題名'
+for mode in true false; do
+ osascript -e "tell application \"System Events\" to tell appearance preferences to set dark mode to $mode"
+ bash "$S/app.sh" focus "$D1_RUN" 'Page body'
+ osascript -l JavaScript .local-gate/click-upper-body.js "$APP_PID"
+ bash "$S/app.sh" screenshot "$D1_RUN" "upper-caret-$mode"
+done
+bash "$S/app.sh" keys "$D1_RUN" q command
+for attempt in $(seq 1 40); do
+ if rg -q 'quit flush via=Exit pending=None' "$D1_RUN/shell.log" && ! kill -0 "$APP_PID" 2>/dev/null; then break; fi
+ sleep 0.5
+done
+rg 'quit flush via=Exit pending=None' "$D1_RUN/shell.log"
+if kill -0 "$APP_PID" 2>/dev/null; then exit 1; fi

@@ -99,11 +99,25 @@ export const shortcuts = [
     menu: { menu: "app", group: 4, order: 0 },
   },
   {
+    command: "newPage",
+    label: "New page",
+    owner: "webview",
+    shortcut: { key: "n", modifiers: ["Meta"] },
+    menu: { menu: "file", group: 0, order: 0 },
+  },
+  {
+    command: "trashPage",
+    label: "Move to trash",
+    owner: "webview",
+    shortcut: null,
+    menu: null,
+  },
+  {
     command: "closeWindow",
     label: "Close Window",
     owner: "webview",
     shortcut: { key: "w", modifiers: ["Meta"] },
-    menu: { menu: "file", group: 0, order: 0 },
+    menu: { menu: "file", group: 1, order: 0 },
   },
   {
     command: "undo",
@@ -257,7 +271,9 @@ export function serializeNativeMenu(): string {
     nativeMenus.map((menu) => ({
       ...menu,
       items: shortcuts
-        .filter((entry) => entry.menu?.menu === menu.id)
+        .flatMap((entry) =>
+          entry.menu?.menu === menu.id ? [{ ...entry, menu: entry.menu }] : [],
+        )
         .sort(
           (a, b) => a.menu.group - b.menu.group || a.menu.order - b.menu.order,
         )

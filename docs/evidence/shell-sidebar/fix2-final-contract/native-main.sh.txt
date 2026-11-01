@@ -1,0 +1,127 @@
+#!/bin/bash
+set -euo pipefail
+S=.claude/skills/verify-aelomi/scripts
+D1_RUN=$(cat .local-gate/native-run.txt)
+source "$D1_RUN/run.env"
+data="$D1_RUN/data"
+root_mode=$(stat -f %Lp "$data")
+docs_mode=$(stat -f %Lp "$data/docs")
+appearance=$(osascript -e 'tell application "System Events" to tell appearance preferences to get dark mode')
+finish() {
+  result=$?
+  chmod "$root_mode" "$data"
+  chmod "$docs_mode" "$data/docs"
+  osascript -e "tell application \"System Events\" to tell appearance preferences to set dark mode to $appearance" || true
+  if [ "$result" -ne 0 ]; then bash "$S/app.sh" cleanup "$D1_RUN"; fi
+}
+trap finish EXIT
+press() { bash "$S/app.sh" press "$D1_RUN" "$1"; }
+keys() { bash "$S/app.sh" keys "$D1_RUN" "$@"; }
+focus() { bash "$S/app.sh" focus "$D1_RUN" "$1"; }
+shot() { bash "$S/app.sh" screenshot "$D1_RUN" "$1"; }
+shot_both() {
+  shot "$1-dark"
+  osascript -e 'tell application "System Events" to tell appearance preferences to set dark mode to false'
+  shot "$1-light"
+  osascript -e 'tell application "System Events" to tell appearance preferences to set dark mode to true'
+}
+wait_tree() {
+  for attempt in $(seq 1 15); do
+    bash "$S/app.sh" tree "$D1_RUN" > "$D1_RUN/current.ax.txt"
+    if rg -q "$1" "$D1_RUN/current.ax.txt"; then return; fi
+    sleep 0.3
+  done
+  cat "$D1_RUN/current.ax.txt"
+  return 1
+}
+set_title() { focus 'Page title'; keys a command; keys "$1"; }
+trash() { keys k command; keys 'Move to trash'; osascript -l JavaScript docs/evidence/shell-sidebar/key.js.txt "$APP_PID" 36; }
+bash "$S/app.sh" doctor "$D1_RUN"
+osascript -e 'tell application "System Events" to tell appearance preferences to set dark mode to true'
+shot_both seed
+trash
+wait_tree 'No page open'
+shot_both empty
+osascript -l JavaScript .local-gate/press-nth.js "$APP_PID" 'New page' 1
+keys 'D1 fix2 notes'
+wait_tree 'AXTextArea "Page title" = "D1 fix2 notes"'
+osascript -l JavaScript docs/evidence/shell-sidebar/key.js.txt "$APP_PID" 36
+keys 'body token'
+shot_both created
+keys '\' command
+shot sidebar-hidden
+keys '\' command
+chmod 500 "$data"
+chmod 000 "$data/docs"
+press 'New page'
+wait_tree "Changes aren't being saved"
+press 'Read draft and retention'
+wait_tree 'RETAINED=1;FAILED=0;CREATE=true'
+rg 'AXTextArea "Page title" = "D1 fix2 notes"' "$D1_RUN/current.ax.txt"
+keys n command
+keys n command
+shot create-outage-dark
+osascript -e 'tell application "System Events" to tell appearance preferences to set dark mode to false'
+shot create-outage-light
+chmod "$root_mode" "$data"
+chmod "$docs_mode" "$data/docs"
+wait_tree 'AXHeading "Untitled" = "1"'
+keys 'After outage'
+wait_tree 'AXTextArea "Page title" = "After outage"'
+press 'Read draft and retention'
+wait_tree 'DRAFT=none;RETAINED=0;FAILED=0;CREATE=false'
+osascript -l JavaScript docs/evidence/shell-sidebar/fix1/hover.js.txt "$APP_PID" 'D1 fix2 notes'
+shot recovered-selection-light
+osascript -e 'tell application "System Events" to tell appearance preferences to set dark mode to true'
+shot recovered-selection-dark
+press 'Fail record renames'
+set_title 'Pending native title'
+press 'Read draft and retention'
+wait_tree 'DRAFT=pending;RETAINED=1;FAILED=0;CREATE=false;ERROR=none'
+shot_both rename-pending
+press 'Refuse record renames'
+wait_tree "This title couldn't be changed"
+press 'Read draft and retention'
+wait_tree 'DRAFT=error;RETAINED=0;FAILED=[1-9]'
+shot_both rename-terminal
+press 'Recover record renames'
+set_title 'Recovered native title'
+press 'Read draft and retention'
+wait_tree 'DRAFT=none;RETAINED=0;FAILED=0;CREATE=false'
+press 'Fail title refresh'
+focus 'Page title'
+keys a command
+keys x
+keys z command
+shot_both title-read-failure
+press 'Recover title refresh'
+wait_tree 'AXTextArea "Page title" = "Recovered native title"'
+keys k command
+keys 'Recovered'
+shot_both palette-one-line
+osascript -l JavaScript docs/evidence/shell-sidebar/key.js.txt "$APP_PID" 53
+set_title 'Quarterly planning notes for the platform infrastructure team and the international customer migration schedule across every supported region'
+keys k command
+keys 'Quarterly'
+shot_both palette-wrapped
+osascript -l JavaScript docs/evidence/shell-sidebar/key.js.txt "$APP_PID" 53
+set_title 'Recovered native title'
+osascript -l JavaScript docs/evidence/shell-sidebar/key.js.txt "$APP_PID" 36
+osascript -l JavaScript .local-gate/type-lines.js "$APP_PID"
+shot_both caret-scroll
+press 'Fail record trash'
+trash
+wait_tree "Changes aren't being saved"
+shot_both trash-pending
+press 'Recover record trash'
+wait_tree 'AXTextArea "Page title" = "D1 fix2 notes"'
+keys n command
+keys 'Composition baseline'
+osascript -l JavaScript docs/evidence/shell-sidebar/fix1-record-api/compose-menu-quit.js.txt "$APP_PID"
+for attempt in $(seq 1 40); do
+  if rg -q 'quit flush via=Exit pending=None' "$D1_RUN/shell.log" && ! kill -0 "$APP_PID" 2>/dev/null; then break; fi
+  sleep 0.5
+done
+rg 'quit flush via=Exit pending=None' "$D1_RUN/shell.log"
+if kill -0 "$APP_PID" 2>/dev/null; then exit 1; fi
+printf 'PASS native main, permissions restored to %s/%s\n' "$root_mode" "$docs_mode"

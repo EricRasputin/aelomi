@@ -1,0 +1,24 @@
+use std::time::{Duration, Instant};
+use aelomi_core::storage::{DocId, Store};
+use aelomi_core::workspace::{body, records::read_pages};
+use yrs::{Doc, Transact, Update, updates::decoder::Decode};
+fn main() {
+ let folder = std::path::PathBuf::from(std::env::args().nth(1).expect("synthetic data folder"));
+ assert!(folder.to_string_lossy().contains("/aelomi-verify/"));
+ let store = Store::open(&folder).unwrap();
+ let doc = Doc::new();
+ doc.transact_mut().apply_update(Update::decode_v1(&store.load(&DocId::workspace()).unwrap()).unwrap()).unwrap();
+ let records = read_pages(&doc.transact()).unwrap();
+ assert_eq!(records.len(), 2);
+ let active: Vec<_> = records.iter().filter(|(_, r)| r.trash.is_none()).collect();
+ let trashed: Vec<_> = records.iter().filter(|(_, r)| r.trash.is_some()).collect();
+ assert_eq!(active.len(), 1); assert_eq!(trashed.len(), 1);
+ assert_eq!(active[0].1.title, "D1 notes"); assert_eq!(trashed[0].1.title, "Getting started");
+ let page = Doc::new();
+ page.transact_mut().apply_update(Update::decode_v1(&store.load(active[0].0.doc_id()).unwrap()).unwrap()).unwrap();
+ let body = body::read_body(&page.transact());
+ assert_eq!(body.blocks.len(), 1);
+ assert_eq!(body.blocks[0].segments, vec![body::Segment::Text("body token".into())]);
+ println!("records=2 active=1 trashed=1 active_title=D1 notes trashed_title=Getting started body={:?}", body.blocks[0]);
+ assert!(store.close(Instant::now() + Duration::from_secs(5)).is_ok());
+}

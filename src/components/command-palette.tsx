@@ -1,12 +1,16 @@
-import { useNavigate } from "@tanstack/react-router";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { createPortal, flushSync } from "react-dom";
+import { commandDispatcher } from "../command-dispatcher";
 import { restoreFocus } from "../editor/active-editor";
 import type { PageIssue, SearchHit } from "../ipc";
 import { HighlightedText } from "../pages/highlighted-text";
 import { type ContentResult, shownContent } from "../palette/content";
+import type { PageCommand } from "../palette/page-commands";
 import type { TitleMatch } from "../palette/title-match";
+import { useNewPagesStore } from "../shell/new-pages";
+import { canOpenPage } from "../shell/page-presence";
+import { useOpenPage } from "../shell/use-page-commands";
 import { useIndexStatusStore } from "../stores/index-status";
 import {
   displayTitle,
@@ -15,6 +19,8 @@ import {
   usePageTreeStore,
 } from "../stores/page-tree";
 import { usePaletteStore } from "../stores/palette";
+import { acceptsUserCommands, useQuitStore } from "../stores/quit";
+import { useShellStore } from "../stores/shell";
 
 export const paletteCopy = {
   indexing: "Indexing…",
@@ -27,18 +33,30 @@ export const paletteCopy = {
 type Row =
   | { kind: "header"; label: string }
   | { kind: "title"; index: number; match: TitleMatch }
-  | { kind: "content"; index: number; hit: SearchHit };
+  | { kind: "content"; index: number; hit: SearchHit }
+  | { kind: "command"; index: number; command: PageCommand };
 
-function rowsOf(titles: readonly TitleMatch[], content: ContentResult): Row[] {
+function rowsOf(
+  titles: readonly TitleMatch[],
+  commands: readonly PageCommand[],
+  content: ContentResult,
+): Row[] {
   const rows: Row[] = [];
   if (titles.length > 0)
     rows.push({ kind: "header", label: paletteCopy.pages });
   for (const [index, match] of titles.entries())
     rows.push({ kind: "title", index, match });
+  if (commands.length > 0) rows.push({ kind: "header", label: "Commands" });
+  for (const [i, command] of commands.entries())
+    rows.push({ kind: "command", index: titles.length + i, command });
   if (content.kind === "ready" && content.hits.length > 0) {
     rows.push({ kind: "header", label: paletteCopy.content });
     for (const [i, hit] of content.hits.entries())
-      rows.push({ kind: "content", index: titles.length + i, hit });
+      rows.push({
+        kind: "content",
+        index: titles.length + commands.length + i,
+        hit,
+      });
   }
   return rows;
 }
@@ -46,6 +64,7 @@ function rowsOf(titles: readonly TitleMatch[], content: ContentResult): Row[] {
 const rowHeight: Record<Row["kind"], number> = {
   header: 28,
   title: 34,
+  command: 34,
   content: 52,
 };
 
@@ -58,13 +77,17 @@ function issueNotice(issues: readonly PageIssue[], source: SourceTree) {
 export function CommandPalette() {
   const open = usePaletteStore((state) => state.open);
   const query = usePaletteStore((state) => state.query);
+  const pageCommands = usePaletteStore((state) => state.pageCommands);
   const titles = usePaletteStore((state) => state.titles);
   const content = usePaletteStore((state) => state.content);
   const selected = usePaletteStore((state) => state.selected);
   const settled = usePaletteStore((state) => state.answered === state.request);
   const status = useIndexStatusStore((state) => state.status);
   const source = usePageTreeStore((state) => state.source);
-  const navigate = useNavigate();
+  const newPages = useNewPagesStore((s) => s.pages);
+  useShellStore((s) => s.trashed);
+  useQuitStore((s) => s.decision.kind);
+  const openPage = useOpenPage();
   const input = useRef<HTMLInputElement>(null);
   const list = useRef<HTMLDivElement>(null);
   // The one owner of what opening and closing do to the page: the store only
@@ -73,7 +96,7 @@ export function CommandPalette() {
   useLayoutEffect(() => {
     if (!open) return;
     const { returnTo } = usePaletteStore.getState();
-    const page = document.querySelector("main");
+    const page = document.querySelector<HTMLElement>("[data-workspace]");
     if (page) page.inert = true;
     input.current?.focus();
     void usePageTreeStore.getState().refresh();
@@ -86,7 +109,7 @@ export function CommandPalette() {
   const close = () => flushSync(() => usePaletteStore.getState().hide());
 
   const shown = shownContent(status, content);
-  const rows = rowsOf(titles, shown);
+  const rows = rowsOf(titles, pageCommands, shown);
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => list.current,
@@ -102,19 +125,20 @@ export function CommandPalette() {
 
   const activate = (row: Row | undefined) => {
     if (!row || row.kind === "header") return;
-    close();
-    if (row.kind === "title")
-      void navigate({
-        to: "/page/$pageId",
-        params: { pageId: row.match.id },
-        search: {},
+    if (row.kind === "command") {
+      if (!acceptsUserCommands(useQuitStore.getState().decision)) return;
+      close();
+      commandDispatcher.dispatch(row.command.command, {
+        source: "palette",
+        target: document.activeElement,
+        isComposing: false,
       });
-    else
-      void navigate({
-        to: "/page/$pageId",
-        params: { pageId: row.hit.page_id },
-        search: { block: row.hit.block?.block_id },
-      });
+      return;
+    }
+    const id = row.kind === "title" ? row.match.id : row.hit.page_id;
+    if (canOpenPage(id)) close();
+    if (row.kind === "title") openPage(row.match.id, "body");
+    else openPage(row.hit.page_id, "body", { block: row.hit.block?.block_id });
   };
 
   const onKeyDown = (event: React.KeyboardEvent) => {
@@ -220,11 +244,28 @@ export function CommandPalette() {
                   id={`palette-row-${item.index}`}
                   role="option"
                   aria-selected={isSelected}
+                  aria-description={
+                    row.kind === "title" &&
+                    newPages.get(row.match.id)?.stage === "failed"
+                      ? "Not created"
+                      : undefined
+                  }
+                  aria-disabled={
+                    row.kind === "title"
+                      ? !canOpenPage(row.match.id)
+                      : row.kind === "content"
+                        ? !canOpenPage(row.hit.page_id)
+                        : undefined
+                  }
                   tabIndex={-1}
                   className="palette-row"
                   data-kind={row.kind}
                   data-page-id={
-                    row.kind === "title" ? row.match.id : row.hit.page_id
+                    row.kind === "title"
+                      ? row.match.id
+                      : row.kind === "content"
+                        ? row.hit.page_id
+                        : undefined
                   }
                   style={style}
                   onMouseMove={() => {
@@ -234,9 +275,18 @@ export function CommandPalette() {
                   onClick={() => activate(row)}
                   onKeyDown={() => {}}
                 >
-                  {row.kind === "title" ? (
-                    <span className="palette-title">
-                      <HighlightedText parts={row.match.parts} />
+                  {row.kind === "command" ? (
+                    <span className="palette-title">{row.command.label}</span>
+                  ) : row.kind === "title" ? (
+                    <span className="palette-page-title">
+                      <span className="palette-title">
+                        <HighlightedText parts={row.match.parts} />
+                      </span>
+                      {newPages.get(row.match.id)?.stage === "failed" && (
+                        <span className="sidebar-failure" aria-hidden="true">
+                          Not created
+                        </span>
+                      )}
                     </span>
                   ) : (
                     <>

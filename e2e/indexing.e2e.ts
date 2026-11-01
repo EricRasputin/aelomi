@@ -219,7 +219,10 @@ test("DATA-2 a page list another writer stored as a sequence says why no page op
     { ...daily, rawWorkspace },
   );
   await app.open("/");
-  const alert = screen.getByRole("alert");
+  await expect(
+    screen.getByRole("complementary", "Sidebar").getByRole("alert"),
+  ).toContainText("Pages couldn't be loaded.");
+  const alert = screen.getByRole("main").getByRole("alert");
   await expect(alert).toContainText(
     "Aelomi can't read this workspace's page list, so no page can open. Nothing on disk was changed.",
   );

@@ -1,10 +1,16 @@
 import { create } from "zustand";
 import { commands, events, type PageTree, type TreePage } from "../ipc";
 import { onRecordCommand } from "../ipc/record-commands";
+import { storageRetry } from "../storage-retry";
 
 export type SourceTree =
   | { kind: "loading" }
-  | { kind: "ready"; tree: PageTree; byId: ReadonlyMap<string, TreePage> }
+  | {
+      kind: "ready";
+      tree: PageTree;
+      byId: ReadonlyMap<string, TreePage>;
+      error?: string | null;
+    }
   | { kind: "error"; message: string };
 
 type PageTreeStore = {
@@ -36,6 +42,7 @@ export const usePageTreeStore = create<PageTreeStore>((set, get) => ({
                   byId: new Map(
                     reply.data.pages.map((page) => [page.id, page]),
                   ),
+                  error: null,
                 }
               : { kind: "error", message: queryErrorText(reply.error) };
         } catch (error: unknown) {
@@ -44,6 +51,9 @@ export const usePageTreeStore = create<PageTreeStore>((set, get) => ({
             message: error instanceof Error ? error.message : String(error),
           };
         }
+        const previous = get().source;
+        if (next.kind === "error" && previous.kind === "ready")
+          next = { ...previous, error: next.message };
         set({ source: next });
       } while (dirty);
       return get().source;
@@ -67,9 +77,28 @@ export function connectPageTreeEvents() {
     else stops.push(stop);
   };
   const timers = new Set<ReturnType<typeof setTimeout>>();
+  let retry: ReturnType<typeof setTimeout> | undefined;
+  let backoff = storageRetry.firstMs;
+  stops.push(
+    usePageTreeStore.subscribe(({ source }) => {
+      const failed =
+        source.kind === "error" || (source.kind === "ready" && source.error);
+      if (!failed) {
+        clearTimeout(retry);
+        retry = undefined;
+        backoff = storageRetry.firstMs;
+      } else if (retry === undefined) {
+        retry = setTimeout(() => {
+          retry = undefined;
+          refresh();
+        }, backoff);
+        backoff = Math.min(backoff * 2, storageRetry.maxMs);
+      }
+    }),
+  );
   const subscribe = async (
     register: () => Promise<() => void>,
-    delay = 100,
+    delay = storageRetry.firstMs,
   ): Promise<void> => {
     try {
       keep(await register());
@@ -79,7 +108,10 @@ export function connectPageTreeEvents() {
       const timer = setTimeout(() => {
         timers.delete(timer);
         if (!disposed)
-          void subscribe(register, Math.min(delay * 2, 5000)).then(refresh);
+          void subscribe(
+            register,
+            Math.min(delay * 2, storageRetry.maxMs),
+          ).then(refresh);
       }, delay);
       timers.add(timer);
     }
@@ -99,6 +131,7 @@ export function connectPageTreeEvents() {
     ready,
     dispose: () => {
       disposed = true;
+      clearTimeout(retry);
       for (const timer of timers) clearTimeout(timer);
       timers.clear();
       for (const stop of stops.splice(0)) stop();
@@ -110,7 +143,7 @@ export const untitled = "Untitled";
 export const deletedPage = "Deleted page";
 
 export function displayTitle(title: string): string {
-  return title === "" ? untitled : title;
+  return title.trim() === "" ? untitled : title;
 }
 
 export type LinkLabel =

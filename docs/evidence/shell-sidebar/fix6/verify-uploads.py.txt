@@ -1,0 +1,19 @@
+import hashlib,json,re,subprocess,sys
+from pathlib import Path
+url,run,*files=sys.argv[1:]
+run=Path(run)
+id=url.split('issuecomment-')[1]
+body=json.loads(subprocess.check_output(['gh','api',f'repos/aelomi/aelomi/issues/comments/{id}']))['body']
+(run/'published-comment.md').write_text(body)
+urls=re.findall(r'!\[[^\]]*\]\((https://[^)]+)\)',body)
+assert len(urls)==len(files),(urls,files)
+published=run/'published';published.mkdir(exist_ok=True)
+rows=[]
+for source,url in zip(files,urls):
+    source=Path(source);dest=published/source.name
+    subprocess.run(['curl','--disable','--fail','--location','--silent','--show-error','--max-time','45','--connect-timeout','15',url,'-o',str(dest)],check=True)
+    a,b=source.read_bytes(),dest.read_bytes()
+    assert a==b and b.startswith(b'\x89PNG\r\n\x1a\n'),str(source)
+    rows.append({'file':source.name,'bytes':len(a),'sha256':hashlib.sha256(a).hexdigest(),'url':url})
+(run/'uploads.json').write_text(json.dumps(rows,indent=2)+'\n')
+print(json.dumps(rows,indent=2))

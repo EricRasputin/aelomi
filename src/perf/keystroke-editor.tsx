@@ -5,7 +5,7 @@ import * as Y from "yjs";
 import blocksJson from "../../fixtures/generated/page-5000-blocks.json?raw";
 import { editorSchema } from "../editor/schema";
 import { toBase64 } from "../ipc/base64";
-import { PageView } from "../pages/page-view";
+import { PageFrame } from "../pages/page-frame";
 import { usePageTreeStore } from "../stores/page-tree";
 
 type Surface = { pageId: string; title: string; body: () => string | null };
@@ -39,7 +39,7 @@ function EditorSurface({ pageId, title, body }: Surface) {
       .refresh()
       .then(() => setReady(true));
   }, [pageId, title, body]);
-  return ready ? <PageView pageId={pageId} focusBlock={undefined} /> : null;
+  return ready ? <PageFrame pageId={pageId} focusBlock={undefined} /> : null;
 }
 
 export function KeystrokeEditorEmpty() {

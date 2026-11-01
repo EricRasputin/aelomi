@@ -42,6 +42,7 @@ test("SHELL-7 the committed native menu is generated from the shortcut table", (
 test("SHELL-7 the dispatcher binds exactly the webview-owned shortcuts", () => {
   expect(webviewBindings.map((entry) => entry.command)).toEqual([
     "openSettings",
+    "newPage",
     "closeWindow",
     "undo",
     "redo",

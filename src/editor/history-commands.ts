@@ -1,5 +1,6 @@
 import type { CommandContext, CommandHandler } from "../command-dispatcher";
 import { getActiveEditor } from "./active-editor";
+import { fieldHistory } from "./field-history";
 
 export function isPlainTextField(
   target: Element | null,
@@ -31,8 +32,11 @@ export function historyCommand(action: "undo" | "redo"): CommandHandler {
       );
     },
     run(context) {
-      if (field(context)) {
-        document.execCommand(action);
+      const input = field(context);
+      if (input) {
+        const managed = fieldHistory(input);
+        if (managed) managed(action);
+        else document.execCommand(action);
       } else {
         getActiveEditor()?.[action]();
       }

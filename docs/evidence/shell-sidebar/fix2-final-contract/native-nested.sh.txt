@@ -1,0 +1,86 @@
+#!/bin/bash
+set -euo pipefail
+S=.claude/skills/verify-aelomi/scripts
+D1_RUN=$(cat .local-gate/nested-run.txt)
+source "$D1_RUN/run.env"
+appearance=$(osascript -e 'tell application "System Events" to tell appearance preferences to get dark mode')
+finish() { osascript -e "tell application \"System Events\" to tell appearance preferences to set dark mode to $appearance" || true; }
+trap finish EXIT
+bash "$S/app.sh" doctor "$D1_RUN"
+if [ "$1" = subtree ]; then
+ bash "$S/app.sh" focus "$D1_RUN" 'Page body'
+ osascript -l JavaScript .local-gate/click-upper-body.js "$APP_PID"
+ for mode in true false; do
+  osascript -e "tell application \"System Events\" to tell appearance preferences to set dark mode to $mode"
+  bash "$S/app.sh" screenshot "$D1_RUN" "upper-caret-$mode"
+ done
+fi
+for attempt in $(seq 1 10); do
+ bash "$S/app.sh" tree "$D1_RUN" > "$D1_RUN/initial.ax.txt"
+ if rg -q 'Projects children' "$D1_RUN/initial.ax.txt"; then break; fi
+done
+if [ "$1" = expand ]; then
+ bash "$S/app.sh" press "$D1_RUN" 'Projects children'
+ for mode in true false; do
+  osascript -e "tell application \"System Events\" to tell appearance preferences to set dark mode to $mode"
+  bash "$S/app.sh" screenshot "$D1_RUN" "expanded-$mode"
+ done
+ bash "$S/app.sh" press "$D1_RUN" 'Projects children'
+fi
+for mode in true false; do
+ osascript -e "tell application \"System Events\" to tell appearance preferences to set dark mode to $mode"
+ bash "$S/app.sh" screenshot "$D1_RUN" "collapsed-$mode"
+done
+if rg -q 'AXButton "Aelomi"' "$D1_RUN/collapsed-false.ax.txt"; then echo 'child still visible'; exit 1; fi
+if [ "$1" = expand ]; then
+ bash "$S/app.sh" focus "$D1_RUN" 'Page body'
+ osascript -l JavaScript .local-gate/nested-scroll.js "$APP_PID"
+ for mode in true false; do
+  osascript -e "tell application \"System Events\" to tell appearance preferences to set dark mode to $mode"
+  bash "$S/app.sh" screenshot "$D1_RUN" "caret-near-top-$mode"
+ done
+ bash "$S/app.sh" keys "$D1_RUN" '\' command
+ for mode in true false; do
+  osascript -e "tell application \"System Events\" to tell appearance preferences to set dark mode to $mode"
+  bash "$S/app.sh" screenshot "$D1_RUN" "sidebar-hidden-$mode"
+ done
+ bash "$S/app.sh" keys "$D1_RUN" '\' command
+fi
+if [ "$1" = subtree ]; then
+ cp "$(cat .local-gate/nested-fixture.txt)/data/settings.json" "$D1_RUN/settings-before-subtree.json"
+ bash "$S/app.sh" press "$D1_RUN" 'Projects children'
+ bash "$S/app.sh" press "$D1_RUN" 'Hold durability'
+ bash "$S/app.sh" press "$D1_RUN" 'Fail record trash'
+ bash "$S/app.sh" keys "$D1_RUN" k command
+ bash "$S/app.sh" keys "$D1_RUN" 'Move to trash'
+ osascript -l JavaScript docs/evidence/shell-sidebar/key.js.txt "$APP_PID" 36
+ bash "$S/app.sh" press "$D1_RUN" 'Aelomi'
+ bash "$S/app.sh" press "$D1_RUN" 'Recover record trash'
+ for attempt in $(seq 1 15); do
+  bash "$S/app.sh" tree "$D1_RUN" > "$D1_RUN/subtree.ax.txt"
+  if ! rg -q 'AXButton "Projects"' "$D1_RUN/subtree.ax.txt" && rg -q 'AXTextArea "Page title" = "Aelomi"' "$D1_RUN/subtree.ax.txt"; then break; fi
+ done
+ if rg -q 'AXButton "Projects"' "$D1_RUN/subtree.ax.txt"; then exit 1; fi
+ rg 'AXTextArea "Page title" = "Aelomi"' "$D1_RUN/subtree.ax.txt"
+ for mode in true false; do
+  osascript -e "tell application \"System Events\" to tell appearance preferences to set dark mode to $mode"
+  bash "$S/app.sh" screenshot "$D1_RUN" "subtree-pending-$mode"
+ done
+ bash "$S/app.sh" press "$D1_RUN" 'Recover durability'
+ for attempt in $(seq 1 15); do
+  bash "$S/app.sh" tree "$D1_RUN" > "$D1_RUN/subtree-recovered.ax.txt"
+  if rg -q 'No page open' "$D1_RUN/subtree-recovered.ax.txt"; then break; fi
+ done
+ rg 'No page open' "$D1_RUN/subtree-recovered.ax.txt"
+ for mode in true false; do
+  osascript -e "tell application \"System Events\" to tell appearance preferences to set dark mode to $mode"
+  bash "$S/app.sh" screenshot "$D1_RUN" "subtree-recovered-$mode"
+ done
+fi
+bash "$S/app.sh" keys "$D1_RUN" q command
+for attempt in $(seq 1 40); do
+ if rg -q 'quit flush via=Exit pending=None' "$D1_RUN/shell.log" && ! kill -0 "$APP_PID" 2>/dev/null; then break; fi
+ sleep 0.5
+done
+rg 'quit flush via=Exit pending=None' "$D1_RUN/shell.log"
+if kill -0 "$APP_PID" 2>/dev/null; then exit 1; fi

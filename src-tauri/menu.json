@@ -79,9 +79,18 @@
     "label": "File",
     "items": [
       {
+        "command": "newPage",
+        "label": "New page",
+        "group": 0,
+        "accelerator": "Super+N",
+        "action": {
+          "owner": "webview"
+        }
+      },
+      {
         "command": "closeWindow",
         "label": "Close Window",
-        "group": 0,
+        "group": 1,
         "accelerator": "Super+W",
         "action": {
           "owner": "webview"

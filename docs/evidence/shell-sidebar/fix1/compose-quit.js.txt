@@ -1,0 +1,17 @@
+function run(argv) {
+ const se = Application('System Events');
+ const p = se.processes.whose({ unixId: Number(argv[0]) })[0];
+ p.frontmost = true;
+ const get = (e, key) => { try { return e[key](); } catch (_) { return null; } };
+ const queue = [p.windows[0]];
+ while (queue.length) {
+  const e = queue.shift();
+  if (get(e,'role') === 'AXButton' && (get(e,'name') || get(e,'description')) === 'Arm title composition') {
+   e.actions.whose({ name: 'AXPress' })[0].perform();
+   se.keystroke('q', { using: ['command down'] });
+   return 'armed title composition and immediately requested native quit';
+  }
+  try { for (let i=0; i<e.uiElements.length; i++) queue.push(e.uiElements[i]); } catch (_) {}
+ }
+ throw new Error('composition probe button not found');
+}

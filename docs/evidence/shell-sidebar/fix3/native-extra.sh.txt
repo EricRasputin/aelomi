@@ -1,0 +1,76 @@
+#!/bin/bash
+set -euo pipefail
+S=.claude/skills/verify-aelomi/scripts
+R=$(cat .local-gate/round3/reopen-run.txt)
+source "$R/run.env"
+owned=false
+appearance=
+finish() {
+ if [ -n "$appearance" ]; then osascript -e "tell application \"System Events\" to tell appearance preferences to set dark mode to $appearance" || true; fi
+ if $owned && [ "$(cat /tmp/aelomi-ui.lock/owner 2>/dev/null)" = "$token" ]; then rm -rf /tmp/aelomi-ui.lock; fi
+}
+trap finish EXIT
+started=$(date +%s)
+until mkdir /tmp/aelomi-ui.lock 2>/dev/null; do
+ if [ -f /tmp/aelomi-ui.lock/owner ] && [ $(( $(date +%s) - $(stat -f %m /tmp/aelomi-ui.lock/owner) )) -gt 1800 ]; then rm -rf /tmp/aelomi-ui.lock; fi
+ if [ $(( $(date +%s)-started )) -ge 2700 ]; then echo 'INCONCLUSIVE keyboard lock'; exit 1; fi
+ sleep 15
+done
+token="$$ $(date -u +%FT%TZ) D1-fix3-reopen"
+printf '%s\n' "$token" > /tmp/aelomi-ui.lock/owner
+owned=true
+appearance=$(osascript -e 'tell application "System Events" to tell appearance preferences to get dark mode')
+bash "$S/app.sh" doctor "$R"
+theme=${1:?light or dark}
+press() { bash "$S/app.sh" press "$R" "$1"; }
+focus() { bash "$S/app.sh" focus "$R" "$1"; }
+keys() {
+ if [ "${2:-}" = command ] || [ "${2:-}" = command,shift ]; then osascript -l JavaScript .local-gate/round3/shortcut.js "$APP_PID" "$1" "$2";
+ else bash "$S/app.sh" keys "$R" "$@"; fi
+}
+shot() { bash "$S/app.sh" screenshot "$R" "$1-$theme"; }
+key() { osascript -l JavaScript docs/evidence/shell-sidebar/key.js.txt "$APP_PID" "$1"; }
+wait_tree() {
+ for attempt in $(seq 1 15); do
+  osascript -l JavaScript .local-gate/round3/compact-tree.js "$APP_PID" > "$R/current.ax.txt"
+  if rg -q "$1" "$R/current.ax.txt"; then return; fi
+  sleep 0.2
+ done
+ cat "$R/current.ax.txt"; return 1
+}
+if [ "$theme" = dark ]; then mode=true; else mode=false; fi
+osascript -e "tell application \"System Events\" to tell appearance preferences to set dark mode to $mode"
+press 'D1 native Alpha'
+focus 'Page body'; keys a command; keys 'body token dark'
+wait_tree 'AXTextArea "Page title" = "D1 native Alpha"'
+shot exact-title-relaunch
+osascript -l JavaScript docs/evidence/shell-sidebar/fix1/hover.js.txt "$APP_PID" 'Button recoveredx'
+shot active-versus-hover
+press 'Hold title refresh'
+wait_tree READ_FAILED
+focus 'Page title'; keys 'SHOULD NOT SAVE'; keys z command
+wait_tree 'AXTextArea "Page title" = "D1 native Alpha"'
+shot retained-tree-and-title
+press 'Recover title refresh'; wait_tree READ_RECOVERED
+keys k command; focus 'Search pages'; keys 'Alpha'; shot palette-one-line; key 53
+focus 'Page title'; keys a command
+keys 'A wrapped title for native sidebar proof with a long unbroken token https://example.com/averylongtitlepath/and/more/words plus some more text for wrapping'
+keys k command; focus 'Search pages'; keys 'wrapped'; shot palette-wrapped; key 53
+focus 'Page title'; keys a command; keys 'D1 native Alpha'; key 36
+focus 'Page body'; keys a command
+osascript -l JavaScript docs/evidence/shell-sidebar/fix2-final-contract/type-lines.js.txt "$APP_PID"
+press 'Place body caret near top'
+wait_tree "CARET_SCROLL_PREPARED;BODY_FOCUSED=true"
+keys 'Upper edge stays visible '
+wait_tree 'Upper edge stays visible'
+shot title-scroll-and-upper-caret
+focus 'Page body'; keys a command; keys 'body token dark'
+wait_tree 'AXTextArea "Page title" = "D1 native Alpha"'
+osascript -l JavaScript docs/evidence/shell-sidebar/fix1/compose-quit.js.txt "$APP_PID"
+for attempt in $(seq 1 60); do
+ if ! kill -0 "$APP_PID" 2>/dev/null; then break; fi
+ sleep 0.3
+done
+if kill -0 "$APP_PID" 2>/dev/null; then echo 'app did not quit'; exit 1; fi
+rg 'quit flush via=Exit pending=None' "$R/shell.log"
+echo "PASS $theme retained tree/title, palette layering, upper caret, synthetic composition at native quit"

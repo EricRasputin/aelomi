@@ -1,0 +1,54 @@
+#!/bin/bash
+set -euo pipefail
+S=.claude/skills/verify-aelomi/scripts
+D1_RUN=$(cat .local-gate/subtree-run.txt)
+source "$D1_RUN/run.env"
+appearance=$(osascript -e 'tell application "System Events" to tell appearance preferences to get dark mode')
+finish() { osascript -e "tell application \"System Events\" to tell appearance preferences to set dark mode to $appearance" || true; }
+trap finish EXIT
+bash "$S/app.sh" doctor "$D1_RUN"
+for attempt in $(seq 1 10); do
+ bash "$S/app.sh" tree "$D1_RUN" > "$D1_RUN/initial.ax.txt"
+ if rg -q 'Projects children' "$D1_RUN/initial.ax.txt"; then break; fi
+done
+if [ "$1" = subtree ]; then
+ bash "$S/app.sh" press "$D1_RUN" 'Projects children'
+ bash "$S/app.sh" press "$D1_RUN" 'Hold durability'
+ bash "$S/app.sh" press "$D1_RUN" 'Fail record trash'
+ bash "$S/app.sh" keys "$D1_RUN" k command
+ bash "$S/app.sh" keys "$D1_RUN" 'Move to trash'
+ osascript -l JavaScript docs/evidence/shell-sidebar/key.js.txt "$APP_PID" 36
+ bash "$S/app.sh" press "$D1_RUN" 'Aelomi'
+ bash "$S/app.sh" press "$D1_RUN" 'Recover record trash'
+ for attempt in $(seq 1 15); do
+  bash "$S/app.sh" tree "$D1_RUN" > "$D1_RUN/subtree.ax.txt"
+  if ! rg -q 'AXButton "Projects"' "$D1_RUN/subtree.ax.txt" && rg -q 'AXTextArea "Page title" = "Aelomi"' "$D1_RUN/subtree.ax.txt"; then break; fi
+ done
+ if rg -q 'AXButton "Projects"' "$D1_RUN/subtree.ax.txt"; then exit 1; fi
+ rg 'AXTextArea "Page title" = "Aelomi"' "$D1_RUN/subtree.ax.txt"
+ for mode in true false; do
+  osascript -e "tell application \"System Events\" to tell appearance preferences to set dark mode to $mode"
+  bash "$S/app.sh" press "$D1_RUN" 'Read draft and retention'
+  bash "$S/app.sh" tree "$D1_RUN" > "$D1_RUN/held-$mode.ax.txt"
+  rg 'RETAINED=1;FAILED=0;CREATE=false' "$D1_RUN/held-$mode.ax.txt"
+  rg 'AXTextArea "Page title" = "Aelomi"' "$D1_RUN/held-$mode.ax.txt"
+  bash "$S/app.sh" screenshot "$D1_RUN" "subtree-pending-$mode"
+ done
+ bash "$S/app.sh" press "$D1_RUN" 'Recover durability'
+ for attempt in $(seq 1 15); do
+  bash "$S/app.sh" tree "$D1_RUN" > "$D1_RUN/subtree-recovered.ax.txt"
+  if rg -q 'No page open' "$D1_RUN/subtree-recovered.ax.txt"; then break; fi
+ done
+ rg 'No page open' "$D1_RUN/subtree-recovered.ax.txt"
+ for mode in true false; do
+  osascript -e "tell application \"System Events\" to tell appearance preferences to set dark mode to $mode"
+  bash "$S/app.sh" screenshot "$D1_RUN" "subtree-recovered-$mode"
+ done
+fi
+bash "$S/app.sh" keys "$D1_RUN" q command
+for attempt in $(seq 1 40); do
+ if rg -q 'quit flush via=Exit pending=None' "$D1_RUN/shell.log" && ! kill -0 "$APP_PID" 2>/dev/null; then break; fi
+ sleep 0.5
+done
+rg 'quit flush via=Exit pending=None' "$D1_RUN/shell.log"
+if kill -0 "$APP_PID" 2>/dev/null; then exit 1; fi

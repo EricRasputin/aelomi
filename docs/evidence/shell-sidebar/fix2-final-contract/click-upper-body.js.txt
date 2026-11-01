@@ -1,0 +1,15 @@
+ObjC.import('CoreGraphics');
+function run(argv) {
+ const se = Application('System Events');
+ const p = se.processes.whose({ unixId: Number(argv[0]) })[0];
+ p.frontmost = true;
+ se.keyCode(121); delay(0.6);
+ se.keyCode(121); delay(1);
+ const position = p.windows[0].position();
+ const point = $.CGPointMake(position[0] + 400, position[1] + 125);
+ $.CGEventPost($.kCGHIDEventTap, $.CGEventCreateMouseEvent(null, $.kCGEventLeftMouseDown, point, $.kCGMouseButtonLeft));
+ $.CGEventPost($.kCGHIDEventTap, $.CGEventCreateMouseEvent(null, $.kCGEventLeftMouseUp, point, $.kCGMouseButtonLeft));
+ delay(0.5);
+ se.keystroke('Upper edge stays visible ');
+ delay(1);
+}

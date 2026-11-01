@@ -43,6 +43,8 @@ Keep implementation details out of the map. Name only user paths, stable handles
 
 ## Features
 
+- [Sidebar, empty state, and editable title](./shell-sidebar.md) covers page creation, title input and Undo, disclosure persistence, sidebar toggle, and open-page trash.
+
 - [Getting started](./getting-started.md) covers the fresh-folder seed, editable body, and reuse after relaunch.
 
 - [App window](./app-window.md) covers the single window, its macOS controls, the native menu bar, and the welcome content.

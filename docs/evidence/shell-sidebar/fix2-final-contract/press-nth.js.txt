@@ -1,0 +1,9 @@
+function run(argv) {
+ const se=Application('System Events');
+ const p=se.processes.whose({unixId:Number(argv[0])})[0];
+ const queue=[p.windows[0]], found=[];
+ const get=(e,k)=>{try{return e[k]();}catch(_){return null;}};
+ while(queue.length){const e=queue.shift();if(get(e,'role')==='AXButton' && (get(e,'name')||get(e,'description'))===argv[1]) found.push(e);try{for(let i=0;i<e.uiElements.length;i++)queue.push(e.uiElements[i]);}catch(_){}}
+ if(!found[Number(argv[2])])throw new Error('button occurrence missing');
+ found[Number(argv[2])].actions.whose({name:'AXPress'})[0].perform();
+}

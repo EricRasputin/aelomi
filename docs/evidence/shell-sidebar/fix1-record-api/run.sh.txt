@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# Run from the repository root with no other dev instance from this worktree.
+E=docs/evidence/shell-sidebar/fix1-record-api
+S=.claude/skills/verify-aelomi/scripts
+mkdir -p .local-gate
+cp docs/evidence/shell-sidebar/keyboard-lock.py.txt /tmp/aelomi-d1-lock.py
+cp "$E/native-probe.mjs.txt" .local-gate/native-probe.ts
+cp index.html .local-gate/index-before-native.html
+D1_RUN=
+D1_APPEARANCE=
+finish() {
+  cp .local-gate/index-before-native.html index.html
+  rm -f .local-gate/native-probe.ts
+  if [ -n "$D1_APPEARANCE" ]; then
+    osascript -e "tell application \"System Events\" to tell appearance preferences to set dark mode to $D1_APPEARANCE" || true
+  fi
+  python3 /tmp/aelomi-d1-lock.py release
+  if [ -n "$D1_RUN" ]; then bash "$S/app.sh" cleanup "$D1_RUN"; fi
+}
+trap finish EXIT
+python3 - <<'PATCH'
+from pathlib import Path
+p=Path('index.html')
+p.write_text(p.read_text().replace('</body>', '<script type="module" src="/.local-gate/native-probe.ts"></script>\n</body>'))
+PATCH
+D1_RUN=$(env -u AELOMI_DATA_DIR bash "$S/app.sh" launch dev --timeout 900)
+bash "$S/app.sh" doctor "$D1_RUN"
+python3 /tmp/aelomi-d1-lock.py
+D1_APPEARANCE=$(osascript -e 'tell application "System Events" to tell appearance preferences to get dark mode')
+bash "$S/app.sh" press "$D1_RUN" 'Fail record creates'
+bash "$S/app.sh" press "$D1_RUN" 'New page'
+bash "$S/app.sh" screenshot "$D1_RUN" create-retrying
+bash "$S/app.sh" press "$D1_RUN" 'Recover record creates'
+for attempt in $(seq 1 10); do
+  bash "$S/app.sh" tree "$D1_RUN" > "$D1_RUN/ready.ax.txt"
+  if rg -q 'AXTextArea "Page title"' "$D1_RUN/ready.ax.txt"; then break; fi
+done
+bash "$S/app.sh" keys "$D1_RUN" 'API notes'
+source "$D1_RUN/run.env"
+osascript -l JavaScript docs/evidence/shell-sidebar/key.js.txt "$APP_PID" 36
+bash "$S/app.sh" keys "$D1_RUN" 'body token'
+bash "$S/app.sh" press "$D1_RUN" 'Fail record renames'
+bash "$S/app.sh" focus "$D1_RUN" 'Page title'
+bash "$S/app.sh" keys "$D1_RUN" a command
+bash "$S/app.sh" keys "$D1_RUN" 'Pending native title'
+bash "$S/app.sh" screenshot "$D1_RUN" title-retrying
+bash "$S/app.sh" press "$D1_RUN" 'Recover record renames'
+for attempt in $(seq 1 10); do
+  bash "$S/app.sh" press "$D1_RUN" 'Read draft and retention'
+  bash "$S/app.sh" tree "$D1_RUN" > "$D1_RUN/ack.ax.txt"
+  if rg -q 'DRAFT=none;RETAINED=0;ERROR=none' "$D1_RUN/ack.ax.txt"; then break; fi
+done
+rg 'DRAFT=none;RETAINED=0;ERROR=none' "$D1_RUN/ack.ax.txt"
+bash "$S/app.sh" press "$D1_RUN" 'Fail record trash'
+bash "$S/app.sh" keys "$D1_RUN" k command
+bash "$S/app.sh" focus "$D1_RUN" 'Search pages'
+bash "$S/app.sh" keys "$D1_RUN" 'Move to trash'
+osascript -l JavaScript docs/evidence/shell-sidebar/key.js.txt "$APP_PID" 36
+bash "$S/app.sh" screenshot "$D1_RUN" trash-retrying
+bash "$S/app.sh" press "$D1_RUN" 'Recover record trash'
+for attempt in $(seq 1 10); do
+  bash "$S/app.sh" tree "$D1_RUN" > "$D1_RUN/after-trash.ax.txt"
+  if rg -q 'AXTextArea "Page title" = "Getting started"' "$D1_RUN/after-trash.ax.txt"; then break; fi
+done
+rg 'AXTextArea "Page title" = "Getting started"' "$D1_RUN/after-trash.ax.txt"
+bash "$S/app.sh" keys "$D1_RUN" n command
+bash "$S/app.sh" tree "$D1_RUN" > "$D1_RUN/composition-ready.ax.txt"
+bash "$S/app.sh" keys "$D1_RUN" 'Composition baseline'
+osascript -l JavaScript $E/compose-menu-quit.js.txt "$APP_PID"
+for attempt in $(seq 1 20); do
+  if rg -q 'quit flush via=Exit pending=None' "$D1_RUN/shell.log" && ! kill -0 "$APP_PID" 2>/dev/null; then break; fi
+  sleep 0.5
+done
+rg 'quit flush via=Exit pending=None' "$D1_RUN/shell.log"
+if kill -0 "$APP_PID" 2>/dev/null; then exit 1; fi
+osascript -e "tell application \"System Events\" to tell appearance preferences to set dark mode to $D1_APPEARANCE"
+D1_APPEARANCE=
+python3 /tmp/aelomi-d1-lock.py release
+bash "$S/app.sh" cleanup "$D1_RUN"
+bash "$E/read-records.sh.txt" "$D1_RUN/data" api
+printf 'Evidence: %s\n' "$D1_RUN"

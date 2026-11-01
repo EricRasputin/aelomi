@@ -1,0 +1,14 @@
+import os,time,pathlib,shutil,sys
+lock=pathlib.Path('/tmp/aelomi-ui.lock');tokenpath=pathlib.Path('/tmp/aelomi-d1-lock-token')
+if len(sys.argv)>1 and sys.argv[1]=='release':
+ if lock.exists() and tokenpath.exists() and (lock/'owner').read_text()==tokenpath.read_text():shutil.rmtree(lock)
+ sys.exit()
+deadline=time.time()+2700
+while True:
+ try:
+  lock.mkdir();token=f'{os.getpid()} {time.strftime("%Y-%m-%dT%H:%M:%SZ",time.gmtime())} D1-shell-sidebar';(lock/'owner').write_text(token);tokenpath.write_text(token);print('LOCKED D1');break
+ except FileExistsError:
+  owner=lock/'owner'
+  if owner.exists() and time.time()-owner.stat().st_mtime>1800:shutil.rmtree(lock);continue
+  if time.time()>deadline:raise SystemExit('INCONCLUSIVE keyboard lock timeout')
+  time.sleep(15)

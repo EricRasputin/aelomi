@@ -3,6 +3,7 @@ import { flushSync } from "react-dom";
 import { commandDispatcher } from "./command-dispatcher";
 import { historyCommand } from "./editor/history-commands";
 import { commands, events } from "./ipc";
+import { connectShortcutEvents } from "./shortcut-events";
 import { usePaletteStore } from "./stores/palette";
 import { useSettingsDialogStore } from "./stores/settings-dialog";
 
@@ -24,28 +25,12 @@ export function useShortcutCommands() {
         },
       }),
     ];
-    let composing = false;
-    const compositionstart = () => {
-      composing = true;
-    };
-    const compositionend = () => {
-      composing = false;
-    };
-    const keydown = (event: KeyboardEvent) =>
-      commandDispatcher.keydown(event, document.activeElement, composing);
-    window.addEventListener("keydown", keydown, true);
-    window.addEventListener("compositionstart", compositionstart, true);
-    window.addEventListener("compositionend", compositionend, true);
+    const connection = connectShortcutEvents(commandDispatcher);
     let disposed = false;
     let unlisten: (() => void) | undefined;
     void events.menuCommand
       .listen(({ payload }) => {
-        if (!disposed)
-          commandDispatcher.dispatch(payload.command, {
-            source: "menu",
-            target: document.activeElement,
-            isComposing: composing,
-          });
+        if (!disposed) connection.menu(payload.command);
       })
       .then((stop) => {
         if (disposed) stop();
@@ -57,9 +42,7 @@ export function useShortcutCommands() {
     return () => {
       disposed = true;
       unlisten?.();
-      window.removeEventListener("keydown", keydown, true);
-      window.removeEventListener("compositionstart", compositionstart, true);
-      window.removeEventListener("compositionend", compositionend, true);
+      connection.dispose();
       for (const stop of unregister) stop();
     };
   }, []);

@@ -20,10 +20,13 @@ import {
 
 export type RecordCommandResult<T> =
   | { status: "ok"; data: T }
-  | { status: "error"; error: RecordCommandError };
+  | { status: "error"; error: RecordCommandError; accepted?: true };
 type Transport = typeof import("./bindings").commands;
 type Commands = Omit<Transport, "pageCreate" | "pageRename" | "pageTrash"> & {
-  pageCreate: (parentId: PageId | null) => Promise<RecordCommandResult<PageId>>;
+  pageCreate: (
+    parentId: PageId | null,
+    pageId?: PageId,
+  ) => Promise<RecordCommandResult<PageId>>;
   pageRename: (
     pageId: PageId,
     title: string,
@@ -175,7 +178,11 @@ export function withRecordCommands(transport: Transport): Commands {
         if (!active()) return true;
         if (flushed.status === "error") {
           if (typeof flushed.error === "object") return retain(flushed.error);
-          const failure = { status: "error", error: flushed.error } as const;
+          const failure = {
+            status: "error",
+            error: flushed.error,
+            accepted: true,
+          } as const;
           settle(job, failure);
           job.resolve(failure);
           return true;
@@ -230,9 +237,8 @@ export function withRecordCommands(transport: Transport): Commands {
       }
       await transport.quitAnyway();
     },
-    pageCreate: (parentId) => {
+    pageCreate: (parentId, pageId = newPageId()) => {
       if (!commandsAccepted()) return Promise.resolve(quitting);
-      const pageId = crypto.randomUUID().replaceAll("-", "");
       const job: Extract<Job, { op: "create" }> = {
         ...attempt<PageId>("create", pageId),
         op: "create",
@@ -280,4 +286,8 @@ export function onRecordCommand(listener: () => void): () => void {
   return () => {
     listeners.delete(listener);
   };
+}
+
+export function newPageId(): PageId {
+  return crypto.randomUUID().replaceAll("-", "");
 }

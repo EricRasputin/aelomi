@@ -415,6 +415,79 @@ test("SHELL-6 Close Window dismisses Settings and the palette before closing the
   ).toEqual([{ command: "closeWindow", args: [] }]);
 });
 
+test("SHELL-6 sidebar shortcuts resume after Settings closes", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const sidebar = page.getByRole("navigation", { name: "Pages" });
+  await expect(sidebar).toBeVisible();
+  await page.keyboard.press("Meta+Backslash");
+  await expect(sidebar).toBeHidden();
+  await page.keyboard.press("Meta+Backslash");
+  await expect(sidebar).toBeVisible();
+  await page.keyboard.press("Meta+,");
+  await expect(
+    page.getByRole("dialog", { name: "Settings", exact: true }),
+  ).toBeVisible();
+  await page.keyboard.press("Meta+Backslash");
+  await page.keyboard.press("Meta+n");
+  await page.keyboard.press("Escape");
+  await expect(sidebar).toBeVisible();
+  await expect(
+    page.getByRole("textbox", { name: "Page title", exact: true }),
+  ).toHaveValue("Daily");
+  await page.keyboard.press("Meta+Backslash");
+  await expect(sidebar).toBeHidden();
+  expect(
+    await page.evaluate(() =>
+      window.__aelomiMock?.workspace.tree().pages.map(({ title }) => title),
+    ),
+  ).toEqual(["Daily"]);
+});
+
+test("SHELL-10 Settings stays dimmed through Asking and Keep app open restores the selected radio", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(page.getByRole("textbox", { name: "Page body" })).toHaveText(
+    "plan",
+  );
+  await page.clock.install();
+  await page.clock.pauseAt(new Date());
+  await page.evaluate(() =>
+    window.__aelomiMock?.settings.refuseUpdates({ Io: "Settings read denied" }),
+  );
+  await page.keyboard.press("Meta+,");
+  await page.getByRole("radio", { name: "Dark", exact: true }).click();
+  await page.evaluate(() => window.__aelomiMock?.quit.request());
+  await page.clock.runFor(1);
+  await expect(page.getByRole("alertdialog")).toContainText(
+    "Settings changes have not been saved.",
+  );
+  const settings = page.locator(".settings-dialog");
+  await expect(settings).toBeVisible();
+  await expect(settings.locator('input[value="Dark"]')).toBeDisabled();
+  await expect(settings.locator(".theme-choices")).toHaveCSS("opacity", "0.5");
+  await page.evaluate(() => window.__aelomiMock?.settings.refuseUpdates(null));
+  await page.getByRole("button", { name: "Keep app open" }).click();
+  const dark = page.getByRole("radio", { name: "Dark", exact: true });
+  await expect(dark).toBeEnabled();
+  await expect(dark).toBeFocused();
+  await expect(dark).toBeChecked();
+  await expect(settings.locator(".theme-choices")).toHaveCSS("opacity", "1");
+  await expect
+    .poll(() => page.evaluate(() => window.__aelomiMock?.settings.get()))
+    .toEqual({
+      status: "ok",
+      data: {
+        theme: "Dark",
+        open_page: null,
+        recent_pages: [],
+        expanded_rows: [],
+      },
+    });
+});
+
 test("SHELL-5 theme switches leave bullet markers without animations", async ({
   page,
 }) => {

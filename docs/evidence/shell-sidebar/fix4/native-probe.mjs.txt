@@ -1,0 +1,19 @@
+import { commands } from '/src/ipc/index.ts';
+import { useNewPagesStore } from '/src/shell/new-pages.ts';
+function mount(){
+if(!document.querySelector('.shell-notice')){requestAnimationFrame(mount);return;}
+const panel=document.createElement('div');
+panel.style.cssText='position:fixed;bottom:6px;right:6px;z-index:1000;display:flex;gap:8px;max-width:95vw;flex-wrap:wrap;padding:6px;background:var(--background);border:1px solid var(--border);font:11px system-ui';
+const output=document.createElement('span');
+function button(label, action){const b=document.createElement('button');b.textContent=label;b.type='button';b.addEventListener('click',action);panel.append(b);}
+const medias=[];
+function collect(rules){for(const rule of rules){if(rule instanceof CSSMediaRule && rule.conditionText.includes('prefers-color-scheme: dark')) medias.push(rule); if('cssRules' in rule) collect(rule.cssRules);}}
+for(const sheet of document.styleSheets){try{collect(sheet.cssRules);}catch{}}
+function mode(dark){for(const rule of medias) rule.media.mediaText=dark?'all':'not all';document.documentElement.style.colorScheme=dark?'dark':'light';output.textContent=`App-only ${dark?'dark':'light'} CSS preview`;}
+button('Preview light',()=>mode(false));button('Preview dark',()=>mode(true));
+const originalStatus=document.querySelector('.shell-notice');
+button('Read proof',async()=>{const title=document.querySelector('[data-testid="page-title"]');const id=location.pathname.split('/').at(-1);const reply=await commands.pageTree();const value={route:location.pathname,title:title?.value,readOnly:title?.readOnly,focused:document.activeElement===title,stage:useNewPagesStore.getState().pages.get(id),body:!!document.querySelector('[data-testid="page-editor"]'),sameStatus:originalStatus===document.querySelector('.shell-notice'),status:originalStatus?.textContent,described:!title?.getAttribute('aria-describedby')||!!document.getElementById(title.getAttribute('aria-describedby')),tree:reply.status==='ok'?reply.data.pages.map(p=>p.title):reply};output.textContent=JSON.stringify(value);console.log('FIX4_PROOF',value);await commands.devProbeLog('FIX4_PROOF '+JSON.stringify(value));});
+panel.append(output);document.body.append(panel);
+
+}
+mount();

@@ -1,0 +1,36 @@
+import { createRequire } from 'node:module';
+import { resolve } from 'node:path';
+import { writeFile } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
+const require = createRequire(resolve('package.json'));
+const { webkit } = require('@playwright/test');
+const label = process.argv[2];
+const child = spawn(process.execPath, [resolve('node_modules/vite/bin/vite.js'),'preview','--mode','mock','--host','127.0.0.1','--port','4398','--strictPort'], { stdio: 'ignore' });
+let browser;
+try {
+ for (let i=0;i<100;i++) { try { if ((await fetch('http://127.0.0.1:4398')).ok) break; } catch {} await new Promise(r=>setTimeout(r,100)); }
+ browser = await webkit.launch();
+ const context = await browser.newContext({ serviceWorkers: 'block' });
+ await context.route('**/*', route => { const url = new URL(route.request().url()); return url.hostname === '127.0.0.1' ? route.continue() : route.abort(); });
+ await context.tracing.start({ screenshots: true, snapshots: true });
+ const page = await context.newPage();
+ await page.addInitScript(() => {
+  window.__aelomiMockSetup = { pages: [{id:'a',title:'Alpha'}], bodies:{a:[{id:'one',content:['Original body']}]}};
+  const marks = [], frames = [];
+  Object.assign(window, { coldProfile: { marks, frames } });
+  const seen = new Set();
+  new MutationObserver(() => {
+   for (const [label, selector] of [['title','[data-testid="page-title"]'], ['slot','.page-body'], ['editor','[contenteditable="true"]']]) {
+    if (!seen.has(label) && document.querySelector(selector)) { seen.add(label); marks.push({ label, at: performance.now() }); }
+   }
+  }).observe(document, {subtree:true,childList:true,attributes:true});
+  function tick(at) { frames.push(at); if (!seen.has('editor')) requestAnimationFrame(tick); }
+  requestAnimationFrame(tick);
+ });
+ await page.goto('http://127.0.0.1:4398/page/a');
+ await page.getByRole('textbox',{name:'Page body'}).waitFor();
+ const data = await page.evaluate(() => ({ ...window.coldProfile, resources: performance.getEntriesByType('resource').filter(e=>e.name.includes('page-view-')).map(e=>({start:e.startTime,end:e.responseEnd,duration:e.duration})), body:document.querySelector('[contenteditable="true"]')?.textContent }));
+ await writeFile(`/tmp/aelomi-d1-fix5-perf/profile-${label}.json`, JSON.stringify(data,null,2));
+ await context.tracing.stop({path:`/tmp/aelomi-d1-fix5-perf/profile-${label}.zip`});
+ console.log(label, JSON.stringify(data));
+} finally { await browser?.close(); child.kill('SIGTERM'); }

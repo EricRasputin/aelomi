@@ -1,0 +1,50 @@
+import { commands } from '/src/ipc/index.ts';
+import { usePageTreeStore } from '/src/stores/page-tree.ts';
+const panel = document.createElement('div');
+panel.style.cssText = 'position:fixed;bottom:8px;right:8px;z-index:1000;background:var(--background);padding:6px;font:11px system-ui;border:1px solid var(--border);display:flex;gap:4px;max-width:80vw;flex-wrap:wrap';
+const output = document.createElement('span');
+function button(label, action) {
+ const b = document.createElement('button'); b.textContent = label; b.type = 'button'; b.addEventListener('click', action); panel.append(b);
+}
+const readTree = commands.pageTree;
+button('Hold title refresh', async () => {
+ commands.pageTree = async () => ({status:'error',error:{Io:'synthetic tree read outage'}});
+ await usePageTreeStore.getState().refresh();
+ output.textContent = 'READ_FAILED';
+});
+button('Recover title refresh', async () => {
+ commands.pageTree = readTree;
+ await usePageTreeStore.getState().refresh();
+ output.textContent = 'READ_RECOVERED';
+});
+button('Arm title composition', () => {
+ const field = document.querySelector('[aria-label="Page title"]');
+ field.focus(); field.setSelectionRange(0, field.value.length);
+ field.dispatchEvent(new CompositionEvent('compositionstart', {bubbles:true,data:'に'}));
+ document.execCommand('insertText', false, 'に');
+ field.addEventListener('blur', () => queueMicrotask(() => {
+  Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(field,'D1 native Alpha');
+  field.dispatchEvent(new CompositionEvent('compositionend', {bubbles:true,data:'D1 native Alpha'}));
+  field.dispatchEvent(new InputEvent('input', {bubbles:true,inputType:'insertFromComposition',data:'D1 native Alpha'}));
+ }),{once:true});
+ output.textContent = 'COMPOSITION_ARMED';
+});
+button('Place body caret near top', () => {
+ const body = document.querySelector('[contenteditable="true"]');
+ if (!body) { output.textContent = 'NO_BODY'; return; }
+ const walker = document.createTreeWalker(body,NodeFilter.SHOW_TEXT);
+ let text;
+ while (text = walker.nextNode()) {
+  const offset = text.textContent.indexOf('caret-visible');
+  if (offset < 0) continue;
+  const range = document.createRange();
+  range.setStart(text,offset+'caret-visible'.length); range.collapse(true);
+  body.focus({preventScroll:true});
+  const selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
+  text.parentElement.scrollIntoView({block:'start'});
+  output.textContent = `CARET_SCROLL_PREPARED;BODY_FOCUSED=${document.activeElement === body}`;
+  return;
+ }
+ output.textContent = 'NO_CARET_MARKER';
+});
+panel.append(output); document.body.append(panel);

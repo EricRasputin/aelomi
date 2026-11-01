@@ -42,6 +42,11 @@ function withoutInvalidPageFields(patch: SettingsPatch): SettingsPatch | null {
     !isPageId(patch.open_page.Set.page_id)
   )
     delete valid.open_page;
+  if (Object.keys(valid).length === Object.keys(patch).length) {
+    delete valid.expanded_rows;
+    delete valid.recent_pages;
+    delete valid.open_page;
+  }
   return Object.keys(valid).length < Object.keys(patch).length &&
     Object.keys(valid).length > 0
     ? valid
@@ -57,23 +62,28 @@ export function createSettingsWriteJob(
   let timer: ReturnType<typeof setTimeout> | undefined;
   let backoff = storageRetry.firstMs;
   const job = {};
-  let retainedError: SettingsWriteError | null = null;
-  let stopAdmission: (() => void) | undefined;
+  let retained: { error: SettingsWriteError | null } | null = null;
+  const retain = () => {
+    retained ??= { error: null };
+    retainCommand(job, { retry: pump, docs: [], settings: true });
+  };
   const forget = () => {
     forgetCommand(job);
-    retainedError = null;
-    stopAdmission?.();
-    stopAdmission = undefined;
+    retained = null;
     backoff = storageRetry.firstMs;
   };
   const pump = () => {
     clearTimeout(timer);
-    if (running || pending === null || !commandsAccepted()) return;
+    if (running || pending === null) return;
+    if (!commandsAccepted()) {
+      retain();
+      return;
+    }
     running = true;
     void trackCommand(
       (async () => {
         try {
-          while (pending !== null) {
+          while (pending !== null && commandsAccepted()) {
             const patch = pending;
             pending = null;
             let failure: SettingsWriteError | null = null;
@@ -91,14 +101,13 @@ export function createSettingsWriteJob(
               };
             }
             if (failure !== null) {
-              if (retryCommandError(failure, retainedError !== null)) {
+              if (retryCommandError(failure, retained !== null)) {
                 pending = mergePatch(patch, pending);
-                retainCommand(job, { retry: pump, docs: [], settings: true });
-                if (failure !== "Quitting" || retainedError === null) {
-                  retainedError = failure;
+                retain();
+                if (failure !== "Quitting" || retained?.error === null) {
+                  retained = { error: failure };
                   report({ kind: "retrying", error: failure });
                 }
-                stopAdmission ??= onCommandAdmissionOpen(pump);
                 timer = setTimeout(pump, backoff);
                 backoff = Math.min(backoff * 2, storageRetry.maxMs);
                 return;
@@ -116,10 +125,12 @@ export function createSettingsWriteJob(
           }
         } finally {
           running = false;
+          if (pending !== null) retain();
         }
       })(),
     );
   };
+  onCommandAdmissionOpen(pump);
   return (patch: SettingsPatch) => {
     pending = mergePatch(pending, patch);
     pump();

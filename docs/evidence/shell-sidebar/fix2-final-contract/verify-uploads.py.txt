@@ -1,0 +1,40 @@
+from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
+import hashlib,json,re,subprocess,struct,zlib
+root=Path.cwd()
+url=(root/'.local-gate/native-comment-url.txt').read_text().strip()
+comment_id=url.split('issuecomment-')[-1]
+reply=subprocess.check_output(['gh','api',f'repos/aelomi/aelomi/issues/comments/{comment_id}'],text=True)
+comment=json.loads(reply)
+(root/'.local-gate/native-posted-comment.json').write_text(reply)
+images=dict(re.findall(r'!\[([^]]+)\]\((https://[^)]+)\)',comment['body']))
+entries=json.loads((root/'.local-gate/published-files.json').read_text())
+assert len(images)==len(entries),(len(images),len(entries))
+out=Path((root/'.local-gate/native-run.txt').read_text().strip())/'published'
+out.mkdir(exist_ok=True)
+def check_image(entry):
+ image_url=images[entry['label']]
+ target=out/entry['label']
+ subprocess.run(['curl','--disable','--fail','--silent','--show-error','--location',image_url,'--output',str(target)],check=True)
+ data=target.read_bytes()
+ assert data.startswith(b'\x89PNG\r\n\x1a\n')
+ offset=8
+ compressed=[]
+ while offset<len(data):
+  size=struct.unpack_from('>I',data,offset)[0]
+  kind=data[offset+4:offset+8]
+  payload=data[offset+8:offset+8+size]
+  crc=struct.unpack_from('>I',data,offset+8+size)[0]
+  assert zlib.crc32(kind+payload)==crc
+  if kind==b'IDAT': compressed.append(payload)
+  offset+=size+12
+ assert offset==len(data)
+ assert len(zlib.decompress(b''.join(compressed)))>0
+ original=Path(entry['path']).read_bytes()
+ published=target.read_bytes()
+ assert original==published,entry['label']
+ entry.update({'url':image_url,'bytes':len(original),'sha256':hashlib.sha256(original).hexdigest()})
+with ThreadPoolExecutor(max_workers=8) as executor:
+ list(executor.map(check_image, entries))
+(root/'.local-gate/published-files.json').write_text(json.dumps(entries,indent=2)+'\n')
+print(f'PASS {len(entries)} public PNGs opened and matched byte-for-byte without authentication')

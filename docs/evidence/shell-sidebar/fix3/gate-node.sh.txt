@@ -1,0 +1,50 @@
+#!/bin/bash
+set -euo pipefail
+D1_GATE_REAL_NODE=${AELOMI_GATE_NODE:-}
+if [ -z "$D1_GATE_REAL_NODE" ]; then
+ D1_GATE_WRAPPER=$(cd "$(dirname "$0")" && pwd)/$(basename "$0")
+ while IFS= read -r D1_GATE_CANDIDATE; do
+  if [ "$D1_GATE_CANDIDATE" != "$D1_GATE_WRAPPER" ]; then D1_GATE_REAL_NODE=$D1_GATE_CANDIDATE; break; fi
+ done < <(type -a -p node)
+fi
+if [ -z "$D1_GATE_REAL_NODE" ]; then echo 'Node executable is unavailable'; exit 1; fi
+case "${1:-}" in
+ scripts/check-search.ts|*/scripts/check-search.ts) D1_GATE_MEASUREMENT=search ;;
+ perf/cold-start.ts|*/perf/cold-start.ts) D1_GATE_MEASUREMENT=cold-start ;;
+ *) exec "$D1_GATE_REAL_NODE" "$@" ;;
+esac
+D1_GATE_LOCK_HELD=false
+D1_GATE_TOKEN=
+D1_GATE_STARTED=$(date +%s)
+D1_GATE_LOCK_STARTED=$D1_GATE_STARTED
+D1_GATE_STABLE=0
+release() {
+ if $D1_GATE_LOCK_HELD && [ "$(cat /tmp/aelomi-ui.lock/owner 2>/dev/null)" = "$D1_GATE_TOKEN" ]; then rm -rf /tmp/aelomi-ui.lock; fi
+ D1_GATE_LOCK_HELD=false
+}
+trap release EXIT
+quiet() {
+ D1_GATE_SAMPLE=$("$D1_GATE_REAL_NODE" -e 'const o=require("node:os");const load=o.loadavg()[0];const limit=o.cpus().length/2;console.log(`load ${load.toFixed(2)}, limit ${limit}`);process.exit(load<=limit?0:1)')
+}
+while true; do
+ if quiet; then D1_GATE_STABLE=$((D1_GATE_STABLE+1)); else D1_GATE_STABLE=0; fi
+ echo "gate $D1_GATE_MEASUREMENT: $D1_GATE_SAMPLE; quiet samples $D1_GATE_STABLE/3"
+ if [ "$D1_GATE_STABLE" -ge 3 ]; then
+  D1_GATE_LOCK_STARTED=$(date +%s)
+  until mkdir /tmp/aelomi-ui.lock 2>/dev/null; do
+   if [ -f /tmp/aelomi-ui.lock/owner ] && [ $(( $(date +%s) - $(stat -f %m /tmp/aelomi-ui.lock/owner) )) -gt 1800 ]; then rm -rf /tmp/aelomi-ui.lock; fi
+   if [ $(( $(date +%s)-D1_GATE_LOCK_STARTED )) -ge 2700 ]; then echo 'INCONCLUSIVE keyboard lock'; exit 1; fi
+   sleep 15
+  done
+  D1_GATE_TOKEN="$$ $(date -u +%FT%TZ) D1-fix3-$D1_GATE_MEASUREMENT"
+  printf '%s\n' "$D1_GATE_TOKEN" > /tmp/aelomi-ui.lock/owner
+  D1_GATE_LOCK_HELD=true
+  if quiet; then break; fi
+  release
+  D1_GATE_STABLE=0
+ fi
+ if [ $(( $(date +%s)-D1_GATE_STARTED )) -ge 1800 ]; then echo 'INCONCLUSIVE host never became quiet'; exit 1; fi
+ sleep 10
+done
+echo "gate $D1_GATE_MEASUREMENT: measurement admitted with $D1_GATE_SAMPLE"
+"$D1_GATE_REAL_NODE" "$@"

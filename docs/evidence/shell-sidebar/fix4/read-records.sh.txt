@@ -1,0 +1,62 @@
+#!/bin/bash
+set -euo pipefail
+folder=${1:?synthetic data folder}
+scenario=${2:?main, outage, or final}
+example=crates/core/examples/d1_fix4_read.rs
+test ! -e "$example"
+trap 'rm -f "$example"' EXIT
+cat > "$example" <<'RS'
+use aelomi_core::storage::{DocId, Store};
+use aelomi_core::workspace::{body, records::read_pages};
+use std::time::{Duration, Instant};
+use yrs::{Doc, Transact, Update, updates::decoder::Decode};
+fn main() {
+    let args: Vec<_> = std::env::args().collect();
+    let folder = std::path::PathBuf::from(&args[1]);
+    assert!(folder.to_string_lossy().contains("/aelomi-verify/"));
+    let store = Store::open(&folder).unwrap();
+    let doc = Doc::new();
+    doc.transact_mut().apply_update(Update::decode_v1(&store.load(&DocId::workspace()).unwrap()).unwrap()).unwrap();
+    let records = read_pages(&doc.transact()).unwrap();
+    let mut active: Vec<_> = records.iter().filter(|(_, r)| r.trash.is_none()).map(|(_,r)| r.title.as_str()).collect();
+    let mut trashed: Vec<_> = records.iter().filter(|(_, r)| r.trash.is_some()).map(|(_,r)| r.title.as_str()).collect();
+    active.sort(); trashed.sort();
+    if args[2] == "main" {
+        assert_eq!(active, vec!["From empty", "Quit exact"]);
+        assert_eq!(trashed, vec!["Getting started", "Round4 renamed"]);
+        assert_eq!(records.len(), 4);
+    } else if args[2] == "final" {
+        assert_eq!(active, vec!["Final head quit", "Final held", "Getting started", "Head certified"]);
+        assert!(trashed.is_empty());
+        assert_eq!(records.len(), 4);
+        let (id, _) = records.iter().find(|(_,r)|r.title=="Final held").unwrap();
+        let page=Doc::new();
+        page.transact_mut().apply_update(Update::decode_v1(&store.load(id.doc_id()).unwrap()).unwrap()).unwrap();
+        let content=body::read_body(&page.transact());
+        assert_eq!(content.blocks.len(), 1);
+        assert_eq!(content.blocks[0].segments, vec![body::Segment::Text("Final body".into())]);
+        println!("PASS recovered body=[Text(\"Final body\")]");
+    } else {
+        assert_eq!(active, vec!["", "", "Held native"]);
+        assert_eq!(trashed, vec!["Getting started"]);
+        assert_eq!(records.len(), 4);
+        let (id, _) = records.iter().find(|(_,r)|r.title=="Held native").unwrap();
+        let page=Doc::new();
+        page.transact_mut().apply_update(Update::decode_v1(&store.load(id.doc_id()).unwrap()).unwrap()).unwrap();
+        let content=body::read_body(&page.transact());
+        assert_eq!(content.blocks.len(), 1);
+        assert_eq!(content.blocks[0].segments, vec![body::Segment::Text("Body recovered".into())]);
+        println!("PASS recovered body=[Text(\"Body recovered\")]");
+    }
+    let (id,_)=records.iter().find(|(_,r)|r.title=="Getting started").unwrap();
+    let original=Doc::new();
+    original.transact_mut().apply_update(Update::decode_v1(&store.load(id.doc_id()).unwrap()).unwrap()).unwrap();
+    let content=body::read_body(&original.transact());
+    let lines:Vec<_>=content.blocks.iter().map(|b|b.segments.clone()).collect();
+    assert_eq!(lines,vec![vec![body::Segment::Text("⌘K to search and run commands".into())],vec![body::Segment::Text("/ to insert a block".into())],vec![body::Segment::Text("[[ to link a page".into())]]);
+    println!("PASS records={} active={active:?} trashed={trashed:?} original_body_unchanged=true",records.len());
+    assert!(store.close(Instant::now()+Duration::from_secs(5)).is_ok());
+}
+RS
+df -h /System/Volumes/Data
+cargo run -p aelomi-core --features test-support --example d1_fix4_read -- "$folder" "$scenario"

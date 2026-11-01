@@ -82,11 +82,17 @@ export function createSettingsMock(deps: {
   let settings = defaultSettings();
   let pending = false;
   let transportFailures = 0;
+  let failReads = false;
   let error: SettingsError | null = null;
   const commands = {
     settingsGet: async () => {
       deps.record({ command: "settingsGet", args: [] });
       await deps.ready();
+      if (failReads)
+        return {
+          status: "error",
+          error: { Io: "synthetic settings read failure" },
+        };
       return deps.status() !== "Ready"
         ? { status: "error", error: "Unavailable" }
         : { status: "ok", data: structuredClone(settings) };
@@ -130,9 +136,13 @@ export function createSettingsMock(deps: {
       settings = defaultSettings();
       pending = false;
       transportFailures = 0;
+      failReads = false;
       error = null;
     },
     control: {
+      failReads(on: boolean) {
+        failReads = on;
+      },
       get: () => commands.settingsGet(),
       update: (patch: SettingsPatch) => commands.settingsUpdate(patch),
       refuseUpdates(value: SettingsError | null) {

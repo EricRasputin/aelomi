@@ -6,7 +6,7 @@ Settings opens inside the main window. Its Appearance control switches the app b
 
 - `settings-modal` opens one modal by ⌘, or Aelomi > Settings… and closes it by Escape, ⌘W or Close Settings, with focus restored (SHELL-6, SHELL-7).
 - `settings-palette` closes an open palette before Settings opens and blocks palette activation until Settings closes (SHELL-6).
-- `settings-theme` applies the chosen appearance to the page, modal and palette without animation (SHELL-5).
+- `settings-theme` applies the chosen appearance to the sidebar, page, modal and palette without animation (SHELL-5).
 - `settings-system` matches the current macOS appearance and follows its later changes (SHELL-5).
 - `settings-durable-theme` reopens with the stored choice on the first content frame (DATA-4, SHELL-8).
 - `settings-recovery-theme` loads the stored choice when a refusal becomes a ready workspace without a relaunch (SHELL-5, SHELL-11).
@@ -22,7 +22,7 @@ Settings opens inside the main window. Its Appearance control switches the app b
 
 ## Driving it with app.sh and mock-drive
 
-Preconditions: Launch through `app.sh` on a fresh synthetic data folder and pass doctor. Acquire the keyboard lock with `"$HOME/.local/state/aelomi-orchestrator/audit/gate/ui-lock.sh" acquire <label>` before any native key, click or transient screenshot, and release it with the same script and label. Read macOS appearance with `defaults read -g AppleInterfaceStyle`; a missing key means Light. Keep that setting unchanged.
+Preconditions: Launch through `app.sh` on a fresh synthetic data folder and pass doctor. Use the repository keyboard-lock protocol at `/tmp/aelomi-ui.lock` before any launch, native key, click or transient screenshot. Use a coordinator-provided acquire/release helper when available and release the lock on every exit path. Read macOS appearance with `defaults read -g AppleInterfaceStyle`; a missing key means Light. Keep that setting unchanged.
 
 - **Shortcut.** Run `$S/app.sh keys "$RUN" , command`. Expect Settings, Appearance, System, Light, Dark and Close Settings in the tree. Capture settings-light. Send Escape by PID-targeted System Events key code 53 and expect Settings gone.
 - **Menu.** AXPress Aelomi in the owned process's menu bar, then Settings… in its first menu. Expect the same Settings modal.
@@ -38,7 +38,7 @@ Preconditions: Launch through `app.sh` on a fresh synthetic data folder and pass
 
 ## Gotchas
 
-- The sidebar assertion belongs to the sibling sidebar PR. This feature map covers the current page and overlays.
+- Dark applies to the sidebar even when macOS is Light. Acceptance 1 checks the sidebar background together with the editor and Settings.
 - An unknown stored theme displays System and remains untouched until an explicit theme pick.
 - The native keyboard helper types text. Send Escape with System Events key code 53 against the owned PID.
 - Settings closes the palette before opening. Closing Settings returns focus to the page target that opened the palette.

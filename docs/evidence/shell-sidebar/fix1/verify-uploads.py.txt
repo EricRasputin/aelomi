@@ -1,0 +1,21 @@
+import concurrent.futures, hashlib, json, re, subprocess
+from pathlib import Path
+root=Path('/tmp/aelomi-d1-upload'); downloads=root/'downloads'; downloads.mkdir(exist_ok=True)
+comments=json.loads((root/'comments.json').read_text())
+items=[]
+for comment in comments.values():
+ ident=comment.rsplit('-',1)[1]
+ body=subprocess.check_output(['gh','api',f'repos/aelomi/aelomi/issues/comments/{ident}','--jq','.body'],text=True)
+ assert '/Users/' not in body and '/tmp/' not in body, body
+ for name,url in re.findall(r'!\[([^]]+)\]\((https://github.com/user-attachments/assets/[^)]+)\)',body): items.append((name,url,comment))
+def verify(item):
+ name,url,comment=item; dest=downloads/name
+ subprocess.run(['curl','--disable','--fail','--location','--silent','--show-error',url,'-o',str(dest)],check=True)
+ data=dest.read_bytes(); original=(root/name).read_bytes()
+ assert data==original and data.startswith(b'\x89PNG\r\n\x1a\n'),name
+ subprocess.run(['sips','-g','pixelWidth','-g','pixelHeight',str(dest)],check=True,capture_output=True)
+ return dict(filename=name,bytes=len(data),sha256=hashlib.sha256(data).hexdigest(),url=url,comment=comment)
+with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+ result=list(pool.map(verify,items))
+(root/'verified.json').write_text(json.dumps(result,indent=2)+'\n')
+print(f'PASS {len(result)} published images downloaded without authentication, opened, and matched byte-for-byte')

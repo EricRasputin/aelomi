@@ -1,0 +1,29 @@
+function run(argv) {
+ const se = Application('System Events');
+ const p = se.processes.whose({ unixId: Number(argv[0]) })[0];
+ p.frontmost = true;
+ for (let n=0; n<50 && !p.frontmost(); n++) delay(0.1);
+ if (!p.frontmost()) throw new Error('target PID did not become frontmost');
+ let quit;
+ for (let i=0; i<p.menuBars[0].menuBarItems.length; i++) {
+  const item=p.menuBars[0].menuBarItems[i];
+  if (item.menus.length===0) continue;
+  for (let j=0; j<item.menus[0].menuItems.length; j++) {
+   const candidate=item.menus[0].menuItems[j];
+   if (/^Quit /i.test(candidate.name())) quit=candidate;
+  }
+ }
+ if (!quit) throw new Error('native Quit menu item not found');
+ const get=(e,key)=>{try{return e[key]();}catch(_){return null;}};
+ const queue=[p.windows[0]];
+ while(queue.length) {
+  const e=queue.shift();
+  if(get(e,'role')==='AXButton' && (get(e,'name')||get(e,'description'))==='Arm title composition') {
+   e.actions.whose({name:'AXPress'})[0].perform();
+   quit.actions.whose({name:'AXPress'})[0].perform();
+   return 'armed composition and immediately pressed the target PID native Quit menu item';
+  }
+  try {for(let i=0;i<e.uiElements.length;i++)queue.push(e.uiElements[i]);}catch(_){}
+ }
+ throw new Error('composition arm button not found');
+}

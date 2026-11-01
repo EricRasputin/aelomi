@@ -5,32 +5,20 @@ import { setActiveEditor } from "../editor/active-editor";
 import { renderSegments, type ShownBlock } from "../editor/body-reader";
 import { inCode, type PickerKey, pickerTrigger } from "../editor/page-picker";
 import { openPage, type PageSession } from "../editor/page-session";
-import { openPageLink, recordPageLinkPointer } from "../editor/url-links";
 import { markPageContent } from "../perf/cold-start";
+import { type FocusRequest, resolvePageFocus } from "../shell/page-focus";
 import { editingPausedCopy, storageErrorText } from "../storage-copy";
-import { displayTitle, linkText, usePageTreeStore } from "../stores/page-tree";
+import { linkText, usePageTreeStore } from "../stores/page-tree";
 import { usePickerStore } from "../stores/picker";
 import { canEdit, useQuitStore } from "../stores/quit";
 import { useRecentPagesStore } from "../stores/recent-pages";
+import { useShellStore } from "../stores/shell";
 import { PagePicker } from "./page-picker";
 
 type ViewState = { kind: "loading" } | PageSession;
 
 export const readOnlyCopy =
   "Read-only. This page holds content this version of Aelomi can't edit without changing it.";
-
-function PageTitle({ pageId }: { pageId: string }) {
-  const title = usePageTreeStore((state) => {
-    if (state.source.kind !== "ready") return null;
-    const page = state.source.byId.get(pageId);
-    return page ? displayTitle(page.title) : null;
-  });
-  return (
-    <h1 className="page-title" data-testid="page-title">
-      {title ?? ""}
-    </h1>
-  );
-}
 
 function ReadOnlyBody({ blocks }: { blocks: readonly ShownBlock[] }) {
   const source = usePageTreeStore((state) => state.source);
@@ -46,17 +34,22 @@ function ReadOnlyBody({ blocks }: { blocks: readonly ShownBlock[] }) {
   );
 }
 
-export function PageView({
+export default function PageView({
   pageId,
   focusBlock,
+  autoFocus,
 }: {
   pageId: string;
   focusBlock: string | undefined;
+  autoFocus: boolean;
 }) {
   const [view, setView] = useState<ViewState>({ kind: "loading" });
   const host = useRef<HTMLDivElement>(null);
+  const focusReady = useRef(false);
+  const mountFocusConsumed = useRef(false);
   const editable = useQuitStore(canEdit);
   const registered = useQuitStore((state) => state.registered);
+  const focusRequest = useShellStore((state) => state.focusRequest);
 
   useEffect(() => {
     useRecentPagesStore.getState().opened(pageId);
@@ -116,7 +109,7 @@ export function PageView({
     };
   }, [session]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!editor) return;
     editor.isEditable = editable;
     if (editable) markPageContent();
@@ -126,28 +119,53 @@ export function PageView({
     if (!editor) return;
     const block = focusBlock && editor.getBlock(focusBlock);
     if (block) {
-      editor.setTextCursorPosition(block, "start");
-      editor.focus();
       const element = host.current?.querySelector<HTMLElement>(
         `[data-node-type="blockOuter"][data-id="${CSS.escape(focusBlock)}"]`,
       );
       element?.scrollIntoView({ block: "center" });
       if (element) flash(element);
-    } else if (editable) {
-      editor.focus();
     }
-  }, [editor, focusBlock, editable]);
+  }, [editor, focusBlock]);
+
+  useLayoutEffect(() => {
+    const deferred = !focusReady.current;
+    focusReady.current = editor !== null && editable;
+    if (!editor || !editable) return;
+    const firstReady = !mountFocusConsumed.current;
+    mountFocusConsumed.current = true;
+    const pending = focusRequest;
+    const intent: FocusRequest | null =
+      pending?.pageId === pageId
+        ? pending
+        : firstReady && autoFocus
+          ? focusBlock
+            ? { pageId, target: "block", blockId: focusBlock }
+            : { pageId, target: "body" }
+          : null;
+    if (!intent || intent.target === "title") return;
+    const active = document.activeElement;
+    const request = resolvePageFocus(intent, {
+      kind: "bodyFocus",
+      deferred,
+      textFieldFocused:
+        (active instanceof HTMLTextAreaElement ||
+          active instanceof HTMLInputElement) &&
+        host.current?.closest("article")?.contains(active) === true,
+    });
+    if (intent === pending) useShellStore.setState({ focusRequest: null });
+    if (!request) return;
+    if (request.target === "bodyStart") {
+      const first = editor.document[0];
+      if (first) editor.setTextCursorPosition(first, "start");
+    } else if (request.target === "block") {
+      const block = editor.getBlock(request.blockId);
+      if (block) editor.setTextCursorPosition(block, "start");
+    }
+    editor.focus();
+  }, [editor, editable, focusRequest, pageId, focusBlock, autoFocus]);
 
   return (
-    <article
-      className="page"
-      aria-label="Page"
-      onPointerDownCapture={recordPageLinkPointer}
-      onClickCapture={openPageLink}
-      onAuxClickCapture={openPageLink}
-      onContextMenuCapture={openPageLink}
-    >
-      <PageTitle pageId={pageId} />
+    <>
       {view.kind === "readOnly" && (
         <>
           <p className="page-notice" data-reason={JSON.stringify(view.reason)}>
@@ -166,7 +184,7 @@ export function PageView({
       )}
       <div ref={host} className="page-body" />
       {view.kind === "editable" && <PagePicker />}
-    </article>
+    </>
   );
 }
 

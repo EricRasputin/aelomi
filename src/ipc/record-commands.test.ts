@@ -5,7 +5,7 @@ import {
   drainCommands,
   setCommandAdmission,
 } from "./pending-commands";
-import { withRecordCommands } from "./record-commands";
+import { newPageId, withRecordCommands } from "./record-commands";
 
 const transport: typeof import("./bindings").commands = mockTransport;
 
@@ -267,4 +267,83 @@ test("failed record retries back off from 100 ms to a five second cap and recove
     await drainCommands();
     vi.useRealTimers();
   }
+});
+
+test("TREE-1 a caller-owned create ID orders its title behind its create", async () => {
+  const calls: unknown[][] = [];
+  const create = transport.pageCreate;
+  const rename = transport.pageRename;
+  vi.spyOn(transport, "pageCreate").mockImplementation((parent, id) => {
+    calls.push(["pageCreate", parent, id]);
+    return create(parent, id);
+  });
+  vi.spyOn(transport, "pageRename").mockImplementation((id, title) => {
+    calls.push(["pageRename", id, title]);
+    return rename(id, title);
+  });
+  const commands = withRecordCommands(transport);
+  const created = commands.pageCreate(null, "c0ffee");
+  const renamed = commands.pageRename("c0ffee", "T");
+  expect(await created).toEqual({ status: "ok", data: "c0ffee" });
+  await renamed;
+  expect(calls).toEqual([
+    ["pageCreate", null, "c0ffee"],
+    ["pageRename", "c0ffee", "T"],
+  ]);
+  expect(newPageId()).toMatch(/^[0-9a-f]{32}$/);
+});
+
+test("TREE-1 a retained create coalesces its queued title to the latest draft", async () => {
+  vi.useFakeTimers();
+  const calls: unknown[][] = [];
+  const create = transport.pageCreate;
+  const rename = transport.pageRename;
+  let failing = true;
+  vi.spyOn(transport, "pageCreate").mockImplementation((parent, id) => {
+    calls.push(["pageCreate", parent, id]);
+    return failing
+      ? Promise.resolve({ status: "error", error: { Io: "held" } })
+      : create(parent, id);
+  });
+  vi.spyOn(transport, "pageRename").mockImplementation((id, title) => {
+    calls.push(["pageRename", id, title]);
+    return rename(id, title);
+  });
+  const commands = withRecordCommands(transport);
+  const pending = [
+    commands.pageCreate(null, "c0ffee"),
+    commands.pageRename("c0ffee", "T1"),
+    commands.pageRename("c0ffee", "T2"),
+  ];
+  await vi.advanceTimersByTimeAsync(0);
+  failing = false;
+  await vi.advanceTimersByTimeAsync(100);
+  await Promise.all(pending);
+  expect(calls).toEqual([
+    ["pageCreate", null, "c0ffee"],
+    ["pageCreate", null, "c0ffee"],
+    ["pageRename", "c0ffee", "T2"],
+  ]);
+  vi.useRealTimers();
+});
+
+test("TREE-1 a terminal durability failure reports that the create was accepted", async () => {
+  vi.useFakeTimers();
+  const create = vi.spyOn(transport, "pageCreate");
+  create.mockResolvedValueOnce({ status: "error", error: { Io: "held" } });
+  vi.spyOn(transport, "storageFlush").mockResolvedValue({
+    status: "error",
+    error: "Unavailable",
+  });
+  const pending = withRecordCommands(transport).pageCreate(null, "c0ffee");
+  await vi.advanceTimersByTimeAsync(100);
+  expect(await pending).toEqual({
+    status: "error",
+    error: "Unavailable",
+    accepted: true,
+  });
+  expect(window.__aelomiMock?.workspace.tree().pages.map((p) => p.id)).toEqual([
+    "c0ffee",
+  ]);
+  vi.useRealTimers();
 });

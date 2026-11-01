@@ -1,0 +1,48 @@
+#!/bin/bash
+set -euo pipefail
+run=${1:?}
+data=${2:-$run/data}
+S=.claude/skills/verify-aelomi/scripts
+LOCK="$HOME/.local/state/aelomi-orchestrator/audit/gate/ui-lock.sh"
+label=pr89-fix4-final-reopen
+mode=$(stat -f %Lp "$data/docs")
+"$LOCK" acquire "$label"
+trap 'chmod "$mode" "$data/docs"; "$LOCK" release "$label"' EXIT
+source "$run/run.env"
+"$S/app.sh" doctor "$run"
+"$S/app.sh" press "$run" 'Final head quit'
+"$S/app.sh" tree "$run" > "$run/quit-relaunch-tree.txt"
+rg -q 'AXTextArea "Page title" = "Final head quit"' "$run/quit-relaunch-tree.txt"
+"$S/app.sh" screenshot "$run" final-quit-relaunch
+chmod 000 "$data/docs"
+osascript -l JavaScript "${AELOMI_FIX4_KEYS:?}" "$APP_PID" new 'Head certified'
+"$S/app.sh" press "$run" 'Read proof'
+"$S/app.sh" press "$run" 'Preview light'
+"$S/app.sh" screenshot "$run" head-held-light
+"$S/app.sh" press "$run" 'Preview dark'
+"$S/app.sh" screenshot "$run" head-held-dark
+chmod "$mode" "$data/docs"
+for attempt in {1..3}; do
+  "$S/app.sh" tree "$run" > "$run/head-recovered-tree.txt"
+  rg -q 'AXTextArea "Page body"' "$run/head-recovered-tree.txt" && break
+done
+rg -q 'AXTextArea "Page body"' "$run/head-recovered-tree.txt"
+"$S/app.sh" press "$run" 'Final held'
+"$S/app.sh" focus "$run" 'Page title'
+osascript -l JavaScript "${AELOMI_FIX4_KEYS:?}" "$APP_PID" end
+"$S/app.sh" keys "$run" x
+"$S/app.sh" press "$run" 'Getting started'
+"$S/app.sh" press "$run" 'Final heldx'
+"$S/app.sh" focus "$run" 'Page title'
+"$S/app.sh" keys "$run" z command
+"$S/app.sh" tree "$run" > "$run/history-undo-tree.txt"
+rg -q 'AXTextArea "Page title" = "Final held"' "$run/history-undo-tree.txt"
+"$S/app.sh" keys "$run" z command,shift
+"$S/app.sh" tree "$run" > "$run/history-redo-tree.txt"
+rg -q 'AXTextArea "Page title" = "Final heldx"' "$run/history-redo-tree.txt"
+"$S/app.sh" keys "$run" z command
+"$S/app.sh" press "$run" 'Read proof'
+"$S/app.sh" screenshot "$run" final-body-relaunch
+"$S/app.sh" keys "$run" q command
+for attempt in {1..75}; do kill -0 "$APP_PID" 2>/dev/null || break; sleep 0.2; done
+if kill -0 "$APP_PID" 2>/dev/null; then echo 'app did not quit'; exit 1; fi

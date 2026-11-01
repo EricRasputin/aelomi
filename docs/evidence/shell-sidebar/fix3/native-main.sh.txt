@@ -1,0 +1,132 @@
+#!/bin/bash
+set -euo pipefail
+S=.claude/skills/verify-aelomi/scripts
+R=$(cat .local-gate/round3/main-run.txt)
+source "$R/run.env"
+D="$R/data"
+root_mode=$(stat -f %Lp "$D")
+docs_mode=$(stat -f %Lp "$D/docs")
+appearance=
+owned=false
+finish() {
+ chmod "$root_mode" "$D"; chmod "$docs_mode" "$D/docs"
+ if [ -n "$appearance" ]; then osascript -e "tell application \"System Events\" to tell appearance preferences to set dark mode to $appearance" || true; fi
+ if $owned && [ "$(cat /tmp/aelomi-ui.lock/owner 2>/dev/null)" = "$token" ]; then rm -rf /tmp/aelomi-ui.lock; fi
+}
+trap finish EXIT
+started=$(date +%s)
+until mkdir /tmp/aelomi-ui.lock 2>/dev/null; do
+ if [ -f /tmp/aelomi-ui.lock/owner ] && [ $(( $(date +%s) - $(stat -f %m /tmp/aelomi-ui.lock/owner) )) -gt 1800 ]; then rm -rf /tmp/aelomi-ui.lock; fi
+ if [ $(( $(date +%s)-started )) -ge 2700 ]; then echo 'INCONCLUSIVE keyboard lock'; exit 1; fi
+ sleep 15
+done
+token="$$ $(date -u +%FT%TZ) D1-fix3-main"
+printf '%s\n' "$token" > /tmp/aelomi-ui.lock/owner
+owned=true
+appearance=$(osascript -e 'tell application "System Events" to tell appearance preferences to get dark mode')
+press() { bash "$S/app.sh" press "$R" "$1"; }
+keys() {
+ if [ "${2:-}" = command ] || [ "${2:-}" = command,shift ]; then
+  osascript -l JavaScript .local-gate/round3/shortcut.js "$APP_PID" "$1" "$2"
+ else bash "$S/app.sh" keys "$R" "$@"; fi
+}
+focus() { bash "$S/app.sh" focus "$R" "$1"; }
+key() { osascript -l JavaScript docs/evidence/shell-sidebar/key.js.txt "$APP_PID" "$1"; }
+shot() { bash "$S/app.sh" screenshot "$R" "$1"; }
+mode() { osascript -e "tell application \"System Events\" to tell appearance preferences to set dark mode to $1"; }
+both() { mode false; shot "$1-light"; mode true; shot "$1-dark"; }
+wait_tree() {
+ for attempt in $(seq 1 15); do
+  bash "$S/app.sh" tree "$R" > "$R/current.ax.txt"
+  if rg -q "$1" "$R/current.ax.txt"; then return; fi
+  sleep 0.2
+ done
+ cat "$R/current.ax.txt"; return 1
+}
+palette() { keys k command; focus 'Search pages'; keys a command; keys "$1"; wait_tree "AXComboBox \"Search pages\" = \"$1\""; }
+trash() { palette 'Move to trash'; key 125; key 36; }
+bash "$S/app.sh" doctor "$R"
+if [ "${1:-all}" = all ]; then
+both seed
+palette to; key 36
+key 53
+wait_tree 'AXTextArea "Page title" = "Getting started"'
+both safe-to-return
+trash
+wait_tree 'No page open'
+both empty
+osascript -l JavaScript docs/evidence/shell-sidebar/fix2-final-contract/press-nth.js.txt "$APP_PID" 'New page' 1
+keys 'D1 native Alpha'
+wait_tree 'AXTextArea "Page title" = "D1 native Alpha"'
+key 36; keys 'body token'
+keys '\' command; both sidebar-hidden; keys '\' command
+focus 'Page body'
+chmod 500 "$D"; chmod 000 "$D/docs"
+press 'New page'
+wait_tree 'Creating page'
+wait_tree "Changes aren't being saved"
+both button-create-pending
+keys 'Button recovered'
+chmod "$root_mode" "$D"; chmod "$docs_mode" "$D/docs"
+wait_tree 'AXTextArea "Page title" = "Button recovered"'
+keys x
+wait_tree 'AXTextArea "Page title" = "Button recoveredx"'
+both button-create-focused
+press 'D1 native Alpha'
+fi
+for theme in ${1:-light dark}; do
+ if [ "$theme" = all ]; then continue; fi
+ if [ "$theme" = light ]; then mode false; else mode true; fi
+ focus 'Page body'
+ chmod 500 "$D"; chmod 000 "$D/docs"
+ osascript -l JavaScript .local-gate/round3/immediate.js "$APP_PID" "Immediate $theme"
+ wait_tree "AXTextField \"\" = \"Immediate $theme\"|Immediate $theme"
+ wait_tree "Changes aren't being saved"
+ shot "immediate-pending-$theme"
+ keys n command
+ chmod "$root_mode" "$D"; chmod "$docs_mode" "$D/docs"
+ wait_tree "AXTextArea \"Page title\" = \"Immediate $theme\""
+ keys x
+ wait_tree "AXTextArea \"Page title\" = \"Immediate ${theme}x\""
+ keys z command
+ keys z command
+ wait_tree 'AXTextArea "Page title"$'
+ keys z command,shift
+ wait_tree "AXTextArea \"Page title\" = \"Immediate $theme\""
+ shot "immediate-created-$theme"
+ focus 'Page title'; keys a command; keys "Immediate $theme"; keys x
+ wait_tree "AXTextArea \"Page title\" = \"Immediate ${theme}x\""
+ press 'D1 native Alpha'; press "Immediate ${theme}x"; focus 'Page title'
+ keys z command
+ wait_tree "AXTextArea \"Page title\" = \"Immediate $theme\""
+ shot "navigation-undo-$theme"
+ keys z command,shift
+ wait_tree "AXTextArea \"Page title\" = \"Immediate ${theme}x\""
+ shot "navigation-redo-$theme"
+ palette to; key 36
+ key 53
+ wait_tree "AXButton \"Immediate ${theme}x\""
+ shot "safe-to-return-$theme"
+ press 'D1 native Alpha'
+ press 'Hold body delivery'
+ focus 'Page body'; keys a command; keys "body token $theme"
+ press 'Arm drain navigation attempt'
+ wait_tree 'DRAIN_ATTEMPT_ARMED'
+ keys q command
+ bash "$S/app.sh" wait-dialog "$R" 'Quit with unsaved changes?' 10
+ shot "drain-blocked-$theme"
+ press 'Keep app open'
+ wait_tree 'TITLE=D1 native Alpha;FROZEN=true;QUIT=draining;PALETTE=false'
+ shot "drain-page-preserved-$theme"
+ press 'Release body delivery'
+ wait_tree 'DELIVERY_RELEASED'
+ echo "PASS $theme safe trash, immediate title, navigation history, drain page freeze"
+done
+keys q command
+for attempt in $(seq 1 60); do
+ if ! kill -0 "$APP_PID" 2>/dev/null; then break; fi
+ sleep 0.3
+done
+if kill -0 "$APP_PID" 2>/dev/null; then echo 'app did not quit'; exit 1; fi
+rg 'quit flush via=Exit pending=None' "$R/shell.log"
+echo 'PASS native main'

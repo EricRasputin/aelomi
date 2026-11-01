@@ -1,0 +1,46 @@
+#!/bin/bash
+set -euo pipefail
+S=.claude/skills/verify-aelomi/scripts
+R=$(cat .local-gate/round3/nested-run.txt)
+source "$R/run.env"
+owned=false
+appearance=
+finish() {
+ if [ -n "$appearance" ]; then osascript -e "tell application \"System Events\" to tell appearance preferences to set dark mode to $appearance" || true; fi
+ if $owned && [ "$(cat /tmp/aelomi-ui.lock/owner 2>/dev/null)" = "$token" ]; then rm -rf /tmp/aelomi-ui.lock; fi
+}
+trap finish EXIT
+started=$(date +%s)
+until mkdir /tmp/aelomi-ui.lock 2>/dev/null; do
+ if [ -f /tmp/aelomi-ui.lock/owner ] && [ $(( $(date +%s) - $(stat -f %m /tmp/aelomi-ui.lock/owner) )) -gt 1800 ]; then rm -rf /tmp/aelomi-ui.lock; fi
+ if [ $(( $(date +%s)-started )) -ge 2700 ]; then echo 'INCONCLUSIVE keyboard lock'; exit 1; fi
+ sleep 15
+done
+token="$$ $(date -u +%FT%TZ) D1-fix3-nested"
+printf '%s\n' "$token" > /tmp/aelomi-ui.lock/owner
+owned=true
+appearance=$(osascript -e 'tell application "System Events" to tell appearance preferences to get dark mode')
+bash "$S/app.sh" doctor "$R"
+if [ "$1" = expand ]; then bash "$S/app.sh" press "$R" 'Projects children'; fi
+for mode in false true; do
+ osascript -e "tell application \"System Events\" to tell appearance preferences to set dark mode to $mode"
+ bash "$S/app.sh" screenshot "$R" "$1-$mode"
+done
+if [ "$1" = expand ]; then
+ bash "$S/app.sh" press "$R" 'Projects children'
+ for mode in false true; do
+  osascript -e "tell application \"System Events\" to tell appearance preferences to set dark mode to $mode"
+  bash "$S/app.sh" screenshot "$R" "collapsed-$mode"
+ done
+fi
+if [ "$1" = reopen ]; then
+ if rg -q 'AXButton "Aelomi"' "$R/reopen-false.ax.txt"; then echo 'collapsed child is visible'; exit 1; fi
+fi
+bash "$S/app.sh" keys "$R" q command
+for attempt in $(seq 1 60); do
+ if ! kill -0 "$APP_PID" 2>/dev/null; then break; fi
+ sleep 0.3
+done
+if kill -0 "$APP_PID" 2>/dev/null; then exit 1; fi
+rg 'quit flush via=Exit pending=None' "$R/shell.log"
+echo "PASS nested $1"

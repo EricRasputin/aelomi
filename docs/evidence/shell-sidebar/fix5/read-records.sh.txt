@@ -1,0 +1,48 @@
+#!/bin/bash
+set -euo pipefail
+create_data=${1:?}
+trash_data=${2:?}
+example=crates/core/examples/d1_fix5_read.rs
+test ! -e "$example"
+trap 'rm -f "$example"' EXIT
+cat > "$example" <<'RS'
+use aelomi_core::storage::{DocId, Store};
+use aelomi_core::workspace::{body, records::read_pages};
+use std::time::{Duration, Instant};
+use yrs::{Doc, Transact, Update, updates::decoder::Decode};
+fn main() {
+    let args: Vec<_> = std::env::args().collect();
+    let folder = std::path::PathBuf::from(&args[1]);
+    assert!(folder.to_string_lossy().contains("/aelomi-verify/"));
+    let store = Store::open(&folder).unwrap();
+    let doc = Doc::new();
+    doc.transact_mut().apply_update(Update::decode_v1(&store.load(&DocId::workspace()).unwrap()).unwrap()).unwrap();
+    let records = read_pages(&doc.transact()).unwrap();
+    let mut active: Vec<_> = records.values().filter(|r| r.trash.is_none()).map(|r| r.title.as_str()).collect();
+    let mut trashed: Vec<_> = records.values().filter(|r| r.trash.is_some()).map(|r| r.title.as_str()).collect();
+    active.sort(); trashed.sort();
+    if args[2] == "create" {
+        assert_eq!(active, vec!["Held round 5 exact recovered", "Instant round 5", "Round5 quit title"]);
+        assert_eq!(records.len(), 4);
+    } else {
+        assert_eq!(active, vec!["Trash fallback", "Trash queue hold"]);
+        assert_eq!(records.len(), 3);
+    }
+    assert_eq!(trashed, vec!["Getting started"]);
+    for (id, record) in &records {
+        let page = Doc::new();
+        page.transact_mut().apply_update(Update::decode_v1(&store.load(id.doc_id()).unwrap()).unwrap()).unwrap();
+        let content = body::read_body(&page.transact());
+        let text: Vec<_> = content.blocks.iter().flat_map(|b| b.segments.clone()).collect();
+        if record.title == "Getting started" {
+            assert_eq!(text, vec![body::Segment::Text("⌘K to search and run commands".into()), body::Segment::Text("/ to insert a block".into()), body::Segment::Text("[[ to link a page".into())]);
+        } else {
+            assert_eq!(text, Vec::<body::Segment>::new());
+        }
+    }
+    println!("PASS records={} active={active:?} trashed={trashed:?} original_body_unchanged=true new_bodies_empty=true", records.len());
+    assert!(store.close(Instant::now() + Duration::from_secs(5)).is_ok());
+}
+RS
+cargo run --release -p aelomi-core --features test-support --example d1_fix5_read -- "$create_data" create
+cargo run --release -p aelomi-core --features test-support --example d1_fix5_read -- "$trash_data" trash

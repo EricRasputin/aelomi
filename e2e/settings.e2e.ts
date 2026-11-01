@@ -1,7 +1,7 @@
 import { expect } from "e2e";
 import { test } from "./fixtures";
 
-test("SHELL-5 acceptance 1: Theme applies Dark to the editor, Settings and command palette", async ({
+test("SHELL-5 acceptance 1: Theme applies Dark to the sidebar, editor, Settings and command palette", async ({
   app,
   browser,
   screen,
@@ -23,15 +23,19 @@ test("SHELL-5 acceptance 1: Theme applies Dark to the editor, Settings and comma
     await browser.evaluate(() => {
       const editor = document.querySelector(".page-body.bn-editor");
       const settings = document.querySelector(".settings-dialog");
-      if (!editor || !settings) throw new Error("Editor or Settings missing");
+      const sidebar = document.querySelector(".sidebar");
+      if (!editor || !settings || !sidebar)
+        throw new Error("Sidebar, editor or Settings missing");
       return {
         theme: document.documentElement.dataset.theme ?? null,
+        sidebar: getComputedStyle(sidebar).backgroundColor,
         editor: getComputedStyle(editor).color,
         settings: getComputedStyle(settings).backgroundColor,
       };
     }),
   ).toEqual({
     theme: "dark",
+    sidebar: "rgb(36, 36, 40)",
     editor: "rgb(237, 237, 240)",
     settings: "rgb(31, 31, 35)",
   });
@@ -59,7 +63,7 @@ test("SHELL-6 acceptance 3: Settings shortcut opens the modal and Escape closes 
   await expect(settings.getByRole("radio", "System")).toBeVisible();
   await browser.keyboard.press("Escape");
   await expect(settings).not.toBeVisible();
-  await expect(screen.getByRole("button", "Ping again")).toBeVisible();
+  await expect(screen.getByRole("navigation", "Pages")).toBeVisible();
 });
 
 test("SHELL-5 acceptance 6: System theme follows changes in the mock macOS appearance", async ({
@@ -74,7 +78,7 @@ test("SHELL-5 acceptance 6: System theme follows changes in the mock macOS appea
     };
   });
   await app.open("/");
-  await expect(screen.getByRole("button", "Ping again")).toBeVisible();
+  await expect(screen.getByRole("navigation", "Pages")).toBeVisible();
   expect(
     await browser.evaluate(() => ({
       theme: document.documentElement.dataset.theme ?? null,

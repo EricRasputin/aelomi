@@ -1,0 +1,38 @@
+function run(argv) {
+  const se = Application('System Events');
+  const proc = se.processes.whose({ unixId: Number(argv[0]) })[0];
+  const action = argv[1];
+  if (action === 'inspect') {
+    proc.frontmost = true;
+    const deadline = Date.now() + 8000;
+    let last;
+    while (Date.now() < deadline) {
+    const queue = proc.windows.length ? [proc.windows[0]] : [], result = { title: null, titleFocused: false, body: null, fields: [] };
+    while (queue.length) {
+      const node = queue.shift();
+      try {
+        const role = node.role();
+        const name = node.name() || node.description() || '';
+        if (role === 'AXTextArea' && name === 'Page title') { result.title = node.value(); result.titleFocused = node.focused(); }
+        if (role === 'AXTextArea' && name === 'Page body') result.body = node.value();
+        if (['AXTextField','AXComboBox'].includes(role)) result.fields.push({ name, value: node.value(), focused: node.focused() });
+        queue.push(...Array.from({ length: node.uiElements.length }, (_, i) => node.uiElements[i]));
+      } catch (_) {}
+    }
+    if (result.title !== null && (!argv[2] || result.title === argv[2])) return JSON.stringify(result);
+    last = result;
+    delay(0.1);
+    }
+    throw Error(JSON.stringify(last));
+  }
+  proc.frontmost = true;
+  if (action === 'new') { se.keyCode(45, { using: ['command down'] }); se.keystroke(argv[2]); }
+  if (action === 'new-quit') { se.keyCode(45, { using: ['command down'] }); se.keystroke(argv[2]); se.keyCode(12, { using: ['command down'] }); }
+  if (action === 'toggle') se.keyCode(42, { using: ['command down'] });
+  if (action === 'return') se.keyCode(36);
+  if (action === 'escape') se.keyCode(53);
+  if (action === 'choose') { se.keyCode(125); se.keyCode(36); }
+  if (action === 'trash') {
+    se.keyCode(40, { using: ['command down'] }); se.keystroke('Move to trash'); se.keyCode(125); se.keyCode(36);
+  }
+}

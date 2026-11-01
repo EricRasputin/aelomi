@@ -75,7 +75,11 @@ test("SHELL-7 composition suppresses keys and menu events until composition ends
       page.getByRole("dialog", { name: "Command palette" }),
     ).toBeHidden();
   }
-  await page.keyboard.press("Meta+k");
+  await body.dispatchEvent("keydown", {
+    key: "k",
+    metaKey: true,
+    isComposing: true,
+  });
   await expect(
     page.getByRole("dialog", { name: "Command palette" }),
   ).toBeHidden();

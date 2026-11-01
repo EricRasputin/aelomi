@@ -1,0 +1,44 @@
+#!/bin/bash
+set -euo pipefail
+E=docs/evidence/shell-sidebar/fix4
+S=.claude/skills/verify-aelomi/scripts
+W=$(mktemp -d /tmp/aelomi-fix4-proof.XXXX)
+probe=.local-gate/fix4-proof-$$
+mkdir -p "$probe"
+cp index.html "$W/index-before.html"
+for file in native-main.sh native-reopen.sh native-final.sh native-final-reopen.sh native-keys.js read-records.sh; do cp "$E/$file.txt" "$W/$file"; done
+cp "$E/native-probe.mjs.txt" "$probe/probe.mjs"
+export AELOMI_FIX4_KEYS="$W/native-keys.js"
+runs=()
+finish() {
+  for run in "${runs[@]}"; do "$S/app.sh" cleanup "$run"; done
+  cp "$W/index-before.html" index.html
+  rm -f "$probe/probe.mjs"
+  rmdir "$probe"
+}
+trap finish EXIT
+python3 - "$probe" <<'PY'
+from pathlib import Path
+import sys
+p=Path('index.html')
+p.write_text(p.read_text().replace('</body>', f'<script type="module" src="/{sys.argv[1]}/probe.mjs"></script>\n</body>'))
+PY
+ls -la "$HOME/Library/Application Support/Aelomi" > "$W/real-before.txt"
+df -h /System/Volumes/Data
+main=$(env -u AELOMI_DATA_DIR "$S/app.sh" launch dev); runs+=("$main")
+bash "$W/native-main.sh" "$main"
+"$S/app.sh" cleanup "$main"
+reopen=$(AELOMI_DATA_DIR="$main/data" "$S/app.sh" launch dev); runs+=("$reopen")
+bash "$W/native-reopen.sh" "$reopen"
+"$S/app.sh" cleanup "$reopen"
+bash "$W/read-records.sh" "$main/data" main
+final=$(env -u AELOMI_DATA_DIR "$S/app.sh" launch dev); runs+=("$final")
+bash "$W/native-final.sh" "$final"
+"$S/app.sh" cleanup "$final"
+reopen=$(AELOMI_DATA_DIR="$final/data" "$S/app.sh" launch dev); runs+=("$reopen")
+bash "$W/native-final-reopen.sh" "$reopen" "$final/data"
+"$S/app.sh" cleanup "$reopen"
+bash "$W/read-records.sh" "$final/data" final
+ls -la "$HOME/Library/Application Support/Aelomi" > "$W/real-after.txt"
+cmp "$W/real-before.txt" "$W/real-after.txt"
+printf '%s\n' "PASS native proof. Runs: ${runs[*]}. Scratch: $W"

@@ -25,7 +25,9 @@ async function openDaily(page: import("@playwright/test").Page) {
 }
 
 const mainInert = (page: import("@playwright/test").Page) =>
-  page.evaluate(() => document.querySelector("main")?.inert ?? null);
+  page.evaluate(
+    () => document.querySelector("main")?.closest("[inert]") !== null,
+  );
 
 test("CMD-1 the key after ⌘K lands in the palette, and Escape returns it to the editor", async ({
   page,
