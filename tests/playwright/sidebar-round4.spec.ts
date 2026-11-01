@@ -1,4 +1,4 @@
-import { expect, type Page, test } from "./fixtures";
+import { afterOutage, expect, type Page, test } from "./fixtures";
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
@@ -88,7 +88,9 @@ test("TREE-1 Command N focuses the real title synchronously and leaves the old b
     "Original body",
   );
   await release(page);
-  await expect.poll(() => tree(page)).toEqual(["Alpha", "Beta", "Q3 plan"]);
+  await expect
+    .poll(() => tree(page), afterOutage)
+    .toEqual(["Alpha", "Beta", "Q3 plan"]);
 });
 
 test("SHELL-4 first Command N accepts typing before the body chunk loads", async ({
@@ -144,8 +146,12 @@ test("TREE-1 held page reopens by row palette and route with no body read or wri
   expect(await bodyCalls(page, id)).toEqual([]);
   await titleOf(page).focus();
   await release(page);
-  await expect.poll(() => tree(page)).toEqual(["Alpha", "Beta", "Held"]);
-  await expect.poll(() => bodyCalls(page, id)).toEqual(["docLoad"]);
+  await expect
+    .poll(() => tree(page), afterOutage)
+    .toEqual(["Alpha", "Beta", "Held"]);
+  await expect
+    .poll(() => bodyCalls(page, id), afterOutage)
+    .toEqual(["docLoad"]);
   await expect(titleOf(page)).toBeFocused();
 });
 
@@ -162,7 +168,9 @@ test("TREE-1 create acknowledgement preserves the caret and every title undo ste
   await expect(titleOf(page)).toHaveValue("Buffered");
   await expect(titleOf(page)).toHaveJSProperty("selectionStart", 4);
   await release(page);
-  await expect.poll(() => tree(page)).toEqual(["Alpha", "Beta", "Buffered"]);
+  await expect
+    .poll(() => tree(page), afterOutage)
+    .toEqual(["Alpha", "Beta", "Buffered"]);
   await expect(titleOf(page)).toHaveJSProperty("selectionStart", 4);
   const undone = ["Bufered", "Bufere", "Bufer", "Bufe", "Buf", "Bu", "B", ""];
   for (const value of undone) {
@@ -171,7 +179,9 @@ test("TREE-1 create acknowledgement preserves the caret and every title undo ste
   }
   for (let i = 0; i < 8; i++) await page.keyboard.press("Meta+Shift+z");
   await expect(titleOf(page)).toHaveValue("Buffered");
-  await expect.poll(() => tree(page)).toEqual(["Alpha", "Beta", "Buffered"]);
+  await expect
+    .poll(() => tree(page), afterOutage)
+    .toEqual(["Alpha", "Beta", "Buffered"]);
 });
 
 test("TREE-1 two titled activations own distinct IDs through an outage", async ({
@@ -189,7 +199,9 @@ test("TREE-1 two titled activations own distinct IDs through an outage", async (
   const second = new URL(page.url()).pathname.split("/").at(-1);
   expect(second).not.toBe(ids[0]);
   await release(page);
-  await expect.poll(() => tree(page)).toEqual(["Alpha", "Beta", "One", "Two"]);
+  await expect
+    .poll(() => tree(page), afterOutage)
+    .toEqual(["Alpha", "Beta", "One", "Two"]);
   expect(await createIds(page)).toHaveLength(2);
   await expect(page).toHaveURL(`/page/${second}`);
 });
@@ -223,7 +235,7 @@ test("TREE-1 repeated empty activations reuse one ID with stable New page contro
     page.getByRole("button", { name: "New page", exact: true }),
   ).toBeEnabled();
   await release(page);
-  await expect.poll(() => tree(page)).toEqual([""]);
+  await expect.poll(() => tree(page), afterOutage).toEqual([""]);
 });
 
 test("TREE-1 stale reads keep the new title editable until one exact record is listed", async ({
@@ -283,7 +295,9 @@ test("SHELL-10 held create asks immediately and retains Q during recovery in Ask
     false,
   );
   await release(page);
-  await expect.poll(() => tree(page)).toEqual(["Alpha", "Beta", "Q"]);
+  await expect
+    .poll(() => tree(page), afterOutage)
+    .toEqual(["Alpha", "Beta", "Q"]);
   await page.getByRole("button", { name: "Keep app open" }).click();
   await expect(page).toHaveURL(`/page/${id}`);
   await expect(titleOf(page)).toHaveValue("Q");
@@ -336,7 +350,9 @@ test("SHELL-10 terminal create keeps its title read-only and retries the same ID
   await page.keyboard.press("Space");
   await expect(titleOf(page)).toBeFocused();
   await page.keyboard.type(" now");
-  await expect.poll(() => tree(page)).toEqual(["Alpha", "Beta", "Kept now"]);
+  await expect
+    .poll(() => tree(page), afterOutage)
+    .toEqual(["Alpha", "Beta", "Kept now"]);
   expect(await createIds(page)).toEqual([id]);
 });
 
@@ -361,7 +377,9 @@ test("TREE-1 leaving an empty failed page removes it and the next Command N owns
   expect(await page.evaluate(() => window.__aelomiMock?.bodies.text("a"))).toBe(
     "Original body",
   );
-  await expect.poll(() => tree(page)).toEqual(["Alpha", "Beta", "Retry"]);
+  await expect
+    .poll(() => tree(page), afterOutage)
+    .toEqual(["Alpha", "Beta", "Retry"]);
   await expect(rowsOf(page).locator('[data-state="failed"]')).toHaveCount(0);
 });
 
@@ -379,7 +397,9 @@ test("CMD-6 held new page cannot be trashed behind the palette", async ({
     0,
   );
   await release(page);
-  await expect.poll(() => tree(page)).toEqual(["Alpha", "Beta", "New"]);
+  await expect
+    .poll(() => tree(page), afterOutage)
+    .toEqual(["Alpha", "Beta", "New"]);
   await expect(page.getByRole("combobox")).toBeFocused();
 });
 
@@ -394,7 +414,7 @@ test("TREE-9 trash completion cannot move focus off a new title", async ({
   await page.keyboard.type("T");
   const path = new URL(page.url()).pathname;
   await release(page);
-  await expect.poll(() => tree(page)).toEqual(["Beta", "T"]);
+  await expect.poll(() => tree(page), afterOutage).toEqual(["Beta", "T"]);
   await expect(page).toHaveURL(path);
   await expect(titleOf(page)).toBeFocused();
   await expect(titleOf(page)).toHaveValue("T");
@@ -540,7 +560,7 @@ test("CMD-6 final create and trash failures keep their own pages and retry targe
   await trash(page);
   await expect(titleOf(page)).toHaveJSProperty("readOnly", true);
   await release(page);
-  await expect.poll(() => tree(page)).toEqual(["Beta"]);
+  await expect.poll(() => tree(page), afterOutage).toEqual(["Beta"]);
   await expect(page).toHaveURL("/page/b");
 });
 

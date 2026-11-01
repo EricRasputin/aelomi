@@ -1,4 +1,4 @@
-import { expect, type Page, test } from "./fixtures";
+import { afterOutage, expect, type Page, test } from "./fixtures";
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
@@ -99,7 +99,9 @@ test("SHELL-6 hiding the sidebar during a held create cannot defer body focus", 
   await title(page).focus();
   await page.keyboard.type(" for Q3");
   await release(page);
-  await expect.poll(() => bodyCalls(page, id)).toEqual(["docLoad"]);
+  await expect
+    .poll(() => bodyCalls(page, id), afterOutage)
+    .toEqual(["docLoad"]);
   await expect(title(page)).toBeFocused();
   await page.keyboard.type(" review");
   await expect(title(page)).toHaveValue("Plan for Q3 review");
@@ -206,10 +208,12 @@ test("TREE-9 open-page trash fallback waits for the palette to close", async ({
   await page.getByRole("combobox").fill("move");
   await release(page);
   await expect
-    .poll(() =>
-      page.evaluate(() =>
-        window.__aelomiMock?.workspace.tree().pages.map((p) => p.title),
-      ),
+    .poll(
+      () =>
+        page.evaluate(() =>
+          window.__aelomiMock?.workspace.tree().pages.map((p) => p.title),
+        ),
+      afterOutage,
     )
     .toEqual(["Beta"]);
   await expect(page).toHaveURL("/page/a");
