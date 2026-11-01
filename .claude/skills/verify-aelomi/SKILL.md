@@ -20,9 +20,10 @@ Run every command from the repo root. The examples use `S=.claude/skills/verify-
 
 ## Rules
 
-- Acquire the keyboard lock with `$S/ui-lock.sh acquire <label>` before `app.sh launch`, because a launch takes focus. Hold it before every key, click, menu press, focus change, or transient screenshot. Use a unique run label and release with `$S/ui-lock.sh release <label>` on every success, failure, and interruption path. Build outside the lock and release it between scenarios that need a rebuild.
+- Acquire the keyboard lock with `$S/ui-lock.sh acquire "$AELOMI_UI_LOCK_LABEL"` before `app.sh launch`, because a launch takes focus. Hold it before every key, click, menu press, focus change, or transient screenshot. Use a unique label, export it as `AELOMI_UI_LOCK_LABEL` for every `app.sh` call, and release with `$S/ui-lock.sh release "$AELOMI_UI_LOCK_LABEL"` on every success, failure, and interruption path. [Lock sessions](#lock-sessions) shows how. Build outside the lock and release it between scenarios that need a rebuild.
+- `app.sh` checks the lock itself. `launch`, `press`, `focus`, `keys`, `rename-quit`, and `both-quit` run only when `AELOMI_UI_LOCK_LABEL` owns the lock, and each one renews it. Otherwise they exit 1 and send nothing. Read-only commands such as `tree`, `status`, and `doctor` need no lock.
 - Run `$S/app.sh frontmost "$RUN"` immediately before every key or click, including `press`, `focus`, native menu AXPress, and direct System Events input. It compares the frontmost process PID with the run's app PID. If it fails, send nothing. A process name such as `aelomi` cannot identify the owned instance.
-- Use only `ui-lock.sh` to manage `/tmp/aelomi-ui.lock`. It writes the owner only after its own `mkdir` succeeds, reclaims locks older than 30 minutes, and waits at most 45 minutes. Report a timeout as INCONCLUSIVE. Keep each interactive session under about 20 minutes.
+- Use only `$S/ui-lock.sh` to manage `/tmp/aelomi-ui.lock`. It writes the owner only after its own `mkdir` succeeds, reclaims a lock that no command has renewed for 30 minutes, and waits at most 45 minutes. Report a timeout as INCONCLUSIVE. If an `app.sh` command reports that your label no longer holds the lock, send nothing more, run cleanup, and report INCONCLUSIVE. Keep each hold under about 20 minutes.
 - Never change the Mac's appearance or any other system setting, even to restore it. The maintainer uses this Mac during verification.
 - If a system setting changes unexpectedly during your run or was left changed by a failed script, report it. Do not restore it. For appearance evidence, capture the current state and name it, even if historical evidence shows another appearance.
 - Never touch an open system prompt. If one appears, run `$S/app.sh cleanup "$RUN"` for every owned run, release the keyboard lock, stop, and report it.
@@ -30,6 +31,32 @@ Run every command from the repo root. The examples use `S=.claude/skills/verify-
 - Before each variant's launch, run the appearance mapping below. After launch and any app-theme selection, capture an unlabeled check screenshot and inspect it before assigning a light or dark label. Never infer appearance from a filename.
 - For either light or dark captures, use the app's theme controls where the branch has them. SHELL-5 specifies **System**, **Light**, and **Dark** in **Settings**. CMD-8 specifies **Toggle theme** in ⌘K. Label these as app-theme captures. The native menu bar and title bar still follow the Mac's appearance.
 - Alternatively, use the mock browser with Playwright's `page.emulateMedia({ colorScheme: "light" })` or `page.emulateMedia({ colorScheme: "dark" })`. If neither route is available, capture only the current appearance and name it in the evidence.
+
+## Lock sessions
+
+The lock belongs to a label, not to a shell. Pick the form that matches how your commands run.
+
+A **scripted session** runs every step in one script, so traps can clean up and release:
+
+```bash
+set -e
+export AELOMI_UI_LOCK_LABEL="verify-$(uuidgen)"
+trap '$S/ui-lock.sh release "$AELOMI_UI_LOCK_LABEL"' EXIT
+trap 'exit 1' HUP INT TERM
+$S/ui-lock.sh acquire "$AELOMI_UI_LOCK_LABEL"
+RUN=$($S/app.sh launch dev)
+trap '$S/app.sh cleanup "$RUN" || true; $S/ui-lock.sh release "$AELOMI_UI_LOCK_LABEL"' EXIT
+```
+
+- Install the release trap before `acquire`. Releasing a free lock exits 0. Releasing another label's lock refuses and changes nothing.
+- Keep `|| true` after cleanup, so a failed cleanup cannot skip the release.
+- Do not build a label from `$$`. Inside a `( ... )` subshell it is still the parent's PID. Use `uuidgen` or `$BASHPID`.
+
+An **interactive session** spans many tool calls. Agent hosts such as Claude Code, Codex, and OpenCode start a new shell for every call, so a trap fires when that call ends, and `$$` changes from call to call.
+
+- Choose the label once, for example with `echo "verify-$(git branch --show-current | tr / -)-$(uuidgen | cut -c1-8)"`. Write that literal label into every later call as `export AELOMI_UI_LOCK_LABEL=<label>`. Write the run directory that `launch` prints the same way.
+- `acquire` can wait 45 minutes. Run it in the background, or with a tool timeout at least that long, and require `$S/ui-lock.sh status` to print `held: <label>` before you launch. Give `launch` a tool timeout of at least its own 900 s.
+- End the session explicitly, and do the same after every failure: `$S/app.sh cleanup <run dir>; $S/ui-lock.sh release <label>`.
 
 ## Before the first run
 
@@ -53,17 +80,7 @@ printf 'System theme maps to %s\n' "$MAC_SCHEME"
 
 System uses that mapping. An explicit app theme uses its selected Light or Dark value. Confirm either mapping against an unlabeled check screenshot after launch.
 
-To launch the dev build, acquire the lock and install the release trap first. Run the session in a shell that exits on failed commands, such as a subshell with `set -e`:
-
-```bash
-set -e
-LABEL="verify-$$"
-$S/ui-lock.sh acquire "$LABEL"
-trap '$S/ui-lock.sh release "$LABEL"' EXIT
-trap 'exit 1' HUP INT TERM
-RUN=$($S/app.sh launch dev)
-trap '$S/app.sh cleanup "$RUN"; $S/ui-lock.sh release "$LABEL"' EXIT
-```
+To launch the dev build, hold the lock first. The [scripted session](#lock-sessions) runs `RUN=$($S/app.sh launch dev)` under its traps.
 
 `launch dev` runs `pnpm dev:app`, which prints `AELOMI_DEV_PORT=N` and runs `tauri dev` with the UI on port N. `launch` waits for the line `ping seq=1` in the shell log. The UI sends its first `ping` command when it mounts, and the Rust handler prints that line. So the line means the window, the UI, and the IPC round trip are up. `launch` then waits until the web content appears in the accessibility tree, and prints the run directory on stdout, for example `~/.local/state/aelomi-verify/20261011-064618-dev-ik2v`. Pass that directory to every other command.
 
@@ -71,7 +88,7 @@ Each launch sets `AELOMI_RECOVERY_DIR=<run dir>/recovery` unless explicitly supp
 
 Each launch sets `AELOMI_DATA_DIR=<run dir>/data`, so every run, dev or release, keeps its data in its own folder and never touches `~/Library/Application Support`. The shell log's first storage line names the resolved folder, for example `storage status=Ready path=$HOME/.local/state/aelomi-verify/<run>/data`. To launch on an existing folder, set the variable yourself. For example, `AELOMI_DATA_DIR=$OLD_RUN/data $S/app.sh launch dev` relaunches on an earlier run's data, or, while that run is still open, logs `storage status=Locked`. Debug builds also read `AELOMI_CLOUD_ROOTS`, a `:`-separated list that replaces `~/Library/Mobile Documents` and `~/Library/CloudStorage`. Point it at a fake folder to prove the cloud folder refusal without touching the real `~/Library`.
 
-The first build compiles about 350 crates and took 59 s on an Apple Silicon Mac. Later launches reuse it. `launch` waits up to 900 s. Change the limit with `--timeout S`. It fails early, and prints the end of the log, if the launch process exits, Rust fails to compile, or the app panics.
+The first build compiles about 350 crates and took 59 s on an Apple Silicon Mac. Later launches reuse it. `launch` waits up to 900 s. Change the limit with `--timeout S`. It fails early, and prints the end of the log, if the launch process exits, Rust fails to compile, or the app panics. A failed launch runs `cleanup` on its own run before it exits.
 
 Each `launch dev` serves the UI on its own free port and records it as `DEV_PORT` in `run.env`, so several dev instances can run at once, from one checkout or several. To choose the port, run `AELOMI_DEV_PORT=1500 $S/app.sh launch dev`. If that port is in use, Vite exits and the launch fails within seconds. The port is compiled into the app, so a launch on a new port relinks the `aelomi` crate, which took 5 to 7 s. Launches from one checkout share `target/`, so a second launch waits for the first build.
 
@@ -80,12 +97,12 @@ To launch the release build, run:
 ```bash
 set -e
 pnpm tauri build --bundles app
-LABEL="verify-$$"
-$S/ui-lock.sh acquire "$LABEL"
-trap '$S/ui-lock.sh release "$LABEL"' EXIT
+export AELOMI_UI_LOCK_LABEL="verify-$(uuidgen)"
+trap '$S/ui-lock.sh release "$AELOMI_UI_LOCK_LABEL"' EXIT
 trap 'exit 1' HUP INT TERM
+$S/ui-lock.sh acquire "$AELOMI_UI_LOCK_LABEL"
 RUN=$($S/app.sh launch app)
-trap '$S/app.sh cleanup "$RUN"; $S/ui-lock.sh release "$LABEL"' EXIT
+trap '$S/app.sh cleanup "$RUN" || true; $S/ui-lock.sh release "$AELOMI_UI_LOCK_LABEL"' EXIT
 ```
 
 `launch app` runs the executable inside `target/release/bundle/macos/Aelomi.app` directly, so its stdout lands in the shell log and its PID is known. `open Aelomi.app` loses both. The release app uses no port, so it can run beside a dev instance. `doctor` fails when a source file is newer than the bundle.
@@ -146,12 +163,12 @@ This example proves the IPC round trip from [`features/ipc-status.md`](features/
 (
 set -e
 S=.claude/skills/verify-aelomi/scripts
-LABEL="ipc-proof-$$"
-$S/ui-lock.sh acquire "$LABEL"
-trap '$S/ui-lock.sh release "$LABEL"' EXIT
+export AELOMI_UI_LOCK_LABEL="ipc-proof-$(uuidgen)"
+trap '$S/ui-lock.sh release "$AELOMI_UI_LOCK_LABEL"' EXIT
 trap 'exit 1' HUP INT TERM
+$S/ui-lock.sh acquire "$AELOMI_UI_LOCK_LABEL"
 RUN=$($S/app.sh launch dev)
-trap '$S/app.sh cleanup "$RUN"; $S/ui-lock.sh release "$LABEL"' EXIT
+trap '$S/app.sh cleanup "$RUN" || true; $S/ui-lock.sh release "$AELOMI_UI_LOCK_LABEL"' EXIT
 $S/app.sh doctor "$RUN"
 $S/app.sh wait-status "$RUN" "IPC ok · core 0.1.0 · seq 1"
 $S/app.sh screenshot "$RUN" before
@@ -243,7 +260,7 @@ $S/app.sh cleanup "$RUN"
 
 With the lock held, run `$S/app.sh frontmost "$RUN"` first. If it succeeds, run `$S/app.sh keys "$RUN" q command` and wait for the app PID to exit. The shell log then shows `quit flush via=ExitRequested pending=[]`. `cleanup` is not a quit: its SIGTERM skips that flush.
 
-`cleanup` stops every process the launch started: pnpm, the `dev:app` launcher, the Tauri CLI, Vite, and the app. It reads the process list that `launch` recorded, and it signals a PID only while that PID still runs the recorded command. It sends SIGTERM, and SIGKILL to anything left after 10 s. It keeps the run directory and lists its files. Running it twice is safe. Run it after every attempt, including a failed launch, before you launch again. For a failed launch, use the run directory printed in its error. Release the keyboard lock after cleanup.
+`cleanup` stops every process the launch started: pnpm, the `dev:app` launcher, the Tauri CLI, Vite, and the app. It reads the process list that `launch` recorded, and it signals a PID only while that PID still runs the recorded command. It sends SIGTERM, and SIGKILL to anything left after 10 s. It keeps the run directory and lists its files. Running it twice is safe. Run it after every attempt before you launch again. A failed launch has already run it. Release the keyboard lock after cleanup.
 
 Never kill Aelomi, Vite, or node by name. Another agent or the maintainer may be running their own instance.
 
@@ -251,7 +268,7 @@ Never kill Aelomi, Vite, or node by name. Another agent or the maintainer may be
 
 ## Helpers
 
-- `scripts/ui-lock.sh` manages the keyboard lock and requires Python 3. `status` prints `free` or the owner label. For isolated tests, set `AELOMI_UI_LOCK` to a temporary path and optionally shorten `AELOMI_UI_LOCK_WAIT_SECONDS`. A persistent sibling `.guard` file serializes filesystem transitions. Its advisory lock releases automatically if a helper exits.
+- `scripts/ui-lock.sh` manages the keyboard lock and requires Python 3. It takes `acquire <label>`, `release <label>`, `renew <label>`, and `status`. `status` prints `free` or `held: <label>`. `renew` refreshes the owner's timestamp only when the label owns the lock, and otherwise exits 1. For isolated tests, set `AELOMI_UI_LOCK` to a temporary path and optionally shorten `AELOMI_UI_LOCK_WAIT_SECONDS`. A persistent sibling `.guard` file serializes filesystem transitions. Each command holds its advisory lock for one transition, and it releases automatically if a helper exits. The wait limit applies only to an `acquire` that finds the lock held.
 - `scripts/app.sh` drives the real app. Run `$S/app.sh` with no arguments for usage.
 - `scripts/ax.js` is the JXA script behind `app.sh`. It takes a PID instead of a run directory, for example `osascript -l JavaScript $S/ax.js press <pid> "Ping again"`. Run it with no arguments for usage.
 - `scripts/mock-drive.mjs` runs one mock-browser flow. Run it with `--help` for usage.

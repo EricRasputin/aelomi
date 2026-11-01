@@ -5,7 +5,7 @@ This directory is the maintained source for verifying Aelomi's user-facing behav
 ## Baseline preconditions
 
 - Run commands from the repo root with `S=.claude/skills/verify-aelomi/scripts`.
-- Follow the lock, frontmost, permission, and appearance rules in `../SKILL.md` for every recipe. Acquire with `$S/ui-lock.sh acquire <label>` before launch and release on every path.
+- Follow the lock, frontmost, permission, and appearance rules in `../SKILL.md` for every recipe. Acquire with `$S/ui-lock.sh acquire <label>` before launch, export the label as `AELOMI_UI_LOCK_LABEL`, and release on every path.
 - Launch the real app with `RUN=$($S/app.sh launch dev)`, or with `launch app` after `pnpm tauri build --bundles app`.
 - Run `$S/app.sh doctor "$RUN"` and require every line to read `ok`.
 - Each launch stores its data in a new `<run dir>/data` folder (`AELOMI_DATA_DIR` in `../SKILL.md`), so it starts empty. The status line starts at `seq 1`.
