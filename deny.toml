@@ -4,6 +4,9 @@ ignore = [
   { id = "RUSTSEC-2024-0436", reason = "paste has no patched release; Specta and Tauri use it transitively." },
   { id = "RUSTSEC-2024-0370", reason = "proc-macro-error has no patched release; Tauri's Linux GTK dependencies use it transitively." },
   { id = "RUSTSEC-2026-0215", reason = "smallstr is unmaintained, with no known vulnerability; yrs 0.28, the latest release, depends on it." },
+  { id = "RUSTSEC-2026-0370", reason = "zvariant is unmaintained, with no known vulnerability, after its merge into zbus 6; tauri-plugin-opener 2.7.2, the latest stable release, uses zbus 5 on Linux and BSD only." },
+  { id = "RUSTSEC-2026-0371", reason = "zbus_names is unmaintained, with no known vulnerability, after its merge into zbus 6; tauri-plugin-opener 2.7.2, the latest stable release, uses zbus 5 on Linux and BSD only." },
+  { id = "RUSTSEC-2026-0372", reason = "zvariant_derive is unmaintained, with no known vulnerability, after its merge into zbus 6; tauri-plugin-opener 2.7.2, the latest stable release, uses zbus 5 on Linux and BSD only." },
 ]
 
 [licenses]
