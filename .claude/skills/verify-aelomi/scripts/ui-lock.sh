@@ -77,16 +77,12 @@ try:
     # Keep this inode: unlinking a flock file lets waiters lock different files.
     with open(f"{lock}.guard", "a") as guard:
         while True:
+            fcntl.flock(guard, fcntl.LOCK_EX)
             try:
-                fcntl.flock(guard, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError:
-                pass
-            else:
-                try:
-                    if attempt():
-                        break
-                finally:
-                    fcntl.flock(guard, fcntl.LOCK_UN)
+                if attempt():
+                    break
+            finally:
+                fcntl.flock(guard, fcntl.LOCK_UN)
             if time.monotonic() >= deadline:
                 fail("timed out waiting for the UI lock")
             time.sleep(min(1, max(0, deadline - time.monotonic())))
