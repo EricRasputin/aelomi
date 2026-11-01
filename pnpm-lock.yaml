@@ -163,7 +163,7 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  zod: 4.6.7
+  zod@4.6.1: 4.6.7
 
 patchedDependencies:
   prosemirror-view@1.42.6: 8dbfba5d15216f48bb774e86c58291e443d2d337493bff04bc5a6516106453ea

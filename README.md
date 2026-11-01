@@ -17,7 +17,7 @@ For native screenshots and shell logs, follow [Native verification evidence](doc
 
 The license policy allows Unicode-3.0 for the ICU and unicode-ident dependencies,
 Zlib for foldhash, and Unlicense for isbot. Each is scoped to the packages named in `deny.toml` or `scripts/check-licenses.mjs`.
-`deny.toml` names two unmaintained transitive crates with no patched releases.
+`deny.toml` names each unmaintained transitive crate that has no patched release, with its reason.
 
 ## CI
 
