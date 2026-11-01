@@ -9,4 +9,5 @@ find-animation-opportunities
 improve-animations
 pick-ui-library
 prototype
+remove-animations
 review-animations
