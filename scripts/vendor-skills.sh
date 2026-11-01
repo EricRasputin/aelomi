@@ -4,19 +4,19 @@
 set -euo pipefail
 
 PSTACK_URL=https://github.com/backnotprop/pstack
-PSTACK_REF=1f0f9c3bac03c4297f6fc8f7644fa412eda57085
+PSTACK_REF=25abb38559ddbabec563646224d09eff9a250eca
 # Comment Sicko (.claude/agents/comment-sicko.md) invokes these two; every other pstack skill keeps pstack's flag.
 PSTACK_UNHIDE="how why"
 
 EMIL_URL=https://github.com/emilkowalski/skill
-EMIL_REF=2d228630ba1446365f614a108cb8252f1feda202
+EMIL_REF=a81dbca07f2217b7103e510c0f13f8d5b017afc9
 # Not used in Aelomi.
 EMIL_EXCLUDE="animate-expo mobile-native write-swift"
 
 # pen.dev's skill ships as SKILL.md inside its CLI package, under a license
 # that forbids redistribution. It is fetched here but gitignored, never committed.
 PEN_PKG=@pen.dev/cli
-PEN_VERSION=0.3.11
+PEN_VERSION=0.3.14
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SKILLS="$ROOT/.claude/skills"

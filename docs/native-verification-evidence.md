@@ -15,7 +15,7 @@ This policy follows pstack's **principle-prove-it-works**, **show-me-your-work**
 | Shell logs, accessibility trees, doctor output, traces, raw exports, decision logs | Local only. `verify-aelomi` keeps each run under `~/.local/state/aelomi-verify/`, which survives a reboot and is never synced by iCloud. |
 | A record a later reader must audit | `docs/evidence/<topic>/`, committed, but only for the claims below |
 
-Keep the runs a PR names until it merges, then its owner deletes them. Delete every other run as soon as you no longer need it, because nothing purges `~/.local/state/aelomi-verify/` for you. Reviewers may read files and run read-only commands but change nothing, and their prompt carries the PR's `## Verification` bullets, the log lines those bullets rest on, and the output of any check a claim rests on.
+Keep the runs a PR names until it merges, then its owner deletes them. Delete every other run as soon as you no longer need it, because nothing purges `~/.local/state/aelomi-verify/` for you. Review adversaries work in their own worktree at the PR head, where they may build, run tests and write repro scripts, and they change nothing outside it. Their brief carries the PR's `## Verification` bullets, the log lines those bullets rest on, and the output of any check a claim rests on. A finding counts only when its command's output shows the failure.
 
 **Privacy.** Use synthetic data only, in an isolated `AELOMI_DATA_DIR`. Before anything leaves the machine (a quoted log line, a screenshot, a PR comment), remove credentials and personal paths. For example, write `~/` for a home directory.
 
