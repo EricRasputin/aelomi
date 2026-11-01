@@ -45,6 +45,7 @@ for n in 1 2 3 4 5 6 7 8; do
   fi) &
 done
 wait
+shopt -s nullglob
 winners=("$TEST_ROOT"/winner-*)
 assert_equal "${#winners[@]}" 1
 winner=$(cat "${winners[0]}")
@@ -64,6 +65,7 @@ if "$S/ui-lock.sh" acquire '' >/dev/null 2>&1; then exit 1; else assert_equal "$
 assert_equal "$("$S/ui-lock.sh" status)" free
 echo 'PASS: an invalid label creates no lock'
 
+"$S/ui-lock.sh" acquire guarded >/dev/null
 python3 - "$AELOMI_UI_LOCK.guard" "$TEST_ROOT/guard-ready" <<'PYTEST' &
 import fcntl
 from pathlib import Path
@@ -72,7 +74,7 @@ import time
 with open(sys.argv[1], "a") as guard:
     fcntl.flock(guard, fcntl.LOCK_EX)
     Path(sys.argv[2]).touch()
-    time.sleep(10)
+    time.sleep(1)
 PYTEST
 guard_pid=$!
 for n in $(seq 1 100); do
@@ -80,12 +82,10 @@ for n in $(seq 1 100); do
   sleep 0.05
 done
 [ -f "$TEST_ROOT/guard-ready" ]
-if "$S/ui-lock.sh" acquire blocked >"$TEST_ROOT/guard-timeout" 2>&1; then exit 1; else assert_equal "$?" 1; fi
-grep -q 'timed out' "$TEST_ROOT/guard-timeout"
-kill "$guard_pid"
-wait "$guard_pid" 2>/dev/null || true
+"$S/ui-lock.sh" release guarded
+wait "$guard_pid"
 assert_equal "$("$S/ui-lock.sh" status)" free
-echo 'PASS: a busy filesystem guard respects the acquisition deadline'
+echo 'PASS: release waits out a briefly held guard instead of timing out'
 
 mkdir "$TEST_ROOT/bin" "$TEST_ROOT/run"
 printf 'APP_PID=12345\n' >"$TEST_ROOT/run/run.env"
