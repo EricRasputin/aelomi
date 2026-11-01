@@ -22,7 +22,7 @@ A fresh data folder opens one page titled **Getting started** with three editabl
 
 Preconditions:
 
-- Hold `/tmp/aelomi-ui.lock` for every key, focus, press and transient screenshot step when other agents can drive the Mac. Release it between scenarios and on failure.
+- Hold the keyboard lock with `$S/ui-lock.sh acquire <label>`, exported as `AELOMI_UI_LOCK_LABEL`, for every launch, key, focus, press and transient screenshot step. Release it with `$S/ui-lock.sh release <label>` between scenarios and on failure.
 - Launch the real app with a fresh isolated folder and require every doctor check to pass.
 - Use synthetic text only. The mock starts empty according to each test's setup and does not run the native folder seed.
 

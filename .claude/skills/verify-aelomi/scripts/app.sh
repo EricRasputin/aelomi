@@ -10,7 +10,8 @@ BUNDLE="$REPO/target/release/bundle/macos/Aelomi.app"
 usage() {
   cat <<'EOF'
 Usage: app.sh <command> [args]
-  launch dev|app [--timeout S]   start the app, wait for "ping seq=1", print the run directory
+  launch dev|app [--timeout S]   start the app, wait for "ping seq=1", print the run directory; cleans up on failure
+  frontmost RUN                  exit 0 only when this run's app PID is frontmost
   doctor RUN                     check that the instance in RUN is worth driving
   tree RUN                       print the web content's accessibility tree
   status RUN                     print the text of the role="status" region
@@ -82,7 +83,21 @@ require_app() {
   [ -n "${APP_PID:-}" ] || die "launch never reached readiness in $RUN, so there is no app PID. Run cleanup."
 }
 
+# Renewing on every input refreshes the owner file's mtime, which is the lock's heartbeat.
+require_lock() {
+  [ -n "${AELOMI_UI_LOCK_LABEL:-}" ] || die "set AELOMI_UI_LOCK_LABEL to the label you acquired with ui-lock.sh. Nothing was sent or launched."
+  "$HERE/ui-lock.sh" renew "$AELOMI_UI_LOCK_LABEL" || die "the keyboard lock is not held by '$AELOMI_UI_LOCK_LABEL'. Nothing was sent or launched."
+}
+
 log_action() { printf '%s %s\n' "$(date +%H:%M:%S)" "$*" >>"$RUN/actions.log"; }
+
+launch_failed() {
+  tail -20 "$RUN/shell.log" >&2
+  # The launch PID may have exec'd since the last record, and cleanup only trusts a recorded
+  # command. It is this shell's unreaped child, so recording it again cannot hit a reused PID.
+  (load "$RUN" && record_tree "$RUN" "$LAUNCH_PID" && cleanup "$RUN") >&2 || true
+  die "launch failed: $1. Evidence is in $RUN"
+}
 
 launch() {
   local mode=${1:-} timeout=900
@@ -104,6 +119,7 @@ launch() {
     *) usage >&2; exit 2 ;;
   esac
 
+  require_lock
   mkdir -p "$VERIFY_ROOT"
   RUN=$(mktemp -d "$VERIFY_ROOT/$(date +%Y%m%d-%H%M%S)-$mode-XXXX")
   (cd "$REPO" && export AELOMI_DATA_DIR="${AELOMI_DATA_DIR:-$RUN/data}" AELOMI_RECOVERY_DIR="${AELOMI_RECOVERY_DIR:-$RUN/recovery}" && exec nohup "${cmd[@]}" >"$RUN/shell.log" 2>&1 </dev/null) &
@@ -118,10 +134,7 @@ launch() {
     kill -0 "$launch_pid" 2>/dev/null || reason="the launch process exited"
     grep -qE 'could not compile|panicked at' "$RUN/shell.log" && reason="the build or the app failed"
     [ "$SECONDS" -lt "$deadline" ] || reason="no 'ping seq=1' within $timeout s"
-    if [ -n "$reason" ]; then
-      tail -20 "$RUN/shell.log" >&2
-      die "launch failed: $reason. Run: $0 cleanup $RUN"
-    fi
+    [ -z "$reason" ] || launch_failed "$reason"
     sleep 1
   done
   record_tree "$RUN" "$launch_pid"
@@ -130,13 +143,13 @@ launch() {
   if [ "$mode" = dev ]; then
     local port
     port=$(sed -n 's/^AELOMI_DEV_PORT=\([0-9]*\)$/\1/p' "$RUN/shell.log" | head -1)
-    [ -n "$port" ] || die "logged 'ping seq=1' but no AELOMI_DEV_PORT line. Run: $0 cleanup $RUN"
+    [ -n "$port" ] || launch_failed "logged 'ping seq=1' but no AELOMI_DEV_PORT line"
     printf 'DEV_PORT=%q\n' "$port" >>"$RUN/run.env"
     app_pid=""
     for pid in $(descendants "$launch_pid"); do
       case $(proc_cmd "$pid") in */target/debug/aelomi) app_pid=$pid ;; esac
     done
-    [ -n "$app_pid" ] || die "logged 'ping seq=1' but found no target/debug/aelomi under PID $launch_pid. Run: $0 cleanup $RUN"
+    [ -n "$app_pid" ] || launch_failed "logged 'ping seq=1' but found no target/debug/aelomi under PID $launch_pid"
   fi
   printf 'APP_PID=%q\n' "$app_pid" >>"$RUN/run.env"
   # The first accessibility query after launch can find no web content, so poll until one does.
@@ -151,6 +164,16 @@ launch() {
   done
   echo "app.sh: ready, app PID $app_pid" >&2
   echo "$RUN"
+}
+
+frontmost() {
+  load "$1"
+  require_app
+  local pid
+  pid=$(osascript -e 'with timeout of 60 seconds
+    tell application "System Events" to get unix id of first process whose frontmost is true
+  end timeout') || return 1
+  [ "$pid" = "$APP_PID" ] || die "frontmost PID $pid is not this run's app PID $APP_PID; send no input."
 }
 
 doctor() {
@@ -234,13 +257,14 @@ command=${1:-}
 shift || true
 case $command in
   launch) launch "$@" ;;
+  frontmost) frontmost "$@" ;;
   doctor) doctor "$@" ;;
   tree | status | menus) load "${1:-}"; require_app; ax "$command" "$APP_PID" ;;
   wait-status) load "${1:-}"; require_app; ax wait-status "$APP_PID" "${2:?wait-status needs TEXT}" "${3:-10}" ;;
   wait-dialog) load "${1:-}"; require_app; ax wait-dialog "$APP_PID" "${2:?wait-dialog needs TITLE}" "${3:-10}" ;;
-  press | focus) load "${1:-}"; require_app; log_action "$command \"${2:?$command needs NAME}\""; ax "$command" "$APP_PID" "$2" ;;
-  keys) load "${1:-}"; require_app; log_action "keys \"${2:?keys needs TEXT}\" ${3:-}"; ax keys "$APP_PID" "$2" "${3:-}" ;;
-  rename-quit | both-quit) load "${1:-}"; require_app; log_action "$command"; ax "$command" "$APP_PID" ;;
+  press | focus) load "${1:-}"; require_app; require_lock; log_action "$command \"${2:?$command needs NAME}\""; ax "$command" "$APP_PID" "$2" ;;
+  keys) load "${1:-}"; require_app; require_lock; log_action "keys \"${2:?keys needs TEXT}\" ${3:-}"; ax keys "$APP_PID" "$2" "${3:-}" ;;
+  rename-quit | both-quit) load "${1:-}"; require_app; require_lock; log_action "$command"; ax "$command" "$APP_PID" ;;
   screenshot) screenshot "$@" ;;
   cleanup) cleanup "$@" ;;
   *) usage >&2; exit 2 ;;

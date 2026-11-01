@@ -109,7 +109,18 @@ This file maps the code. `SPEC.md` has the behaviors and the budgets, and `READM
 | `vite.config.ts` | Vite config. Mock builds go to `dist-mock/`, production builds to `dist/` |
 | `tsconfig.json` | Strict TypeScript settings for `src/`, `e2e/`, and `tests/` |
 | `biome.json` | Lint and format rules, including the test import restrictions |
+| `scripts/verify-ui.test.ts` | Runs the verification helpers' shell contract tests in Vitest and check:all |
+| `.claude/skills/verify-aelomi/scripts/ui-lock.sh` | Repo-local keyboard lock, with isolated CLI tests in `ui-lock.test.sh` |
+| `.claude/skills/verify-aelomi/scripts/app.sh` | Real-app launch, PID-based frontmost check, accessibility actions, evidence, and cleanup |
 | `.claude/skills/verify-aelomi/` | The skill agents use to launch, drive, and screenshot the app to prove a change works, with its feature map |
+
+## Native verification helpers
+
+The keyboard lock is `/tmp/aelomi-ui.lock` with one `owner` label. Only a successful directory creator writes that label. A persistent sibling `.guard` file uses Python 3's blocking `fcntl.flock` to serialize each acquire, release, renew, and stale-reclaim transition across helpers. The owner file's mtime is the heartbeat. `renew <label>` refreshes it only for the owning label. Waiters leave the owner untouched, reclaim after 30 minutes without a renewal, and stop after 45 minutes. A crashed creator with no owner uses directory age. `AELOMI_UI_LOCK` isolates tests from the shared lock.
+
+The caller's identity is the label in `AELOMI_UI_LOCK_LABEL`, because agent hosts start a new shell for every command. `app.sh launch` and the input commands (`press`, `focus`, `keys`, `rename-quit`, `both-quit`) call `ui-lock.sh renew` with it before they start a process or call `osascript`, and exit 1 when it fails. A failed launch runs `cleanup` on its own run before it exits.
+
+`app.sh frontmost RUN` reads `APP_PID` from that run's `run.env` and compares it with System Events' frontmost Unix PID. Its Apple event has a 60-second timeout. The skill requires this check before every key or click. `scripts/verify-ui.test.ts` runs the shell contract tests on temporary lock paths, with stub `osascript` and `pnpm` executables first on `PATH`, without launching an app.
 
 ## Rust workspace
 

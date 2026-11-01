@@ -1,5 +1,7 @@
 # Pending cloud refusal recovery
 
+Historical evidence only. These scripts change the Mac's appearance and **must not be rerun as is**, per [#95](https://github.com/aelomi/aelomi/issues/95). Follow the current verify-aelomi rules, keep system settings unchanged, and use app theme controls or mock-browser color-scheme emulation for appearance variants.
+
 Source commit `b37c17c96bc52a710a1dbd208f01b01c42b34708`.
 Recorded merge base `9323b3c401c3c7d1e3b7de9fe0d3aa8bef7767ec` against `origin/main`.
 Verbatim patch-id `b82845065410bb8d0b5ac4360bfa8990852e1277`.
